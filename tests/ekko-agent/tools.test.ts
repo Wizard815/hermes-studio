@@ -8,6 +8,7 @@ import {
   DEFAULT_READ_FILE_MAX_BYTES,
   DEFAULT_TOOL_RESULT_MAX_TEXT_BYTES,
   DelegateTaskTool,
+  EditFileTool,
   ProcessExecTool,
   ReadFileTool,
   TerminalExecTool,
@@ -141,6 +142,88 @@ describe('ekko-agent tools', () => {
       ok: true,
       content: 'ship tools',
     })
+  })
+
+  it('rejects edit_file on a path that has not been read this session yet', async () => {
+    const writer = new WriteFileTool()
+    const editor = new EditFileTool()
+    await writer.execute({ path: 'unread.txt', content: 'hello world' }, { workspaceRoot })
+
+    const result = await editor.execute({
+      path: 'unread.txt',
+      oldString: 'hello',
+      newString: 'goodbye',
+    }, { workspaceRoot })
+
+    expect(result.ok).toBe(false)
+    expect(result.content).toContain('has not been read in this session')
+    await expect(readFile(path.join(workspaceRoot, 'unread.txt'), 'utf8')).resolves.toBe('hello world')
+  })
+
+  it('replaces a unique substring after the file has been read', async () => {
+    const writer = new WriteFileTool()
+    const reader = new ReadFileTool()
+    const editor = new EditFileTool()
+    await writer.execute({ path: 'greeting.txt', content: 'hello world' }, { workspaceRoot })
+    await reader.execute({ path: 'greeting.txt' }, { workspaceRoot })
+
+    const result = await editor.execute({
+      path: 'greeting.txt',
+      oldString: 'hello',
+      newString: 'goodbye',
+    }, { workspaceRoot })
+
+    expect(result).toMatchObject({ ok: true, data: { occurrences: 1 } })
+    await expect(readFile(path.join(workspaceRoot, 'greeting.txt'), 'utf8')).resolves.toBe('goodbye world')
+  })
+
+  it('rejects an ambiguous edit unless replaceAll is set, then applies replaceAll correctly', async () => {
+    const writer = new WriteFileTool()
+    const reader = new ReadFileTool()
+    const editor = new EditFileTool()
+    await writer.execute({ path: 'repeats.txt', content: 'foo foo foo' }, { workspaceRoot })
+    await reader.execute({ path: 'repeats.txt' }, { workspaceRoot })
+
+    const ambiguous = await editor.execute({
+      path: 'repeats.txt',
+      oldString: 'foo',
+      newString: 'bar',
+    }, { workspaceRoot })
+    expect(ambiguous.ok).toBe(false)
+    expect(ambiguous.content).toContain('occurs 3 times')
+
+    const replaced = await editor.execute({
+      path: 'repeats.txt',
+      oldString: 'foo',
+      newString: 'bar',
+      replaceAll: true,
+    }, { workspaceRoot })
+    expect(replaced).toMatchObject({ ok: true, data: { occurrences: 3 } })
+    await expect(readFile(path.join(workspaceRoot, 'repeats.txt'), 'utf8')).resolves.toBe('bar bar bar')
+  })
+
+  it('rejects edit_file when oldString is not found or the file does not exist', async () => {
+    const writer = new WriteFileTool()
+    const reader = new ReadFileTool()
+    const editor = new EditFileTool()
+    await writer.execute({ path: 'present.txt', content: 'actual content' }, { workspaceRoot })
+    await reader.execute({ path: 'present.txt' }, { workspaceRoot })
+
+    const notFound = await editor.execute({
+      path: 'present.txt',
+      oldString: 'nonexistent text',
+      newString: 'x',
+    }, { workspaceRoot })
+    expect(notFound.ok).toBe(false)
+    expect(notFound.content).toContain('was not found')
+
+    const missingFile = await editor.execute({
+      path: 'does-not-exist.txt',
+      oldString: 'x',
+      newString: 'y',
+    }, { workspaceRoot })
+    expect(missingFile.ok).toBe(false)
+    expect(missingFile.content).toContain('does not exist')
   })
 
   it('bounds large file reads and supports continuing from the next byte offset', async () => {
@@ -570,6 +653,7 @@ describe('ekko-agent tools', () => {
       'browser_vision',
       'code_exec',
       'delegate_task',
+      'edit_file',
       'process_exec',
       'read_file',
       'skill_list',
