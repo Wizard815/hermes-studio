@@ -15,6 +15,7 @@ import { createImageTools } from './images'
 import { createMcpToolProvider } from './mcp'
 import { createProcessTools } from './process'
 import { createRecoveryTools } from './recovery'
+import { createSearchTools } from './search'
 import { createSkillTools } from './skills'
 import { createTerminalTools } from './terminal'
 import type { EkkoExternalSkillDirectory } from '../skills/external-directories'
@@ -119,6 +120,7 @@ export function createDefaultToolRegistry(options: DefaultToolRegistryOptions = 
   for (const tool of [
     new UpdatePlanTool(),
     ...createFileTools(),
+    ...createSearchTools(),
     ...createImageTools(),
     ...createTerminalTools({ timeoutMs: options.executionTimeoutMs }),
     ...createProcessTools(),

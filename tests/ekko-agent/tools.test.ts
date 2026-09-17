@@ -11,6 +11,7 @@ import {
   EditFileTool,
   ProcessExecTool,
   ReadFileTool,
+  SearchFilesTool,
   TerminalExecTool,
   ViewImageTool,
   WriteFileTool,
@@ -224,6 +225,57 @@ describe('ekko-agent tools', () => {
     }, { workspaceRoot })
     expect(missingFile.ok).toBe(false)
     expect(missingFile.content).toContain('does not exist')
+  })
+
+  it('finds matches across files, case-insensitively by default', async () => {
+    const writer = new WriteFileTool()
+    const search = new SearchFilesTool()
+    await writer.execute({ path: 'a.txt', content: 'first line\nTARGET here\nlast line' }, { workspaceRoot })
+    await writer.execute({ path: 'sub/b.txt', content: 'nothing to see' }, { workspaceRoot })
+    await writer.execute({ path: 'sub/c.txt', content: 'another target line' }, { workspaceRoot })
+
+    const result = await search.execute({ pattern: 'target' }, { workspaceRoot })
+
+    expect(result.ok).toBe(true)
+    const matches = (result.data as { matches: Array<{ file: string; line: number }> }).matches
+    expect(matches).toHaveLength(2)
+    expect(matches.find(m => m.file.endsWith('a.txt'))?.line).toBe(2)
+    expect(matches.find(m => m.file.endsWith('c.txt'))).toBeTruthy()
+  })
+
+  it('filters search_files results by glob and skips node_modules automatically', async () => {
+    const writer = new WriteFileTool()
+    const search = new SearchFilesTool()
+    await writer.execute({ path: 'src/app.ts', content: 'const marker = 1' }, { workspaceRoot })
+    await writer.execute({ path: 'src/app.md', content: 'marker in a doc' }, { workspaceRoot })
+    await writer.execute({ path: 'node_modules/dep/index.js', content: 'marker in a dependency' }, { workspaceRoot })
+
+    const result = await search.execute({ pattern: 'marker', glob: '*.ts' }, { workspaceRoot })
+
+    const matches = (result.data as { matches: Array<{ file: string }> }).matches
+    expect(matches).toHaveLength(1)
+    expect(matches[0].file).toMatch(/app\.ts$/)
+  })
+
+  it('supports regex mode and reports no matches without error', async () => {
+    const writer = new WriteFileTool()
+    const search = new SearchFilesTool()
+    await writer.execute({ path: 'nums.txt', content: 'id-123\nid-abc\nid-456' }, { workspaceRoot })
+
+    const regexResult = await search.execute({ pattern: 'id-\\d+', regex: true }, { workspaceRoot })
+    const regexMatches = (regexResult.data as { matches: Array<{ line: number }> }).matches
+    expect(regexMatches.map(m => m.line).sort()).toEqual([1, 3])
+
+    const noMatches = await search.execute({ pattern: 'nothing-like-this-exists' }, { workspaceRoot })
+    expect(noMatches).toMatchObject({ ok: true, data: { matches: [] } })
+    expect(noMatches.content).toContain('No matches')
+  })
+
+  it('rejects an invalid regex pattern instead of throwing', async () => {
+    const search = new SearchFilesTool()
+    const result = await search.execute({ pattern: '(unterminated', regex: true }, { workspaceRoot })
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('invalid regex')
   })
 
   it('bounds large file reads and supports continuing from the next byte offset', async () => {
@@ -656,6 +708,7 @@ describe('ekko-agent tools', () => {
       'edit_file',
       'process_exec',
       'read_file',
+      'search_files',
       'skill_list',
       'skill_view',
       'terminal_exec',
