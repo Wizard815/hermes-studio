@@ -611,6 +611,75 @@ describe('ekko-agent runtime', () => {
     expect(events).toContain('run.tool_recovery_required')
   })
 
+  it('nudges the model after repeating the same tool call with identical arguments, even when it keeps succeeding', async () => {
+    const calls: unknown[] = []
+    const tools = new AgentToolRegistry()
+    tools.register({
+      definition: { name: 'poll_status', description: 'poll', parameters: { type: 'object' } },
+      async execute(input) {
+        calls.push(input)
+        return { ok: true, content: 'still pending' }
+      },
+    })
+    const requests: ModelRequest[] = []
+    const client = modelClient((request, call) => {
+      requests.push(request)
+      return call <= 3
+        ? {
+            content: '',
+            toolCalls: [{ id: `poll-${call}`, name: 'poll_status', arguments: { target: 'job-1' } }],
+            finishReason: 'tool_calls',
+          }
+        : { content: 'gave up polling identically', finishReason: 'stop' }
+    })
+    const runtime = new AgentRuntime({
+      modelClient: client,
+      tools,
+      identicalCallRecoveryThreshold: 3,
+    })
+    const events: AgentRuntimeEvent[] = []
+
+    const result = await runtime.run({
+      messages: ['poll until done'],
+      onEvent: event => events.push(event),
+    })
+
+    expect(calls).toHaveLength(3)
+    expect(result.output).toMatchObject({ content: 'gave up polling identically', finishReason: 'stop' })
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'run.identical_call_detected',
+      toolName: 'poll_status',
+      count: 3,
+    }))
+    expect(requests[3].messages).toContainEqual(expect.objectContaining({
+      role: 'system',
+      content: expect.stringContaining('Repetition detected: "poll_status" has been called 3 times in a row with identical arguments'),
+    }))
+  })
+
+  it('does not flag identical-call repetition when arguments change between calls', async () => {
+    const tools = new AgentToolRegistry()
+    tools.register({
+      definition: { name: 'poll_status', description: 'poll', parameters: { type: 'object' } },
+      async execute() {
+        return { ok: true, content: 'still pending' }
+      },
+    })
+    const client = modelClient((_request, call) => call <= 3
+      ? {
+          content: '',
+          toolCalls: [{ id: `poll-${call}`, name: 'poll_status', arguments: { target: `job-${call}` } }],
+          finishReason: 'tool_calls',
+        }
+      : { content: 'done', finishReason: 'stop' })
+    const runtime = new AgentRuntime({ modelClient: client, tools, identicalCallRecoveryThreshold: 3 })
+    const events: AgentRuntimeEvent[] = []
+
+    await runtime.run({ messages: ['poll different targets'], onEvent: event => events.push(event) })
+
+    expect(events.filter(event => event.type === 'run.identical_call_detected')).toHaveLength(0)
+  })
+
   it('waits for foreground delegated tasks and hides delegation from the child', async () => {
     const tools = new AgentToolRegistry()
     tools.register(new DelegateTaskTool())

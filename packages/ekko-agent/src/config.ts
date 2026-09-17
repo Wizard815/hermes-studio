@@ -20,6 +20,8 @@ export const EKKO_CONFIG_FILE_NAME = 'config.json'
 export const DEFAULT_AGENT_MAX_STEPS = 90
 export const DEFAULT_AGENT_MODEL_MAX_RETRIES = 3
 export const DEFAULT_AGENT_TOOL_FAILURE_RECOVERY_THRESHOLD = 3
+/** Nudge the model to change approach after this many consecutive calls to the same tool with identical arguments, success or failure alike. */
+export const DEFAULT_AGENT_IDENTICAL_CALL_RECOVERY_THRESHOLD = 3
 /** @deprecated Tool failures now trigger model recovery instead of terminating the run. */
 export const DEFAULT_AGENT_MAX_CONSECUTIVE_TOOL_FAILURES = 6
 export const DEFAULT_AGENT_SUBTASK_MAX_STEPS = 30

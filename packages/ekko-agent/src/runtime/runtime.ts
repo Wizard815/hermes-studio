@@ -57,6 +57,7 @@ import {
   DEFAULT_AGENT_MAX_STEPS,
   DEFAULT_AGENT_MODEL_MAX_RETRIES,
   DEFAULT_AGENT_SUBTASK_MAX_STEPS,
+  DEFAULT_AGENT_IDENTICAL_CALL_RECOVERY_THRESHOLD,
   DEFAULT_AGENT_TOOL_FAILURE_RECOVERY_THRESHOLD,
   DEFAULT_SKILL_REVIEW_TOOL_CALL_INTERVAL,
 } from '../config'
@@ -124,6 +125,38 @@ function toolFailureRecoveryPrompt(streak: ToolFailureStreak, result: AgentToolR
   ].join('\n')
 }
 
+interface IdenticalCallStreak {
+  toolName: string
+  signature: string
+  count: number
+}
+
+/**
+ * Same tool, same arguments, repeated back to back — success or failure alike.
+ * toolFailureStreak above only catches consecutive FAILURES; a call that keeps
+ * "succeeding" with the exact same arguments (e.g. polling a resource with no
+ * new information each time, or a model stuck re-emitting one plan step) is a
+ * loop too and gets nothing today without this.
+ */
+function toolCallSignature(toolCall: AgentToolCall): string {
+  return `${toolCall.name}:${stableStringify(toolCall.arguments)}`
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  const keys = Object.keys(value as Record<string, unknown>).sort()
+  return `{${keys.map(key => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`).join(',')}}`
+}
+
+function identicalCallRecoveryPrompt(streak: IdenticalCallStreak): string {
+  return [
+    `Repetition detected: "${streak.toolName}" has been called ${streak.count} times in a row with identical arguments.`,
+    'Repeating the exact same call is not producing new information, whether or not it is succeeding.',
+    'Use the result you already have, change the arguments, use a different tool, or explain the blocker instead of repeating this call unchanged.',
+  ].join('\n')
+}
+
 function foregroundOnlyDelegateTaskDefinition(definition: AgentToolDefinition): AgentToolDefinition {
   if (definition.name !== 'delegate_task') return definition
   const parameters = definition.parameters || {}
@@ -178,6 +211,7 @@ export class AgentRuntime {
   private readonly modelDefaults?: AgentRuntimeOptions['modelDefaults']
   private readonly maxModelRetries: number
   private readonly toolFailureRecoveryThreshold: number
+  private readonly identicalCallRecoveryThreshold: number
   private readonly backgroundDelegationEnabled: boolean
   private readonly subtaskMaxSteps: number
   private readonly defaultContextKey?: string
@@ -224,6 +258,10 @@ export class AgentRuntime {
       options.toolFailureRecoveryThreshold
       ?? options.maxConsecutiveToolFailures
       ?? DEFAULT_AGENT_TOOL_FAILURE_RECOVERY_THRESHOLD,
+    ))
+    this.identicalCallRecoveryThreshold = Math.max(1, Math.floor(
+      options.identicalCallRecoveryThreshold
+      ?? DEFAULT_AGENT_IDENTICAL_CALL_RECOVERY_THRESHOLD,
     ))
     this.backgroundDelegationEnabled = options.backgroundDelegationEnabled !== false
     this.subtaskMaxSteps = Math.max(
@@ -365,6 +403,10 @@ export class AgentRuntime {
       ?? input.maxConsecutiveToolFailures
       ?? this.toolFailureRecoveryThreshold,
     ))
+    const identicalCallRecoveryThreshold = Math.max(1, Math.floor(
+      input.identicalCallRecoveryThreshold
+      ?? this.identicalCallRecoveryThreshold,
+    ))
     const pendingBackgroundSubagentIds = new Set<string>()
     const taskPlan = new RunTaskPlan(runId, plan => {
       input.onPlanUpdate?.(plan)
@@ -447,6 +489,7 @@ export class AgentRuntime {
     const contextKey = this.contextKeyFor(input)
     let contextEstimate: AgentRuntimeContextEstimate | undefined
     let toolFailureStreak: ToolFailureStreak | undefined
+    let identicalCallStreak: IdenticalCallStreak | undefined
     const completeBoundaryInterrupt = (completedSteps: number): AgentRuntimeRunResult => {
       if (activeBoundaryRun) activeBoundaryRun.terminal = true
       output = {
@@ -604,6 +647,22 @@ export class AgentRuntime {
             messages.push(createToolResultMessage(toolCall.id, result.content, toolCall.name, result.contentParts))
             steps.push({ type: 'tool', step, toolCallId: toolCall.id, toolName: toolCall.name, result })
             if (input.skillReviewEnabled !== false) this.recordSkillToolCall(contextKey, toolCall.name)
+
+            const signature = toolCallSignature(toolCall)
+            identicalCallStreak = identicalCallStreak?.signature === signature
+              ? { toolName: toolCall.name, signature, count: identicalCallStreak.count + 1 }
+              : { toolName: toolCall.name, signature, count: 1 }
+            if (identicalCallStreak.count >= identicalCallRecoveryThreshold) {
+              emit({
+                type: 'run.identical_call_detected',
+                runId,
+                toolName: toolCall.name,
+                count: identicalCallStreak.count,
+              })
+              toolRecoveryPrompts.push(identicalCallRecoveryPrompt(identicalCallStreak))
+              identicalCallStreak = undefined
+            }
+
             if (result.ok) {
               toolFailureStreak = undefined
               continue
@@ -1387,6 +1446,7 @@ export class AgentRuntime {
           maxModelRetries: parentInput.maxModelRetries,
           toolFailureRecoveryThreshold: parentInput.toolFailureRecoveryThreshold
             ?? parentInput.maxConsecutiveToolFailures,
+          identicalCallRecoveryThreshold: parentInput.identicalCallRecoveryThreshold,
           toolContext: {
             ...(parentInput.toolContext ?? this.toolContext),
             signal: controller.signal,
