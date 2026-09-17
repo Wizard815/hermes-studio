@@ -8,15 +8,33 @@ import {
   DEFAULT_READ_FILE_MAX_BYTES,
   DEFAULT_TOOL_RESULT_MAX_TEXT_BYTES,
   DelegateTaskTool,
+  ProcessExecTool,
   ReadFileTool,
   TerminalExecTool,
   ViewImageTool,
   WriteFileTool,
   createDefaultToolRegistry,
   sanitizeAgentToolResult,
+  toolApprovalRequirement,
 } from '../../packages/ekko-agent/src/index'
 
 let workspaceRoot = ''
+
+async function waitForExit(processTool: ProcessExecTool, processId: string, timeoutMs = 3_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const polled = await processTool.execute({ action: 'poll', processId })
+    if ((polled.data as { status?: string } | undefined)?.status !== 'running') {
+      // Node's 'close' event can fire slightly before Windows releases the
+      // directory handle for the child's old cwd — a short grace period
+      // avoids a racy EBUSY on the caller's temp-dir cleanup.
+      await new Promise(resolve => setTimeout(resolve, 150))
+      return
+    }
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  throw new Error(`process ${processId} did not exit within ${timeoutMs}ms`)
+}
 
 beforeEach(async () => {
   workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'ekko-agent-tools-'))
@@ -459,6 +477,82 @@ describe('ekko-agent tools', () => {
     })
   })
 
+  it('runs a background terminal command and returns immediately with a processId', async () => {
+    const terminal = new TerminalExecTool()
+    const processTool = new ProcessExecTool()
+    const started = Date.now()
+
+    const result = await terminal.execute({
+      command: process.execPath,
+      args: ['-e', 'process.stdout.write("hello-from-background\\n"); setTimeout(() => process.exit(0), 300)'],
+      background: true,
+    }, { workspaceRoot })
+
+    // The whole point: this must not block for anywhere near the 300ms the
+    // child keeps running — a background call returns as soon as spawn succeeds.
+    expect(Date.now() - started).toBeLessThan(250)
+    expect(result.ok).toBe(true)
+    const processId = (result.data as { processId?: string }).processId
+    expect(typeof processId).toBe('string')
+    expect(typeof (result.data as { pid?: number }).pid).toBe('number')
+
+    // Windows holds the child's cwd (workspaceRoot) locked until the process
+    // object is fully reaped, which can lag slightly behind the 'close'
+    // event — poll for real instead of guessing a fixed delay, or the
+    // afterEach rmdir can EBUSY.
+    await waitForExit(processTool, processId!)
+  })
+
+  it('polls, reads log output from, and kills a background process via process_exec', async () => {
+    const terminal = new TerminalExecTool()
+    const processTool = new ProcessExecTool()
+
+    const started = await terminal.execute({
+      command: process.execPath,
+      args: ['-e', 'process.stdout.write("still-running\\n"); setInterval(() => {}, 100)'],
+      background: true,
+    }, { workspaceRoot })
+    const processId = (started.data as { processId: string }).processId
+
+    // Give it a beat to actually write its first line before polling.
+    await new Promise(resolve => setTimeout(resolve, 150))
+
+    const polled = await processTool.execute({ action: 'poll', processId })
+    expect(polled.ok).toBe(true)
+    expect((polled.data as { status: string }).status).toBe('running')
+
+    const logged = await processTool.execute({ action: 'log', processId })
+    expect(logged.content).toContain('still-running')
+
+    const killed = await processTool.execute({ action: 'kill', processId })
+    expect(killed.ok).toBe(true)
+
+    await waitForExit(processTool, processId)
+    const polledAfterKill = await processTool.execute({ action: 'poll', processId })
+    expect((polledAfterKill.data as { status: string }).status).toBe('killed')
+  })
+
+  it('reports process_exec errors for an unknown processId without throwing', async () => {
+    const processTool = new ProcessExecTool()
+
+    const result = await processTool.execute({ action: 'poll', processId: 'not-a-real-id' })
+    expect(result.ok).toBe(false)
+    expect(result.content).toContain('No background process found')
+  })
+
+  it('requires approval to start a background process even for an otherwise-safe command', async () => {
+    const decision = toolApprovalRequirement('terminal_exec', {
+      command: 'npm',
+      args: ['run', 'dev'],
+      background: true,
+    })
+    expect(decision?.key).toBe('terminal:background')
+
+    // The same command without background stays ungated (npm run dev isn't
+    // on the dangerous-command list on its own).
+    expect(toolApprovalRequirement('terminal_exec', { command: 'npm', args: ['run', 'dev'] })).toBeUndefined()
+  })
+
   it('registers default tools and exposes model definitions', async () => {
     const registry = createDefaultToolRegistry()
     const definitions = registry.definitions()
@@ -476,6 +570,7 @@ describe('ekko-agent tools', () => {
       'browser_vision',
       'code_exec',
       'delegate_task',
+      'process_exec',
       'read_file',
       'skill_list',
       'skill_view',

@@ -288,6 +288,21 @@ export function toolApprovalRequirement(
   const args = Array.isArray(input.args) ? input.args.map(value => String(value)) : []
   const normalized = normalizeTerminalInvocation(command, args)
   const display = formatCommand(normalized.command, normalized.args)
+
+  // A background process outlives this turn and can bind ports, keep running
+  // after the conversation ends, or hold resources open — strictly higher risk
+  // than a synchronous call, regardless of which command it is. Gate on
+  // background=true first so this isn't dependent on matching a specific
+  // dangerous-command rule below (an otherwise-"safe" `npm run dev` still
+  // needs approval once it stops being bounded).
+  if (input.background === true) {
+    return {
+      key: 'terminal:background',
+      command: limitPreview(display),
+      description: 'starts a background process that keeps running after this tool call returns',
+    }
+  }
+
   const effective = unwrapTerminalInvocation(normalized.command, normalized.args)
   const executable = executableName(effective.command)
   const rule = DANGEROUS_COMMAND_RULES.find(candidate =>

@@ -13,6 +13,7 @@ import { createDelegationTools } from './delegation'
 import { createFileTools } from './files'
 import { createImageTools } from './images'
 import { createMcpToolProvider } from './mcp'
+import { createProcessTools } from './process'
 import { createRecoveryTools } from './recovery'
 import { createSkillTools } from './skills'
 import { createTerminalTools } from './terminal'
@@ -120,6 +121,7 @@ export function createDefaultToolRegistry(options: DefaultToolRegistryOptions = 
     ...createFileTools(),
     ...createImageTools(),
     ...createTerminalTools({ timeoutMs: options.executionTimeoutMs }),
+    ...createProcessTools(),
     ...createBrowserTools(),
     ...createDelegationTools(),
     ...(options.recovery ? createRecoveryTools(options.recovery) : []),

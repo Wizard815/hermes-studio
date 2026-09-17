@@ -7,6 +7,7 @@ import { Transform, type TransformCallback } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import type { AgentTool, AgentToolContext, AgentToolResult } from './types'
 import { ensureToolAssetDirectory, ensureWorkspaceTempRoot, workspaceTempEnvironment } from './workspace-temp'
+import { registerBackgroundProcess } from './background-process-registry'
 
 export const DEFAULT_TERMINAL_EXEC_MAX_OUTPUT_BYTES = 100_000
 export const DEFAULT_TERMINAL_EXEC_MAX_STDERR_BYTES = 25_000
@@ -17,6 +18,13 @@ export interface TerminalExecInput extends Record<string, unknown> {
   args?: string[]
   cwd?: string
   timeoutMs?: number
+  /**
+   * Run without waiting for exit — for servers, watchers, and anything else
+   * that does not exit on its own. Returns a processId immediately instead of
+   * output; check on it later with process_exec(poll|log|kill). timeoutMs is
+   * ignored when background is true (nothing to time out yet).
+   */
+  background?: boolean
 }
 
 export interface TerminalExecToolOptions {
@@ -64,6 +72,11 @@ export class TerminalExecTool implements AgentTool<TerminalExecInput> {
     const artifactPrefix = `${safeArtifactName(context.runId || 'run')}-${Date.now()}-${randomUUID()}`
     const stdoutArtifactPath = join(outputDirectory, `${artifactPrefix}.stdout.log`)
     const stderrArtifactPath = join(outputDirectory, `${artifactPrefix}.stderr.log`)
+
+    if (input.background) {
+      return this.executeBackground(normalized, args, cwd, tempDirectory)
+    }
+
     return new Promise<AgentToolResult>((resolveResult) => {
       const child = spawn(normalized.command, args, {
         cwd,
@@ -166,6 +179,70 @@ export class TerminalExecTool implements AgentTool<TerminalExecInput> {
         })
       })
     })
+  }
+
+  private executeBackground(
+    normalized: { command: string; args: string[] },
+    args: string[],
+    cwd: string,
+    tempDirectory: string,
+  ): AgentToolResult {
+    const child = spawn(normalized.command, args, {
+      cwd,
+      env: { ...process.env, ...workspaceTempEnvironment(tempDirectory) },
+      shell: false,
+      windowsHide: true,
+    })
+    const stdout = new BoundedOutputCapture(this.maxOutputBytes)
+    const stderr = new BoundedOutputCapture(this.maxStderrBytes)
+
+    if (!child.pid) {
+      return {
+        ok: false,
+        content: 'Failed to start background process: no pid assigned.',
+        error: 'spawn failed',
+        data: { command: normalized.command, args, cwd },
+      }
+    }
+
+    const entry = registerBackgroundProcess({
+      pid: child.pid,
+      command: normalized.command,
+      args,
+      cwd,
+      startedAt: Date.now(),
+      child,
+      stdout,
+      stderr,
+      status: 'running',
+      exitCode: null,
+      exitedAt: null,
+      error: null,
+      killRequested: false,
+    })
+
+    child.stdout?.on('data', chunk => stdout.append(Buffer.from(chunk)))
+    child.stderr?.on('data', chunk => stderr.append(Buffer.from(chunk)))
+    child.on('error', error => {
+      entry.status = 'error'
+      entry.error = error.message
+      entry.exitedAt = Date.now()
+    })
+    child.on('close', code => {
+      if (entry.status === 'running') entry.status = entry.killRequested ? 'killed' : 'exited'
+      entry.exitCode = code
+      entry.exitedAt = Date.now()
+    })
+
+    return {
+      ok: true,
+      content:
+        `Started in background as process ${entry.processId} (pid ${child.pid}). ` +
+        'It keeps running after this tool call returns. Use process_exec with ' +
+        `action="poll" or action="log" and processId="${entry.processId}" to check on it, ` +
+        'or action="kill" to stop it. This process does not survive a Studio restart.',
+      data: { processId: entry.processId, pid: child.pid, command: normalized.command, args, cwd },
+    }
   }
 }
 
@@ -302,6 +379,9 @@ function terminalExecDefinition(platform: NodeJS.Platform): AgentTool['definitio
       'Large stdout and stderr are returned as bounded previews; output artifacts are saved under .ekko-tmp/tool-assets up to a per-stream safety limit for paged read_file access or bounded searches.',
       'When the user asks to execute or evaluate Node.js, JavaScript, or Python source code, use code_exec instead, even for a one-line snippet.',
       'Destructive, privileged, remote-shell, publishing, and other dangerous commands require runtime authorization before execution.',
+      'Set background to true for anything that does not exit on its own — dev servers, watchers, long builds you want to poll instead of block on. ' +
+        'A background call returns a processId immediately instead of output; use process_exec (action="poll", "log", or "kill") with that processId to check on or stop it. ' +
+        'Do not use background for a command you expect to finish and whose output you need right away.',
     ].join(' '),
     parameters: {
       type: 'object',
@@ -314,7 +394,11 @@ function terminalExecDefinition(platform: NodeJS.Platform): AgentTool['definitio
         },
         args: { type: 'array', items: { type: 'string' }, description: 'Command arguments.' },
         cwd: { type: 'string', description: 'Working directory. Relative paths resolve from the current workspace; explicit absolute system paths are supported.' },
-        timeoutMs: { type: 'number', description: 'Timeout in milliseconds.' },
+        timeoutMs: { type: 'number', description: 'Timeout in milliseconds. Ignored when background is true.' },
+        background: {
+          type: 'boolean',
+          description: 'Run without waiting for exit; returns a processId to check on with process_exec instead of output. Use for servers, watchers, and other long-lived processes.',
+        },
       },
       required: ['command'],
       additionalProperties: false,
