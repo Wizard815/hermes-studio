@@ -78,61 +78,6 @@ describe('Ekko tool approvals', () => {
     })).toBeUndefined()
   })
 
-  it('plan mode blocks a mutating call without prompting and allows read-only tools', async () => {
-    setup = setupEkkoAgent({ baseDirectory })
-    const service = new EkkoToolApprovalService({ configPath: setup.layout.configPath, approvalMode: 'plan' })
-    const requestToolApproval = vi.fn(async (): Promise<AgentToolApprovalChoice> => 'once')
-
-    const blocked = await service.authorize('write_file', { path: 'x.txt', content: 'y' }, {
-      sessionId: 'session-1',
-      requestToolApproval,
-    })
-    expect(blocked).toMatchObject({ approved: false, scope: 'denied' })
-    expect(blocked.error).toContain('Plan mode is active')
-    expect(requestToolApproval).not.toHaveBeenCalled()
-
-    const blockedTerminal = await service.authorize('terminal_exec', { command: 'ls' }, {
-      sessionId: 'session-1',
-      requestToolApproval,
-    })
-    expect(blockedTerminal.approved).toBe(false)
-
-    const allowed = await service.authorize('read_file', { path: 'README.md' }, {
-      sessionId: 'session-1',
-      requestToolApproval,
-    })
-    expect(allowed).toMatchObject({ approved: true, scope: 'safe' })
-
-    const allowedPoll = await service.authorize('process_exec', { action: 'poll', processId: 'p1' }, {
-      sessionId: 'session-1',
-      requestToolApproval,
-    })
-    expect(allowedPoll).toMatchObject({ approved: true, scope: 'safe' })
-
-    expect(requestToolApproval).not.toHaveBeenCalled()
-  })
-
-  it('auto mode approves a normally-gated command without prompting, but not an always-confirm one', async () => {
-    setup = setupEkkoAgent({ baseDirectory })
-    const service = new EkkoToolApprovalService({ configPath: setup.layout.configPath, approvalMode: 'auto' })
-    const requestToolApproval = vi.fn(async (): Promise<AgentToolApprovalChoice> => 'once')
-
-    const autoApproved = await service.authorize('terminal_exec', { command: 'rm', args: ['-rf', 'build'] }, {
-      sessionId: 'session-1',
-      requestToolApproval,
-    })
-    expect(autoApproved).toMatchObject({ approved: true, scope: 'once' })
-    expect(requestToolApproval).not.toHaveBeenCalled()
-
-    const stillPrompted = await service.authorize('terminal_exec', { command: 'sudo', args: ['reboot'] }, {
-      sessionId: 'session-1',
-      requestToolApproval,
-    })
-    expect(stillPrompted).toMatchObject({ approved: true, scope: 'once' })
-    expect(requestToolApproval).toHaveBeenCalledTimes(1)
-    expect(requestToolApproval.mock.calls[0][0]).toMatchObject({ key: 'terminal:privilege' })
-  })
-
   it('allows only the current call for a once decision', async () => {
     const service = createService()
     const requests: AgentToolApprovalRequest[] = []

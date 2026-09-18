@@ -25,63 +25,11 @@ export interface ToolApprovalRequirement {
   description: string
 }
 
-export type EkkoApprovalMode = 'plan' | 'normal' | 'auto'
-
 export interface EkkoToolApprovalServiceOptions {
   configPath: string
   enabled?: boolean
   timeoutMs?: number
-  /**
-   * 'normal' (default): unchanged current behavior — dangerous-command-list
-   * matches prompt for approval.
-   * 'plan': read-only tools only; anything that could change state outside
-   * the conversation is rejected outright, no prompt.
-   * 'auto': dangerous-command-list matches are approved without prompting,
-   * except ALWAYS_CONFIRM_EVEN_IN_AUTO — those still require an actual
-   * approval even in auto mode, since auto mode implies nobody may be
-   * watching to catch a mistake.
-   */
-  approvalMode?: EkkoApprovalMode
 }
-
-// Read-only: never changes state outside the conversation, safe in plan mode.
-const PLAN_MODE_READ_ONLY_TOOLS = new Set([
-  'read_file',
-  'search_files',
-  'skill_list',
-  'skill_view',
-  'browser_snapshot',
-  'browser_get_images',
-  'browser_console',
-  'update_plan',
-])
-
-// terminal_exec is excluded from PLAN_MODE_READ_ONLY_TOOLS on purpose: a
-// command string can do anything, unpredictably, and reliably telling "ls"
-// apart from something mutating would mean re-implementing the same command
-// parsing DANGEROUS_COMMAND_RULES already does, just inverted and far more
-// error-prone to get right as an allowlist. Blocked entirely in plan mode.
-function isPlanModeAllowed(toolName: string, input: Record<string, unknown>): boolean {
-  if (PLAN_MODE_READ_ONLY_TOOLS.has(toolName)) return true
-  if (toolName === 'process_exec') {
-    const action = String(input.action || '')
-    return action === 'poll' || action === 'log' || action === 'list'
-  }
-  return false
-}
-
-// Kept gated even in auto mode — auto implies less oversight, not zero limits.
-// Everything else on DANGEROUS_COMMAND_RULES (delete, process kill, shell
-// invocation, inline code, git-destructive, container lifecycle, package
-// publish, code_exec, background exec) is auto-approved in auto mode.
-const ALWAYS_CONFIRM_EVEN_IN_AUTO = new Set([
-  'terminal:privilege',
-  'terminal:filesystem',
-  'terminal:remote-shell',
-  'terminal:system-service',
-  'terminal:database-destructive',
-  'terminal:background',
-])
 
 interface JsonRecord {
   [key: string]: unknown
@@ -200,27 +148,17 @@ export class EkkoToolApprovalService {
   private readonly timeoutMs: number
   private readonly permanentAllow = new Set<string>()
   private readonly sessionAllow = new Map<string, Set<string>>()
-  private approvalMode: EkkoApprovalMode
 
   constructor(options: EkkoToolApprovalServiceOptions) {
     this.configPath = options.configPath
     this.enabled = options.enabled !== false
     this.timeoutMs = positiveInteger(options.timeoutMs, DEFAULT_TOOL_APPROVAL_TIMEOUT_MS)
-    this.approvalMode = options.approvalMode ?? 'normal'
     for (const key of readPermanentAllowlist(this.configPath)) this.permanentAllow.add(key)
     this.authorize = this.authorizeToolCall.bind(this)
   }
 
   permanentAllowlist(): string[] {
     return [...this.permanentAllow].sort()
-  }
-
-  getApprovalMode(): EkkoApprovalMode {
-    return this.approvalMode
-  }
-
-  setApprovalMode(mode: EkkoApprovalMode): void {
-    this.approvalMode = mode
   }
 
   sessionAllowlist(sessionId: string): string[] {
@@ -237,22 +175,8 @@ export class EkkoToolApprovalService {
     context: AgentToolContext = {},
   ): Promise<AgentToolAuthorizationDecision> {
     if (!this.enabled) return { approved: true, scope: 'safe' }
-
-    if (this.approvalMode === 'plan' && !isPlanModeAllowed(toolName, input)) {
-      return deniedDecision(
-        { key: 'plan-mode', command: toolName, description: 'plan mode is active' },
-        `Plan mode is active: "${toolName}" would change state outside the conversation, so it is not allowed while planning. ` +
-        'Read-only tools (read_file, search_files, skill_list, skill_view, browser_snapshot, browser_get_images, browser_console, update_plan, process_exec poll/log/list) remain available. ' +
-        'Describe the plan and ask the user to switch out of plan mode before making changes.',
-      )
-    }
-
     const requirement = toolApprovalRequirement(toolName, input)
     if (!requirement) return { approved: true, scope: 'safe' }
-
-    if (this.approvalMode === 'auto' && !ALWAYS_CONFIRM_EVEN_IN_AUTO.has(requirement.key)) {
-      return approvedDecision('once', requirement)
-    }
 
     if (this.permanentAllow.has(requirement.key)) {
       return approvedDecision('always', requirement)
