@@ -53,6 +53,8 @@ import { injectManagedEkkoMcpServers } from '../modules/ekko/services/mcp'
 import { WorkflowSocketServer } from '../modules/studio/sockets/workflow'
 import { PetStateSocketServer } from '../modules/studio/sockets/pet-state'
 import { logger } from '../modules/studio/public/logging'
+import { HeadlessBrowserService, getHeadlessBrowserService, setHeadlessBrowserService } from '../modules/studio/services/headless-browser-service'
+import { subscribeToScreenshots } from '../modules/studio/controllers/browser'
 import { createStaticCompressionMiddleware } from '../modules/studio/middleware/static-compression'
 import { getStaticCacheControl, SPA_ENTRY_CACHE_CONTROL } from '../modules/studio/middleware/static-cache'
 import { requireUserJwt, resolveUserProfile } from '../modules/studio/middleware/auth'
@@ -659,6 +661,22 @@ export async function bootstrap() {
     close: () => sessionDeleter.stop(),
   })
   console.log('[bootstrap] session deleter started, profile=%s', activeProfile)
+
+  // Headless browser service (for web-only runtime, supplements Electron desktop broker)
+  try {
+    const headlessBrowser = new HeadlessBrowserService()
+    await headlessBrowser.start()
+    setHeadlessBrowserService(headlessBrowser)
+    console.log('[bootstrap] headless browser service started')
+    
+    additionalShutdownSteps.push({
+      name: 'Headless browser',
+      close: () => headlessBrowser.stop(),
+    })
+  } catch (err: any) {
+    console.warn('[bootstrap] headless browser service failed:', err.message)
+    logger.warn(err, '[bootstrap] headless browser startup failed')
+  }
 
   // Catch-all: destroy upgrade requests not handled by terminal or Socket.IO
   servers.forEach((httpServer) => {

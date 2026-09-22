@@ -63,6 +63,7 @@ import { canScopedCodingAgentUseProvider, usesServerManagedProviderAuth, isKeyle
 import { OPEN_SUBAGENT_STREAM_EVENT, type OpenSubagentStreamDetail } from "@/utils/hermes/subagent-stream";
 import { desktopBridge, hasDesktopBrowserBridge } from "@/utils/desktop-bridge";
 import { OPEN_DESKTOP_BROWSER_PANEL_EVENT } from "@/utils/desktop-browser";
+import { isHeadlessBrowserAvailable } from "@/api/studio/browser";
 import {
   createBrowserAnnotationAttachment,
   type BrowserAnnotationSubmission,
@@ -89,6 +90,7 @@ const ModelsPanel = defineAsyncComponent(async () => (await import('@/views/herm
 const WorkspaceDiffPreview = defineAsyncComponent(async () => (await import('@/components/hermes/files/WorkspaceDiffPreview.vue')).default);
 const FilePreview = defineAsyncComponent(async () => (await import('@/components/hermes/files/FilePreview.vue')).default);
 const DesktopBrowserPanel = defineAsyncComponent(async () => (await import('./DesktopBrowserPanel.vue')).default);
+const BrowserPanel = defineAsyncComponent(async () => (await import('./BrowserPanel.vue')).default);
 
 const chatStore = useChatStore();
 const appStore = useAppStore();
@@ -127,7 +129,16 @@ const showToolPanel = ref(false);
 const previewOnlyFileOpen = ref(false);
 const toolPanelTransitionReady = ref(false);
 const activeToolPanel = ref<"files" | "terminal" | "browser">("files");
-const desktopBrowserAvailable = hasDesktopBrowserBridge();
+const electronBrowserAvailable = hasDesktopBrowserBridge();
+const headlessBrowserAvailable = ref(false);
+let _headlessCheckDone = false;
+if (window.location.hostname !== "") {
+  void (() => {
+    if (_headlessCheckDone) return;
+    _headlessCheckDone = true;
+    isHeadlessBrowserAvailable().then(avail => { headlessBrowserAvailable.value = avail; });
+  })();
+}
 const desktopChatWindowAvailable = desktopBridge()?.isDesktop === true
   && typeof desktopBridge()?.openChatWindow === "function";
 const selectedSubagent = ref<OpenSubagentStreamDetail | null>(null);
@@ -3294,7 +3305,7 @@ async function handleSessionModelCustomSubmit() {
                   </template>
                 </NButton>
               </template>
-              {{ desktopBrowserAvailable ? `${t("drawer.files")} / ${t("drawer.terminal")} / ${t("browser.title")}` : `${t("drawer.files")} / ${t("drawer.terminal")}` }}
+              {{ (electronBrowserAvailable || headlessBrowserAvailable.value) ? `${t("drawer.files")} / ${t("drawer.terminal")} / ${t("browser.title")}` : `${t("drawer.files")} / ${t("drawer.terminal")}` }}
             </NTooltip>
             <NDropdown
               v-model:show="showActiveSessionMenu"
@@ -3478,9 +3489,13 @@ async function handleSessionModelCustomSubmit() {
                       :visible="showToolPanel && activeToolPanel === 'terminal'"
                     />
                     <DesktopBrowserPanel
-                      v-if="desktopBrowserAvailable && activeToolPanel === 'browser'"
+                      v-if="electronBrowserAvailable && activeToolPanel === 'browser'"
                       :visible="toolPanelTransitionReady"
                       :submit="submitBrowserAnnotations"
+                    />
+                    <BrowserPanel
+                      v-else-if="headlessBrowserAvailable.value && activeToolPanel === 'browser'"
+                      :visible="toolPanelTransitionReady"
                     />
                   </div>
                 </template>

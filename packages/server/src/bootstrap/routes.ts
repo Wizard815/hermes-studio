@@ -70,6 +70,7 @@ import { ekkoConfigRoutes } from '../modules/ekko/routes/config'
 import { petdexPublicRoutes, petdexRoutes } from '../modules/studio/routes/petdex'
 import { petRoutes } from '../modules/studio/routes/pets'
 import { legacyAppApiCompatibility } from '../modules/studio/middleware/legacy-app-api'
+import { browserRoutes } from '../modules/studio/routes/browser'
 
 /**
  * Register all routes on the Koa app.
@@ -150,4 +151,5 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(writeGateRoutes.routes())              // Hermes Agent write approval review
   app.use(petdexRoutes.routes())
   app.use(petRoutes.routes())
+  app.use(browserRoutes.routes())          // Headless browser management
 }

@@ -174,6 +174,12 @@ export default {
     askBeforeDownload: 'Ask where to save each file', downloadConflictPolicy: 'Duplicate file names', uniquifyDownloads: 'Create a unique file name', askOnConflict: 'Ask when a file exists', downloads: 'Downloads', downloadStateProgressing: 'Downloading', downloadStateCompleted: 'Completed', downloadStateCancelled: 'Cancelled', downloadStateInterrupted: 'Interrupted', downloadStateBlocked: 'Blocked', permissions: 'Permissions', permissionsHint: 'Remote page permissions are denied by default and listed here for audit.', blocked: 'Blocked',
     profileSwitchTitle: 'Switch browser profile?', profileSwitchWarning: '{agents} Agent operation(s), {downloads} download(s), and {annotations} annotation(s) may be interrupted.',
     deleteProfileTitle: 'Delete browser profile?', deleteProfileWarning: 'Managed profile data will be moved to the system Trash. Custom directories are left untouched.', clearCache: 'Clear cache', clearPermissionAudit: 'Clear permission log', clearSiteData: 'Clear site data', clearSiteDataWarning: 'This signs the selected profile out of websites and clears cookies and local storage.', dataCleared: 'Browser data cleared', loadFailed: 'Failed to start the embedded browser',
+    unavailable: 'Headless browser service is not available',
+    maxTabs: 'Maximum tabs reached',
+    navigating: 'Navigating…',
+    noScreenshots: 'No screenshots captured yet. The AI agent will populate this area.',
+    capturedScreenshots: 'Captured Screenshots',
+    galleryEmpty: 'Screenshots taken during agent runs will appear here'
   },
   // Login
   login: {
