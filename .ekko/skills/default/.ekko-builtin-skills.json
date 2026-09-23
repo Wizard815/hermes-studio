@@ -1,0 +1,112 @@
+{
+  "1password": {
+    "owner": "ekko-agent",
+    "sourceHash": "fadfbaaa553200c469c431e6f268cb63f1d30b402ae613e4af46c8f6e317c539",
+    "installedHash": "fadfbaaa553200c469c431e6f268cb63f1d30b402ae613e4af46c8f6e317c539"
+  },
+  "apple-notes": {
+    "owner": "ekko-agent",
+    "sourceHash": "fef6063b2873d01dc3927cba8e7142dd097e0d86969aabab18f61a068e92de41",
+    "installedHash": "fef6063b2873d01dc3927cba8e7142dd097e0d86969aabab18f61a068e92de41"
+  },
+  "apple-reminders": {
+    "owner": "ekko-agent",
+    "sourceHash": "c44546cc43b2d124801d8295c2acf31636ce6f313da5713f24e72af9ff4d8340",
+    "installedHash": "c44546cc43b2d124801d8295c2acf31636ce6f313da5713f24e72af9ff4d8340"
+  },
+  "document-to-action-items": {
+    "owner": "ekko-agent",
+    "sourceHash": "b99a5e233914159f8d9f55879c1fac881726cf35b94015da703690c6367a1a47",
+    "installedHash": "b99a5e233914159f8d9f55879c1fac881726cf35b94015da703690c6367a1a47"
+  },
+  "docx": {
+    "owner": "ekko-agent",
+    "sourceHash": "428e0723bc70643bded2705a65ea6e07a9b5327a8116536a014330a08e9e6045",
+    "installedHash": "428e0723bc70643bded2705a65ea6e07a9b5327a8116536a014330a08e9e6045"
+  },
+  "gh-issues": {
+    "owner": "ekko-agent",
+    "sourceHash": "378ef29f6262f029d0fc33008ddafdfeec2a884a1c10c7ab33b1bdd5e98e9eaf",
+    "installedHash": "378ef29f6262f029d0fc33008ddafdfeec2a884a1c10c7ab33b1bdd5e98e9eaf"
+  },
+  "github": {
+    "owner": "ekko-agent",
+    "sourceHash": "3577945eb1d78772b8bf4b5d5139528dd6ac20b1615a22e2ef8e48591db1f8bd",
+    "installedHash": "3577945eb1d78772b8bf4b5d5139528dd6ac20b1615a22e2ef8e48591db1f8bd"
+  },
+  "grok-image-to-video": {
+    "owner": "ekko-agent",
+    "sourceHash": "4ad495c71958e06b6b46e7a056219135657ab869e4db9781a988836ae2052726",
+    "installedHash": "4ad495c71958e06b6b46e7a056219135657ab869e4db9781a988836ae2052726"
+  },
+  "hermes-studio-installation": {
+    "owner": "ekko-agent",
+    "sourceHash": "7317645cab8a52ece5a1d918a7e292e12c886c1a02821a2682aad26e9f78f88a",
+    "installedHash": "7317645cab8a52ece5a1d918a7e292e12c886c1a02821a2682aad26e9f78f88a"
+  },
+  "image-gen": {
+    "owner": "ekko-agent",
+    "sourceHash": "02356d90d62d3a9c3842d637a04de125af8f725e556c0571d70c5b78cad1b058",
+    "installedHash": "02356d90d62d3a9c3842d637a04de125af8f725e556c0571d70c5b78cad1b058"
+  },
+  "node-inspect-debugger": {
+    "owner": "ekko-agent",
+    "sourceHash": "7396636edc43054f10dcb42c43274aaafa48b4f2f844baf45bd4065ecf10d0dc",
+    "installedHash": "7396636edc43054f10dcb42c43274aaafa48b4f2f844baf45bd4065ecf10d0dc"
+  },
+  "obsidian": {
+    "owner": "ekko-agent",
+    "sourceHash": "6870ff051cb1275377af3a448d47bf02e77c1e05f6ca9f8fb6feab1103f91528",
+    "installedHash": "6870ff051cb1275377af3a448d47bf02e77c1e05f6ca9f8fb6feab1103f91528"
+  },
+  "ocr-and-documents": {
+    "owner": "ekko-agent",
+    "sourceHash": "a25d991e8a046ad51978468a8ac948ba3c1f284d1ac0e1cb21b2e37cc0d904f5",
+    "installedHash": "a25d991e8a046ad51978468a8ac948ba3c1f284d1ac0e1cb21b2e37cc0d904f5"
+  },
+  "pdf": {
+    "owner": "ekko-agent",
+    "sourceHash": "6f3b32a0521ca0ce19531806f94c8300b9fe9c8950e2a73abdae1b74492c6241",
+    "installedHash": "6f3b32a0521ca0ce19531806f94c8300b9fe9c8950e2a73abdae1b74492c6241"
+  },
+  "powerpoint": {
+    "owner": "ekko-agent",
+    "sourceHash": "63a0f4b952d7ec0f2960498f4ccd861c5b743995f08bd5839bd2b472280d7fec",
+    "installedHash": "63a0f4b952d7ec0f2960498f4ccd861c5b743995f08bd5839bd2b472280d7fec"
+  },
+  "python-debugpy": {
+    "owner": "ekko-agent",
+    "sourceHash": "2be84b3591712922a0d73174f26e18d53520defc0961bd1a649b84f625aac353",
+    "installedHash": "2be84b3591712922a0d73174f26e18d53520defc0961bd1a649b84f625aac353"
+  },
+  "skill-creator": {
+    "owner": "ekko-agent",
+    "sourceHash": "0573b6067dea7023cc003fb600138058973b6242caf2d6991c6b9653afc0ef26",
+    "installedHash": "0573b6067dea7023cc003fb600138058973b6242caf2d6991c6b9653afc0ef26"
+  },
+  "spike": {
+    "owner": "ekko-agent",
+    "sourceHash": "1696e5814bd4e239a7792e76029526c4824fc3a00dbc8b36857c1553c18f968a",
+    "installedHash": "1696e5814bd4e239a7792e76029526c4824fc3a00dbc8b36857c1553c18f968a"
+  },
+  "tmux": {
+    "owner": "ekko-agent",
+    "sourceHash": "4428e0cdeb3df0bcd5da34cbc175ec3813798955f5fefadbe188b7f9351efce8",
+    "installedHash": "4428e0cdeb3df0bcd5da34cbc175ec3813798955f5fefadbe188b7f9351efce8"
+  },
+  "video-frames": {
+    "owner": "ekko-agent",
+    "sourceHash": "2649f0ab10f420bee4a5bfcd1b7a95ae302a2f063212b12dac21d20d418cd97f",
+    "installedHash": "2649f0ab10f420bee4a5bfcd1b7a95ae302a2f063212b12dac21d20d418cd97f"
+  },
+  "weather": {
+    "owner": "ekko-agent",
+    "sourceHash": "53c3785db69c34491270bcca7725415bb73744944f0ea130e4a9336f54128f1c",
+    "installedHash": "53c3785db69c34491270bcca7725415bb73744944f0ea130e4a9336f54128f1c"
+  },
+  "xlsx": {
+    "owner": "ekko-agent",
+    "sourceHash": "29896bfad7c9eeebfd844db93513187760b779180380a31cb342337ae03ce0b5",
+    "installedHash": "29896bfad7c9eeebfd844db93513187760b779180380a31cb342337ae03ce0b5"
+  }
+}

@@ -141,7 +141,7 @@ async function refreshState(): Promise<void> {
 async function handleNewTab(): Promise<void> {
   if (maxTabsReached.value) return
   try {
-    const tab = await createBrowserTab({ activate: true })
+    await createBrowserTab({ activate: true })
     await refreshState()
     // Immediately capture after creation
     if (activeTabId.value) {

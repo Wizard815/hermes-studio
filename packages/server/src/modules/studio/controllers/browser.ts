@@ -68,7 +68,7 @@ export async function activateTab(ctx: Context, next: Next) {
       return await next()
     }
     
-    const target = service.getAllTabs().find(t => t.id === tabId)
+    const target = service.getAllTabs().find((t: any) => t.id === tabId)
     if (!target) {
       ctx.status = 404
       ctx.body = { error: 'Tab not found' }
@@ -149,7 +149,7 @@ export async function navigate(ctx: Context, next: Next) {
     }
     
     const targetId = tabId || service.activeTabId!
-    const tab = service.getAllTabs().find(t => t.id === targetId)
+    const tab = service.getAllTabs().find((t: any) => t.id === targetId)
     if (!tab) {
       ctx.status = 404
       ctx.body = { error: 'Tab not found' }
@@ -193,7 +193,7 @@ export async function navigationAction(ctx: Context, next: Next) {
       return await next()
     }
     
-    const tab = service.getAllTabs().find(t => t.id === tabId)
+    const tab = service.getAllTabs().find((t: any) => t.id === tabId)
     if (!tab) {
       ctx.status = 404
       ctx.body = { error: 'Tab not found' }
@@ -240,7 +240,7 @@ export async function snapshot(ctx: Context, next: Next) {
       return await next()
     }
     
-    const tab = service.getAllTabs().find(t => t.id === tabId)
+    const tab = service.getAllTabs().find((t: any) => t.id === tabId)
     if (!tab) {
       ctx.status = 404
       ctx.body = { error: 'Tab not found' }
@@ -272,7 +272,7 @@ export async function textRead(ctx: Context, next: Next) {
       return await next()
     }
     
-    const tab = service.getAllTabs().find(t => t.id === tabId)
+    const tab = service.getAllTabs().find((t: any) => t.id === tabId)
     if (!tab) {
       ctx.status = 404
       ctx.body = { error: 'Tab not found' }
@@ -280,7 +280,7 @@ export async function textRead(ctx: Context, next: Next) {
     }
     
     const snap = await buildSnapshot(tab.page, tabId)
-    const node = snap.nodes.find(n => n.ref === ref)
+    const node = snap.nodes.find((n: any) => n.ref === ref)
     if (!node) {
       ctx.status = 404
       ctx.body = { error: `Node ${ref} not found in snapshot` }
@@ -331,7 +331,7 @@ export async function interact(ctx: Context, next: Next) {
       return await next()
     }
     
-    const tab = service.getAllTabs().find(t => t.id === tabId)
+    const tab = service.getAllTabs().find((t: any) => t.id === tabId)
     if (!tab) {
       ctx.status = 404
       ctx.body = { error: 'Tab not found' }
@@ -420,7 +420,7 @@ export async function screenshot(ctx: Context, next: Next) {
       return await next()
     }
     
-    const tab = service.getAllTabs().find(t => t.id === tabId)
+    const tab = service.getAllTabs().find((t: any) => t.id === tabId)
     if (!tab) {
       ctx.status = 404
       ctx.body = { error: 'Tab not found' }

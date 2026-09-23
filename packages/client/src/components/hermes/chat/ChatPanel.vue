@@ -495,7 +495,7 @@ function handleOpenSubagentStreamRequest(event: Event) {
 }
 
 function handleOpenDesktopBrowserPanelRequest() {
-  if (!desktopBrowserAvailable) return;
+  if (!electronBrowserAvailable) return;
   if (toolPanelStore.workspaceDiff && filesStore.hasUnsavedChanges) {
     message.warning(t("files.unsavedChanges"));
     return;
@@ -3305,7 +3305,7 @@ async function handleSessionModelCustomSubmit() {
                   </template>
                 </NButton>
               </template>
-              {{ (electronBrowserAvailable || headlessBrowserAvailable.value) ? `${t("drawer.files")} / ${t("drawer.terminal")} / ${t("browser.title")}` : `${t("drawer.files")} / ${t("drawer.terminal")}` }}
+              {{ (electronBrowserAvailable || headlessBrowserAvailable) ? `${t("drawer.files")} / ${t("drawer.terminal")} / ${t("browser.title")}` : `${t("drawer.files")} / ${t("drawer.terminal")}` }}
             </NTooltip>
             <NDropdown
               v-model:show="showActiveSessionMenu"
@@ -3459,7 +3459,7 @@ async function handleSessionModelCustomSubmit() {
                       </svg>
                     </button>
                     <button
-                      v-if="desktopBrowserAvailable"
+                      v-if="electronBrowserAvailable"
                       class="chat-tool-tab"
                       :class="{ active: activeToolPanel === 'browser' }"
                       type="button"
@@ -3494,7 +3494,7 @@ async function handleSessionModelCustomSubmit() {
                       :submit="submitBrowserAnnotations"
                     />
                     <BrowserPanel
-                      v-else-if="headlessBrowserAvailable.value && activeToolPanel === 'browser'"
+                      v-else-if="headlessBrowserAvailable && activeToolPanel === 'browser'"
                       :visible="toolPanelTransitionReady"
                     />
                   </div>
