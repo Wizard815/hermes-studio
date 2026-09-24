@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import {
   NButton,
   NInput,
@@ -20,7 +20,10 @@ import {
   navigateToUrl as apiNavigateToUrl,
   performNavigationAction,
   captureScreenshot,
+  sendManualInput,
+  fetchViewportInfo,
   type BrowserTabInfo,
+  type ViewportInfo,
 } from '@/api/studio/browser'
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -58,9 +61,16 @@ const currentScreenshot = ref<string | null>(null)
 const screenshotHistory = ref<ScreenshotEntry[]>([])
 const loading = ref(false)
 const urlBar = ref('')
+const urlInputFocused = ref(false)
 const maxTabsReached = ref(false)
 const lastUpdated = ref(0)
 const lightboxImage = ref<string | null>(null)
+const galleryScroll = ref<HTMLElement | null>(null)
+const urlInputRef = ref<{ focus?: () => void } | null>(null)
+const viewportMetrics = ref<ViewportInfo | null>(null)
+const lastPointer = ref<{ x: number; y: number } | null>(null)
+
+const MAX_SCREENSHOT_HISTORY = 20
 
 let pollingTimer: ReturnType<typeof setInterval> | null = null
 let socketRef: Socket | null = null
@@ -87,8 +97,43 @@ function truncateUrl(url: string, maxLen = 24): string {
   }
 }
 
+function isBlankUrl(url: string): boolean {
+  const normalized = (url || '').trim().toLowerCase()
+  return !normalized || normalized === 'about:blank' || normalized === 'about://blank'
+}
+
+/**
+ * Updates the live preview image only. Used for user-driven navigation so the
+ * viewed page matches the current tab without polluting the capture gallery.
+ */
+function setPreview(data: string): void {
+  currentScreenshot.value = data
+  lastUpdated.value = Date.now()
+}
+
+/**
+ * Records an agent- or user-requested screenshot into the gallery. Every
+ * capture is meaningful, so the only bound is the retained history length.
+ */
+function pushScreenshot(data: string, tabId: string): void {
+  currentScreenshot.value = data
+  lastUpdated.value = Date.now()
+  screenshotHistory.value.unshift({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: Date.now(),
+    tabId,
+    data,
+  })
+  if (screenshotHistory.value.length > MAX_SCREENSHOT_HISTORY) {
+    screenshotHistory.value.length = MAX_SCREENSHOT_HISTORY
+  }
+  void nextTick(() => {
+    if (galleryScroll.value) galleryScroll.value.scrollTop = 0
+  })
+}
+
 function normalizeUrl(input: string): string {
-  let trimmed = input.trim()
+  const trimmed = input.trim()
   if (!trimmed) return ''
   try {
     new URL(trimmed)
@@ -107,7 +152,7 @@ async function refreshState(): Promise<void> {
   try {
     const state = await fetchBrowserState()
     const maxLimit = state.maxTabs ?? 5
-    maxTabsReached.value = tabs.value.length >= maxLimit
+    maxTabsReached.value = (state.tabs ?? []).length >= maxLimit
 
     tabs.value = (state.tabs ?? []).map((t: BrowserTabInfo): BrowserTab => ({
       id: t.id,
@@ -127,8 +172,10 @@ async function refreshState(): Promise<void> {
       activeTabId.value = tabs.value[0].id
     }
 
+    // Do not overwrite what the user is typing, and never re-fill the field
+    // with an empty about:blank placeholder.
     const active = tabs.value.find(t => t.id === activeTabId.value)
-    if (active) {
+    if (active && !urlInputFocused.value && !isBlankUrl(active.url)) {
       urlBar.value = active.url
     }
   } catch {
@@ -143,10 +190,10 @@ async function handleNewTab(): Promise<void> {
   try {
     await createBrowserTab({ activate: true })
     await refreshState()
-    // Immediately capture after creation
-    if (activeTabId.value) {
-      void captureCurrentScreenshot()
-    }
+    urlBar.value = ''
+    urlInputFocused.value = true
+    await nextTick()
+    urlInputRef.value?.focus?.()
   } catch (err) {
     message.error(err instanceof Error ? err.message : String(err))
   }
@@ -158,9 +205,9 @@ async function handleActivateTab(tabId: string): Promise<void> {
     await activateBrowserTab(tabId)
     activeTabId.value = tabId
     const tab = tabs.value.find(t => t.id === tabId)
-    if (tab) urlBar.value = tab.url
+    urlBar.value = tab && !isBlankUrl(tab.url) ? tab.url : ''
     await refreshState()
-    void captureCurrentScreenshot()
+    void refreshPreview()
   } catch (err) {
     message.error(err instanceof Error ? err.message : String(err))
   }
@@ -186,9 +233,11 @@ async function handleNavigate(): Promise<void> {
   if (!normalized) return
   try {
     loading.value = true
+    urlInputFocused.value = false
     await apiNavigateToUrl(activeTabId.value, normalized)
+    urlBar.value = normalized
     await refreshState()
-    await captureCurrentScreenshot()
+    void refreshPreview()
   } catch (err) {
     message.error(err instanceof Error ? err.message : String(err))
   } finally {
@@ -202,7 +251,7 @@ async function handleNavAction(action: 'back' | 'forward' | 'reload' | 'stop'): 
     loading.value = true
     await performNavigationAction(activeTabId.value, action)
     await refreshState()
-    await captureCurrentScreenshot()
+    void refreshPreview()
   } catch (err) {
     message.error(err instanceof Error ? err.message : String(err))
   } finally {
@@ -211,25 +260,148 @@ async function handleNavAction(action: 'back' | 'forward' | 'reload' | 'stop'): 
 }
 
 // ─── Screenshots ────────────────────────────────────────────────
+//
+// The live preview refreshes whenever the user navigates or reloads a tab
+// (silently, and without adding to the gallery). The gallery only gains an
+// entry when the agent requests a screenshot (server 'browser.screenshot'
+// event) or the user clicks the manual capture button.
 
-async function captureCurrentScreenshot(fullPage = false): Promise<void> {
+async function refreshPreview(): Promise<void> {
   if (!activeTabId.value) return
   try {
-    const result = await captureScreenshot(activeTabId.value, fullPage)
-    if (result?.data) {
-      currentScreenshot.value = result.data
-      lastUpdated.value = Date.now()
-      // Add to history
-      screenshotHistory.value.unshift({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        timestamp: Date.now(),
-        tabId: result.tabId || activeTabId.value!,
-        data: result.data,
-      })
-    }
+    const result = await captureScreenshot(activeTabId.value)
+    if (result?.data) setPreview(result.data)
+    void fetchViewportInfo(activeTabId.value)
+      .then(info => { viewportMetrics.value = info })
+      .catch(() => {})
   } catch {
-    // Silently fail during polling
+    // Preview refresh is best-effort
   }
+}
+
+async function handleManualCapture(): Promise<void> {
+  if (!activeTabId.value) return
+  try {
+    const result = await captureScreenshot(activeTabId.value)
+    if (result?.data) pushScreenshot(result.data, result.tabId || activeTabId.value)
+  } catch (err) {
+    message.error(err instanceof Error ? err.message : String(err))
+  }
+}
+
+// ─── Manual Input (coordinate-based live view control) ──────────
+
+const viewportRef = ref<HTMLElement | null>(null)
+const imageRef = ref<HTMLImageElement | null>(null)
+const interactiveBusy = ref(false)
+let wheelAccumX = 0
+let wheelAccumY = 0
+let wheelFlushTimer: ReturnType<typeof setTimeout> | null = null
+let clickRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Map a pointer event to normalized viewport coordinates (0..1). */
+function normalizedPoint(event: MouseEvent): { x: number; y: number } | null {
+  const target = imageRef.value || viewportRef.value
+  if (!target) return null
+  const rect = target.getBoundingClientRect()
+  if (!rect.width || !rect.height) return null
+  const x = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1)
+  const y = Math.min(Math.max((event.clientY - rect.top) / rect.height, 0), 1)
+  return { x, y }
+}
+
+async function sendInput(action: { type: string; [key: string]: any }): Promise<void> {
+  if (!activeTabId.value) return
+  try {
+    const result = await sendManualInput(activeTabId.value, action)
+    if (result?.viewport) viewportMetrics.value = result.viewport
+    if (result?.tab) {
+      const idx = tabs.value.findIndex(t => t.id === result.tab.id)
+      if (idx >= 0) {
+        tabs.value[idx] = { ...tabs.value[idx], ...result.tab }
+      }
+      urlBar.value = isBlankUrl(result.tab.url) ? urlBar.value : result.tab.url
+    }
+  } catch (err) {
+    message.error(err instanceof Error ? err.message : String(err))
+  }
+}
+
+/** Refresh the live preview shortly after an interaction settles. */
+function schedulePreviewRefresh(delay = 450): void {
+  if (clickRefreshTimer) clearTimeout(clickRefreshTimer)
+  clickRefreshTimer = setTimeout(() => {
+    clickRefreshTimer = null
+    void refreshPreview()
+  }, delay)
+}
+
+async function handleViewportClick(event: MouseEvent): Promise<void> {
+  const point = normalizedPoint(event)
+  if (!point) return
+  viewportRef.value?.focus?.()
+  interactiveBusy.value = true
+  try {
+    await sendInput({ type: 'click', x: point.x, y: point.y })
+    schedulePreviewRefresh()
+  } finally {
+    interactiveBusy.value = false
+  }
+}
+
+async function handleViewportDblClick(event: MouseEvent): Promise<void> {
+  const point = normalizedPoint(event)
+  if (!point) return
+  interactiveBusy.value = true
+  try {
+    await sendInput({ type: 'click', x: point.x, y: point.y, double: true })
+    schedulePreviewRefresh()
+  } finally {
+    interactiveBusy.value = false
+  }
+}
+
+async function handleViewportMove(event: MouseEvent): Promise<void> {
+  lastPointer.value = normalizedPoint(event)
+}
+
+async function handleViewportWheel(event: WheelEvent): Promise<void> {
+  wheelAccumX += event.deltaX
+  wheelAccumY += event.deltaY
+  const point = normalizedPoint(event) || { x: 0.5, y: 0.5 }
+  if (wheelFlushTimer) clearTimeout(wheelFlushTimer)
+  wheelFlushTimer = setTimeout(async () => {
+    wheelFlushTimer = null
+    const dx = wheelAccumX
+    const dy = wheelAccumY
+    wheelAccumX = 0
+    wheelAccumY = 0
+    if (!dx && !dy) return
+    await sendInput({ type: 'scroll', x: point.x, y: point.y, delta_x: dx, delta_y: dy })
+    schedulePreviewRefresh(500)
+  }, 60)
+}
+
+async function handleViewportKeydown(event: KeyboardEvent): Promise<void> {
+  const key = event.key
+  // Forward typed characters; printable single chars go through type,
+  // named keys (Enter, Backspace, arrows…) go through press.
+  if (key.length === 1) {
+    if (event.ctrlKey || event.metaKey || event.altKey) return
+    event.preventDefault()
+    await sendInput({ type: 'type', text: key })
+    schedulePreviewRefresh(350)
+    return
+  }
+  const allowed = new Set([
+    'Enter', 'Backspace', 'Tab', 'Escape', 'Delete',
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+    'Home', 'End', 'PageUp', 'PageDown', ' ',
+  ])
+  if (!allowed.has(key)) return
+  event.preventDefault()
+  await sendInput({ type: 'press', key: key === ' ' ? 'Space' : key })
+  schedulePreviewRefresh(key === 'Enter' ? 900 : 350)
 }
 
 // ─── Socket.IO ──────────────────────────────────────────────────
@@ -248,14 +420,7 @@ function connectSocket(): void {
 
     socketRef.on('browser.screenshot', (payload: { data: string; tabId: string }) => {
       if (payload?.data) {
-        currentScreenshot.value = payload.data
-        lastUpdated.value = Date.now()
-        screenshotHistory.value.unshift({
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          timestamp: Date.now(),
-          tabId: payload.tabId,
-          data: payload.data,
-        })
+        pushScreenshot(payload.data, payload.tabId)
       }
     })
 
@@ -297,21 +462,13 @@ onMounted(async () => {
   // Fetch initial state
   await refreshState()
 
-  // Connect Socket.IO for live updates
+  // Connect Socket.IO for agent-driven screenshot updates
   connectSocket()
 
-  // Capture initial screenshot
-  if (activeTabId.value) {
-    void captureCurrentScreenshot()
-  }
-
-  // Start polling every 3 seconds
-  pollingTimer = setInterval(async () => {
-    await refreshState()
-    if (activeTabId.value) {
-      await captureCurrentScreenshot()
-    }
-  }, 3000)
+  // Refresh tab state periodically; never capture screenshots on a timer.
+  pollingTimer = setInterval(() => {
+    void refreshState()
+  }, 5000)
 })
 
 onUnmounted(() => {
@@ -379,11 +536,14 @@ onUnmounted(() => {
         <!-- URL Bar Row -->
         <div class="browser-url-bar">
           <NInput
+            ref="urlInputRef"
             v-model:value="urlBar"
             class="browser-url-input"
             size="small"
-            placeholder="Enter URL or search…"
+            :placeholder="t('browser.addressPlaceholder', 'Search or enter an address')"
             @keyup.enter="handleNavigate"
+            @focus="urlInputFocused = true"
+            @blur="urlInputFocused = false"
           />
           <NButton size="small" quaternary circle @click="handleNavAction('back')" :disabled="!currentTab?.canGoBack">
             <svg viewBox="0 0 24 24" class="browser-nav-icon"><path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -397,6 +557,17 @@ onUnmounted(() => {
           <NButton size="small" type="primary" :loading="loading" @click="handleNavigate">
             {{ t('common.go', 'Go') }}
           </NButton>
+          <NTooltip trigger="hover">
+            <template #trigger>
+              <NButton size="small" quaternary circle @click="handleManualCapture">
+                <svg viewBox="0 0 24 24" class="browser-nav-icon">
+                  <path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                  <circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                </svg>
+              </NButton>
+            </template>
+            {{ t('browser.capture', 'Capture screenshot') }}
+          </NTooltip>
         </div>
       </div>
 
@@ -408,13 +579,29 @@ onUnmounted(() => {
           <span class="browser-loading-text">{{ t('browser.navigating', 'Navigating…') }}</span>
         </div>
 
-        <!-- Screenshot -->
+        <!-- Interactive live view: clicks/typing are forwarded to the page -->
         <template v-if="currentScreenshot">
-          <img
-            :src="'data:image/jpeg;base64,' + currentScreenshot"
-            class="browser-screenshot-image"
-            alt="Live browser view"
-          />
+          <div
+            ref="viewportRef"
+            class="browser-viewport"
+            :class="{ interacting: interactiveBusy }"
+            role="img"
+            :aria-label="t('browser.liveView', 'Live browser view')"
+            @click="handleViewportClick"
+            @dblclick="handleViewportDblClick"
+            @mousemove="handleViewportMove"
+            @wheel.prevent="handleViewportWheel"
+            @keydown="handleViewportKeydown"
+            tabindex="0"
+          >
+            <img
+              ref="imageRef"
+              :src="'data:image/jpeg;base64,' + currentScreenshot"
+              class="browser-screenshot-image"
+              alt="Live browser view"
+              draggable="false"
+            />
+          </div>
         </template>
 
         <!-- Placeholder -->
@@ -692,6 +879,26 @@ onUnmounted(() => {
   margin: 0;
 }
 
+.browser-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  outline: none;
+  overflow: hidden;
+
+  &:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--accent-primary);
+  }
+
+  &.interacting {
+    cursor: progress;
+  }
+}
+
 .browser-screenshot-image {
   max-width: 100%;
   max-height: 100%;
@@ -699,6 +906,7 @@ onUnmounted(() => {
   display: block;
   user-select: none;
   -webkit-user-drag: none;
+  pointer-events: none;
 }
 
 .browser-placeholder {

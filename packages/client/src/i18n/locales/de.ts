@@ -166,7 +166,7 @@ export default {
   socialMessages: socialMessagesDe,
   browser: {
     title: 'Browser', settings: 'Browser-Einstellungen', desktopOnly: 'Der integrierte Browser ist nur in Ekko Studio Desktop verfügbar.', newTab: 'Neuer Tab',
-    back: 'Zurück', forward: 'Vor', reload: 'Neu laden', stop: 'Stopp', addressPlaceholder: 'Suchen oder Adresse eingeben',
+    back: 'Zurück', forward: 'Vor', reload: 'Neu laden', stop: 'Stopp', addressPlaceholder: 'Suchen oder Adresse eingeben', capture: 'Screenshot aufnehmen',
     undoAnnotation: 'Letzte rückgängig machen', deleteAnnotation: 'Markierung {index} löschen',
     selectElement: 'Element wählen', selectRegion: 'Bereich wählen', annotationPlaceholder: 'Beschreibe, was der Agent prüfen oder ändern soll…', selectionData: 'Browser-Auswahldaten', annotationAdded: 'Screenshot wurde zum Chat hinzugefügt', annotationCount: '{count} Markierung(en)', annotationLabel: 'Markierung {index}', clearAnnotations: 'Markierungen löschen', finishAnnotation: 'Fertig',
     agent: 'Agent', agentControlling: '{agent} steuert diesen Tab', agentWaiting: '{agent} wartet auf deine Bestätigung', takeOver: 'Übernehmen', tabCrashed: 'Dieser Tab ist abgestürzt.', recoverTab: 'Tab neu laden', profiles: 'Profile', profileName: 'Profilname', addProfile: 'Profil hinzufügen', currentProfile: 'Aktives Profil', switchProfile: 'Profil wechseln', editProfile: 'Profil bearbeiten',

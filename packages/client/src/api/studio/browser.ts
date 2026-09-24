@@ -5,7 +5,7 @@
  * Screenshot events arrive via Socket.IO broadcast 'browser.screenshot'.
  */
 
-import { getBaseUrlValue } from '@/api/client'
+import { getApiKey, getBaseUrlValue } from '@/api/client'
 
 // ─── State & Types ──────────────────────────────────────────────
 
@@ -51,6 +51,27 @@ export interface SnapshotResult {
   text: string
 }
 
+// ─── Helpers ────────────────────────────────────────────────────
+
+function authHeaders(): Record<string, string> {
+  const token = getApiKey()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  return headers
+}
+
+async function fetchJson(url: string, options?: RequestInit): Promise<any> {
+  const resp = await fetch(url, {
+    ...options,
+    headers: { ...authHeaders(), ...(options?.headers as Record<string, string> || {}) },
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.error || `HTTP ${resp.status}`)
+  }
+  return resp.json()
+}
+
 // ─── Status ─────────────────────────────────────────────────────
 
 let _headlessAvailable: boolean | null = null
@@ -59,8 +80,7 @@ export async function fetchHeadlessBrowserStatus(): Promise<{ available: boolean
   if (_headlessAvailable !== null) return { available: _headlessAvailable }
   
   try {
-    const resp = await fetch(`${getBaseUrlValue()}/api/studio/browser/status`)
-    const body = await resp.json()
+    const body = await fetchJson(`${getBaseUrlValue()}/api/studio/browser/status`)
     _headlessAvailable = !!body.available
     return { available: _headlessAvailable, stats: body.stats }
   } catch {
@@ -78,32 +98,27 @@ export async function isHeadlessBrowserAvailable(): Promise<boolean> {
 // ─── Tabs ───────────────────────────────────────────────────────
 
 export async function fetchBrowserState(): Promise<BrowserState> {
-  const resp = await fetch(`${getBaseUrlValue()}/api/studio/browser/state`)
-  const body = await resp.json()
+  const body = await fetchJson(`${getBaseUrlValue()}/api/studio/browser/state`)
   return { ...body, tabs: body.tabs || [] }
 }
 
 export async function createBrowserTab(options?: { url?: string; activate?: boolean }): Promise<BrowserTabInfo> {
-  const resp = await fetch(`${getBaseUrlValue()}/api/studio/browser/tabs/create`, {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/tabs/create`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url: options?.url, activate: options?.activate ?? true }),
   })
-  return await resp.json()
 }
 
 export async function activateBrowserTab(tabId: string): Promise<void> {
-  await fetch(`${getBaseUrlValue()}/api/studio/browser/tabs/activate`, {
+  await fetchJson(`${getBaseUrlValue()}/api/studio/browser/tabs/activate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId }),
   })
 }
 
 export async function closeBrowserTab(tabId: string): Promise<void> {
-  await fetch(`${getBaseUrlValue()}/api/studio/browser/tabs/close`, {
+  await fetchJson(`${getBaseUrlValue()}/api/studio/browser/tabs/close`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId }),
   })
 }
@@ -111,41 +126,33 @@ export async function closeBrowserTab(tabId: string): Promise<void> {
 // ─── Navigation ─────────────────────────────────────────────────
 
 export async function navigateToUrl(tabId: string, url: string): Promise<BrowserTabInfo> {
-  const resp = await fetch(`${getBaseUrlValue()}/api/studio/browser/navigate`, {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/navigate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId, url }),
   })
-  return await resp.json()
 }
 
 export async function performNavigationAction(tabId: string, action: 'back' | 'forward' | 'reload' | 'stop'): Promise<BrowserTabInfo> {
-  const resp = await fetch(`${getBaseUrlValue()}/api/studio/browser/navigation-action`, {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/navigation-action`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId, action }),
   })
-  return await resp.json()
 }
 
 // ─── Content Reading ────────────────────────────────────────────
 
 export async function takeSnapshot(tabId: string): Promise<SnapshotResult> {
-  const resp = await fetch(`${getBaseUrlValue()}/api/studio/browser/snapshot`, {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/snapshot`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId }),
   })
-  return await resp.json()
 }
 
 export async function readTextFromRef(tabId: string, ref: string, options?: { mode?: string; offset?: number; limit?: number }): Promise<any> {
-  const resp = await fetch(`${getBaseUrlValue()}/api/studio/browser/text-read`, {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/text-read`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId, ref, ...options }),
   })
-  return await resp.json()
 }
 
 // ─── Interaction ────────────────────────────────────────────────
@@ -154,40 +161,66 @@ export async function interactWithElement(
   tabId: string,
   action: { type: string; [key: string]: any }
 ): Promise<any> {
-  const resp = await fetch(`${getBaseUrlValue()}/api/studio/browser/interact`, {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/interact`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId, action }),
   })
-  return await resp.json()
 }
 
 // ─── Screenshot ─────────────────────────────────────────────────
 
 export async function captureScreenshot(tabId: string, fullPage?: boolean): Promise<BrowserScreenshotResult> {
-  const resp = await fetch(`${getBaseUrlValue()}/api/studio/browser/screenshot`, {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/screenshot`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId, full_page: !!fullPage }),
   })
-  return await resp.json()
+}
+
+// ─── Manual Input (coordinate-based live view control) ──────────
+
+export interface ViewportInfo {
+  width: number
+  height: number
+  scrollX: number
+  scrollY: number
+  scrollWidth: number
+  scrollHeight: number
+}
+
+export interface ManualInputResult {
+  tab: BrowserTabInfo
+  viewport: ViewportInfo
+}
+
+export async function sendManualInput(
+  tabId: string,
+  action: { type: string; [key: string]: any },
+): Promise<ManualInputResult> {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/input`, {
+    method: 'POST',
+    body: JSON.stringify({ tab_id: tabId, action }),
+  })
+}
+
+export async function fetchViewportInfo(tabId: string): Promise<ViewportInfo> {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/viewport`, {
+    method: 'POST',
+    body: JSON.stringify({ tab_id: tabId }),
+  })
 }
 
 // ─── Console ────────────────────────────────────────────────────
 
 export async function readConsoleLogs(tabId: string): Promise<Array<{ message: string; source: string; timestamp: number }>> {
-  const resp = await fetch(`${getBaseUrlValue()}/api/studio/browser/console-read`, {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/console-read`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId }),
   })
-  return await resp.json()
 }
 
 export async function clearConsoleLogs(tabId: string): Promise<void> {
-  await fetch(`${getBaseUrlValue()}/api/studio/browser/console-clear`, {
+  await fetchJson(`${getBaseUrlValue()}/api/studio/browser/console-clear`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId }),
   })
 }
@@ -195,9 +228,8 @@ export async function clearConsoleLogs(tabId: string): Promise<void> {
 // ─── Lease Management ───────────────────────────────────────────
 
 export async function releaseLease(tabId: string): Promise<void> {
-  await fetch(`${getBaseUrlValue()}/api/studio/browser/lease/release`, {
+  await fetchJson(`${getBaseUrlValue()}/api/studio/browser/lease/release`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tab_id: tabId }),
   })
 }

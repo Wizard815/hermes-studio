@@ -71,6 +71,7 @@ import { petdexPublicRoutes, petdexRoutes } from '../modules/studio/routes/petde
 import { petRoutes } from '../modules/studio/routes/pets'
 import { legacyAppApiCompatibility } from '../modules/studio/middleware/legacy-app-api'
 import { browserRoutes } from '../modules/studio/routes/browser'
+import { browserPublicRoutes } from '../modules/studio/routes/browser-public'
 
 /**
  * Register all routes on the Koa app.
@@ -91,6 +92,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(petdexPublicRoutes.routes())
   app.use(groupChatPublicRoutes.routes())
   app.use(chatWebhookPublicRoutes.routes())
+  app.use(browserPublicRoutes.routes())
 
   // --- Auth middleware: all routes below require authentication ---
   authMiddleware.forEach((middleware) => app.use(middleware))

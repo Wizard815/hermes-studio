@@ -166,7 +166,7 @@ export default {
   socialMessages: socialMessagesRu,
   browser: {
     title: 'Браузер', settings: 'Настройки браузера', desktopOnly: 'Встроенный браузер доступен только в Ekko Studio Desktop.', newTab: 'Новая вкладка',
-    back: 'Назад', forward: 'Вперёд', reload: 'Обновить', stop: 'Остановить', addressPlaceholder: 'Поиск или адрес',
+    back: 'Назад', forward: 'Вперёд', reload: 'Обновить', stop: 'Остановить', addressPlaceholder: 'Поиск или адрес', capture: 'Сделать снимок экрана',
     undoAnnotation: 'Отменить последнюю', deleteAnnotation: 'Удалить аннотацию {index}',
     selectElement: 'Выбрать элемент', selectRegion: 'Выбрать область', annotationPlaceholder: 'Опишите, что Agent должен проверить или изменить…', selectionData: 'Данные выбора браузера', annotationAdded: 'Снимок добавлен в поле чата', annotationCount: 'Аннотаций: {count}', annotationLabel: 'Аннотация {index}', clearAnnotations: 'Очистить аннотации', finishAnnotation: 'Готово',
     agent: 'Agent', agentControlling: '{agent} управляет вкладкой', agentWaiting: '{agent} ожидает вашего подтверждения', takeOver: 'Перехватить', tabCrashed: 'Эта вкладка аварийно завершилась.', recoverTab: 'Перезагрузить', profiles: 'Профили', profileName: 'Имя профиля', addProfile: 'Добавить профиль', currentProfile: 'Активный профиль', switchProfile: 'Сменить профиль', editProfile: 'Изменить профиль',

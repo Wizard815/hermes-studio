@@ -54,7 +54,6 @@ import { WorkflowSocketServer } from '../modules/studio/sockets/workflow'
 import { PetStateSocketServer } from '../modules/studio/sockets/pet-state'
 import { logger } from '../modules/studio/public/logging'
 import { HeadlessBrowserService, getHeadlessBrowserService, setHeadlessBrowserService } from '../modules/studio/services/headless-browser-service'
-import { subscribeToScreenshots } from '../modules/studio/controllers/browser'
 import { createStaticCompressionMiddleware } from '../modules/studio/middleware/static-compression'
 import { getStaticCacheControl, SPA_ENTRY_CACHE_CONTROL } from '../modules/studio/middleware/static-cache'
 import { requireUserJwt, resolveUserProfile } from '../modules/studio/middleware/auth'
@@ -668,7 +667,12 @@ export async function bootstrap() {
     await headlessBrowser.start()
     setHeadlessBrowserService(headlessBrowser)
     console.log('[bootstrap] headless browser service started')
-    
+
+    // Only screenshots requested by the agent are broadcast to the chat panel.
+    headlessBrowser.setOnScreenshotCapture((base64, tabId) => {
+      activeGroupChatServer.getIO().emit('browser.screenshot', { data: base64, tabId })
+    })
+
     additionalShutdownSteps.push({
       name: 'Headless browser',
       close: () => headlessBrowser.stop(),

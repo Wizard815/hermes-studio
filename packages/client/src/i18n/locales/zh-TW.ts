@@ -166,7 +166,7 @@ export default {
   socialMessages: socialMessagesZhTw,
   browser: {
     title: '瀏覽器', settings: '瀏覽器設定', desktopOnly: '內建瀏覽器僅在 Ekko Studio 桌面版可用。', newTab: '新分頁',
-    back: '上一頁', forward: '下一頁', reload: '重新整理', stop: '停止', addressPlaceholder: '搜尋或輸入網址',
+    back: '上一頁', forward: '下一頁', reload: '重新整理', stop: '停止', addressPlaceholder: '搜尋或輸入網址', capture: '擷取畫面',
     undoAnnotation: '復原上一個', deleteAnnotation: '刪除標註 {index}',
     selectElement: '選取元素', selectRegion: '框選區域', annotationPlaceholder: '描述希望 Agent 檢查或修改的內容…', selectionData: '瀏覽器選取資料', annotationAdded: '截圖已加入對話輸入框', annotationCount: '已標註 {count} 處', annotationLabel: '標註 {index}', clearAnnotations: '清除標註', finishAnnotation: '完成',
     agent: 'Agent', agentControlling: '{agent} 正在控制此分頁', agentWaiting: '{agent} 正在等待你的確認', takeOver: '接管', tabCrashed: '此分頁已崩潰。', recoverTab: '重新載入', profiles: '設定檔', profileName: '設定檔名稱', addProfile: '新增設定檔', currentProfile: '目前使用', switchProfile: '切換使用', editProfile: '編輯設定檔',

@@ -18,7 +18,7 @@ await esbuild.build({
   target: 'node23',
   format: 'cjs',
   outfile: resolve(serverOutDir, 'index.js'),
-  external: ['node-pty', 'node:sqlite', 'sharp', 'socket.io'],
+  external: ['node-pty', 'node:sqlite', 'sharp', 'socket.io', 'playwright', 'playwright-core'],
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },

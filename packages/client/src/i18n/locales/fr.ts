@@ -166,7 +166,7 @@ export default {
   socialMessages: socialMessagesFr,
   browser: {
     title: 'Navigateur', settings: 'Paramètres du navigateur', desktopOnly: 'Le navigateur intégré est disponible uniquement dans Ekko Studio Desktop.', newTab: 'Nouvel onglet',
-    back: 'Précédent', forward: 'Suivant', reload: 'Actualiser', stop: 'Arrêter', addressPlaceholder: 'Rechercher ou saisir une adresse',
+    back: 'Précédent', forward: 'Suivant', reload: 'Actualiser', stop: 'Arrêter', addressPlaceholder: 'Rechercher ou saisir une adresse', capture: 'Capturer une capture d’écran',
     undoAnnotation: 'Annuler la dernière', deleteAnnotation: 'Supprimer l’annotation {index}',
     selectElement: 'Sélectionner un élément', selectRegion: 'Sélectionner une zone', annotationPlaceholder: 'Décrivez ce que l’Agent doit examiner ou modifier…', selectionData: 'Données de sélection du navigateur', annotationAdded: 'Capture ajoutée à la zone de discussion', annotationCount: '{count} annotation(s)', annotationLabel: 'Annotation {index}', clearAnnotations: 'Effacer les annotations', finishAnnotation: 'Terminé',
     agent: 'Agent', agentControlling: '{agent} contrôle cet onglet', agentWaiting: '{agent} attend votre confirmation', takeOver: 'Reprendre', tabCrashed: 'Cet onglet a planté.', recoverTab: 'Recharger', profiles: 'Profils', profileName: 'Nom du profil', addProfile: 'Ajouter un profil', currentProfile: 'Profil actif', switchProfile: 'Changer de profil', editProfile: 'Modifier le profil',

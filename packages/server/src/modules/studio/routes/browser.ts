@@ -20,6 +20,11 @@ browserRoutes.post('/api/studio/browser/text-read', ctrl.textRead)
 // Interaction
 browserRoutes.post('/api/studio/browser/interact', ctrl.interact)
 
+// Manual input for the live view (coordinate-based)
+browserRoutes.post('/api/studio/browser/input', ctrl.manualInput)
+browserRoutes.post('/api/studio/browser/viewport', ctrl.viewportInfo)
+browserRoutes.get('/api/studio/browser/viewport', ctrl.viewportInfo)
+
 // Screenshot capture
 browserRoutes.post('/api/studio/browser/screenshot', ctrl.screenshot)
 
@@ -30,5 +35,5 @@ browserRoutes.post('/api/studio/browser/console-clear', ctrl.consoleClear)
 // Lease management
 browserRoutes.post('/api/studio/browser/lease/release', ctrl.releaseLease)
 
-// Status / info (public for diagnostics)
+// Status / info
 browserRoutes.get('/api/studio/browser/status', ctrl.getStatus)

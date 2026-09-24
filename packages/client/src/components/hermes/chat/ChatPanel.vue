@@ -3459,7 +3459,7 @@ async function handleSessionModelCustomSubmit() {
                       </svg>
                     </button>
                     <button
-                      v-if="electronBrowserAvailable"
+                      v-if="electronBrowserAvailable || headlessBrowserAvailable"
                       class="chat-tool-tab"
                       :class="{ active: activeToolPanel === 'browser' }"
                       type="button"
