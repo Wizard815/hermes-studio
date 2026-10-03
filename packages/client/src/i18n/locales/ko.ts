@@ -277,6 +277,7 @@ export default {
   },
   socialMessages: socialMessagesKo,
   browser: {
+    capture: '스크린샷 캡처',
     galleryEmpty: '에이전트 실행 중 캡처한 스크린샷이 여기에 표시됩니다',
     capturedScreenshots: '캡처된 스크린샷',
     noScreenshots: '아직 스크린샷이 없습니다. AI 에이전트가 이 영역을 채웁니다.',

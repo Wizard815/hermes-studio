@@ -277,6 +277,7 @@ export default {
   },
   socialMessages: socialMessagesRu,
   browser: {
+    capture: 'Сделать скриншот',
     galleryEmpty: 'Скриншоты, сделанные во время запусков агента, появятся здесь',
     capturedScreenshots: 'Сделанные скриншоты',
     noScreenshots: 'Скриншотов пока нет. ИИ-агент заполнит эту область.',

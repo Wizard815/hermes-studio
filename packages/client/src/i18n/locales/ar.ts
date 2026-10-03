@@ -277,6 +277,7 @@ export default {
   },
   socialMessages: socialMessagesAr,
   browser: {
+    capture: 'التقاط لقطة شاشة',
     galleryEmpty: 'ستظهر هنا اللقطات الملتقطة أثناء تشغيل الوكيل',
     capturedScreenshots: 'اللقطات الملتقطة',
     noScreenshots: 'لم يتم التقاط أي لقطات بعد. سيملأ وكيل الذكاء الاصطناعي هذه المنطقة.',

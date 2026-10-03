@@ -277,6 +277,7 @@ export default {
   },
   socialMessages: socialMessagesDe,
   browser: {
+    capture: 'Screenshot aufnehmen',
     galleryEmpty: 'Screenshots aus Agent-Läufen erscheinen hier',
     capturedScreenshots: 'Aufgenommene Screenshots',
     noScreenshots: 'Noch keine Screenshots aufgenommen. Der KI-Agent füllt diesen Bereich.',

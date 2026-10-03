@@ -277,6 +277,7 @@ export default {
   },
   socialMessages: socialMessagesPt,
   browser: {
+    capture: 'Capturar tela',
     galleryEmpty: 'As capturas feitas durante as execuções do agente aparecerão aqui',
     capturedScreenshots: 'Capturas de tela feitas',
     noScreenshots: 'Nenhuma captura de tela ainda. O agente de IA preencherá esta área.',

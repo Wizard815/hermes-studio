@@ -277,7 +277,8 @@ export default {
   },
   socialMessages: socialMessagesEn,
   browser: {
-    galleryEmpty: 'Screenshots taken during agent runs will appear here'
+    capture: 'Capture screenshot',
+    galleryEmpty: 'Screenshots taken during agent runs will appear here',
     capturedScreenshots: 'Captured Screenshots',
     noScreenshots: 'No screenshots captured yet. The AI agent will populate this area.',
     navigating: 'Navigating…',

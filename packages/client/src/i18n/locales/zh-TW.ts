@@ -277,6 +277,7 @@ export default {
   },
   socialMessages: socialMessagesZhTw,
   browser: {
+    capture: '擷取螢幕截圖',
     galleryEmpty: '代理執行期間擷取的截圖將顯示在此處',
     capturedScreenshots: '已擷取的截圖',
     noScreenshots: '尚未擷取任何截圖。AI 代理將填入此區域。',

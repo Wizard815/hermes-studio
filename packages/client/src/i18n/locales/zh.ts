@@ -277,6 +277,7 @@ export default {
   },
   socialMessages: socialMessagesZh,
   browser: {
+    capture: '截取屏幕截图',
     galleryEmpty: '智能体运行期间捕获的截图将显示在此处',
     capturedScreenshots: '已捕获的截图',
     noScreenshots: '尚未捕获任何截图。AI 智能体将填充此区域。',

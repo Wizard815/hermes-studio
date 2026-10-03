@@ -277,6 +277,7 @@ export default {
   },
   socialMessages: socialMessagesJa,
   browser: {
+    capture: 'スクリーンショットを撮影',
     galleryEmpty: 'エージェント実行中に取得したスクリーンショットがここに表示されます',
     capturedScreenshots: '取得したスクリーンショット',
     noScreenshots: 'まだスクリーンショットがありません。AI エージェントがこの領域に追加します。',
