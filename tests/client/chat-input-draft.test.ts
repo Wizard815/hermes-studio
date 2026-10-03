@@ -217,19 +217,22 @@ describe('ChatInput draft persistence', () => {
     expect((remounted.get('textarea').element as HTMLTextAreaElement).value).toBe('draft before tab switch')
   })
 
-  it('stores drafts under one localStorage key mapped by session id', async () => {
+  it('keeps drafts isolated per session', async () => {
     const wrapperA = mountForSession('session-a')
     await wrapperA.get('textarea').setValue('draft for session a')
     await nextTick()
     wrapperA.unmount()
 
+    // A different session must show its own (empty) draft, not session-a's.
     const wrapperB = mountForSession('session-b')
+    await nextTick()
+    expect((wrapperB.get('textarea').element as HTMLTextAreaElement).value).toBe('')
+
     await wrapperB.get('textarea').setValue('draft for session b')
     await nextTick()
     wrapperB.unmount()
 
-    expect(localStorage.getItem('hermes_chat_input_draft_v1')).toBeNull()
-    expect(JSON.parse(localStorage.getItem('hermes_chat_input_drafts_v1') || '{}')).toEqual({
+    expect(JSON.parse(localStorage.getItem('hermes_chat_input_drafts_v3') || '{}')).toEqual({
       'session-a': 'draft for session a',
       'session-b': 'draft for session b',
     })
@@ -240,7 +243,7 @@ describe('ChatInput draft persistence', () => {
   })
 
   it('prefills a transient help prompt without overwriting the session draft', async () => {
-    localStorage.setItem('hermes_chat_input_drafts_v1', JSON.stringify({
+    localStorage.setItem('hermes_chat_input_drafts_v3', JSON.stringify({
       'session-help': 'existing user draft',
     }))
     const wrapper = mountForSession('session-help', {}, {}, {
@@ -254,7 +257,7 @@ describe('ChatInput draft persistence', () => {
     await wrapper.get('textarea').setValue('edited help prompt')
     await nextTick()
 
-    expect(JSON.parse(localStorage.getItem('hermes_chat_input_drafts_v1') || '{}'))
+    expect(JSON.parse(localStorage.getItem('hermes_chat_input_drafts_v3') || '{}'))
       .toEqual({ 'session-help': 'existing user draft' })
   })
 

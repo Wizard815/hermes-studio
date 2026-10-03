@@ -129,6 +129,9 @@ describe('studio MCP autoinject', () => {
         HERMES_WEB_UI_MANAGED_MCP: '1',
       },
       enabled: true,
+      // Lazily registered from the schema cache so the tools stay resolvable
+      // after Hermes recycles the stdio server.
+      lazy: true,
     })
     expect(injectedDefault.data.mcp_servers['ekko-studio-browser']).toMatchObject({
       command: process.execPath,
@@ -227,6 +230,37 @@ describe('studio MCP autoinject', () => {
     expect(resynced.result.status).toBe('updated')
     expect(resynced.data.mcp_servers['ekko-studio-api'].env.HERMES_WEB_UI_URL).toBe('http://127.0.0.1:8648')
     expect(resynced.data.mcp_servers['ekko-studio-api'].timeout).toBe(42)
+  })
+
+  it('adds lazy registration to a managed entry written before the flag existed', async () => {
+    const { injectBundledMcpServer } = await import('../../packages/server/src/modules/hermes/services/mcp/studio-autoinject')
+    await injectBundledMcpServer()
+
+    const updater = updateConfigYamlForProfileMock.mock.calls[0][1]
+    const initial = await updater({})
+    const legacy = structuredClone(initial.data)
+    // An entry from an older build: correct command/env, but no `lazy`.
+    delete legacy.mcp_servers['ekko-studio-interaction'].lazy
+
+    const migrated = await updater(legacy)
+
+    // Must be rewritten, otherwise the stdio server stays eager and its tools
+    // are deregistered the moment Hermes recycles it.
+    expect(migrated.result.status).toBe('updated')
+    expect(migrated.data.mcp_servers['ekko-studio-interaction'].lazy).toBe(true)
+  })
+
+  it('leaves a managed entry carrying lazy registration unchanged', async () => {
+    const { injectBundledMcpServer } = await import('../../packages/server/src/modules/hermes/services/mcp/studio-autoinject')
+    await injectBundledMcpServer()
+
+    const updater = updateConfigYamlForProfileMock.mock.calls[0][1]
+    const initial = await updater({})
+    expect(initial.data.mcp_servers['ekko-studio-interaction'].lazy).toBe(true)
+
+    const again = await updater(structuredClone(initial.data))
+
+    expect(again.result.status).toBe('unchanged')
   })
 
   it('skips autoinject for transient preview homes by default', async () => {

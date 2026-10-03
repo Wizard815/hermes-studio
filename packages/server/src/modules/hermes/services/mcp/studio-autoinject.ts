@@ -193,6 +193,14 @@ function managedConfig(
   return {
     ...managedCommandConfig(toolset, bundledScript),
     ...(toolset === 'use' ? { timeout: MANAGED_USE_MCP_TIMEOUT_SECONDS } : {}),
+    // Register from the schema cache instead of requiring a live connection.
+    // Hermes recycles stdio MCP servers on a lifetime/idle deadline and
+    // deregisters their tools when it does; the name then stops resolving, so
+    // the model sees the tool advertised in its catalog but gets
+    // "is not a deferrable tool" / "does not exist" when it calls it. Lazy
+    // registration keeps the tools registered and defers the spawn to first use
+    // (missing or stale cache entries still fall back to an eager connect).
+    lazy: true,
     env,
     enabled: true,
   }
@@ -221,6 +229,9 @@ function sameConfig(existing: Record<string, any>, desired: Record<string, unkno
   return existing.command === desired.command &&
     sameArgs(existing, desired) &&
     (desired.timeout === undefined || existing.timeout === desired.timeout) &&
+    // Without this an entry written before lazy registration was introduced
+    // compares equal and never picks the flag up.
+    (desired.lazy === undefined || existing.lazy === desired.lazy) &&
     existing.enabled !== false &&
     isRecord(existing.env) &&
     existing.env.ELECTRON_RUN_AS_NODE === desiredEnv.ELECTRON_RUN_AS_NODE &&

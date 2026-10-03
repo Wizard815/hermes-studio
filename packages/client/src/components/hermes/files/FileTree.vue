@@ -36,6 +36,10 @@ const selectedKeys = ref<string[]>([])
 const treeInstanceKey = ref(0)
 const rootGitStatus = ref<GitFileStatus>()
 const rootGitStatusCount = ref(0)
+// Loading the root can fail (session workspace not resolvable, server error).
+// That must not look like "this directory is empty" — keep the reason and show
+// it, so an empty tree is never mistaken for a directory with no files.
+const rootError = ref<string | null>(null)
 let rootLoadSeq = 0
 
 async function loadChildren(path: string): Promise<GitTreeOption[]> {
@@ -46,6 +50,7 @@ async function loadChildren(path: string): Promise<GitTreeOption[]> {
     if (!path) {
       rootGitStatus.value = result.gitStatus
       rootGitStatusCount.value = result.gitStatusCount || 0
+      rootError.value = null
     }
     return result.entries
       .filter(entry => workspaceMode.value || entry.isDir)
@@ -58,13 +63,35 @@ async function loadChildren(path: string): Promise<GitTreeOption[]> {
         gitStatus: e.gitStatus,
         gitStatusCount: e.gitStatusCount,
       }))
-  } catch {
+  } catch (error) {
+    console.error('[FileTree] failed to list', path || '<root>', error)
     if (!path) {
       rootGitStatus.value = undefined
       rootGitStatusCount.value = 0
+      rootError.value = error instanceof Error && error.message
+        ? error.message
+        : String(error)
     }
     return []
   }
+}
+
+/**
+ * Load the tree root.
+ *
+ * `loadChildren` picks its data source from the files store's *current* scope,
+ * but that scope is set by the panel that hosts this tree, so it can settle
+ * after this load has already started. Reload once when it changed underneath
+ * us, otherwise the root keeps rendering the scope that lost the race.
+ */
+async function reloadRoot(): Promise<void> {
+  const seq = ++rootLoadSeq
+  const scopeAtStart = filesStore.currentWorkspaceSessionId || filesStore.currentWorkspaceRoomId || ''
+  const nextTreeData = await loadChildren('')
+  if (seq !== rootLoadSeq) return
+  treeData.value = nextTreeData
+  const scopeNow = filesStore.currentWorkspaceSessionId || filesStore.currentWorkspaceRoomId || ''
+  if (scopeNow !== scopeAtStart) void reloadRoot()
 }
 
 async function handleLoad(node: TreeOption): Promise<void> {
@@ -159,19 +186,15 @@ const treeThemeOverrides = {
 }
 
 watch([effectiveProfile, () => filesStore.currentWorkspaceSessionId, () => filesStore.currentWorkspaceRoomId, () => props.workspaceKey], async () => {
-  const seq = ++rootLoadSeq
   selectedKeys.value = []
   treeInstanceKey.value += 1
-  const nextTreeData = await loadChildren('')
-  if (seq === rootLoadSeq) treeData.value = nextTreeData
+  await reloadRoot()
 }, { immediate: true })
 
 watch(() => filesStore.entries, async () => {
   if (!workspaceMode.value) return
-  const seq = ++rootLoadSeq
   treeInstanceKey.value += 1
-  const nextTreeData = await loadChildren('')
-  if (seq === rootLoadSeq) treeData.value = nextTreeData
+  await reloadRoot()
 })
 </script>
 
@@ -188,6 +211,9 @@ watch(() => filesStore.entries, async () => {
         :class="gitStatusClass(rootGitStatus)"
         :title="rootGitStatusCount > 1 ? `${gitStatusBadge(rootGitStatus)} · ${rootGitStatusCount}` : gitStatusBadge(rootGitStatus)"
       >{{ gitStatusBadge(rootGitStatus) }}</span>
+    </div>
+    <div v-if="rootError" class="tree-error" role="alert" :title="rootError">
+      {{ rootError }}
     </div>
     <NTree
       :key="treeInstanceKey"
@@ -212,6 +238,17 @@ watch(() => filesStore.entries, async () => {
 
 .file-tree {
   padding: 0 4px 8px;
+}
+
+.tree-error {
+  margin: 2px 6px 6px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: $text-secondary;
+  background-color: rgba(var(--danger-color-rgb, 220, 38, 38), 0.08);
+  word-break: break-word;
 }
 
 .tree-header {

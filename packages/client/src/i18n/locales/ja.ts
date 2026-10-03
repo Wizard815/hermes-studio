@@ -165,6 +165,7 @@ export default {
   },
   socialMessages: socialMessagesJa,
   browser: {
+    liveView: 'ライブブラウザ表示',
     title: 'ブラウザー', settings: 'ブラウザー設定', desktopOnly: '内蔵ブラウザーは Ekko Studio Desktop でのみ利用できます。', newTab: '新しいタブ',
     back: '戻る', forward: '進む', reload: '再読み込み', stop: '停止', addressPlaceholder: '検索またはアドレスを入力', capture: 'スクリーンショットを撮影',
     undoAnnotation: '直前の注釈を取り消す', deleteAnnotation: '注釈 {index} を削除',
@@ -265,6 +266,7 @@ export default {
 
   // 共通
   common: {
+    go: '移動',
     loading: '読み込み中...',
     cancel: 'キャンセル',
     retry: '再試行',

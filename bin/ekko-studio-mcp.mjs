@@ -2217,6 +2217,12 @@ async function handle(message) {
         }
       case 'tools/list':
         return { jsonrpc: '2.0', id: message.id, result: { tools: visibleTools() } }
+      case 'ping':
+        // Optional MCP utility. Without it the client logs
+        // "does not implement the optional 'ping' utility (-32601)" and falls
+        // back to `list_tools` for every liveness check, which is the keepalive
+        // path this server otherwise never exercises.
+        return { jsonrpc: '2.0', id: message.id, result: {} }
       case 'tools/call': {
         const abort = resolveToolName(message.params?.name) === 'ekko_studio_clarify' ? new AbortController() : undefined
         if (abort) pendingInteractions.set(message.id, abort)

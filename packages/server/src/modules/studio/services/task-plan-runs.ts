@@ -7,7 +7,7 @@ type RunState = { isWorking: boolean; isAborting?: boolean; activeRunMarker?: st
 type Binding = { sessionId: string; profile: string; resolve: () => RunState | undefined; snapshot?: TaskPlanSnapshot; publish?: (snapshot: TaskPlanSnapshot) => void }
 
 export class TaskPlanError extends Error {
-  constructor(message: string, public readonly status = 400) { super(message) }
+  constructor(message: string, public readonly status = 400, public readonly code?: string) { super(message) }
 }
 
 export function parseTaskPlanUpdate(input: Record<string, unknown>): PlanUpdate {
@@ -56,11 +56,19 @@ export class TaskPlanRuns {
 
   update(contextId: string, profile: string, input: Record<string, unknown>): TaskPlanSnapshot {
     const binding = this.bindings.get(contextId)
-    if (!binding || binding.profile !== profile) throw new TaskPlanError('Task plan context is unavailable or has expired', 409)
+    if (!binding || binding.profile !== profile) throw new TaskPlanError(
+      'Task plan context is unavailable or has expired. This context_id is not from the current turn: use the context_id in the latest <studio_task_plan_context> block and resend the complete plan. Retrying other argument shapes cannot succeed.',
+      409,
+      'stale_context',
+    )
     const state = binding.resolve()
     const runId = state?.activeRunMarker || state?.responseRun?.runMarker
     if (!state?.isWorking || state.isAborting || !runId || (binding.snapshot && binding.snapshot.run_id !== runId)) {
-      throw new TaskPlanError('Task plan context has no active turn', 409)
+      throw new TaskPlanError(
+        'Task plan context has no active turn. The run for this context_id has already ended; a card can only be updated while its turn is running.',
+        409,
+        'no_active_turn',
+      )
     }
     const update = parseTaskPlanUpdate(input)
     const now = Date.now()

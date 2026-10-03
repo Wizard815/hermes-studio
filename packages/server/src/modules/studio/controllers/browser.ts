@@ -1,5 +1,11 @@
 import type { Context, Next } from 'koa'
 import { buildSnapshot, getHeadlessBrowserService } from '../services/headless-browser-service'
+import {
+  addScreenshot as addStoredScreenshot,
+  deleteScreenshot as removeStoredScreenshot,
+  listScreenshots as listStoredScreenshots,
+  readScreenshotFile,
+} from '../services/browser-screenshot-store'
 
 // ---------------------------------------------------------------------------
 // Browser Controller — REST endpoints for the headless browser service
@@ -537,3 +543,86 @@ export async function getStatus(ctx: Context) {
     descriptor: service.descriptor,
   }
 }
+
+// ─── Persistent Screenshot Store (server-side, per chat session) ───
+
+function sessionIdFrom(ctx: Context): string {
+  const fromBody = (ctx.request.body as any)?.session_id
+  const fromQuery = ctx.query?.session_id
+  return String((typeof fromBody === 'string' && fromBody) || (typeof fromQuery === 'string' && fromQuery) || '').trim()
+}
+
+export async function listScreenshots(ctx: Context) {
+  const sessionId = sessionIdFrom(ctx)
+  if (!sessionId) {
+    ctx.status = 400
+    ctx.body = { error: 'session_id is required' }
+    return
+  }
+  ctx.body = { screenshots: listStoredScreenshots(sessionId) }
+}
+
+export async function getScreenshotImage(ctx: Context) {
+  const sessionId = sessionIdFrom(ctx)
+  const screenshotId = String(ctx.params?.id || ctx.query?.id || '').trim()
+  if (!sessionId || !screenshotId) {
+    ctx.status = 400
+    ctx.body = { error: 'session_id and id are required' }
+    return
+  }
+  const meta = listStoredScreenshots(sessionId).find(entry => entry.id === screenshotId)
+  if (!meta) {
+    ctx.status = 404
+    ctx.body = { error: 'Screenshot not found' }
+    return
+  }
+  const buffer = readScreenshotFile(sessionId, meta)
+  if (!buffer) {
+    ctx.status = 404
+    ctx.body = { error: 'Screenshot file missing' }
+    return
+  }
+  ctx.type = meta.mimeType || 'image/jpeg'
+  ctx.set('Cache-Control', 'private, max-age=31536000, immutable')
+  ctx.body = buffer
+}
+
+export async function addScreenshot(ctx: Context) {
+  const sessionId = sessionIdFrom(ctx)
+  const body = ctx.request.body as any
+  if (!sessionId || typeof body?.data !== 'string' || !body.data) {
+    ctx.status = 400
+    ctx.body = { error: 'session_id and data are required' }
+    return
+  }
+  const meta = addStoredScreenshot(sessionId, body.data, {
+    tabId: typeof body.tab_id === 'string' ? body.tab_id : undefined,
+    url: typeof body.url === 'string' ? body.url : undefined,
+    title: typeof body.title === 'string' ? body.title : undefined,
+    mimeType: typeof body.mime_type === 'string' ? body.mime_type : undefined,
+  })
+  if (!meta) {
+    ctx.status = 400
+    ctx.body = { error: 'Failed to store screenshot' }
+    return
+  }
+  ctx.body = { screenshot: meta }
+}
+
+export async function deleteScreenshot(ctx: Context) {
+  const sessionId = sessionIdFrom(ctx)
+  const screenshotId = String(ctx.params?.id || (ctx.request.body as any)?.id || '').trim()
+  if (!sessionId || !screenshotId) {
+    ctx.status = 400
+    ctx.body = { error: 'session_id and id are required' }
+    return
+  }
+  const removed = removeStoredScreenshot(sessionId, screenshotId)
+  if (!removed) {
+    ctx.status = 404
+    ctx.body = { error: 'Screenshot not found' }
+    return
+  }
+  ctx.body = { ok: true }
+}
+

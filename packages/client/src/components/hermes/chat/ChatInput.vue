@@ -21,6 +21,7 @@ import { clampChatInputHeight, isMobileChatInputViewport } from '@/utils/chat-in
 import { normalizeComposerVoiceTranscript, useComposerVoiceInput } from '@/composables/useComposerVoiceInput'
 import { extractRepresentativeVideoFrames, isVideoFile } from '@/utils/video-frame-extraction'
 import ImagePreviewOverlay from './ImagePreviewOverlay.vue'
+import { readDraft, writeDraft, reloadComposerDrafts, migratePendingDraft } from '@/composables/useComposerDraft'
 
 const chatStore = useChatStore()
 const appStore = useAppStore()
@@ -114,9 +115,18 @@ const compactModelLabel = computed(() => {
   return parts[parts.length - 1] || label
 })
 
-const DRAFT_STORAGE_KEY = 'hermes_chat_input_drafts_v1'
-type DraftMap = Record<string, string>
-const inputText = ref('')
+// Persistent callers keep a draft per chat session so text typed in one
+// conversation never appears in another. Transient callers (persistDraft=false)
+// use a local slot so a prefilled prompt can't overwrite the user's draft.
+const localDraft = ref('')
+const inputText = computed({
+  get: () => (props.persistDraft ? readDraft(chatStore.activeSessionId) : localDraft.value),
+  set: (value: string) => {
+    if (props.persistDraft) writeDraft(chatStore.activeSessionId, value)
+    else localDraft.value = value
+  },
+})
+
 const textareaRef = ref<HTMLTextAreaElement>()
 const commandDropdownRef = ref<HTMLDivElement>()
 const fileInputRef = ref<HTMLInputElement>()
@@ -484,42 +494,18 @@ const inputSettingsOptions = computed<DropdownOption[]>(() => [
   },
 ])
 
-function readDraftMap(): DraftMap {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY) || '{}')
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
-  } catch {
-    return {}
-  }
-}
-
-function getActiveDraftSessionId() {
-  return chatStore.activeSessionId || chatStore.activeSession?.id || ''
-}
-
 function loadDraftForActiveSession() {
-  const sessionId = getActiveDraftSessionId()
-  inputText.value = sessionId ? readDraftMap()[sessionId] || '' : ''
+  reloadComposerDrafts()
+  migratePendingDraft(chatStore.activeSessionId)
 }
 
 function saveDraftForActiveSession(value: string) {
-  const sessionId = getActiveDraftSessionId()
-  if (!sessionId) return
-  const drafts = readDraftMap()
-  if (value) {
-    drafts[sessionId] = value
-  } else {
-    delete drafts[sessionId]
-  }
-  if (Object.keys(drafts).length > 0) {
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(drafts))
-  } else {
-    localStorage.removeItem(DRAFT_STORAGE_KEY)
-  }
+  writeDraft(chatStore.activeSessionId, value)
 }
 
 // 从 localStorage 读取设置
 onMounted(() => {
+  // Persistent: restore this session's draft. Transient: seed from prompt.
   if (props.initialText) inputText.value = props.initialText
   else if (props.persistDraft) loadDraftForActiveSession()
   syncViewport()
@@ -564,13 +550,14 @@ async function handleInputSettingsSelect(key: string | number) {
   }
 }
 
-watch(inputText, (value) => {
-  if (props.persistDraft) saveDraftForActiveSession(value)
-})
-
-watch(() => chatStore.activeSession?.id, () => {
-  if (props.persistDraft) loadDraftForActiveSession()
-  else inputText.value = props.initialText
+watch(() => chatStore.activeSession?.id, (newId) => {
+  if (props.persistDraft) {
+    // The computed setter already routed typed text to the previous session's
+    // slot. Just adopt any pre-session text and re-read the new session draft.
+    migratePendingDraft(newId)
+  } else {
+    inputText.value = props.initialText
+  }
   nextTick(() => {
     applyConfiguredTextareaHeight()
   })

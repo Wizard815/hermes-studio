@@ -165,6 +165,7 @@ export default {
   },
   socialMessages: socialMessagesKo,
   browser: {
+    liveView: '실시간 브라우저 보기',
     title: '브라우저', settings: '브라우저 설정', desktopOnly: '내장 브라우저는 Ekko Studio Desktop에서만 사용할 수 있습니다.', newTab: '새 탭',
     back: '뒤로', forward: '앞으로', reload: '새로고침', stop: '중지', addressPlaceholder: '검색 또는 주소 입력', capture: '스크린샷 캡처',
     undoAnnotation: '마지막 주석 취소', deleteAnnotation: '주석 {index} 삭제',
@@ -265,6 +266,7 @@ export default {
 
   // 공통
   common: {
+    go: '이동',
     loading: '로딩 중...',
     cancel: '취소',
     retry: '재시도',

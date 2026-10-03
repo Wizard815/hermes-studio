@@ -37,3 +37,9 @@ browserRoutes.post('/api/studio/browser/lease/release', ctrl.releaseLease)
 
 // Status / info
 browserRoutes.get('/api/studio/browser/status', ctrl.getStatus)
+
+// Persistent screenshots (server-side, per chat session)
+browserRoutes.get('/api/studio/browser/screenshots', ctrl.listScreenshots)
+browserRoutes.post('/api/studio/browser/screenshots', ctrl.addScreenshot)
+browserRoutes.get('/api/studio/browser/screenshots/:id', ctrl.getScreenshotImage)
+browserRoutes.delete('/api/studio/browser/screenshots/:id', ctrl.deleteScreenshot)

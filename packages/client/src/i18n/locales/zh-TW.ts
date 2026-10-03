@@ -165,6 +165,7 @@ export default {
   },
   socialMessages: socialMessagesZhTw,
   browser: {
+    liveView: '即時瀏覽器檢視',
     title: '瀏覽器', settings: '瀏覽器設定', desktopOnly: '內建瀏覽器僅在 Ekko Studio 桌面版可用。', newTab: '新分頁',
     back: '上一頁', forward: '下一頁', reload: '重新整理', stop: '停止', addressPlaceholder: '搜尋或輸入網址', capture: '擷取畫面',
     undoAnnotation: '復原上一個', deleteAnnotation: '刪除標註 {index}',
@@ -253,6 +254,7 @@ export default {
 
   // 通用
   common: {
+    go: '前往',
     loading: '載入中...',
     cancel: '取消',
     delete: '刪除',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import {
   NButton,
   NInput,
@@ -22,6 +22,10 @@ import {
   captureScreenshot,
   sendManualInput,
   fetchViewportInfo,
+  listStoredScreenshots,
+  storeScreenshot,
+  storedScreenshotUrl,
+  deleteStoredScreenshot,
   type BrowserTabInfo,
   type ViewportInfo,
 } from '@/api/studio/browser'
@@ -43,11 +47,13 @@ interface ScreenshotEntry {
   timestamp: number
   tabId: string
   data: string
+  /** Set for server-persisted screenshots; rendered via URL instead of data. */
+  storedUrl?: string
 }
 
 // ─── Props & Setup ──────────────────────────────────────────────
 
-const props = defineProps<{ visible?: boolean }>()
+const props = defineProps<{ visible?: boolean; sessionId?: string | null }>()
 
 const { t } = useI18n()
 const message = useMessage()
@@ -112,8 +118,8 @@ function setPreview(data: string): void {
 }
 
 /**
- * Records an agent- or user-requested screenshot into the gallery. Every
- * capture is meaningful, so the only bound is the retained history length.
+ * Records a screenshot and persists it server-side (keyed by chat session) so
+ * the gallery survives reloads and is shared across devices.
  */
 function pushScreenshot(data: string, tabId: string): void {
   currentScreenshot.value = data
@@ -130,6 +136,59 @@ function pushScreenshot(data: string, tabId: string): void {
   void nextTick(() => {
     if (galleryScroll.value) galleryScroll.value.scrollTop = 0
   })
+
+  const sessionId = props.sessionId
+  if (!sessionId) return
+  const active = tabs.value.find(t => t.id === activeTabId.value)
+  void storeScreenshot(sessionId, data, {
+    tabId,
+    url: active?.url,
+    title: active?.title,
+  }).then(meta => {
+    if (!meta) return
+    // Replace the transient data URL entry with the persisted one so the
+    // gallery keeps working after a reload.
+    const index = screenshotHistory.value.findIndex(entry => entry.data === data && !entry.storedUrl)
+    if (index >= 0) {
+      screenshotHistory.value[index] = {
+        id: meta.id,
+        timestamp: meta.timestamp,
+        tabId: meta.tabId || tabId,
+        data,
+        storedUrl: storedScreenshotUrl(sessionId, meta.id),
+      }
+    }
+  }).catch(() => {
+    // Persistence failure must not break the live gallery.
+  })
+}
+
+async function loadPersistedScreenshots(): Promise<void> {
+  const sessionId = props.sessionId
+  if (!sessionId) return
+  try {
+    const stored = await listStoredScreenshots(sessionId)
+    screenshotHistory.value = stored.map(meta => ({
+      id: meta.id,
+      timestamp: meta.timestamp,
+      tabId: meta.tabId || '',
+      data: '',
+      storedUrl: storedScreenshotUrl(sessionId, meta.id),
+    }))
+  } catch {
+    // Non-fatal: the gallery just stays empty.
+  }
+}
+
+async function handleDeleteScreenshot(entry: ScreenshotEntry): Promise<void> {
+  const sessionId = props.sessionId
+  screenshotHistory.value = screenshotHistory.value.filter(e => e.id !== entry.id)
+  if (!sessionId || !entry.storedUrl) return
+  try {
+    await deleteStoredScreenshot(sessionId, entry.id)
+  } catch {
+    // Best-effort delete.
+  }
 }
 
 function normalizeUrl(input: string): string {
@@ -444,6 +503,11 @@ function disconnectSocket(): void {
 
 // ─── Lifecycle ──────────────────────────────────────────────────
 
+watch(() => props.sessionId, () => {
+  screenshotHistory.value = []
+  void loadPersistedScreenshots()
+})
+
 onMounted(async () => {
   // Check availability
   try {
@@ -461,6 +525,9 @@ onMounted(async () => {
 
   // Fetch initial state
   await refreshState()
+
+  // Restore persisted screenshots for this chat session
+  await loadPersistedScreenshots()
 
   // Connect Socket.IO for agent-driven screenshot updates
   connectSocket()
@@ -624,14 +691,25 @@ onUnmounted(() => {
           <span v-if="screenshotHistory.length" class="browser-gallery-count">{{ screenshotHistory.length }}</span>
         </div>
         <div v-if="screenshotHistory.length" ref="galleryScroll" class="browser-gallery-scroll">
-          <img
+          <div
             v-for="entry in screenshotHistory"
             :key="entry.id"
-            :src="'data:image/jpeg;base64,' + entry.data"
-            class="browser-gallery-thumb"
-            :alt="formatTimestamp(entry.timestamp)"
-            @click="lightboxImage = 'data:image/jpeg;base64,' + entry.data"
-          />
+            class="browser-gallery-item"
+          >
+            <img
+              :src="entry.storedUrl || ('data:image/jpeg;base64,' + entry.data)"
+              class="browser-gallery-thumb"
+              :alt="formatTimestamp(entry.timestamp)"
+              @click="lightboxImage = entry.storedUrl || ('data:image/jpeg;base64,' + entry.data)"
+            />
+            <button
+              type="button"
+              class="browser-gallery-delete"
+              :title="t('common.delete', 'Delete')"
+              :aria-label="t('common.delete', 'Delete')"
+              @click.stop="handleDeleteScreenshot(entry)"
+            >&times;</button>
+          </div>
         </div>
         <div v-else class="browser-gallery-empty">
           {{ t('browser.galleryEmpty', 'Screenshots taken during agent runs will appear here') }}
@@ -987,9 +1065,44 @@ onUnmounted(() => {
   }
 }
 
+.browser-gallery-item {
+  position: relative;
+  flex: 0 0 120px;
+  height: 68px;
+}
+
+.browser-gallery-delete {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity $transition-fast;
+
+  &:hover {
+    background: rgba(220, 60, 60, 0.9);
+  }
+}
+
+.browser-gallery-item:hover .browser-gallery-delete {
+  opacity: 1;
+}
+
 .browser-gallery-thumb {
   flex: 0 0 120px;
   height: 68px;
+  width: 100%;
   object-fit: cover;
   border-radius: 4px;
   cursor: pointer;

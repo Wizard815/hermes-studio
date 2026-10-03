@@ -58,6 +58,7 @@ import { chatRunRoutes } from '../modules/studio/routes/chat-run'
 import { chatWebhookPublicRoutes, chatWebhookRoutes } from '../modules/studio/routes/chat-webhooks'
 import { performanceMonitorRoutes } from '../modules/studio/routes/performance-monitor'
 import { journeyRoutes } from '../modules/hermes/routes/journey'
+import { terminalRoutes } from '../modules/hermes/routes/terminal'
 import { mcpRoutes } from '../modules/hermes/routes/mcp'
 import { runtimeVersionRoutes } from '../modules/hermes/routes/runtime-versions'
 import { legacyDataMigrationRoutes } from '../modules/hermes/routes/legacy-data-migration'
@@ -147,6 +148,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(mediaRoutes.routes())
   app.use(performanceMonitorRoutes.routes())
   app.use(journeyRoutes.routes())
+  app.use(terminalRoutes.routes())
   app.use(mcpRoutes.routes())                   // MCP management
   app.use(runtimeVersionRoutes.routes())         // Runtime and version management
   app.use(legacyDataMigrationRoutes.routes())    // One-time legacy Windows Hermes data migration

@@ -3487,6 +3487,7 @@ async function handleSessionModelCustomSubmit() {
                     <TerminalPanel
                       v-show="activeToolPanel === 'terminal'"
                       :visible="showToolPanel && activeToolPanel === 'terminal'"
+                      :session-id="chatStore.activeSessionId || null"
                     />
                     <DesktopBrowserPanel
                       v-if="electronBrowserAvailable && activeToolPanel === 'browser'"
@@ -3496,6 +3497,7 @@ async function handleSessionModelCustomSubmit() {
                     <BrowserPanel
                       v-else-if="headlessBrowserAvailable && activeToolPanel === 'browser'"
                       :visible="toolPanelTransitionReady"
+                      :session-id="chatStore.activeSessionId || null"
                     />
                   </div>
                 </template>

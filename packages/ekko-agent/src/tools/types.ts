@@ -61,6 +61,10 @@ export interface AgentToolContext {
   memoryWriteScopes?: import('../memory/types').MemoryScope[]
   memoryDefaultWriteScope?: import('../memory/types').MemoryScope
   browserSessionId?: string
+  /** Base URL of the surrounding Studio server (loopback), for UI bridges. */
+  studioBaseUrl?: string
+  /** Bearer token accepted by the Studio server for internal/loopback calls. */
+  studioToken?: string
   mcpServers?: Record<string, unknown>
   timeoutMs?: number
   signal?: AbortSignal

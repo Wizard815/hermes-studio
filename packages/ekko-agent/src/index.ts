@@ -72,6 +72,7 @@ export * from './tools/skills'
 export * from './tools/background-process-registry'
 export * from './tools/process'
 export * from './tools/terminal'
+export * from './tools/studio-bridge'
 export * from './tools/tool-result-sanitizer'
 export * from './tools/types'
 export {

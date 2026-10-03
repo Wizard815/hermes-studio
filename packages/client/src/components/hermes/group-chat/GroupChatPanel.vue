@@ -2745,6 +2745,7 @@ function handleClarifyKeydown(event: KeyboardEvent) {
                                         v-show="activeWorkspacePanel === 'terminal'"
                                         class="group-terminal-panel"
                                         :visible="showWorkspacePanel && activeWorkspacePanel === 'terminal'"
+                                        :session-id="store.currentRoomId || null"
                                     />
                                     <DesktopBrowserPanel
                                         v-if="desktopBrowserAvailable && activeWorkspacePanel === 'browser'"

@@ -50,6 +50,27 @@ import { estimateUsageTokensFromMessages } from './usage'
 import type { BackgroundContinuationContext, ChatCodingAgentId, ContentBlock, QueuedRun, SessionState } from './types'
 import { completeWorkspaceRunCheckpoint, startWorkspaceRunCheckpoint } from './workspace-diff-tracker'
 import { selectWorkspace } from '../workspace/manager'
+import { config } from '../../public/config'
+import { issueUserJwt } from '../../public/auth'
+import { findUserById, findFirstUser } from '../../repositories/users-store'
+
+/**
+ * Mint an internal JWT that the Studio auth middleware will accept on the
+ * agent↔Studio bridge paths (/api/hermes/terminal/*, /api/studio/browser/*),
+ * which the raw server token is NOT allowed on.
+ *
+ * `requireUserJwt` re-looks-up the user via `findUserById(payload.sub)` and
+ * requires `status === 'active'`, so we mint for a real existing active user
+ * record rather than a fabricated one.
+ */
+async function mintStudioBridgeJwt(authenticatedUserId?: string): Promise<string> {
+  const id = authenticatedUserId ? Number(authenticatedUserId) : undefined
+  const user = id != null && id > 0 ? findUserById(id) : findFirstUser()
+  if (!user) {
+    throw new Error('No Studio user available to mint the agent bridge token')
+  }
+  return issueUserJwt({ id: user.id, username: user.username, role: user.role })
+}
 
 export interface EkkoAgentRunSocketData {
   input: string | ContentBlock[]
@@ -1235,6 +1256,11 @@ export async function handleEkkoAgentRun(
       sessionId,
       profileId: profile,
       browserSessionId: sessionId,
+      studioBaseUrl: `http://127.0.0.1:${config.port}`,
+      // Mint a real internal JWT so the auth middleware accepts the call on
+      // the terminal/browser bridge paths (the raw server token is only
+      // allowed on the media/voice allowlist). We use the run-scoped user.
+      studioToken: await mintStudioBridgeJwt(authenticatedUserId),
       mcpServers,
       timeoutMs: 120_000,
       signal: abortController.signal,

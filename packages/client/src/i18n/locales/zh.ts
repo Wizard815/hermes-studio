@@ -165,6 +165,7 @@ export default {
   },
   socialMessages: socialMessagesZh,
   browser: {
+    liveView: '实时浏览器视图',
     title: '浏览器', settings: '浏览器设置', desktopOnly: '内置浏览器仅在 Ekko Studio 桌面端可用。', newTab: '新标签页',
     back: '后退', forward: '前进', reload: '刷新', stop: '停止', addressPlaceholder: '搜索或输入网址', capture: '截取屏幕',
     undoAnnotation: '撤销上一个', deleteAnnotation: '删除标注 {index}',
@@ -253,6 +254,7 @@ export default {
 
   // 通用
   common: {
+    go: '前往',
     loading: '加载中...',
     cancel: '取消',
     delete: '删除',

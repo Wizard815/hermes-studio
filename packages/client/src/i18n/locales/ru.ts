@@ -165,6 +165,7 @@ export default {
   },
   socialMessages: socialMessagesRu,
   browser: {
+    liveView: 'Просмотр браузера в реальном времени',
     title: 'Браузер', settings: 'Настройки браузера', desktopOnly: 'Встроенный браузер доступен только в Ekko Studio Desktop.', newTab: 'Новая вкладка',
     back: 'Назад', forward: 'Вперёд', reload: 'Обновить', stop: 'Остановить', addressPlaceholder: 'Поиск или адрес', capture: 'Сделать снимок экрана',
     undoAnnotation: 'Отменить последнюю', deleteAnnotation: 'Удалить аннотацию {index}',
@@ -251,6 +252,7 @@ export default {
 
 
   common: {
+    go: 'Перейти',
     loading: 'Загрузка...',
     cancel: 'Отмена',
     delete: 'Удалить',

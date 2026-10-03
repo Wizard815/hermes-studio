@@ -52,8 +52,12 @@ describe('shared MCP task plans', () => {
     const { runs, contextId, state, publish } = harness()
     expect(() => runs.update(contextId, 'other', steps())).toThrow('unavailable')
     expect(() => runs.update('unknown', 'research', steps())).toThrow('unavailable')
+    // Stale contexts carry a machine-readable code so clients and models stop
+    // retrying other argument shapes against an ended turn.
+    expect(() => runs.update('unknown', 'research', steps())).toThrow(expect.objectContaining({ status: 409, code: 'stale_context' }))
     state.isWorking = false
     expect(() => runs.update(contextId, 'research', steps())).toThrow('active turn')
+    expect(() => runs.update(contextId, 'research', steps())).toThrow(expect.objectContaining({ status: 409, code: 'no_active_turn' }))
     state.isWorking = true
     state.isAborting = true
     expect(() => runs.update(contextId, 'research', steps())).toThrow('active turn')

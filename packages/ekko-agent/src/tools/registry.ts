@@ -18,6 +18,7 @@ import { createRecoveryTools } from './recovery'
 import { createSearchTools } from './search'
 import { createSkillTools } from './skills'
 import { createTerminalTools } from './terminal'
+import { createStudioBridgeTools } from './studio-bridge'
 import type { EkkoExternalSkillDirectory } from '../skills/external-directories'
 import type { EkkoRecoveryService } from '../recovery'
 
@@ -123,6 +124,7 @@ export function createDefaultToolRegistry(options: DefaultToolRegistryOptions = 
     ...createSearchTools(),
     ...createImageTools(),
     ...createTerminalTools({ timeoutMs: options.executionTimeoutMs }),
+    ...createStudioBridgeTools(),
     ...createProcessTools(),
     ...createBrowserTools(),
     ...createDelegationTools(),

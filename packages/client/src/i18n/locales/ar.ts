@@ -165,6 +165,7 @@ export default {
   },
   socialMessages: socialMessagesAr,
   browser: {
+    liveView: 'عرض المتصفح المباشر',
     title: 'المتصفح', settings: 'إعدادات المتصفح', desktopOnly: 'المتصفح المدمج متوفر فقط في Ekko Studio Desktop.', newTab: 'تبويب جديد',
     back: 'رجوع', forward: 'تقدّم', reload: 'إعادة تحميل', stop: 'إيقاف', addressPlaceholder: 'ابحث أو أدخل عنوانًا', capture: 'التقاط لقطة شاشة',
     undoAnnotation: 'التراجع عن الأخير', deleteAnnotation: 'حذف التعليق {index}',
@@ -253,6 +254,7 @@ export default {
 
   // Common
   common: {
+    go: 'انتقال',
     loading: 'جارٍ التحميل...',
     cancel: 'إلغاء',
     delete: 'حذف',

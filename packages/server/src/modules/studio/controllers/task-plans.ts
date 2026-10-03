@@ -18,6 +18,6 @@ export function updateTaskPlan(ctx: Context) {
   } catch (err) {
     if (!(err instanceof TaskPlanError)) throw err
     ctx.status = err.status
-    ctx.body = { ok: false, error: err.message }
+    ctx.body = { ok: false, error: err.message, ...(err.code ? { code: err.code } : {}) }
   }
 }

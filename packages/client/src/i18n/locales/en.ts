@@ -165,6 +165,7 @@ export default {
   },
   socialMessages: socialMessagesEn,
   browser: {
+    liveView: 'Live browser view',
     title: 'Browser', settings: 'Browser Settings', desktopOnly: 'The embedded browser is available only in Ekko Studio Desktop.', newTab: 'New Tab',
     back: 'Back', forward: 'Forward', reload: 'Reload', stop: 'Stop', addressPlaceholder: 'Search or enter an address', capture: 'Capture screenshot',
     undoAnnotation: 'Undo last', deleteAnnotation: 'Delete annotation {index}',
@@ -259,6 +260,7 @@ export default {
 
   // Common
   common: {
+    go: 'Go',
     loading: 'Loading...',
     cancel: 'Cancel',
     delete: 'Delete',

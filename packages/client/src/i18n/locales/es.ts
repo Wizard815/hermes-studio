@@ -165,6 +165,7 @@ export default {
   },
   socialMessages: socialMessagesEs,
   browser: {
+    liveView: 'Vista del navegador en vivo',
     title: 'Navegador', settings: 'Ajustes del navegador', desktopOnly: 'El navegador integrado solo está disponible en Ekko Studio Desktop.', newTab: 'Nueva pestaña',
     back: 'Atrás', forward: 'Adelante', reload: 'Recargar', stop: 'Detener', addressPlaceholder: 'Buscar o escribir una dirección', capture: 'Capturar pantalla',
     undoAnnotation: 'Deshacer última', deleteAnnotation: 'Eliminar anotación {index}',
@@ -265,6 +266,7 @@ export default {
 
   // Common
   common: {
+    go: 'Ir',
     loading: 'Cargando...',
     cancel: 'Cancelar',
     retry: 'Reintentar',

@@ -209,6 +209,60 @@ export async function fetchViewportInfo(tabId: string): Promise<ViewportInfo> {
   })
 }
 
+// ─── Persistent Screenshot Store (server-side, per chat session) ─
+
+export interface StoredScreenshot {
+  id: string
+  sessionId: string
+  tabId: string
+  timestamp: number
+  mimeType: string
+  url?: string
+  title?: string
+}
+
+export async function listStoredScreenshots(sessionId: string): Promise<StoredScreenshot[]> {
+  const body = await fetchJson(
+    `${getBaseUrlValue()}/api/studio/browser/screenshots?session_id=${encodeURIComponent(sessionId)}`,
+  )
+  return Array.isArray(body?.screenshots) ? body.screenshots : []
+}
+
+export async function storeScreenshot(
+  sessionId: string,
+  data: string,
+  options?: { tabId?: string; url?: string; title?: string; mimeType?: string },
+): Promise<StoredScreenshot | null> {
+  const body = await fetchJson(`${getBaseUrlValue()}/api/studio/browser/screenshots`, {
+    method: 'POST',
+    body: JSON.stringify({
+      session_id: sessionId,
+      data,
+      tab_id: options?.tabId,
+      url: options?.url,
+      title: options?.title,
+      mime_type: options?.mimeType,
+    }),
+  })
+  return body?.screenshot || null
+}
+
+export function storedScreenshotUrl(sessionId: string, id: string): string {
+  // <img> tags cannot send an Authorization header, so authenticate the image
+  // request with the query token the auth middleware already accepts.
+  const token = getApiKey()
+  const params = new URLSearchParams({ session_id: sessionId })
+  if (token) params.set('token', token)
+  return `${getBaseUrlValue()}/api/studio/browser/screenshots/${encodeURIComponent(id)}?${params.toString()}`
+}
+
+export async function deleteStoredScreenshot(sessionId: string, id: string): Promise<void> {
+  await fetchJson(
+    `${getBaseUrlValue()}/api/studio/browser/screenshots/${encodeURIComponent(id)}?session_id=${encodeURIComponent(sessionId)}`,
+    { method: 'DELETE' },
+  )
+}
+
 // ─── Console ────────────────────────────────────────────────────
 
 export async function readConsoleLogs(tabId: string): Promise<Array<{ message: string; source: string; timestamp: number }>> {
