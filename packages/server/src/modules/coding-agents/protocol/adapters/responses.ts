@@ -186,6 +186,15 @@ for (const [namespace, tools] of HERMES_STUDIO_SPLIT_MCP_TOOLS) {
   for (const tool of tools) HERMES_STUDIO_MCP_TOOL_NAMESPACES.set(tool.name, namespace)
 }
 
+// These tools are exposed by the dedicated, context-scoped interaction server.
+// Restore only the return-call namespace; do not synthesize tools or expand
+// permissions when the MCP server has intentionally omitted them.
+for (const prefix of ['ekko', 'hermes']) {
+  for (const suffix of ['update_plan', 'clarify']) {
+    HERMES_STUDIO_MCP_TOOL_NAMESPACES.set(`${prefix}_studio_${suffix}`, `mcp__${prefix}_studio_interaction`)
+  }
+}
+
 function inputSchema(properties: Record<string, unknown> = {}, required: string[] = []) {
   return {
     type: 'object',
@@ -957,6 +966,7 @@ function responseId(data: any): string {
 
 function usageFromChat(data: any) {
   return {
+    ...data?.usage,
     input_tokens: Number(data?.usage?.prompt_tokens || 0),
     output_tokens: Number(data?.usage?.completion_tokens || 0),
     total_tokens: Number(data?.usage?.total_tokens || 0),
@@ -967,6 +977,7 @@ function usageFromAnthropic(data: any) {
   const inputTokens = Number(data?.usage?.input_tokens || 0)
   const outputTokens = Number(data?.usage?.output_tokens || 0)
   return {
+    ...data?.usage,
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: inputTokens + outputTokens,

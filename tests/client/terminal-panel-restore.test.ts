@@ -6,7 +6,7 @@ const source = () => readFileSync('packages/client/src/components/hermes/chat/Te
 describe('TerminalPanel reconnect handling', () => {
   it('keeps the session the user is viewing and only falls back when it is gone', () => {
     const src = source()
-    const restored = src.slice(src.indexOf('case "restored"'), src.indexOf('case "exited"'))
+    const restored = src.slice(src.indexOf('case "restored"'), src.indexOf('case "error"'))
 
     // The keep-selection logic must prefer the locally active session, then the
     // server's suggestion, and only then the first tab.
@@ -19,7 +19,7 @@ describe('TerminalPanel reconnect handling', () => {
 
   it('does not tear down xterm instances when the session set is unchanged', () => {
     const src = source()
-    const restored = src.slice(src.indexOf('case "restored"'), src.indexOf('case "exited"'))
+    const restored = src.slice(src.indexOf('case "restored"'), src.indexOf('case "error"'))
 
     // Disposing on every reconnect was the black-flash/blank-repaint bug.
     expect(restored).toContain('const sameSet')

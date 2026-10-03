@@ -76,7 +76,7 @@ afterEach(() => {
 })
 
 describe('coding Agent MCP manager', () => {
-  it.each(['claude-code', 'codex', 'pi', 'grok', 'opencode', 'dsh'] as const)('gives %s a shared plan/clarification MCP with enough time for a user answer', async agent => {
+  it.each(['claude-code', 'codex', 'pi', 'grok', 'opencode', 'dsh', 'cursor', 'antigravity'] as const)('gives %s a shared plan/clarification MCP with enough time for a user answer', async agent => {
     makeHome()
     const { servers } = await listCodingAgentMcpServers(agent)
     expect(servers.some(server => server.name === 'ekko-studio-plan')).toBe(false)
@@ -89,6 +89,17 @@ describe('coding Agent MCP manager', () => {
     else expect(config.timeout).toBeGreaterThanOrEqual(360_000)
     expect((config.env || config.environment).ELECTRON_RUN_AS_NODE).toBe('1')
     expect((config.env || config.environment).HERMES_MCP_USER_CLARIFICATION).toBe('1')
+  })
+
+  it('round-trips Antigravity remote URL and enable state in the native schema', async () => {
+    const home = makeHome()
+    await upsertCodingAgentMcpServer('antigravity', 'remote', { url: 'https://example.test/mcp', enabled: false })
+    const path = join(home, '.gemini', 'config', 'mcp_config.json')
+    expect(JSON.parse(readFileSync(path, 'utf8')).mcpServers.remote).toMatchObject({ serverUrl: 'https://example.test/mcp', disabled: true })
+    const { servers } = await listCodingAgentMcpServers('antigravity')
+    expect(servers.find(server => server.name === 'remote')?.raw_config).toMatchObject({ url: 'https://example.test/mcp', enabled: false })
+    await removeCodingAgentMcpServer('antigravity', 'remote')
+    expect(JSON.parse(readFileSync(path, 'utf8')).mcpServers).not.toHaveProperty('remote')
   })
 
   it('manages DSH native patches without persisting Studio-managed entries', async () => {
@@ -142,6 +153,43 @@ describe('coding Agent MCP manager', () => {
 
     const persisted = JSON.parse(readFileSync(path, 'utf-8'))
     expect(persisted.enabledMcpjsonServers).toEqual(['docs'])
+    expect(persisted.mcpServers).toEqual({
+      search: { command: 'node', args: ['search.mjs'], enabled: true },
+    })
+    expect(persisted.mcpServers['ekko-studio-api']).toBeUndefined()
+  })
+
+  it('manages Cursor JSON MCP at ~/.cursor/mcp.json without persisting Studio-managed entries', async () => {
+    const home = makeHome()
+    const path = join(home, '.cursor', 'mcp.json')
+    mkdirSync(join(home, '.cursor'), { recursive: true })
+    writeFileSync(path, `${JSON.stringify({
+      mcpServers: {
+        docs: { url: 'https://example.com/mcp', enabled: true },
+      },
+    }, null, 2)}\n`)
+
+    const initial = await listCodingAgentMcpServers('cursor')
+    expect(initial.servers.map(server => server.name)).toEqual(expect.arrayContaining([
+      'docs',
+      'ekko-studio-api',
+      'ekko-studio-browser',
+      'ekko-studio-devices',
+      'ekko-studio-use',
+      'ekko-studio-interaction',
+    ]))
+    expect(initial.servers.find(server => server.name === 'ekko-studio-api')).toMatchObject({
+      managed: true,
+    })
+
+    await upsertCodingAgentMcpServer('cursor', 'search', {
+      command: 'node',
+      args: ['search.mjs'],
+      enabled: true,
+    })
+    await removeCodingAgentMcpServer('cursor', 'docs')
+
+    const persisted = JSON.parse(readFileSync(path, 'utf-8'))
     expect(persisted.mcpServers).toEqual({
       search: { command: 'node', args: ['search.mjs'], enabled: true },
     })

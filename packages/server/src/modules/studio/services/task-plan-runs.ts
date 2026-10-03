@@ -3,7 +3,12 @@ import type { TaskPlanSnapshot } from '../contracts/task-plan'
 
 type PlanUpdate = Pick<TaskPlanSnapshot, 'explanation' | 'plan'>
 type TerminalState = Exclude<TaskPlanSnapshot['execution_state'], 'running'>
-type RunState = { isWorking: boolean; isAborting?: boolean; activeRunMarker?: string; responseRun?: { runMarker?: string } }
+type RunState = { isWorking: boolean; isAborting?: boolean; runId?: string; activeRunMarker?: string; responseRun?: { runMarker?: string } }
+
+/** Turn markers identify one turn. Coding-agent group runs only set runId. */
+function activeTurnId(state: RunState | undefined): string {
+  return state?.activeRunMarker || state?.responseRun?.runMarker || state?.runId || ''
+}
 type Binding = { sessionId: string; profile: string; resolve: () => RunState | undefined; snapshot?: TaskPlanSnapshot; publish?: (snapshot: TaskPlanSnapshot) => void }
 
 export class TaskPlanError extends Error {
@@ -62,7 +67,7 @@ export class TaskPlanRuns {
       'stale_context',
     )
     const state = binding.resolve()
-    const runId = state?.activeRunMarker || state?.responseRun?.runMarker
+    const runId = activeTurnId(state)
     if (!state?.isWorking || state.isAborting || !runId || (binding.snapshot && binding.snapshot.run_id !== runId)) {
       throw new TaskPlanError(
         'Task plan context has no active turn. The run for this context_id has already ended; a card can only be updated while its turn is running.',
@@ -81,6 +86,26 @@ export class TaskPlanRuns {
     binding.snapshot = snapshot
     binding.publish ? binding.publish(snapshot) : this.publish(binding.sessionId, snapshot)
     return structuredClone(snapshot)
+  }
+
+  isActive(contextId: string, profile: string): boolean {
+    const binding = this.bindings.get(contextId)
+    if (!binding || binding.profile !== profile) return false
+    const state = binding.resolve()
+    const runId = activeTurnId(state)
+    return Boolean(state?.isWorking && !state.isAborting && runId
+      && (!binding.snapshot || binding.snapshot.run_id === runId))
+  }
+
+  activeSnapshots(): Array<{ profile: string; snapshot: TaskPlanSnapshot }> {
+    const result: Array<{ profile: string; snapshot: TaskPlanSnapshot }> = []
+    for (const binding of this.bindings.values()) {
+      const state = binding.resolve(), snapshot = binding.snapshot
+      if (binding.publish || !snapshot || snapshot.execution_state !== 'running' || !state?.isWorking || state.isAborting) continue
+      if (activeTurnId(state) !== snapshot.run_id) continue
+      result.push({ profile: binding.profile, snapshot: structuredClone(snapshot) })
+    }
+    return result.sort((a, b) => b.snapshot.updated_at - a.snapshot.updated_at)
   }
 
   finish(contextId: string, executionState: TerminalState): void {

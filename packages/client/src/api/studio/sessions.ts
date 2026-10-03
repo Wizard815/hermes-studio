@@ -25,6 +25,7 @@ export interface SessionSummary {
   started_at: number
   ended_at: number | null
   last_active?: number
+  is_pinned?: number | boolean
   is_archived?: number | boolean
   push_enabled?: number | boolean
   message_count: number
@@ -108,6 +109,7 @@ export interface HermesSessionPage {
 }
 
 export interface HermesMessage {
+  run_usage?: import('@/utils/run-usage').RunUsageSummary
   id: number
   session_id: string
   role: 'user' | 'assistant' | 'system' | 'tool' | 'command' | 'moa'
@@ -369,7 +371,7 @@ export async function fetchHermesSessionGroups(
   profile?: string | null,
   includedSessionIds: string[] = [],
 ): Promise<HermesSessionGroupsResult> {
-  const params = new URLSearchParams({ limit: String(limit) })
+  const params = new URLSearchParams({ limit: String(limit), agent_groups: '1' })
   if (profile) params.set('profile', profile)
   for (const sessionId of includedSessionIds) params.append('include', sessionId)
   return request<HermesSessionGroupsResult>(`/api/studio/sessions/hermes/groups?${params}`)
@@ -385,6 +387,7 @@ export async function fetchHermesSessionPage(
     source,
     offset: String(offset),
     limit: String(limit),
+    agent_groups: '1',
   })
   if (profile) params.set('profile', profile)
   return request<HermesSessionPage>(`/api/studio/sessions/hermes?${params}`)
@@ -539,6 +542,13 @@ export async function unarchiveSession(id: string): Promise<boolean> {
   }
 }
 
+export function setSessionPinned(id: string, is_pinned: boolean): Promise<{ ok: boolean; is_pinned: boolean }> {
+  return request(`/api/studio/sessions/${encodeURIComponent(id)}/pin`, {
+    method: 'POST',
+    body: JSON.stringify({ is_pinned }),
+  })
+}
+
 export async function setSessionPushEnabled(id: string, pushEnabled: boolean): Promise<boolean> {
   try {
     await request(`/api/studio/sessions/${encodeURIComponent(id)}/push-enabled`, {
@@ -620,6 +630,7 @@ export async function exportSession(id: string, mode: 'full' | 'compressed' = 'f
 }
 
 export interface UsageStatsResponse {
+  cost_coverage?: import('@/utils/usage-cost').UsageCostCoverage
   total_input_tokens: number
   total_output_tokens: number
   total_cache_read_tokens: number
@@ -656,6 +667,7 @@ export interface UsageStatsResponse {
     sessions: number
     errors: number
     cost: number
+    cost_coverage?: import('@/utils/usage-cost').UsageCostCoverage
   }>
 }
 

@@ -6,6 +6,98 @@ export interface ChangelogEntry {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '0.7.29',
+    date: '2026-10-03',
+    changes: [
+      'changelog.new_0_7_29_1',
+      'changelog.new_0_7_29_2',
+    ],
+  },
+  {
+    version: '0.7.28',
+    date: '2026-10-02',
+    changes: [
+      'changelog.new_0_7_28_1',
+      'changelog.new_0_7_28_2',
+      'changelog.new_0_7_28_3',
+      'changelog.new_0_7_28_4',
+      'changelog.new_0_7_28_5',
+      'changelog.new_0_7_28_6',
+    ],
+  },
+  {
+    version: '0.7.27',
+    date: '2026-10-02',
+    changes: [
+      'changelog.new_0_7_27_1',
+      'changelog.new_0_7_27_2',
+      'changelog.new_0_7_27_3',
+      'changelog.new_0_7_27_4',
+      'changelog.new_0_7_27_5',
+      'changelog.new_0_7_27_6',
+      'changelog.new_0_7_27_7',
+      'changelog.new_0_7_27_8',
+    ],
+  },
+  {
+    version: '0.7.26',
+    date: '2026-09-30',
+    changes: [
+      'changelog.new_0_7_26_1',
+      'changelog.new_0_7_26_2',
+      'changelog.new_0_7_26_3',
+      'changelog.new_0_7_26_4',
+      'changelog.new_0_7_26_5',
+      'changelog.new_0_7_26_6',
+      'changelog.new_0_7_26_7',
+      'changelog.new_0_7_26_8',
+    ],
+  },
+  {
+    version: '0.7.25',
+    date: '2026-09-28',
+    changes: [
+      'changelog.new_0_7_25_1',
+      'changelog.new_0_7_25_2',
+      'changelog.new_0_7_25_3',
+      'changelog.new_0_7_25_4',
+      'changelog.new_0_7_25_5',
+      'changelog.new_0_7_25_6',
+      'changelog.new_0_7_25_7',
+      'changelog.new_0_7_25_8',
+      'changelog.new_0_7_25_9',
+      'changelog.new_0_7_25_10',
+    ],
+  },
+  {
+    version: '0.7.24',
+    date: '2026-09-22',
+    changes: [
+      'changelog.new_0_7_24_1',
+      'changelog.new_0_7_24_2',
+      'changelog.new_0_7_24_3',
+      'changelog.new_0_7_24_4',
+      'changelog.new_0_7_24_5',
+      'changelog.new_0_7_24_6',
+      'changelog.new_0_7_24_7',
+      'changelog.new_0_7_24_8',
+    ],
+  },
+  {
+    version: '0.7.23',
+    date: '2026-09-18',
+    changes: [
+      'changelog.new_0_7_23_1',
+      'changelog.new_0_7_23_2',
+      'changelog.new_0_7_23_3',
+      'changelog.new_0_7_23_4',
+      'changelog.new_0_7_23_5',
+      'changelog.new_0_7_23_6',
+      'changelog.new_0_7_23_7',
+      'changelog.new_0_7_23_8',
+    ],
+  },
+  {
     version: '0.7.22',
     date: '2026-09-16',
     changes: [

@@ -1,3 +1,7 @@
+import { completeRunUsage } from '../../repositories/run-usage-store'
+import { studioMcpUsageGuidelines } from '../../public/runs/prompt'
+import { leaseEkkoMcpServers } from './ekko-mcp-lease'
+import { studioMcpCapabilities } from '../../public/runs/mcp-capabilities'
 import { saveTaskPlan } from '../../repositories/task-plan-store'
 import type { TaskPlanSnapshot } from '../../contracts/task-plan'
 import type { Server, Socket } from 'socket.io'
@@ -43,6 +47,7 @@ import { recordSessionUsage } from '../usage/usage-recorder'
 import { observeRunChatPetEvent } from '../../public/pet-events'
 import { contentBlocksToString, convertContentBlocksForAgent, extractTextForPreview } from './content-blocks'
 import { buildCompressedHistory, getOrCreateSession } from './compression'
+import { handleEkkoSessionCommand, parseEkkoRunCommand } from './ekko-session-command'
 import { resolveBridgeRunModelConfig, type RunModelGroup } from './model-config'
 import { persistRunMessages, type RunMessageDraft } from './message-persistence'
 import { buildOutboundRunEvent } from './resume-payload'
@@ -122,6 +127,7 @@ export interface EkkoAgentRunSocketData {
   api_key?: string
   apiMode?: string
   api_mode?: string
+  resolved_mcp_servers?: Record<string, unknown>
   mcpServers?: Record<string, unknown>
   mcp_servers?: Record<string, unknown>
   peerExcludeSocketId?: string
@@ -136,6 +142,7 @@ export interface EkkoAgentRunSocketData {
 
 function isEkkoAgentId(data: EkkoAgentRunSocketData): boolean {
   return data.coding_agent_id === 'ekko-agent' || data.agent_id === 'ekko-agent'
+    || (data.source === 'builtin_agent' && !data.coding_agent_id && !data.agent_id)
 }
 
 function normalizeReasoningEffort(value: unknown): ModelReasoningEffort | undefined {
@@ -448,7 +455,13 @@ export async function handleEkkoAgentRun(
     return
   }
   if (!isEkkoAgentId(data)) {
-    socket.emit('run.failed', { event: 'run.failed', session_id: sessionId, error: 'ekko-agent run requires coding_agent_id=ekko-agent' })
+    socket.emit('run.failed', { event: 'run.failed', session_id: sessionId, error: 'ekko-agent run requires agent_id=ekko-agent' })
+    return
+  }
+  const storedSession = getSession(sessionId)
+  const command = parseEkkoRunCommand(data, storedSession?.source)
+  if (command && !backgroundContinuationContext) {
+    await handleEkkoSessionCommand(nsp, socket, data, command, profile, sessionMap, dequeueNextQueuedRun)
     return
   }
   const authenticatedUserId = socket.data?.user?.id == null ? undefined : String(socket.data.user.id)
@@ -458,16 +471,18 @@ export async function handleEkkoAgentRun(
   state.isWorking = true
   state.isAborting = false
   state.profile = profile
+  state.webhookAgent = 'ekko'
   state.source = data.session_source === 'group_chat' || data.source === 'group_chat'
     ? 'group_chat'
     : data.session_source === 'workflow' || data.source === 'workflow'
       ? 'workflow'
-      : 'coding_agent'
+      : data.session_source === 'global_agent' || data.source === 'global_agent'
+        ? 'global_agent'
+        : 'builtin_agent'
   state.events = []
   const abortController = new AbortController()
   state.abortController = abortController
 
-  const storedSession = getSession(sessionId)
   if (storedSession && !storedSession.user_id && authenticatedUserId) {
     updateSession(sessionId, { user_id: authenticatedUserId })
   }
@@ -511,17 +526,21 @@ export async function handleEkkoAgentRun(
   const storageText = data.storage_message !== undefined ? data.storage_message : displayText
   const shouldPersistUserMessage = !skipUserMessage && displayInput !== null
   const now = Math.floor(Date.now() / 1000)
-  const instructions = String(data.instructions || '').trim()
+  const mcpServers = data.resolved_mcp_servers ?? resolveEkkoMcpServers(profile, data.mcpServers || data.mcp_servers)
+  const instructions = [
+    String(data.instructions || '').trim(),
+    studioMcpUsageGuidelines(studioMcpCapabilities(mcpServers)),
+  ].filter(Boolean).join('\n\n')
   const instructionMessages: AgentMessage[] = instructions
     ? [{ role: 'system', content: instructions }]
     : []
-  const sessionSource = data.session_source === 'global_agent'
+  const sessionSource = data.session_source === 'global_agent' || data.source === 'global_agent'
     ? 'global_agent'
     : data.session_source === 'group_chat' || data.source === 'group_chat'
       ? 'group_chat'
       : data.session_source === 'workflow' || data.source === 'workflow'
         ? 'workflow'
-        : 'coding_agent'
+        : 'builtin_agent'
   const emit = (event: string, payload: any) => {
     const tagged = { ...payload, session_id: sessionId }
     observeRunChatPetEvent(profile, event, tagged)
@@ -641,7 +660,6 @@ export async function handleEkkoAgentRun(
     model: modelConfig.model,
     accessToken: apiKey,
   })
-  const mcpServers = resolveEkkoMcpServers(profile, data.mcpServers || data.mcp_servers)
   const modelClient = createProviderModelClient(createModelClient(providerConfig, { fetch: authorizedProviderFetch }), {
     providerConfig,
     fallback: fallbackProviderConfig
@@ -668,15 +686,33 @@ export async function handleEkkoAgentRun(
     created_at: plan.createdAt,
     updated_at: plan.updatedAt,
   })
+  state.nativeUsageSource = undefined
+  let interruptedMessagePersisted = false
   let assistantText = ''
   let assistantReasoning = ''
   let assistantMessageId: string | null = null
   let runId = ''
+  const finalizeInterruptedUsage = () => {
+    if (!runId) return undefined
+    if (!interruptedMessagePersisted && state.finalizeRunUsage !== finalizeInterruptedUsage) return undefined
+    if (!interruptedMessagePersisted) {
+      if (assistantText.trim() || assistantReasoning.trim() || !assistantMessageId) {
+        const { ids } = persistRunMessages(state, { sessionId, runMarker: runId, appendToState: true,
+          messages: [{ role: 'assistant', content: assistantText, reasoning: assistantReasoning || null,
+            reasoning_content: assistantReasoning || null, finish_reason: 'interrupted' }] })
+        if (ids[0] != null) assistantMessageId = String(ids[0])
+      }
+      interruptedMessagePersisted = true
+    }
+    return completeRunUsage(sessionId, runId, assistantMessageId)
+  }
+  state.finalizeRunUsage = finalizeInterruptedUsage
   let workspaceDiffRunId = ''
   let workspaceDiffCompleted = false
   let usageInput = 0
   let usageOutput = 0
   let usageCallIndex = 0
+  let modelStartedAt: number | undefined
   let contextEstimate: any
   let parentUsagePersisted = false
   const pendingToolGroups = new Map<string, PendingToolGroup>()
@@ -909,7 +945,16 @@ export async function handleEkkoAgentRun(
     group.results.set(toolCallId, { toolName, result })
     persistCompletedToolGroup(group)
   }
+  let releaseMcp = () => {}
+  let foregroundEnded = false
+  const mcpBackgroundTasks = new Set<string>()
+  const releaseIdleMcp = () => { if (foregroundEnded && !mcpBackgroundTasks.size) releaseMcp() }
   const handleRuntimeEvent = (event: AgentRuntimeEvent) => {
+    if (event.type === 'subagent.start' && event.background) mcpBackgroundTasks.add(event.subagentId)
+    if (event.type === 'subagent.complete' && event.background) {
+      mcpBackgroundTasks.delete(event.subagentId)
+      releaseIdleMcp()
+    }
     if ('runId' in event) runId = event.runId
     if (event.type === 'run.started') {
       startWorkspaceRunDiff(event.runId)
@@ -956,6 +1001,8 @@ export async function handleEkkoAgentRun(
         run_id: event.runId,
         delta: event.text,
       })
+    } else if (event.type === 'model.started') {
+      modelStartedAt = performance.now()
     } else if (event.type === 'model.usage') {
       usageInput += event.usage.inputTokens || 0
       usageOutput += event.usage.outputTokens || 0
@@ -963,6 +1010,8 @@ export async function handleEkkoAgentRun(
       recordSessionUsage({
         sessionId,
         runId: `${event.runId}:step:${event.step}:call:${usageCallIndex}`,
+        parentRunId: event.runId,
+        apiDuration: modelStartedAt == null ? undefined : (performance.now() - modelStartedAt) / 1000,
         source: 'ekko_agent',
         agent: 'ekko_agent',
         usageScope: 'model_call',
@@ -1125,9 +1174,10 @@ export async function handleEkkoAgentRun(
           recordSessionUsage({
             sessionId,
             runId: `${event.runId}:subagent:${event.subagentId}`,
+            parentRunId: event.background ? undefined : event.runId,
             source: 'ekko_agent',
             agent: 'ekko_agent',
-            usageScope: 'model_call',
+            usageScope: 'run',
             purpose: event.background ? 'ekko-background-subtask' : 'ekko-subtask',
             apiCalls: event.apiCalls,
             usage: {
@@ -1136,6 +1186,8 @@ export async function handleEkkoAgentRun(
               cacheReadTokens: event.cacheReadTokens,
               cacheWriteTokens: event.cacheWriteTokens,
               reasoningTokens: event.reasoningTokens,
+              costUsd: event.costUsd,
+              costSource: event.costSource,
             },
             profile,
             model: modelConfig.model,
@@ -1247,6 +1299,9 @@ export async function handleEkkoAgentRun(
   }
 
   try {
+    const mcpLease = await leaseEkkoMcpServers(mcpServers, { sessionId, profile,
+      userId: socket.data?.user?.id, signal: abortController.signal })
+    releaseMcp = mcpLease.dispose
     logger.info('[chat-run-socket] starting ekko-agent run for session %s', sessionId)
     const toolContext = {
       cwd: workspace,
@@ -1261,7 +1316,8 @@ export async function handleEkkoAgentRun(
       // the terminal/browser bridge paths (the raw server token is only
       // allowed on the media/voice allowlist). We use the run-scoped user.
       studioToken: await mintStudioBridgeJwt(authenticatedUserId),
-      mcpServers,
+      mcpServers: mcpLease.servers,
+      mcpSessionSignal: mcpLease.signal,
       timeoutMs: 120_000,
       signal: abortController.signal,
       requestToolApproval: (request: AgentToolApprovalRequest) => waitForEkkoToolApproval(request, {
@@ -1367,7 +1423,10 @@ export async function handleEkkoAgentRun(
             toolContext,
             metadata,
             backgroundDelegationEnabled: data.background_delegation_enabled !== false,
-          }).then((estimate: any) => estimate.contextTokens)
+          }).then((estimate: any) => {
+            state.ekkoContext = { fixedContextTokens: estimate.contextTokens }
+            return estimate.contextTokens
+          })
           return (await estimatePromise) + localMessageTokens
         },
         currentInputTokens,
@@ -1541,6 +1600,7 @@ export async function handleEkkoAgentRun(
         autonomous: data.autonomous === true,
         delegation_id: data.background_delegation_id,
         workspace_run_change: completeWorkspaceRunDiff(),
+        run_usage: completeRunUsage(sessionId, runId, assistantMessageId),
       })
       return
     }
@@ -1615,10 +1675,13 @@ export async function handleEkkoAgentRun(
       autonomous: data.autonomous === true,
       delegation_id: data.background_delegation_id,
       workspace_run_change: workspaceRunChange,
+      run_usage: completeRunUsage(sessionId, runId || result.runId, assistantMessageId),
     })
   } catch (err) {
     if (abortController.signal.aborted || isAbortError(err)) {
       logger.info('[chat-run-socket] ekko-agent run aborted for session %s', sessionId)
+      try { finalizeInterruptedUsage() }
+      catch (usageError) { logger.warn({ err: usageError, sessionId }, '[run-usage] interrupted Ekko usage failed') }
       completeWorkspaceRunDiff()
       return
     }
@@ -1644,8 +1707,11 @@ export async function handleEkkoAgentRun(
       autonomous: data.autonomous === true,
       delegation_id: data.background_delegation_id,
       workspace_run_change: completeWorkspaceRunDiff(),
+      run_usage: completeRunUsage(sessionId, runId, assistantMessageId),
     })
   } finally {
+    foregroundEnded = true
+    releaseIdleMcp()
     if (!abortController.signal.aborted || state.abortController === abortController) {
       state.isWorking = false
       state.isAborting = false

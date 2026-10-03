@@ -124,6 +124,17 @@ describe('loadSessionStateFromDb', () => {
     getUsageMock.mockReturnValue({ input_tokens: 8_000, output_tokens: 1_000 })
   })
 
+  it('restores Ekko totals before interpreting the legacy coding_agent source', async () => {
+    getSessionMock.mockReturnValue({ id: 'session-1', agent: 'ekko-agent', source: 'coding_agent' })
+    getSessionDetailPaginatedMock.mockReturnValue({ messages: [], total: 0 })
+    getRecordedUsageTotalsMock.mockReturnValue({ inputTokens: 1234, outputTokens: 56, cacheReadTokens: 78, cacheWriteTokens: 0 })
+    getUsageMock.mockReturnValue({ input_tokens: 12, output_tokens: 3 })
+    const { loadSessionStateFromDb } = await import('../../packages/server/src/modules/studio/services/chat-run/load-state')
+    const state = await loadSessionStateFromDb('session-1', new Map())
+    expect(getRecordedUsageTotalsMock).toHaveBeenCalledWith('session-1', 'ekko_agent')
+    expect(state).toMatchObject({ inputTokens: 1234, outputTokens: 56, cacheReadTokens: 78 })
+  })
+
   it('hydrates persisted usage without reconstructing complete history on resume', async () => {
     const { loadSessionStateFromDb } = await import('../../packages/server/src/modules/studio/services/chat-run/load-state')
 
@@ -165,5 +176,21 @@ describe('loadSessionStateFromDb', () => {
         dispatchPayload: expect.objectContaining({ mode: 'background' }),
       }),
     })
+  })
+
+  it('restores Cursor native usage without turning aggregate consumption into context occupancy', async () => {
+    getSessionMock.mockReturnValue({ id: 'session-1', agent: 'cursor', source: 'coding_agent' })
+    getRecordedUsageTotalsMock.mockReturnValue({ inputTokens: 24_003, outputTokens: 474, cacheReadTokens: 20_736, cacheWriteTokens: 0 })
+    getUsageMock.mockReturnValue({ input_tokens: 24_003, output_tokens: 474, cache_read_tokens: 20_736 })
+    const { loadSessionStateFromDb } = await import('../../packages/server/src/modules/studio/services/chat-run/load-state')
+
+    const state = await loadSessionStateFromDb('session-1', new Map())
+
+    expect(getRecordedUsageTotalsMock).toHaveBeenCalledWith('session-1', 'coding_agent')
+    expect(state.inputTokens).toBe(24_003)
+    expect(state.outputTokens).toBe(474)
+    expect(state.cacheReadTokens).toBe(20_736)
+    expect(state.cacheWriteTokens).toBe(0)
+    expect(state.contextTokens).toBeUndefined()
   })
 })

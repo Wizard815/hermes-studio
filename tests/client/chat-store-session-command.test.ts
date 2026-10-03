@@ -38,6 +38,7 @@ vi.mock('@/api/studio/chat', () => ({
     chatApi.sessionTitleUpdatedHandlers.push(handler)
     return vi.fn()
   }),
+  onRunUsageUpdated: vi.fn(() => vi.fn()),
   onSessionWorkspaceUpdated: vi.fn((handler: (event: any) => void) => {
     chatApi.sessionWorkspaceUpdatedHandlers.push(handler)
     return vi.fn()
@@ -70,6 +71,7 @@ vi.mock('@/utils/completion-sound', () => ({
 }))
 
 import { useChatStore, type Session } from '@/stores/hermes/chat'
+import { fetchSessions } from '@/api/studio/sessions'
 
 function makeSession(): Session {
   return {
@@ -89,6 +91,65 @@ describe('chat store session.command fanout', () => {
     chatApi.sessionTitleUpdatedHandlers = []
     chatApi.startRunViaSocket.mockReturnValue({ abort: vi.fn() })
     setActivePinia(createPinia())
+  })
+
+  it.each(['context', 'usage', 'status', 'compact'])('sends Ekko /%s as a built-in command with compatible transport', async command => {
+    const store = useChatStore()
+    const session = { ...makeSession(), source: 'coding_agent', agent: 'ekko-agent', codingAgentId: 'ekko-agent' as const, codingAgentMode: 'scoped' as const, model: 'gpt-test', provider: 'openai' }
+    store.sessions = [session]
+    store.activeSessionId = session.id
+    store.activeSession = session
+    await store.sendMessage(`/${command}`)
+    expect(store.messages[0]).toMatchObject({ role: 'command', content: `/${command}`, queued: false })
+    expect(chatApi.startRunViaSocket.mock.calls[0]?.[0]).toMatchObject({ source: 'builtin_agent', agent_id: 'ekko-agent', mode: 'scoped', input: `/${command}` })
+    expect(chatApi.startRunViaSocket.mock.calls[0]?.[0]).not.toHaveProperty('coding_agent_id')
+    expect(store.isStreaming).toBe(false)
+  })
+
+  it('creates an Ekko direct chat with the real builtin source even from legacy options', () => {
+    const store = useChatStore()
+    const session = store.newChat({ agent: 'ekko-agent', source: 'coding_agent', codingAgentMode: 'global', model: 'native-model', provider: 'native-provider' })
+    expect(session).toMatchObject({ source: 'builtin_agent', agent: 'ekko-agent', codingAgentMode: 'scoped', model: 'native-model', provider: 'native-provider' })
+  })
+
+  it.each(['cursor', 'codex', 'claude-code', 'pi', 'grok', 'opencode', 'dsh'])('keeps %s cumulative usage through partial updates and session refresh', async agent => {
+    const store = useChatStore()
+    store.sessions = [
+      { ...makeSession(), source: 'coding_agent', agent, inputTokens: 24_003, outputTokens: 474, contextTokens: 8000 },
+      { ...makeSession(), id: 'other-session', source: 'coding_agent', agent, inputTokens: 900_000, outputTokens: 1000 },
+    ]
+    store.activeSessionId = 'session-1'
+    store.activeSession = store.sessions[0]
+    chatApi.sessionCommandHandlers[0]({
+      event: 'session.command', session_id: 'session-1', command: 'usage', action: 'usage',
+      available: true, cacheReadTokens: 20_736, cacheWriteTokens: 0, contextTokens: null,
+    })
+    const expected = { inputTokens: 24_003, outputTokens: 474, cacheReadTokens: 20_736, cacheWriteTokens: 0, contextTokens: 8000 }
+    expect(store.activeSession).toMatchObject(expected)
+    expect(store.sessions[1]).toMatchObject({ inputTokens: 900_000, outputTokens: 1000 })
+    vi.mocked(fetchSessions).mockResolvedValue([{
+      id: 'session-1', source: 'coding_agent', agent, input_tokens: 24_003, output_tokens: 474,
+      cache_read_tokens: 20_736, cache_write_tokens: 0, started_at: 1, last_active: 2,
+    }] as any)
+    await store.refreshSessionListOnly('default')
+    expect(store.activeSession).toMatchObject(expected)
+  })
+
+  it('keeps known counters when native usage is unavailable, while retaining the command result', () => {
+    const store = useChatStore()
+    const session = makeSession()
+    store.sessions = [{ ...session, inputTokens: 123, outputTokens: 45 }]
+    store.activeSessionId = 'session-1'
+    store.activeSession = store.sessions[0]
+
+    chatApi.sessionCommandHandlers[0]({
+      event: 'session.command', session_id: 'session-1', command: 'usage', action: 'usage',
+      available: false, inputTokens: null, outputTokens: null,
+      message: 'Usage: unknown.', messageKey: 'nativeUsageUnknown',
+    })
+
+    expect(store.sessions[0]).toMatchObject({ inputTokens: 123, outputTokens: 45 })
+    expect(store.messages.at(-1)).toMatchObject({ role: 'command', commandData: { available: false } })
   })
 
   it('attaches to a goal resume run started from another window', () => {
@@ -197,6 +258,27 @@ describe('chat store session.command fanout', () => {
       phase: 'stopping_current_turn',
       guarantee: 'immediate',
       requestedAt: 124,
+    })
+
+    handlers.onQueueInsertionUpdated({
+      event: 'run.queue_insertion.updated',
+      session_id: 'session-1',
+      generation: 'generation-1',
+      run_id: 'run-1',
+      queue_id: 'queue-follow-up',
+      runtime: 'cursor',
+      phase: 'stopping_current_turn',
+      guarantee: 'immediate',
+      requested_at: 125,
+    })
+    expect(store.queueInsertionStates.get('session-1')).toEqual({
+      generation: 'generation-1',
+      runId: 'run-1',
+      queueId: 'queue-follow-up',
+      runtime: 'cursor',
+      phase: 'stopping_current_turn',
+      guarantee: 'immediate',
+      requestedAt: 125,
     })
 
     handlers.onQueueInsertionUpdated({

@@ -184,6 +184,21 @@ describe('group chat store baseline lifecycle', () => {
     groupChatApiMock.socket.disconnect.mockClear()
   })
 
+  it('keeps group usage cards visible when tool traces are hidden and updates their existing identity', async () => {
+    const store = await loadStore()
+    await store.connect()
+    store.currentRoomId = 'room-1'
+    const usage = { runId: 'group-run', assistantMessageId: 'reply', inputTokens: 1200, outputTokens: 200,
+      cacheReadTokens: 300, cacheHitRate: 0.25, costUsd: 0.0123, tokensPerSecond: 50, isEstimated: false }
+    const message = { id: 'usage', roomId: 'room-1', senderId: 'agent-1', senderName: 'Worker', role: 'tool',
+      tool_name: 'run_usage', tool_call_id: 'usage', run_id: 'group-run', timestamp: 2, content: JSON.stringify(usage) }
+    emitSocket('message', message)
+    expect(store.sortedMessages[0]).toMatchObject({ role: 'assistant', content: '', runUsage: { outputTokens: 200 } })
+    emitSocket('message', { ...message, content: JSON.stringify({ ...usage, outputTokens: 250 }) })
+    expect(store.sortedMessages).toHaveLength(1)
+    expect(store.sortedMessages[0].runUsage?.outputTokens).toBe(250)
+  })
+
   it('connects with stored user data and registers realtime handlers', async () => {
     const store = await loadStore()
 
@@ -1107,6 +1122,47 @@ describe('group chat store baseline lifecycle', () => {
 
     emitSocket('room_cleared', { roomId: 'room-1', totalTokens: 0 })
     expect(store.pendingApprovals.size).toBe(0)
+  })
+
+  it('keeps the cleared room Agent avatars after switching away and back', async () => {
+    const store = await loadStore()
+    const roster = [1, 2, 3].map(index => ({ ...agent, id: `agent-${index}`, name: `Worker ${index}`, avatar: JSON.stringify({ type: 'generated', seed: `worker-${index}` }) }))
+    groupChatApiMock.getRoomDetail.mockImplementation(async (id: string) => ({
+      room: { ...room, id }, messages: [], agents: id === room.id ? roster : [], members: [], total: 0, hasMore: false,
+    }))
+    groupChatApiMock.socket.emit.mockImplementation((event: string, data?: any, ack?: Function) => {
+      if (event === 'join') ack?.({ roomId: data.roomId, agents: data.roomId === room.id ? roster : [] })
+      return groupChatApiMock.socket
+    })
+    await store.connect()
+    await store.joinRoom(room.id)
+    const avatars = store.roomAgentsForRoom(room.id)
+    expect(avatars).toHaveLength(3)
+    await store.clearCurrentRoomContext()
+    expect(store.roomAgentsForRoom(room.id)).toEqual(avatars)
+    await store.joinRoom('room-2')
+    expect(store.roomAgentsForRoom(room.id)).toEqual(avatars)
+    await store.joinRoom(room.id)
+    expect(store.roomAgentsForRoom(room.id)).toEqual(avatars)
+    await store.joinRoom('room-2')
+    expect(store.roomAgentsForRoom(room.id)).toEqual(avatars)
+  })
+
+  it('applies a delayed clear response only to the room that was cleared', async () => {
+    const store = await loadStore()
+    store.rooms = [{ ...room, agents: [] }, { ...room, id: 'room-2', totalTokens: 20 }]
+    store.currentRoomId = room.id
+    let finish!: (value: any) => void
+    groupChatApiMock.clearRoomContext.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const clearing = store.clearCurrentRoomContext()
+    store.currentRoomId = 'room-2'
+    store.messages = [userMessage({ roomId: 'room-2', content: 'Keep this' })]
+    finish({ success: true, room: { ...room, totalTokens: 0 } })
+    await clearing
+    expect(store.messages[0]?.content).toBe('Keep this')
+    expect(store.rooms.map(item => item.id)).toEqual(['room-1', 'room-2'])
+    expect(store.rooms.find(item => item.id === room.id)?.totalTokens).toBe(0)
+    expect(store.rooms.find(item => item.id === 'room-2')?.totalTokens).toBe(20)
   })
 
   it('tracks live rolling-summary status by room', async () => {

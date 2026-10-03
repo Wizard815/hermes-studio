@@ -1,3 +1,5 @@
+import { isNativeCodingAgent, isGlobalOnlyCodingAgent } from '../../contracts/agents/native-coding-agents'
+import { bindRunPushTarget, pushRunTransaction, type PushActor } from '../../repositories/run-push-store'
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
 import {
@@ -31,6 +33,7 @@ import {
   type WorkflowRunNodeStatus,
   type WorkflowRunRecord,
 } from '../../repositories/workflow-run-store'
+import { cancelWorkflowQualityReviews, scheduleWorkflowQualityReview } from './quality-review'
 import { createSession, deleteSession, getSession, getSessionDetail } from '../../repositories/session-store'
 import type { ContentBlock } from '../../contracts/runs/session'
 import type { AuthenticatedUser } from '../../public/auth'
@@ -49,13 +52,13 @@ export type { WorkflowCreateInput, WorkflowRecord, WorkflowUpdateInput }
 
 export type WorkflowRuntimeState = 'idle' | 'queued' | 'running' | 'pending_approval' | 'completed' | 'skipped' | 'failed' | 'approval_rejected' | 'canceled'
 export type WorkflowRunType = 'workflow'
-export type WorkflowNodeAgent = 'hermes' | 'ekko-agent' | 'claude-code' | 'codex' | 'pi' | 'grok' | 'opencode' | 'dsh'
+export type WorkflowNodeAgent = 'hermes' | 'ekko-agent' | 'claude-code' | 'codex' | 'pi' | 'grok' | 'opencode' | 'dsh' | 'cursor' | 'antigravity' | 'qwen' | 'kimi' | 'codebuddy' | 'qoder' | 'copilot' | 'zcode'
 
 export interface WorkflowNodeRunTarget {
   type: WorkflowRunType
   source: 'workflow'
-  agent: 'hermes' | 'ekko-agent' | 'claude' | 'codex' | 'pi' | 'grok' | 'opencode' | 'dsh'
-  codingAgentId?: 'ekko-agent' | 'claude-code' | 'codex' | 'pi' | 'grok' | 'opencode' | 'dsh'
+  agent: 'hermes' | 'ekko-agent' | 'claude' | 'codex' | 'pi' | 'grok' | 'opencode' | 'dsh' | 'cursor' | 'antigravity' | 'qwen' | 'kimi' | 'codebuddy' | 'qoder' | 'copilot' | 'zcode'
+  codingAgentId?: 'ekko-agent' | 'claude-code' | 'codex' | 'pi' | 'grok' | 'opencode' | 'dsh' | 'cursor' | 'antigravity' | 'qwen' | 'kimi' | 'codebuddy' | 'qoder' | 'copilot' | 'zcode'
 }
 
 export interface WorkflowRuntimeStatus {
@@ -78,6 +81,8 @@ export interface WorkflowExecutionPreflightResult {
 }
 
 export interface WorkflowRunNowInput {
+  pushActor?: PushActor
+  pushSnapshot?: { ciphertext: string | null; platform: string }
   profile?: string | null
   startNodeIds?: string[]
   input?: string | null
@@ -274,6 +279,14 @@ export function resolveWorkflowNodeRunTarget(agent?: string | null): WorkflowNod
       codingAgentId: 'grok',
     }
   }
+  if ((agent === 'cursor' || agent === 'antigravity' || isNativeCodingAgent(agent))) {
+    return {
+      type: 'workflow',
+      source: 'workflow',
+      agent,
+      codingAgentId: agent,
+    }
+  }
   if (agent === 'opencode' || agent === 'dsh') {
     return {
       type: 'workflow',
@@ -315,16 +328,16 @@ export function normalizeWorkflowNode(raw: unknown): WorkflowNodeSnapshot | null
     join = orchestration.join
   }
   const agent = typeof data.agent === 'string' && data.agent.trim() ? data.agent.trim() : 'hermes'
-  if (agent !== 'hermes' && agent !== 'ekko-agent' && agent !== 'claude-code' && agent !== 'codex' && agent !== 'pi' && agent !== 'grok' && (agent !== 'opencode' && agent !== 'dsh')) {
+  if (agent !== 'hermes' && agent !== 'ekko-agent' && agent !== 'claude-code' && agent !== 'codex' && agent !== 'pi' && agent !== 'grok' && (agent !== 'cursor' && (agent !== 'antigravity' && !isNativeCodingAgent(agent))) && (agent !== 'opencode' && agent !== 'dsh')) {
     throw new Error(`workflow node ${id} has unsupported agent runtime`)
   }
-  const agentMode = data.agentMode === 'global' ? 'global' : 'scoped'
-  if (agentMode === 'global' && agent !== 'claude-code' && agent !== 'codex' && agent !== 'pi' && agent !== 'grok' && (agent !== 'opencode' && agent !== 'dsh')) {
+  const agentMode = isGlobalOnlyCodingAgent(agent) ? 'global' : data.agentMode === 'global' ? 'global' : 'scoped'
+  if (agentMode === 'global' && !isNativeCodingAgent(agent) && agent !== 'claude-code' && agent !== 'codex' && agent !== 'pi' && agent !== 'grok' && agent !== 'cursor' && agent !== 'antigravity' && (agent !== 'opencode' && agent !== 'dsh')) {
     throw new Error(`workflow node ${id} cannot use global mode with this agent runtime`)
   }
-  const provider = typeof data.provider === 'string' ? data.provider.trim() : ''
-  const model = typeof data.model === 'string' ? data.model.trim() : ''
-  const apiMode = typeof data.apiMode === 'string' ? data.apiMode.trim() : ''
+  const provider = !isGlobalOnlyCodingAgent(agent) && typeof data.provider === 'string' ? data.provider.trim() : ''
+  const model = !isGlobalOnlyCodingAgent(agent) && typeof data.model === 'string' ? data.model.trim() : ''
+  const apiMode = !isGlobalOnlyCodingAgent(agent) && typeof data.apiMode === 'string' ? data.apiMode.trim() : ''
   const targetFieldCount = [provider, model, apiMode].filter(Boolean).length
   if (targetFieldCount !== 0 && targetFieldCount !== 3) {
     throw new Error(`workflow node ${id} target must set provider, model, and apiMode together`)
@@ -941,7 +954,7 @@ function workflowOutputConditionContext(output: string, edges: WorkflowEdgeSnaps
 
 function isWorkflowCodingAgentSession(session?: { source?: string | null; agent?: string | null; agent_session_id?: string | null } | null): boolean {
   const agent = String(session?.agent || '').trim()
-  return agent === 'ekko-agent' || agent === 'claude' || agent === 'codex' || agent === 'pi' || agent === 'grok' || (agent === 'opencode' || agent === 'dsh') || Boolean(session?.agent_session_id)
+  return agent === 'ekko-agent' || agent === 'claude' || agent === 'codex' || agent === 'pi' || agent === 'grok' || (agent === 'cursor' || agent === 'antigravity' || isNativeCodingAgent(agent)) || (agent === 'opencode' || agent === 'dsh') || Boolean(session?.agent_session_id)
 }
 
 async function deleteHermesSessionIfPresent(sessionId: string, profile: string): Promise<void> {
@@ -1170,6 +1183,7 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
     if (!run || run.workflow_id !== workflowId) return null
     if (run.status !== 'queued' && run.status !== 'running') return run
     this.canceledRunIds.add(runId)
+    cancelWorkflowQualityReviews(runId)
     this.cancelPendingNodeApprovals(runId)
     const finishedAt = Date.now()
     const nodeStatuses: Record<string, WorkflowRuntimeState> = {}
@@ -1535,7 +1549,7 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
           ...(node.data.agentMode !== 'global' && node.data.reasoningEffort !== 'default'
             ? { reasoning_effort: node.data.reasoningEffort }
             : {}),
-        }, { profile, user: args.user, timeoutMs: remainingTimeoutMs, approvalChoice: 'once' })
+        }, { profile, user: args.user, timeoutMs: remainingTimeoutMs, approvalChoice: 'once', pushRoot: { kind: 'workflow', profile, runId: run.id } })
         if (isCanceled()) throw new Error(getWorkflowRun(run.id)?.error || 'Workflow run canceled')
         if (!runResult.ok) {
           const rawError = runResult.error || `node ${node.id} failed`
@@ -1568,7 +1582,8 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
         if (isCanceled()) throw new Error(getWorkflowRun(run.id)?.error || 'Workflow run canceled')
         if (!approved) throw new Error('Workflow node approval rejected')
         outputs.set(node.id, output)
-        updateWorkflowRunNodeSession(nodeSession.id, { status: 'completed', finished_at: Date.now(), error: null })
+        const completedNodeSession = updateWorkflowRunNodeSession(nodeSession.id, { status: 'completed', finished_at: Date.now(), error: null })
+        if (completedNodeSession) scheduleWorkflowQualityReview({ run, node, nodeSession: completedNodeSession, input: assembledInput, output })
         nodeStatuses[node.id] = 'completed'
         const outgoingEdges = forwardEdges.filter(item => activeIds.has(item.target) && item.source === node.id)
         const conditionContext = workflowOutputConditionContext(output, outgoingEdges)
@@ -2060,6 +2075,7 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
             user: args.user,
             timeoutMs: remainingTimeoutMs,
             approvalChoice: 'once',
+            pushRoot: { kind: 'workflow', profile, runId: run.id },
           })
           if (!runResult.ok) {
             const error = runResult.error || `node ${node.id} failed`
@@ -2144,7 +2160,8 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
             runId: run.id,
             nodeStatuses: { ...nodeStatuses },
           })
-          updateWorkflowRunNodeSession(nodeSession.id, { status: 'completed', finished_at: Date.now(), error: null })
+          const completedNodeSession = updateWorkflowRunNodeSession(nodeSession.id, { status: 'completed', finished_at: Date.now(), error: null })
+          if (completedNodeSession) scheduleWorkflowQualityReview({ run, node, nodeSession: completedNodeSession, input: assembledInput, output })
           return { node, ok: true }
           })()
           inFlight.set(node.id, execution)
@@ -2244,8 +2261,10 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
       const startedAt = Date.now()
       const runDeadline = input.timeoutMs && input.timeoutMs > 0 ? startedAt + input.timeoutMs : null
       const snapshot = workflowRunSnapshotGraph(workflow.nodes, workflow.edges, executionPreflight.compiled)
-      run = createWorkflowRun({
+      const createRun = () => {
+        const created = createWorkflowRun({
         workflow_id: workflow.id,
+        user_id: input.user?.id ?? input.pushActor?.userId ?? null,
         profile,
         workspace: workflow.workspace,
         start_node_ids: executionPreflight.schedulerStartNodeIds,
@@ -2261,6 +2280,10 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
         trigger_source: input.triggerSource === 'scheduled' ? 'scheduled' : 'manual',
         scheduled_at: input.triggerSource === 'scheduled' ? input.scheduledAt ?? null : null,
       })
+        if (input.pushActor) bindRunPushTarget({ kind: 'workflow', profile, runId: created.id }, workflow.id, input.pushActor, input.pushSnapshot)
+        return created
+      }
+      run = input.pushActor ? pushRunTransaction(createRun) : createRun()
     } finally {
       releaseAdmission()
     }

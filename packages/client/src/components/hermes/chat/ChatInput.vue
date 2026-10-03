@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { isBuiltinEkkoSession, isExternalCodingAgentSession } from '@/utils/hermes/session-agent'
+import { EKKO_SESSION_COMMAND_DEFINITIONS } from '@/utils/hermes/bridge-session-commands'
 import type { Attachment } from '@/stores/hermes/chat'
 import { useChatStore } from '@/stores/hermes/chat'
 import { useAppStore } from '@/stores/hermes/app'
@@ -6,10 +8,9 @@ import { useProfilesStore } from '@/stores/hermes/profiles'
 import { useSettingsStore } from '@/stores/hermes/settings'
 import { fetchContextLength } from '@/api/studio/sessions'
 import { setModelContext } from '@/api/hermes/model-context'
-import { fetchSocialMessagePlatforms } from '@/api/studio/social-messages'
 import { fetchSkills, type SkillCategory, type SkillInfo } from '@/api/hermes/skills'
 import { deleteSkillBundleApi, fetchSkillBundles, type SkillBundleInfo } from '@/api/hermes/skill-bundles'
-import { NButton, NTooltip, NModal, NInputNumber, NPopover, NSlider, NDropdown, useDialog, useMessage, type DropdownOption } from 'naive-ui'
+import { NSpin, NButton, NTooltip, NModal, NInputNumber, NPopover, NSlider, NDropdown, useDialog, useMessage, type DropdownOption } from 'naive-ui'
 import { computed, ref, nextTick, onMounted, onUnmounted, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToolTraceVisibility } from '@/composables/useToolTraceVisibility'
@@ -241,22 +242,13 @@ let bundlesLoadRequestKey = ''
 const isBridgeSession = computed(() => {
   const session = chatStore.activeSession
   if (!session) return chatStore.runtimeMode !== 'global_agent'
-  return session.source === 'cli'
+  return session.source === 'cli' && !isBuiltinEkkoSession(session)
 })
-const isCodingAgentSession = computed(() => {
-  const session = chatStore.activeSession
-  return !!session && (
-    session.source === 'coding_agent'
-    || !!session.codingAgentId
-    || session.agent === 'claude'
-    || session.agent === 'codex'
-    || session.agent === 'claude-code'
-    || session.agent === 'pi'
-    || session.agent === 'grok'
-    || session.agent === 'opencode'
-  )
-})
-const isForkCommandSession = computed(() => !!chatStore.activeSession && chatStore.activeSession.source !== 'coding_agent')
+const isEkkoSession = computed(() => isBuiltinEkkoSession(chatStore.activeSession))
+const isCodingAgentSession = computed(() => isExternalCodingAgentSession(chatStore.activeSession))
+const isCursorSession = computed(() => (chatStore.activeSession?.codingAgentId === 'cursor' || chatStore.activeSession?.codingAgentId === 'antigravity') || (chatStore.activeSession?.agent === 'cursor' || chatStore.activeSession?.agent === 'antigravity'))
+const showSessionUsage = computed(() => isCodingAgentSession.value)
+const isForkCommandSession = computed(() => !!chatStore.activeSession && !isEkkoSession.value && !isCodingAgentSession.value)
 const skillPickerItems = computed(() => {
   const byName = new Map<string, SkillInfo>()
   for (const category of skillCategories.value) {
@@ -277,11 +269,18 @@ const skillPickerItems = computed(() => {
 })
 const filteredBridgeCommands = computed(() => {
   const query = slashQuery.value.trim().toLowerCase()
-  const commands = isBridgeSession.value
+  const commands = isEkkoSession.value
+    ? EKKO_SESSION_COMMAND_DEFINITIONS.map(command => ({ ...command, args: command.args || '', description: t(command.descriptionKey) }))
+    : isBridgeSession.value
     ? bridgeCommands.value
     : isCodingAgentSession.value
       ? bridgeCommands.value.filter(command => CODING_AGENT_SLASH_COMMANDS.includes(command.name)
-        && !(command.name === 'compact' && (chatStore.activeSession?.codingAgentId === 'opencode' || chatStore.activeSession?.agent === 'opencode')))
+        && !(command.name === 'context' && isCursorSession.value)
+        && !(command.name === 'compact' && (
+          chatStore.activeSession?.codingAgentId === 'opencode'
+          || chatStore.activeSession?.agent === 'opencode'
+          || isCursorSession.value
+        )))
       : isForkCommandSession.value
         ? bridgeCommands.value.filter(command => command.name === 'fork')
         : []
@@ -483,15 +482,6 @@ const inputSettingsOptions = computed<DropdownOption[]>(() => [
       'aria-hidden': 'true',
     }, toolTraceVisible.value ? '✓' : ''),
   },
-  {
-    label: t('chat.pushEnabled'),
-    key: 'pushEnabled',
-    disabled: !chatStore.activeSessionId,
-    icon: () => h('span', {
-      class: ['settings-check', { active: Boolean(chatStore.activeSession?.pushEnabled) }],
-      'aria-hidden': 'true',
-    }, chatStore.activeSession?.pushEnabled ? '✓' : ''),
-  },
 ])
 
 function loadDraftForActiveSession() {
@@ -516,7 +506,7 @@ onMounted(() => {
   })
 })
 
-async function handleInputSettingsSelect(key: string | number) {
+function handleInputSettingsSelect(key: string | number) {
   if (key === 'voiceMode') {
     if (chatStore.activeSessionId) emit('voiceClick')
     return
@@ -525,28 +515,6 @@ async function handleInputSettingsSelect(key: string | number) {
   if (key === 'toolTrace') {
     toggleToolTraceVisible()
     return
-  }
-
-  if (key === 'pushEnabled') {
-    const sessionId = chatStore.activeSessionId
-    if (!sessionId) return
-    const nextEnabled = !Boolean(chatStore.activeSession?.pushEnabled)
-    if (nextEnabled) {
-      try {
-        const platforms = await fetchSocialMessagePlatforms()
-        const pushReady = platforms.some(platform => (
-          platform.active && platform.configured && platform.pushReady
-        ))
-        if (!pushReady) {
-          message.warning(t('chat.pushNotConfigured'))
-          return
-        }
-      } catch {
-        message.warning(t('chat.pushNotConfigured'))
-        return
-      }
-    }
-    await chatStore.setSessionPushEnabled(sessionId, nextEnabled)
   }
 }
 
@@ -594,7 +562,7 @@ function scrollCommandIntoView() {
 }
 
 function updateSlashState() {
-  if (!isBridgeSession.value && !isCodingAgentSession.value && !isForkCommandSession.value) {
+  if (!isEkkoSession.value && !isBridgeSession.value && !isCodingAgentSession.value && !isForkCommandSession.value) {
     slashActive.value = false
     return
   }
@@ -790,6 +758,7 @@ function currentContextLengthKey() {
 }
 
 async function loadContextLength() {
+  if (showSessionUsage.value) return
   const key = currentContextLengthKey()
   if (key === contextLengthLoadedKey) return
   if (key === contextLengthRequestKey && contextLengthRequest) return contextLengthRequest
@@ -827,12 +796,20 @@ watch(
     chatStore.activeSession?.provider,
     chatStore.activeSession?.model,
     chatStore.activeSession?.source,
+    chatStore.activeSession?.agent,
+    chatStore.activeSession?.codingAgentId,
   ],
   loadContextLength,
   { flush: 'post' },
 )
 
+const cumulativeTokens = computed(() => {
+  const session = chatStore.activeSession
+  return (session?.inputTokens ?? 0) + (session?.outputTokens ?? 0)
+    + (session?.cacheReadTokens ?? 0) + (session?.cacheWriteTokens ?? 0)
+})
 const totalTokens = computed(() => {
+  if (showSessionUsage.value) return cumulativeTokens.value
   const context = chatStore.activeSession?.contextTokens
   if (typeof context === 'number' && Number.isFinite(context) && context > 0) return context
   const input = chatStore.activeSession?.inputTokens ?? 0
@@ -840,6 +817,7 @@ const totalTokens = computed(() => {
   return input + output
 })
 const showContextUsage = computed(() => !!chatStore.activeSession)
+const showContextLimit = computed(() => !showSessionUsage.value)
 
 const remainingTokens = computed(() => Math.max(0, contextLength.value - totalTokens.value))
 
@@ -1170,6 +1148,35 @@ function openAttachmentPreview(attachment: Attachment) {
       </button>
     </div>
 
+    <div v-if="showContextUsage" class="context-usage-row">
+      <span class="context-info" :class="{ 'context-warning': showContextLimit && usagePercent > 80 }">
+        <template v-if="showSessionUsage">{{ t('chat.sessionUsage') }} </template>
+        {{ formatTokens(totalTokens) }}
+        <template v-if="showContextLimit">
+          /
+          <NTooltip trigger="hover" :disabled="isMobileViewport">
+            <template #trigger>
+              <span class="context-limit-editable" @click="handleEditContextLimit">
+                {{ formatTokens(contextLength) }}
+              </span>
+            </template>
+            <span>{{ t('chat.contextClickToEdit') }}</span>
+          </NTooltip>
+          · {{ t('chat.contextRemaining') }} {{ formatTokens(remainingTokens) }}
+        </template>
+      </span>
+      <div v-if="showContextLimit" class="context-bar">
+        <div
+          class="context-bar-fill"
+          :class="{
+            'context-bar-warn': usagePercent > 60 && usagePercent <= 80,
+            'context-bar-danger': usagePercent > 80,
+          }"
+          :style="{ width: `${usagePercent}%` }"
+        />
+      </div>
+    </div>
+
     <div
       class="input-wrapper"
       :class="{ 'drag-over': isDragging }"
@@ -1193,30 +1200,6 @@ function openAttachmentPreview(attachment: Attachment) {
         @mousedown="startResize"
         @dblclick="resetTextareaHeight"
       ></div>
-      <div v-if="showContextUsage" class="context-usage-row">
-        <span class="context-info" :class="{ 'context-warning': usagePercent > 80 }">
-          {{ formatTokens(totalTokens) }} /
-          <NTooltip trigger="hover" :disabled="isMobileViewport">
-            <template #trigger>
-              <span class="context-limit-editable" @click="handleEditContextLimit">
-                {{ formatTokens(contextLength) }}
-              </span>
-            </template>
-            <span>{{ t('chat.contextClickToEdit') }}</span>
-          </NTooltip>
-          · {{ t('chat.contextRemaining') }} {{ formatTokens(remainingTokens) }}
-        </span>
-        <div class="context-bar">
-          <div
-            class="context-bar-fill"
-            :class="{
-              'context-bar-warn': usagePercent > 60 && usagePercent <= 80,
-              'context-bar-danger': usagePercent > 80,
-            }"
-            :style="{ width: `${usagePercent}%` }"
-          />
-        </div>
-      </div>
       <textarea
         ref="textareaRef"
         v-model="inputText"
@@ -1443,7 +1426,7 @@ function openAttachmentPreview(attachment: Attachment) {
         />
         <div class="skill-picker-list">
           <div v-if="skillPickerLoading" class="skill-picker-empty">
-            {{ t('common.loading') }}
+            <NSpin size="small" :description="t('common.loading')" />
           </div>
           <template v-else>
             <div
@@ -1489,7 +1472,7 @@ function openAttachmentPreview(attachment: Attachment) {
         </div>
         <div class="skill-picker-list">
           <div v-if="bundlePickerLoading" class="skill-picker-empty">
-            {{ t('common.loading') }}
+            <NSpin size="small" :description="t('common.loading')" />
           </div>
           <template v-else>
             <div
@@ -1590,7 +1573,7 @@ function openAttachmentPreview(attachment: Attachment) {
 .chat-input-area {
   position: relative;
   z-index: 80;
-  padding: 8px 20px 14px;
+  padding: 6px 12px 10px;
   border-top: 0;
   background-color: $bg-main-surface;
   flex-shrink: 0;
@@ -1884,17 +1867,37 @@ function openAttachmentPreview(attachment: Attachment) {
 .context-usage-row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 7px;
-  position: absolute;
-  top: 9px;
-  right: 14px;
-  z-index: 1;
+  position: relative;
+  width: 100%;
   min-width: 0;
-  max-width: calc(100% - 28px);
-  padding: 0;
+  max-width: 100%;
+  margin-inline-start: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--input-border-color);
+  border-bottom: 0;
+  border-radius: $radius-sm $radius-sm 0 0;
+  background-color: $bg-card;
   color: $text-muted;
-  pointer-events: auto;
+  transition: border-color $transition-fast;
+
+  .dark & {
+    background-color: $bg-main-surface;
+  }
+}
+
+.context-usage-row + .input-wrapper {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.chat-input-area:has(.input-wrapper:hover) .context-usage-row {
+  border-color: var(--input-border-hover-color);
+}
+
+.chat-input-area:has(.input-wrapper:focus-within) .context-usage-row {
+  border-color: var(--input-border-focus-color);
 }
 
 .context-info {
@@ -1981,7 +1984,7 @@ function openAttachmentPreview(attachment: Attachment) {
 @media (max-width: 768px) {
   .chat-input-area {
     --voice-overlay-mobile-bottom-offset: 146px;
-    padding: 8px 12px 12px;
+    padding: 6px 8px calc(12px + env(safe-area-inset-bottom, 0px));
   }
 
   .input-top-bar {
@@ -2173,8 +2176,8 @@ function openAttachmentPreview(attachment: Attachment) {
   min-height: 150px;
   background-color: $bg-card;
   border: 1px solid var(--input-border-color);
-  border-radius: 18px;
-  padding: 22px 12px 9px;
+  border-radius: $radius-md;
+  padding: 12px 10px 8px;
   position: relative;
   cursor: text;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
@@ -2195,7 +2198,7 @@ function openAttachmentPreview(attachment: Attachment) {
   }
 
   .dark & {
-    background-color: #333333;
+    background-color: $bg-main-surface;
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
   }
 }
@@ -2588,7 +2591,13 @@ function openAttachmentPreview(attachment: Attachment) {
   }
 
   .input-wrapper {
-    min-height: 118px;
+    min-height: 96px;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .input-textarea {
+    min-height: 24px;
   }
 
   .input-textarea::placeholder {

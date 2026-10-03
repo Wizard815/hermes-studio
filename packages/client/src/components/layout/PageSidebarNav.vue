@@ -5,8 +5,10 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { isStoredSuperAdmin } from '@/api/client'
 import { useSessionSearch } from '@/composables/useSessionSearch'
+import DesktopUpdateDownloadTab from './DesktopUpdateDownloadTab.vue'
+import { useNavigationRail } from '@/composables/useNavigationRail'
 
-type ActiveSection = 'chat' | 'history' | 'connections' | 'agents' | 'models' | 'group' | 'global' | 'workflow'
+type ActiveSection = 'chat' | 'history' | 'connections' | 'agents' | 'models' | 'apiRelay' | 'group' | 'global' | 'workflow'
 
 const props = defineProps<{
   active: ActiveSection
@@ -21,6 +23,7 @@ const { t } = useI18n()
 const router = useRouter()
 const { openSessionSearch } = useSessionSearch()
 const canManageAgents = computed(() => isStoredSuperAdmin())
+const hasNavigationRail = useNavigationRail()
 
 const primaryText = computed(() => props.primaryLabel || t('chat.newChat'))
 
@@ -60,47 +63,57 @@ function openWorkflow() {
 }
 
 function openApiRelay() {
-  if (typeof window === 'undefined') return
-  window.open('https://apikey.fan/register?aff=LIBAPI', '_blank', 'noopener,noreferrer')
+  if (props.active === 'apiRelay') return
+  void router.push({ name: 'hermes.apiRelay' })
 }
 </script>
 
 <template>
-  <div class="page-sidebar-nav">
+  <div class="page-sidebar-nav" :class="{ 'page-sidebar-nav--compact': hasNavigationRail }">
+    <DesktopUpdateDownloadTab />
     <div class="page-sidebar-tabs" role="tablist" aria-label="Chat actions">
-      <button
-        class="page-sidebar-tab"
-        type="button"
-        @click="emit('primary')"
-      >
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
+      <div class="page-sidebar-search-row">
+        <button
+          v-if="active !== 'history'"
+          class="page-sidebar-tab page-sidebar-primary"
+          type="button"
+          :title="primaryText"
+          :aria-label="primaryText"
+          @click="emit('primary')"
         >
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-        <span>{{ primaryText }}</span>
-      </button>
-      <button class="page-sidebar-tab" type="button" @click="openSessionSearch">
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-        >
-          <circle cx="11" cy="11" r="7" />
-          <path d="m20 20-3.5-3.5" />
-        </svg>
-        <span>{{ t('sidebar.search') }}</span>
-      </button>
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          <span>{{ primaryText }}</span>
+        </button>
+        <button class="page-sidebar-tab page-sidebar-search" type="button" @click="openSessionSearch">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <span>{{ t('sidebar.search') }}</span>
+        </button>
+        <div v-if="$slots.actions" class="page-sidebar-search-actions">
+          <slot name="actions" />
+        </div>
+      </div>
       <button
+        v-if="!hasNavigationRail"
         class="page-sidebar-tab"
         :class="{ active: active === 'connections' }"
         type="button"
@@ -118,15 +131,12 @@ function openApiRelay() {
           stroke-linejoin="round"
           aria-hidden="true"
         >
-          <circle cx="18" cy="5" r="2.5" />
-          <circle cx="6" cy="12" r="2.5" />
-          <circle cx="18" cy="19" r="2.5" />
-          <path d="m8.2 10.7 7.6-4.4M8.2 13.3l7.6 4.4" />
+          <path d="M3 4h14a1 1 0 0 1 1 1v4M3 4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h9M7 16v4M5 20h7M15 9h6a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1M17 18h2" />
         </svg>
         <span>{{ t('sidebar.connections') }}</span>
       </button>
       <button
-        v-if="canManageAgents"
+        v-if="canManageAgents && !hasNavigationRail"
         class="page-sidebar-tab"
         :class="{ active: active === 'agents' }"
         type="button"
@@ -151,6 +161,7 @@ function openApiRelay() {
         <span>{{ t('sidebar.agentManager') }}</span>
       </button>
       <button
+        v-if="!hasNavigationRail"
         class="page-sidebar-tab"
         :class="{ active: active === 'models' }"
         type="button"
@@ -173,23 +184,12 @@ function openApiRelay() {
         </svg>
         <span>{{ t('sidebar.models') }}</span>
       </button>
-      <button class="page-sidebar-tab" type="button" @click="openApiRelay">
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-        >
-          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-          <polyline points="15 3 21 3 21 9" />
-          <line x1="10" y1="14" x2="21" y2="3" />
-        </svg>
+      <button v-if="!hasNavigationRail" class="page-sidebar-tab" :class="{ active: active === 'apiRelay' }" type="button" :aria-current="active === 'apiRelay' ? 'page' : undefined" @click="openApiRelay">
+        <img class="api-relay-logo" src="/relay-logo.png" width="18" height="18" alt="" aria-hidden="true" />
         <span>{{ t('sidebar.apiRelay') }}</span>
       </button>
     </div>
-    <div class="conversation-switch conversation-switch--four" role="tablist" aria-label="Conversation type">
+    <div v-if="!hasNavigationRail" class="conversation-switch conversation-switch--four" role="tablist" aria-label="Conversation type">
       <NTooltip trigger="hover" placement="top">
         <template #trigger>
           <button
@@ -288,6 +288,34 @@ function openApiRelay() {
   flex-direction: column;
   gap: 4px;
 }
+
+.page-sidebar-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+
+  .page-sidebar-primary { flex: 0 0 100%; }
+  .page-sidebar-search { flex: 1; }
+}
+
+.page-sidebar-search-actions {
+  order: 2;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.page-sidebar-nav--compact {
+  .page-sidebar-search-row { flex-wrap: nowrap; }
+  .page-sidebar-search { order: 0; flex: 1; background: rgba(var(--accent-primary-rgb), 0.05); }
+  .page-sidebar-primary { order: 1; flex: 0 0 32px; width: 32px; padding: 0; justify-content: center; }
+  .page-sidebar-primary span { display: none; }
+}
+
+.api-relay-logo { border-radius: 4px; }
 
 .page-sidebar-tab {
   width: 100%;

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import PageLoading from '@/components/common/PageLoading.vue'
+import PageHeader from '@/components/layout/PageHeader.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NButton, NInput, NSpin, NTag, useMessage } from 'naive-ui'
+import { NButton, NInput, NTag, useMessage } from 'naive-ui'
 import {
   readCodingAgentConfigFile,
   writeCodingAgentConfigFile,
@@ -31,22 +33,32 @@ interface SettingsEditorState {
   error: string
 }
 
-const settingsKeys: Record<CodingAgentId, Record<SettingsEditor, string>> = {
+const settingsKeys: Record<CodingAgentId, Partial<Record<SettingsEditor, string>>> = {
   'claude-code': { preference: 'memory', configuration: 'settings' },
   codex: { preference: 'agents', configuration: 'config' },
   pi: { preference: 'agents', configuration: 'settings' },
   grok: { preference: 'agents', configuration: 'settings' },
   opencode: { preference: 'memory', configuration: 'settings' },
   dsh: { preference: 'memory', configuration: 'settings' },
+  cursor: { configuration: 'settings' },
+  qwen: {},
+  kimi: {},
+  codebuddy: {},
+  qoder: {},
+  copilot: {},
+  zcode: {},
+  antigravity: { preference: 'memory', configuration: 'settings' },
 }
 
-const skillTargets: Record<CodingAgentId, SkillTarget> = {
+const skillTargets: Partial<Record<CodingAgentId, SkillTarget>> = {
   'claude-code': 'claude',
   codex: 'codex',
   pi: 'pi',
   grok: 'grok',
   opencode: 'opencode',
   dsh: 'dsh',
+  cursor: 'cursor',
+  antigravity: 'antigravity',
 }
 
 const editorKinds: SettingsEditor[] = ['preference', 'configuration']
@@ -54,16 +66,19 @@ const editors = reactive<Record<SettingsEditor, SettingsEditorState>>({
   preference: { file: null, content: '', saving: false, error: '' },
   configuration: { file: null, content: '', saving: false, error: '' },
 })
-const loading = ref(false)
+const loading = ref(true)
 let loadVersion = 0
 
 const validAgentId = computed<CodingAgentId | null>(() =>
   agentId.value in settingsKeys ? agentId.value as CodingAgentId : null,
 )
 const skillTarget = computed<SkillTarget>(() =>
-  validAgentId.value ? skillTargets[validAgentId.value] : 'hermes',
+  validAgentId.value ? skillTargets[validAgentId.value] || 'hermes' : 'hermes',
 )
-const editorItems = computed(() => editorKinds.map(kind => ({
+const activeEditorKinds = computed(() => editorKinds.filter(kind =>
+  validAgentId.value && settingsKeys[validAgentId.value][kind],
+))
+const editorItems = computed(() => activeEditorKinds.value.map(kind => ({
   kind,
   label: t(`codingAgents.${kind}`),
   state: editors[kind],
@@ -87,14 +102,15 @@ async function loadSettingsFiles() {
 
   loading.value = true
   const currentAgentId = validAgentId.value
-  const results = await Promise.allSettled(editorKinds.map(kind =>
-    readCodingAgentConfigFile(currentAgentId, settingsKeys[currentAgentId][kind]),
+  const kinds = activeEditorKinds.value
+  const results = await Promise.allSettled(kinds.map(kind =>
+    readCodingAgentConfigFile(currentAgentId, settingsKeys[currentAgentId][kind]!),
   ))
 
   if (version !== loadVersion) return
 
   results.forEach((result, index) => {
-    const state = editors[editorKinds[index]]
+    const state = editors[kinds[index]]
     if (result.status === 'fulfilled') {
       state.file = result.value
       state.content = result.value.content
@@ -108,13 +124,13 @@ async function loadSettingsFiles() {
 async function saveSettingsFile(kind: SettingsEditor) {
   const currentAgentId = validAgentId.value
   const state = editors[kind]
-  if (!currentAgentId || state.saving) return
+  if (!currentAgentId || !settingsKeys[currentAgentId][kind] || state.saving) return
 
   state.saving = true
   try {
     const file = await writeCodingAgentConfigFile(
       currentAgentId,
-      settingsKeys[currentAgentId][kind],
+      settingsKeys[currentAgentId][kind]!,
       state.content,
     )
     state.file = file
@@ -131,10 +147,12 @@ watch([agentId, section], loadSettingsFiles, { immediate: true })
 </script>
 
 <template>
-  <div class="coding-agent-config-view">
+  <PageLoading :show="loading" class="coding-agent-config-view">
+    <PageHeader>
     <header v-if="section === 'settings'" class="page-header">
       <h2 class="header-title">{{ t('sidebar.settings') }}</h2>
     </header>
+    </PageHeader>
 
     <DshPluginsPanel v-if="section === 'plugins' && validAgentId === 'dsh'" />
     <DshAgentPresetsPanel v-else-if="section === 'presets' && validAgentId === 'dsh'" />
@@ -147,7 +165,7 @@ watch([agentId, section], loadSettingsFiles, { immediate: true })
     </div>
 
     <div v-else-if="section === 'settings' && validAgentId" class="coding-agent-settings-content">
-      <NSpin v-if="loading" class="settings-loading" />
+      <template v-if="loading" class="settings-loading" />
       <div v-else class="settings-editors">
         <section
           v-for="editor in editorItems"
@@ -190,7 +208,7 @@ watch([agentId, section], loadSettingsFiles, { immediate: true })
         </section>
       </div>
     </div>
-  </div>
+  </PageLoading>
 </template>
 
 <style scoped lang="scss">
@@ -235,6 +253,7 @@ watch([agentId, section], loadSettingsFiles, { immediate: true })
 }
 
 .settings-editor-panel {
+  &:only-child { grid-column: 1 / -1; }
   display: flex;
   min-width: 0;
   min-height: 0;

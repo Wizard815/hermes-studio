@@ -60,7 +60,8 @@ vi.mock('../../packages/server/src/modules/studio/public/provider-catalog', () =
   fetchProviderModels: mockFetchProviderModels,
 }))
 
-vi.mock('../../packages/server/src/modules/studio/contracts/providers', () => ({
+vi.mock('../../packages/server/src/modules/studio/contracts/providers', async importOriginal => ({
+  ...await importOriginal<typeof import('../../packages/server/src/modules/studio/contracts/providers')>(),
   buildProviderModelMap: () => ({
     deepseek: ['deepseek-chat', 'deepseek-reasoner'],
     'xai-oauth': ['grok-4.3', 'grok-4.20-0309-reasoning'],
@@ -150,6 +151,11 @@ vi.mock('../../packages/server/src/modules/studio/public/provider-context', () =
   upsertModelContextRecord: vi.fn(),
 }))
 
+const mockInvalidateProviderRuntime = vi.hoisted(() => vi.fn())
+vi.mock('../../packages/server/src/modules/studio/public/provider-runtime', () => ({ invalidateProviderRuntime: mockInvalidateProviderRuntime }))
+
+import { upsertModelContextRecord } from '../../packages/server/src/modules/studio/public/provider-context'
+
 import * as ctrl from '../../packages/server/src/modules/hermes/controllers/models'
 
 function makeCtx(body: Record<string, unknown> = {}): any {
@@ -194,6 +200,17 @@ beforeEach(() => {
 })
 
 describe('models controller — model visibility', () => {
+  it('refreshes the matching provider runtimes after saving a manual model window', async () => {
+    vi.mocked(upsertModelContextRecord).mockReturnValue({ available: true,
+      row: { profile: 'research', provider: 'test', model: 'test-model', context_limit: 80000 } } as any)
+    const ctx = makeCtx({ provider: 'test', model: 'test-model', context_limit: 80000 })
+    ctx.state = { profile: { name: 'research' } }
+    await ctrl.updateModelContext(ctx)
+    expect(ctx.body.success).toBe(true)
+    expect(upsertModelContextRecord).toHaveBeenCalledWith('research', 'test', 'test-model', 80000)
+    expect(mockInvalidateProviderRuntime).toHaveBeenCalledWith('research', 'test')
+  })
+
   it('filters available models per provider without changing canonical IDs', async () => {
     mockReadAppConfig.mockResolvedValue({
       modelVisibility: {

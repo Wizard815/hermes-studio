@@ -185,6 +185,28 @@ describe('MessageList live reasoning', () => {
     expect(wrapper.get('.queue-insert').attributes('title')).toBe('chat.insertQueuedMessage')
     await wrapper.get('.queue-insert').trigger('click')
     expect(insertSpy).toHaveBeenLastCalledWith('session-1', 'queue-1')
+
+    chatStore.activeSession = {
+      ...session,
+      source: 'builtin_agent',
+      agent: 'ekko-agent',
+      codingAgentId: 'ekko-agent',
+    }
+    await nextTick()
+    expect(wrapper.get('.queue-insert').attributes('title')).toBe('chat.insertQueuedMessage')
+    await wrapper.get('.queue-insert').trigger('click')
+    expect(insertSpy).toHaveBeenLastCalledWith('session-1', 'queue-1')
+
+    chatStore.activeSession = {
+      ...session,
+      source: 'coding_agent',
+      agent: 'cursor',
+      codingAgentId: 'cursor',
+    }
+    await nextTick()
+    expect(wrapper.get('.queue-insert').attributes('title')).toBe('chat.insertQueuedMessage')
+    await wrapper.get('.queue-insert').trigger('click')
+    expect(insertSpy).toHaveBeenLastCalledWith('session-1', 'queue-1')
   })
 
   it('keeps the standalone thinking status before assistant output starts', () => {
