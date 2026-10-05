@@ -68,13 +68,18 @@ import { findUserById, findFirstUser } from '../../repositories/users-store'
  * requires `status === 'active'`, so we mint for a real existing active user
  * record rather than a fabricated one.
  */
-async function mintStudioBridgeJwt(authenticatedUserId?: string): Promise<string> {
-  const id = authenticatedUserId ? Number(authenticatedUserId) : undefined
-  const user = id != null && id > 0 ? findUserById(id) : findFirstUser()
-  if (!user) {
-    throw new Error('No Studio user available to mint the agent bridge token')
+async function mintStudioBridgeJwt(authenticatedUserId?: string): Promise<string | undefined> {
+  // Optional: without a token the bridge tools report themselves unavailable,
+  // so a missing user must not fail the whole run.
+  try {
+    const id = authenticatedUserId ? Number(authenticatedUserId) : undefined
+    const user = id != null && id > 0 ? findUserById(id) : findFirstUser()
+    if (!user) return undefined
+    return await issueUserJwt({ id: user.id, username: user.username, role: user.role })
+  } catch (err) {
+    logger.warn({ err }, '[ekko-agent] could not mint the Studio bridge token; bridge tools disabled for this run')
+    return undefined
   }
-  return issueUserJwt({ id: user.id, username: user.username, role: user.role })
 }
 
 export interface EkkoAgentRunSocketData {
