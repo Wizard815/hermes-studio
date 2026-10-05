@@ -8,7 +8,7 @@ import { useSessionSearch } from '@/composables/useSessionSearch'
 import DesktopUpdateDownloadTab from './DesktopUpdateDownloadTab.vue'
 import { useNavigationRail } from '@/composables/useNavigationRail'
 
-type ActiveSection = 'chat' | 'history' | 'connections' | 'agents' | 'models' | 'apiRelay' | 'group' | 'global' | 'workflow'
+type ActiveSection = 'chat' | 'history' | 'connections' | 'agents' | 'models' | 'apiRelay' | 'upstream' | 'group' | 'global' | 'workflow'
 
 const props = defineProps<{
   active: ActiveSection
@@ -62,9 +62,9 @@ function openWorkflow() {
   void router.push({ name: 'hermes.workflow' })
 }
 
-function openApiRelay() {
-  if (props.active === 'apiRelay') return
-  void router.push({ name: 'hermes.apiRelay' })
+function openUpstream() {
+  if (props.active === 'upstream') return
+  void router.push({ name: 'hermes.upstream' })
 }
 </script>
 
@@ -184,9 +184,9 @@ function openApiRelay() {
         </svg>
         <span>{{ t('sidebar.models') }}</span>
       </button>
-      <button v-if="!hasNavigationRail" class="page-sidebar-tab" :class="{ active: active === 'apiRelay' }" type="button" :aria-current="active === 'apiRelay' ? 'page' : undefined" @click="openApiRelay">
+      <button v-if="!hasNavigationRail" class="page-sidebar-tab" :class="{ active: active === 'upstream' }" type="button" :aria-current="active === 'upstream' ? 'page' : undefined" @click="openUpstream">
         <img class="api-relay-logo" src="/relay-logo.png" width="18" height="18" alt="" aria-hidden="true" />
-        <span>{{ t('sidebar.apiRelay') }}</span>
+        <span>{{ t('sidebar.upstream') }}</span>
       </button>
     </div>
     <div v-if="!hasNavigationRail" class="conversation-switch conversation-switch--four" role="tablist" aria-label="Conversation type">

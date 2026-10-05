@@ -56,6 +56,7 @@ import { logger } from '../modules/studio/public/logging'
 import { HeadlessBrowserService, getHeadlessBrowserService, setHeadlessBrowserService } from '../modules/studio/services/headless-browser-service'
 import { createStaticCompressionMiddleware } from '../modules/studio/middleware/static-compression'
 import { getStaticCacheControl, SPA_ENTRY_CACHE_CONTROL } from '../modules/studio/middleware/static-cache'
+import { upstreamUpkeepProxy } from '../modules/studio/middleware/upstream-upkeep-proxy'
 import { requireUserJwt, resolveUserProfile } from '../modules/studio/middleware/auth'
 import {
   createCorsOriginResolver,
@@ -505,6 +506,11 @@ export async function bootstrap() {
   interruptOrphanedTaskPlans()
   startChatWebhookDispatcher()
   console.log('[bootstrap] all stores initialized')
+
+  // Upstream Management proxy must run first: before securityHeaders() so the
+  // proxied frame is not tagged with X-Frame-Options: DENY (which would block
+  // the in-app iframe), and before the auth middleware.
+  app.use(upstreamUpkeepProxy())
 
   app.use(securityHeaders())
   app.use(cors({ origin: createCorsOriginResolver(config.corsOrigins) }))

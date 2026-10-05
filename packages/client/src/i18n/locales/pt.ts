@@ -552,6 +552,7 @@ export default {
     terminal: 'Terminal',
     browser: 'Navegador',
     singleChat: 'Chat',
+    upstream: 'Upstream',
     globalAgent: 'Global Agent',
     files: 'Arquivos',
     devices: 'Dispositivos',

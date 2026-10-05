@@ -543,6 +543,7 @@ export default {
     terminal: 'الطرفية',
     browser: 'المتصفح',
     singleChat: 'محادثة',
+    upstream: 'المصدر الأساسي',
     globalAgent: 'الوكيل العام',
     groupChat: 'محادثة جماعية',
     files: 'الملفات',

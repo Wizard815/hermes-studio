@@ -552,6 +552,7 @@ export default {
     terminal: 'Konsole',
     browser: 'Browser',
     singleChat: 'Chat',
+    upstream: 'Upstream',
     globalAgent: 'Global Agent',
     files: 'Dateien',
     devices: 'Gerate',

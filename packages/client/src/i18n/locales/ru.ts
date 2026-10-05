@@ -468,6 +468,7 @@ export default {
     terminal: 'Терминал',
     browser: 'Браузер',
     singleChat: 'Чат',
+    upstream: 'Upstream',
     globalAgent: 'Global Agent',
     groupChat: 'Групповой чат',
     files: 'Файлы',

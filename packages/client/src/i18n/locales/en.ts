@@ -544,6 +544,7 @@ export default {
     terminal: 'Terminal',
     browser: 'Browser',
     singleChat: 'Chat',
+    upstream: 'Upstream',
     globalAgent: 'Global Agent',
     groupChat: 'Group Chat',
     files: 'Files',

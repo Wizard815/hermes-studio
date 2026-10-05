@@ -552,6 +552,7 @@ export default {
     terminal: 'ターミナル',
     browser: 'ブラウザー',
     singleChat: 'チャット',
+    upstream: 'アップストリーム',
     globalAgent: 'Global Agent',
     files: 'ファイル',
     devices: 'デバイス',

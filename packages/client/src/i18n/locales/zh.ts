@@ -543,6 +543,7 @@ export default {
     terminal: '终端',
     browser: '浏览器',
     singleChat: '单聊',
+    upstream: '上游',
     globalAgent: '全局',
     groupChat: '群聊',
     files: '文件',

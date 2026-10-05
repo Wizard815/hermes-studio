@@ -27,11 +27,12 @@ const activeKey = computed(() => {
   if (name.startsWith('hermes.groupChat')) return 'group'
   if (name.startsWith('hermes.history')) return 'history'
   if (name === 'hermes.apiRelay') return 'apiRelay'
+  if (name === 'hermes.upstream') return 'upstream'
   return entries.value.find(entry => entry.route === name)?.key || 'settings'
 })
 const mobileNavigation = useMobileNavigation()
 function handleNavigate(key: string) {
-  if (mobileNavigation && ['connections', 'agents', 'models', 'apiRelay'].includes(key)) {
+  if (mobileNavigation && ['connections', 'agents', 'models', 'apiRelay', 'upstream'].includes(key)) {
     mobileNavigation.open.value = false
   }
 }
@@ -51,11 +52,11 @@ function handleNavigate(key: string) {
       </NTooltip>
       <NTooltip placement="right" trigger="hover">
         <template #trigger>
-          <RouteLinkItem class="studio-navigation-rail__item" :to="{ name: 'hermes.apiRelay' }" :active="activeKey === 'apiRelay'" :aria-label="t('sidebar.apiRelay')" @click="handleNavigate('apiRelay')">
+          <RouteLinkItem class="studio-navigation-rail__item" :to="{ name: 'hermes.upstream' }" :active="activeKey === 'upstream'" :aria-label="t('sidebar.upstream')" @click="handleNavigate('upstream')">
             <img class="api-relay-logo" src="/relay-logo.png" width="24" height="24" alt="" aria-hidden="true" />
           </RouteLinkItem>
         </template>
-        {{ t('sidebar.apiRelay') }}
+        {{ t('sidebar.upstream') }}
       </NTooltip>
     </nav>
     <div class="studio-navigation-rail__bottom">
