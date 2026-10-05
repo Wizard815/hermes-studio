@@ -57,3 +57,6 @@ packages/client/src/**/*.js
 .hermes/
 # Local npm release tarballs
 /release/npm/
+
+# Local Ekko agent data (chat memory DB, config, skills) - never commit
+.ekko/
