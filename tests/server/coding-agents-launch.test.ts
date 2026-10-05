@@ -30,15 +30,16 @@ import {
   piModelSupportsThinking,
 } from '../../packages/server/src/modules/coding-agents/services/pi/thinking'
 import { codingAgentRunManager } from '../../packages/server/src/modules/coding-agents/services/runtime/run-manager'
+import { getCodingAgentDefinition } from '../../packages/server/src/modules/coding-agents/services'
 import { configureProfileConfig } from '../../packages/server/src/modules/studio/public/profile-config'
 import * as providerRuntime from '../../packages/server/src/modules/studio/public/provider-runtime'
 import { upsertCodingAgentMcpServer } from '../../packages/server/src/modules/coding-agents/services/mcp-manager'
 import { getCodingAgentManagedMcpServerConfigs } from '../../packages/server/src/modules/coding-agents/services'
-import { resolveZcodeCommand } from '../../packages/server/src/modules/coding-agents/services/native/zcode-command'
+import { resolveZcodeCommand } from '../../packages/server/src/modules/coding-agents/services/zcode/installation'
 
 // Keep launch fixtures independent of desktop applications installed on the host.
 // Actual ZCode desktop command resolution is covered by zcode-desktop-command.
-vi.mock('../../packages/server/src/modules/coding-agents/services/native/zcode-command', () => ({
+vi.mock('../../packages/server/src/modules/coding-agents/services/zcode/installation', () => ({
   resolveZcodeCommand: vi.fn(async (args: string[]) => ({ command: 'zcode', args, env: {}, path: 'zcode' })),
 }))
 
@@ -1354,8 +1355,8 @@ describe('coding agent launch preparation', () => {
       workspaceDir,
       command: 'claude',
       args,
-      env: {},
-      shellCommand: shellCommandFor(workspaceDir, 'claude', args),
+      env: { IS_SANDBOX: '1' },
+      shellCommand: shellCommandFor(workspaceDir, 'claude', args, { IS_SANDBOX: '1' }),
       files: [{
         key: 'prompt',
         path: 'hermes-rules.md',
@@ -1369,8 +1370,8 @@ describe('coding agent launch preparation', () => {
     expect(existsSync(join(home, 'global-home', '.claude', 'hermes-rules.md'))).toBe(false)
   })
 
-  it('uses Claude Code auto permission mode instead of dangerous bypass when running as root', async () => {
-    mockProcessUid(0)
+  it.each([0, 1000])('uses sandbox permission bypass for global Claude Code with uid %s', async (uid) => {
+    mockProcessUid(uid)
     const home = makeHome()
 
     const result = await prepareCodingAgentLaunch('claude-code', {
@@ -1381,14 +1382,11 @@ describe('coding agent launch preparation', () => {
     const rootDir = join(home, 'coding-agent', 'model', 'default', 'global', 'claude-code')
     const workspaceDir = join(home, 'coding-agent', 'workspace', 'default', 'global')
     const promptPath = join(rootDir, 'hermes-rules.md')
-    const usesUnixRootPermissions = process.platform !== 'win32'
     const args = [
       '--append-system-prompt-file',
       promptPath,
       '--mcp-config', join(rootDir, 'mcp.json'),
-      ...(usesUnixRootPermissions
-        ? ['--permission-mode', 'auto', '--allowedTools', 'mcp__ekko-studio-interaction__ekko_studio_update_plan']
-        : ['--dangerously-skip-permissions']),
+      '--dangerously-skip-permissions',
     ]
 
     expect(result).toMatchObject({
@@ -1397,7 +1395,8 @@ describe('coding agent launch preparation', () => {
       rootDir,
       command: 'claude',
       args,
-      shellCommand: shellCommandFor(workspaceDir, 'claude', args),
+      env: { IS_SANDBOX: '1' },
+      shellCommand: shellCommandFor(workspaceDir, 'claude', args, { IS_SANDBOX: '1' }),
     })
   })
 
@@ -2236,9 +2235,14 @@ describe('coding agent launch preparation', () => {
     ))).toBe(false)
   })
 
-  it('uses Claude Code auto permission mode for scoped root launches', async () => {
-    mockProcessUid(0)
+  it.each([0, 1000])('uses sandbox permission bypass for scoped Claude Code with uid %s', async (uid) => {
+    mockProcessUid(uid)
     const home = makeHome()
+    vi.stubEnv('IS_SANDBOX', '0')
+    const globalSettingsPath = join(home, 'global-home', '.claude', 'settings.json')
+    mkdirSync(dirname(globalSettingsPath), { recursive: true })
+    const globalSettings = JSON.stringify({ env: { IS_SANDBOX: '0' } })
+    writeFileSync(globalSettingsPath, globalSettings)
 
     const result = await prepareCodingAgentLaunch('claude-code', {
       profile: 'default',
@@ -2249,9 +2253,7 @@ describe('coding agent launch preparation', () => {
       isolateSettings: true,
     })
 
-    const permissionArgs = process.platform === 'win32'
-      ? ['--dangerously-skip-permissions']
-      : ['--permission-mode', 'auto', '--allowedTools', 'mcp__ekko-studio-interaction__ekko_studio_update_plan']
+    const permissionArgs = ['--dangerously-skip-permissions']
     expect(result.args).toEqual([
       '--settings',
       join(result.rootDir, 'settings.json'),
@@ -2264,13 +2266,14 @@ describe('coding agent launch preparation', () => {
       ...permissionArgs,
     ])
     const launcher = readFileSync(launcherFile(result.rootDir), 'utf-8')
-    if (process.platform === 'win32') {
-      expectLauncherFragment(launcher, '--dangerously-skip-permissions')
-    } else {
-      expectLauncherFragment(launcher, '--permission-mode auto')
-      expectLauncherFragment(launcher, '--allowedTools mcp__ekko-studio-interaction__ekko_studio_update_plan')
-      expect(launcher).not.toContain('--dangerously-skip-permissions')
-    }
+    expectLauncherFragment(launcher, '--dangerously-skip-permissions')
+    expect(launcher).not.toContain('--permission-mode')
+    expect(launcher).not.toContain('--allowedTools')
+    expect(result.env.IS_SANDBOX).toBe('1')
+    const settings = JSON.parse(readFileSync(join(result.rootDir, 'settings.json'), 'utf-8'))
+    expect(settings.env.IS_SANDBOX).toBe('1')
+    expect(readFileSync(globalSettingsPath, 'utf-8')).toBe(globalSettings)
+    expect(launcher).toContain(process.platform === 'win32' ? "$env:IS_SANDBOX = '1'" : 'export IS_SANDBOX=1')
     expect(result.rootDir).toBe(join(home, 'coding-agent', 'model', 'default', 'openrouter', 'claude-code'))
   })
 
@@ -3945,6 +3948,7 @@ describe('Antigravity scoped launch', () => {
 })
 
 it.each(['qwen', 'kimi', 'codebuddy', 'qoder', 'copilot', 'zcode'])('prepares %s with native auth and truthful global capabilities', async id => {
+  expect(getCodingAgentDefinition(id)?.capabilities?.images).toBe(true)
   const home = makeHome()
   const tokenFile = join(home, 'group-auth.json')
   const launch = await prepareCodingAgentLaunch(id, {
