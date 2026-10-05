@@ -11,6 +11,14 @@ import { resolveHermesBin } from './process'
 const execFileAsync = promisify(execFile)
 const HERMES_VERSION_PROBE = "import importlib.util, hermes_cli; assert importlib.util.find_spec('hermes_cli.main'); print(hermes_cli.__version__)"
 
+// Source-checkout launchers put the agent root on sys.path themselves (often
+// under `python -I`), so the probe must do the same to see hermes_cli.
+function hermesVersionProbe(agentRoot: string | undefined): string {
+  return agentRoot
+    ? `import sys; sys.path.insert(0, ${JSON.stringify(agentRoot)}); ${HERMES_VERSION_PROBE}`
+    : HERMES_VERSION_PROBE
+}
+
 export interface HermesManagedRuntimeLocation {
   version: string
   directory: string
@@ -107,7 +115,7 @@ export async function probeHermesCliVersion(
   }
 
   try {
-    const { stdout } = await execFileAsync(installation.python, ['-c', HERMES_VERSION_PROBE], {
+    const { stdout } = await execFileAsync(installation.python, ['-c', hermesVersionProbe(installation.agentRoot)], {
       encoding: 'utf8',
       timeout: 5000,
       windowsHide: true,

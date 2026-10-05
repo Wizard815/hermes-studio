@@ -182,6 +182,36 @@ describe('Hermes process invocation', () => {
     }
   })
 
+  it('follows chained shell launchers to an unquoted exec Python over a stale venv', async () => {
+    setPlatform('linux')
+    const root = mkdtempSync(join(tmpdir(), 'hermes-process-'))
+    try {
+      const hermesHome = join(root, '.hermes')
+      const agentRoot = join(hermesHome, 'hermes-agent')
+      const innerBin = join(agentRoot, '.hermes', 'bin')
+      const toolsBin = join(hermesHome, 'tools', 'python-3.14', 'bin')
+      const userBin = join(root, '.local', 'bin')
+      for (const dir of [join(agentRoot, 'venv', 'bin'), innerBin, toolsBin, userBin]) mkdirSync(dir, { recursive: true })
+      const python = join(toolsBin, 'python3')
+      const innerLauncher = join(innerBin, 'hermes')
+      const userCli = join(userBin, 'hermes')
+      writeFileSync(join(agentRoot, 'run_agent.py'), '')
+      writeFileSync(join(agentRoot, 'venv', 'bin', 'python3'), '')
+      writeFileSync(python, '')
+      writeFileSync(innerLauncher, `#!/bin/sh\nexec ${python} -I -c 'import sys' "$@"\n`)
+      writeFileSync(userCli, `#!/bin/sh\nexec ${innerLauncher} "$@"\n`)
+      const { resolveHermesInstallationEnvironment } = await import('../../packages/server/src/modules/hermes/services/runtime/installation')
+
+      expect(resolveHermesInstallationEnvironment(userCli, hermesHome, { PATH: '' })).toEqual({
+        python,
+        agentRoot,
+        environmentRoot: join(hermesHome, 'tools', 'python-3.14'),
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('keeps normal Hermes command execution unchanged on non-Windows platforms', async () => {
     setPlatform('darwin')
     const { execHermesWithBin } = await import('../../packages/server/src/modules/hermes/services/runtime/process')

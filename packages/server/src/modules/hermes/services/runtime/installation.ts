@@ -55,7 +55,9 @@ function resolveFromPath(command: string, env: NodeJS.ProcessEnv): string | unde
   return undefined
 }
 
-function pythonFromLauncher(hermesBin: string, env: NodeJS.ProcessEnv): string | undefined {
+const MAX_LAUNCHER_DEPTH = 4
+
+function pythonFromLauncher(hermesBin: string, env: NodeJS.ProcessEnv, depth = 0): string | undefined {
   for (const contents of launcherContents(hermesBin)) {
     const firstLine = contents.split(/\r?\n/, 1)[0] || ''
     const shebang = firstLine.match(/^#!\s*(.+)$/)?.[1]?.trim() || ''
@@ -80,6 +82,18 @@ function pythonFromLauncher(hermesBin: string, env: NodeJS.ProcessEnv): string |
       const candidate = match[1]
       if (isAbsolute(candidate) && isPythonExecutable(candidate) && existsSync(candidate)) {
         return candidate
+      }
+    }
+
+    // Newer installers write unquoted `exec /abs/python3 -I -c ...` wrappers,
+    // and ~/.local/bin shims that `exec` another launcher. Follow both.
+    for (const match of contents.matchAll(/^\s*exec\s+(\/[^\s"';]+)/gm)) {
+      const target = match[1]
+      if (!existsSync(target)) continue
+      if (isPythonExecutable(target)) return target
+      if (depth < MAX_LAUNCHER_DEPTH && target !== hermesBin) {
+        const nested = pythonFromLauncher(target, env, depth + 1)
+        if (nested) return nested
       }
     }
   }
