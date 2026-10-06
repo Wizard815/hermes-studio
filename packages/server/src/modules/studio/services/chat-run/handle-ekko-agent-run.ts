@@ -1025,6 +1025,7 @@ export async function handleEkkoAgentRun(
         profile,
         model: modelConfig.model,
         provider: modelConfig.provider,
+        baseUrl,
         isEstimated: false,
       })
     } else if (event.type === 'model.context') {
@@ -1197,6 +1198,7 @@ export async function handleEkkoAgentRun(
             profile,
             model: modelConfig.model,
             provider: modelConfig.provider,
+            baseUrl,
             isEstimated: false,
           })
         }
@@ -1507,6 +1509,7 @@ export async function handleEkkoAgentRun(
           profile,
           model: event.model || modelConfig.model,
           provider: modelConfig.provider,
+          baseUrl,
           isEstimated: false,
         })
       },
