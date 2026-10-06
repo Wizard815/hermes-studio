@@ -3001,6 +3001,11 @@ export default {
 
 
   terminal: {
+    clear: 'Очистить',
+    selectAll: 'Выделить всё',
+    copy: 'Копировать',
+
+    paste: 'Вставить',
     sessions: 'Сеансы',
     newTab: 'Новая вкладка терминала',
     closeSession: 'Завершить этот сеанс?',

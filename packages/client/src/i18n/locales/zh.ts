@@ -3413,6 +3413,11 @@ export default {
 
   // 终端
   terminal: {
+    clear: '清空',
+    selectAll: '全选',
+    copy: '复制',
+
+    paste: '粘贴',
     sessions: '会话',
     newTab: '新建终端',
     closeSession: '关闭此会话？',

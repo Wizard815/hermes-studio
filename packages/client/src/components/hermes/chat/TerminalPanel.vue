@@ -327,6 +327,88 @@ function scheduleInitialCommandChunk(command: string, offset: number, delay: num
   initialCommandTimers.add(timer);
 }
 
+// ─── Clipboard + context menu ───────────────────────────────────
+//
+// A plain Ctrl+V is deliberately NOT intercepted: the browser then fires a
+// paste event that carries clipboardData, which is the only route that works
+// on a non-secure origin (Studio is usually served over plain http on a LAN
+// address, where navigator.clipboard is unavailable).
+
+const termMenu = ref<{ visible: boolean; x: number; y: number }>({
+  visible: false,
+  x: 0,
+  y: 0,
+});
+
+async function copyTermSelection(term: Terminal | null = activeTerm): Promise<void> {
+  const selection = term?.getSelection();
+  if (!selection) return;
+  try {
+    await navigator.clipboard.writeText(selection);
+  } catch {
+    // Non-secure origin: fall back to the legacy selection copy.
+    const helper = document.createElement("textarea");
+    helper.value = selection;
+    helper.style.position = "fixed";
+    helper.style.opacity = "0";
+    document.body.appendChild(helper);
+    helper.select();
+    try {
+      document.execCommand("copy");
+    } catch {
+      /* nothing else to try */
+    }
+    document.body.removeChild(helper);
+  }
+}
+
+async function pasteIntoTerm(term: Terminal | null = activeTerm): Promise<void> {
+  if (!term) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) term.paste(text);
+  } catch {
+    // Clipboard read needs a secure origin; fall back to the browser's own
+    // paste, which the @paste handler below forwards.
+    term.focus();
+  }
+}
+
+function handleTermPaste(event: ClipboardEvent): void {
+  const text = event.clipboardData?.getData("text");
+  if (!text) return;
+  event.preventDefault();
+  activeTerm?.paste(text);
+}
+
+function openTermMenu(event: MouseEvent): void {
+  termMenu.value = { visible: true, x: event.clientX, y: event.clientY };
+}
+
+function closeTermMenu(): void {
+  termMenu.value.visible = false;
+}
+
+function menuCopy(): void {
+  void copyTermSelection();
+  closeTermMenu();
+}
+
+function menuPaste(): void {
+  void pasteIntoTerm();
+  closeTermMenu();
+}
+
+function menuSelectAll(): void {
+  activeTerm?.selectAll();
+  closeTermMenu();
+}
+
+function menuClear(): void {
+  activeTerm?.clear();
+  closeTermMenu();
+}
+
 function getOrCreateTerm(id: string): { term: Terminal; fitAddon: FitAddon } {
   let entry = termMap.get(id);
   if (!entry) {
@@ -335,10 +417,37 @@ function getOrCreateTerm(id: string): { term: Terminal; fitAddon: FitAddon } {
       fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: { ...TERMINAL_THEMES[selectedTheme.value].theme },
+      // Upstream's panel shipped none of the clipboard plumbing, which is why
+      // copy-out did nothing and the browser's own context menu landed on top
+      // of the terminal.
+      scrollback: 10000,
+      rightClickSelectsWord: true,
+      convertEol: false,
+      allowProposedApi: true,
     });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true;
+      const mod = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      // Ctrl/Cmd+Shift+C|V are the terminal-native bindings. Plain Ctrl+C with
+      // a selection copies; without one it must reach the shell as SIGINT.
+      if (mod && event.shiftKey && key === "c") {
+        void copyTermSelection(term);
+        return false;
+      }
+      if (mod && !event.shiftKey && key === "c" && term.hasSelection()) {
+        void copyTermSelection(term);
+        return false;
+      }
+      if (mod && event.shiftKey && key === "v") {
+        void pasteIntoTerm(term);
+        return false;
+      }
+      return true;
+    });
     term.onData((data) => {
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(data);
@@ -607,11 +716,30 @@ onUnmounted(() => {
           ref="terminalRef"
           class="terminal-xterm"
           :style="{ backgroundColor: terminalBg }"
+          @contextmenu.prevent="openTermMenu"
+          @paste="handleTermPaste"
           @touchstart="handleTerminalTouchStart"
           @touchmove="handleTerminalTouchMove"
           @touchend="handleTerminalTouchEnd"
           @touchcancel="handleTerminalTouchEnd"
         />
+        <div
+          v-if="termMenu.visible"
+          class="terminal-menu-backdrop"
+          @click="closeTermMenu"
+          @contextmenu.prevent="closeTermMenu"
+        />
+        <div
+          v-if="termMenu.visible"
+          class="terminal-context-menu"
+          :style="{ left: `${termMenu.x}px`, top: `${termMenu.y}px` }"
+          @click.stop
+        >
+          <button type="button" @click="menuCopy">{{ t('terminal.copy') }}</button>
+          <button type="button" @click="menuPaste">{{ t('terminal.paste') }}</button>
+          <button type="button" @click="menuSelectAll">{{ t('terminal.selectAll') }}</button>
+          <button type="button" @click="menuClear">{{ t('terminal.clear') }}</button>
+        </div>
       </div>
     </div>
   </div>
@@ -825,6 +953,41 @@ onUnmounted(() => {
 
 .terminal-state-error {
   color: $error;
+}
+
+.terminal-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.terminal-context-menu {
+  position: fixed;
+  z-index: 41;
+  min-width: 140px;
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid $border-color;
+  background: $bg-card;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+
+  button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: $text-primary;
+    font-size: 13px;
+    text-align: left;
+    padding: 6px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(var(--accent-primary-rgb), 0.12);
+    }
+  }
 }
 
 .terminal-xterm {

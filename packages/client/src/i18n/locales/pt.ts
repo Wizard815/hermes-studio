@@ -2852,6 +2852,11 @@ jobTriggered: 'Job acionado',
 
   // Terminal
   terminal: {
+    clear: 'Limpar',
+    selectAll: 'Selecionar tudo',
+    copy: 'Copiar',
+
+    paste: 'Colar',
     sessions: 'Sessões',
     newTab: 'Novo terminal',
     closeSession: 'Fechar esta sessão?',

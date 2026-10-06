@@ -2852,6 +2852,11 @@ jobTriggered: 'Job declenche',
 
   // Terminal
   terminal: {
+    clear: 'Effacer',
+    selectAll: 'Tout sélectionner',
+    copy: 'Copier',
+
+    paste: 'Coller',
     sessions: 'Sessions',
     newTab: 'Nouveau terminal',
     closeSession: 'Fermer cette session ?',

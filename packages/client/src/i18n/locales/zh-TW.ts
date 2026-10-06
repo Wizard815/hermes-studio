@@ -3307,6 +3307,11 @@ export default {
 
   // 終端機
   terminal: {
+    clear: '清除',
+    selectAll: '全選',
+    copy: '複製',
+
+    paste: '貼上',
     sessions: '工作階段',
     newTab: '新增終端機',
     closeSession: '關閉此工作階段？',

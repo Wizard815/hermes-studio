@@ -3346,6 +3346,11 @@ export default {
 
   // Terminal
   terminal: {
+    clear: 'مسح',
+    selectAll: 'تحديد الكل',
+    copy: 'نسخ',
+
+    paste: 'لصق',
     sessions: 'الجلسات',
     newTab: 'طرفية جديدة',
     closeSession: 'إغلاق هذه الجلسة؟',

@@ -2851,6 +2851,11 @@ export default {
 
   // 터미널
   terminal: {
+    clear: '지우기',
+    selectAll: '전체 선택',
+    copy: '복사',
+
+    paste: '붙여넣기',
     sessions: '세션',
     newTab: '새 터미널',
     closeSession: '이 세션을 닫으시겠습니까?',

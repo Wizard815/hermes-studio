@@ -2851,6 +2851,11 @@ export default {
 
   // ターミナル
   terminal: {
+    clear: 'クリア',
+    selectAll: 'すべて選択',
+    copy: 'コピー',
+
+    paste: '貼り付け',
     sessions: 'セッション',
     newTab: '新しいターミナル',
     closeSession: 'このセッションを閉じますか？',

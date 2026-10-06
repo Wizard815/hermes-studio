@@ -3366,6 +3366,11 @@ export default {
 
   // Terminal
   terminal: {
+    clear: 'Clear',
+    selectAll: 'Select all',
+    copy: 'Copy',
+
+    paste: 'Paste',
     sessions: 'Sessions',
     newTab: 'New Terminal',
     closeSession: 'Close this session?',

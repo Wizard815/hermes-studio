@@ -2852,6 +2852,11 @@ jobTriggered: 'Job ausgelost',
 
   // Terminal
   terminal: {
+    clear: 'Leeren',
+    selectAll: 'Alles auswählen',
+    copy: 'Kopieren',
+
+    paste: 'Einfügen',
     sessions: 'Sitzungen',
     newTab: 'Neues Terminal',
     closeSession: 'Diese Sitzung schliessen?',
