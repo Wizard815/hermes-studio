@@ -1434,7 +1434,25 @@ class AgentPool:
         return callback
 
     def _clarify_callback(self, session_id: str):
-        def callback(question: str, choices: list[str] | None = None) -> str:
+        def callback(question=None, choices=None) -> str:
+            # clarify_tool calls this as callback(normalized): ONE argument, the
+            # normalized question list [{qid, question, choices, choices_offered,
+            # multi_select}]. Older callers passed (question_text, choices).
+            # Treating that list as a question string put a Python repr of the whole
+            # payload into `question` (raw JSON on one line) and left `choices` None,
+            # so the UI had nothing to render as buttons.
+            if isinstance(question, (list, tuple)):
+                items = [q for q in question if isinstance(q, dict)]
+                first = items[0] if items else {}
+                question_text = str(first.get("question") or "")
+                choice_list = [str(c) for c in (first.get("choices") or [])]
+                multi_select = bool(first.get("multi_select"))
+            else:
+                items = []
+                question_text = str(question or "")
+                choice_list = [str(c) for c in (choices or [])]
+                multi_select = False
+
             clarify_id = uuid.uuid4().hex
             response_queue: queue.Queue[str] = queue.Queue(maxsize=1)
             with self._lock:
@@ -1442,8 +1460,10 @@ class AgentPool:
             self._append_event(session_id, {
                 "event": "clarify.requested",
                 "clarify_id": clarify_id,
-                "question": str(question or ""),
-                "choices": list(choices) if choices else None,
+                "question": question_text,
+                "choices": choice_list or None,
+                "multi_select": multi_select,
+                "questions": items or None,
                 "timeout_ms": 300_000,
             })
             try:
