@@ -90,6 +90,7 @@ interface SessionInfo {
 // ─── State ──────────────────────────────────────────────────────
 
 const terminalRef = ref<HTMLDivElement | null>(null);
+const termMenuRef = ref<HTMLDivElement | null>(null);
 const sessions = ref<SessionInfo[]>([]);
 const activeSessionId = ref<string | null>(null);
 const selectedTheme = ref(localStorage.getItem(STORAGE_KEY_THEME) || "default");
@@ -381,12 +382,35 @@ function handleTermPaste(event: ClipboardEvent): void {
   activeTerm?.paste(text);
 }
 
+function onTermMenuOutside(event: Event): void {
+  const el = termMenuRef.value;
+  if (el && event.target instanceof Node && el.contains(event.target)) return;
+  closeTermMenu();
+}
+
+function onTermMenuKey(event: KeyboardEvent): void {
+  if (event.key === "Escape") closeTermMenu();
+}
+
 function openTermMenu(event: MouseEvent): void {
   termMenu.value = { visible: true, x: event.clientX, y: event.clientY };
+  // Dismiss via document listeners attached on the next tick, rather than a
+  // full-viewport backdrop. The backdrop sits directly under the cursor, so on
+  // release some browsers deliver a second contextmenu straight to it and the
+  // menu vanishes instantly; deferring also keeps the opening event from
+  // closing it.
+  window.setTimeout(() => {
+    window.addEventListener("mousedown", onTermMenuOutside, true);
+    window.addEventListener("contextmenu", onTermMenuOutside, true);
+    window.addEventListener("keydown", onTermMenuKey, true);
+  }, 0);
 }
 
 function closeTermMenu(): void {
   termMenu.value.visible = false;
+  window.removeEventListener("mousedown", onTermMenuOutside, true);
+  window.removeEventListener("contextmenu", onTermMenuOutside, true);
+  window.removeEventListener("keydown", onTermMenuKey, true);
 }
 
 function menuCopy(): void {
@@ -421,7 +445,11 @@ function getOrCreateTerm(id: string): { term: Terminal; fitAddon: FitAddon } {
       // copy-out did nothing and the browser's own context menu landed on top
       // of the terminal.
       scrollback: 10000,
-      rightClickSelectsWord: true,
+      // We own the right-click: this panel's own menu opens on contextmenu. With
+      // xterm's rightClickSelectsWord the terminal acts on that same event too --
+      // it clears the current selection to select the word under the cursor, and
+      // the menu then fights the terminal's own right-click handling.
+      rightClickSelectsWord: false,
       convertEol: false,
       allowProposedApi: true,
     });
@@ -529,7 +557,18 @@ function unmountActiveTerminal() {
 }
 
 function tryFit() {
-  if (!activeFitAddon) return;
+  if (!activeFitAddon || !activeTerm || !terminalRef.value) return;
+  // Only refit when the dimensions would actually change. fit() resizes the
+  // terminal, and xterm drops the current selection on resize -- so calling it
+  // unconditionally from the ResizeObserver cleared the user's highlight the
+  // moment they released the mouse.
+  let dims: { cols?: number; rows?: number } | undefined;
+  try {
+    dims = activeFitAddon.proposeDimensions();
+  } catch {
+    dims = undefined;
+  }
+  if (dims && dims.cols === activeTerm.cols && dims.rows === activeTerm.rows) return;
   try {
     activeFitAddon.fit();
   } catch {}
@@ -605,6 +644,7 @@ watch(() => props.visible, (visible) => {
 }, { immediate: true });
 
 onUnmounted(() => {
+  closeTermMenu();
   for (const timer of initialCommandTimers) clearTimeout(timer);
   initialCommandTimers.clear();
   unmountActiveTerminal();
@@ -725,15 +765,11 @@ onUnmounted(() => {
         />
         <div
           v-if="termMenu.visible"
-          class="terminal-menu-backdrop"
-          @click="closeTermMenu"
-          @contextmenu.prevent="closeTermMenu"
-        />
-        <div
-          v-if="termMenu.visible"
+          ref="termMenuRef"
           class="terminal-context-menu"
           :style="{ left: `${termMenu.x}px`, top: `${termMenu.y}px` }"
           @click.stop
+          @contextmenu.prevent.stop
         >
           <button type="button" @click="menuCopy">{{ t('terminal.copy') }}</button>
           <button type="button" @click="menuPaste">{{ t('terminal.paste') }}</button>
