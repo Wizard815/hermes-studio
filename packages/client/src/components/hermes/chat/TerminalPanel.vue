@@ -106,6 +106,10 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 3;
 let touchScrollLastY: number | null = null;
 let touchScrollRemainder = 0;
+// Last non-empty xterm selection. xterm clears getSelection() when the terminal
+// loses focus, so a copy issued right after a focus loss would have nothing left
+// to copy.
+let lastSelection = "";
 const TOUCH_SCROLL_LINE_PX = 18;
 const INITIAL_COMMAND_CHUNK_SIZE = 128;
 const INITIAL_COMMAND_CHUNK_DELAY_MS = 8;
@@ -342,25 +346,49 @@ const termMenu = ref<{ visible: boolean; x: number; y: number }>({
 });
 
 async function copyTermSelection(term: Terminal | null = activeTerm): Promise<void> {
-  const selection = term?.getSelection();
+  // Fall back to the last non-empty selection: xterm clears getSelection() when
+  // the terminal loses focus, so a copy triggered after a blur would otherwise
+  // find nothing.
+  const selection = term?.getSelection() || lastSelection;
   if (!selection) return;
-  try {
-    await navigator.clipboard.writeText(selection);
-  } catch {
-    // Non-secure origin: fall back to the legacy selection copy.
-    const helper = document.createElement("textarea");
-    helper.value = selection;
-    helper.style.position = "fixed";
-    helper.style.opacity = "0";
-    document.body.appendChild(helper);
-    helper.select();
+  // Preferred path: the async API never moves focus, so the terminal keeps both
+  // focus and its selection.
+  if (navigator.clipboard?.writeText) {
     try {
-      document.execCommand("copy");
+      await navigator.clipboard.writeText(selection);
+      return;
     } catch {
-      /* nothing else to try */
+      /* not permitted (plain-http LAN origin) -- fall through to the legacy path */
     }
-    document.body.removeChild(helper);
   }
+  // Legacy fallback for a non-secure origin. The previous version appended a
+  // <textarea> and called select(), which moved focus out of the terminal -- and
+  // xterm CLEARS ITS SELECTION ON BLUR, so Ctrl+C wiped the very highlight it was
+  // copying. A Range over an off-screen element copies the same text while the
+  // terminal keeps focus.
+  const holder = document.createElement("span");
+  holder.textContent = selection;
+  holder.setAttribute("aria-hidden", "true");
+  holder.style.position = "fixed";
+  holder.style.left = "-9999px";
+  holder.style.top = "0";
+  holder.style.whiteSpace = "pre";
+  document.body.appendChild(holder);
+
+  const range = document.createRange();
+  range.selectNodeContents(holder);
+  const sel = window.getSelection();
+  const savedRange = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  try {
+    document.execCommand("copy");
+  } catch {
+    /* nothing else to try */
+  }
+  sel?.removeAllRanges();
+  if (savedRange) sel?.addRange(savedRange);
+  document.body.removeChild(holder);
 }
 
 async function pasteIntoTerm(term: Terminal | null = activeTerm): Promise<void> {
@@ -380,6 +408,14 @@ function handleTermPaste(event: ClipboardEvent): void {
   if (!text) return;
   event.preventDefault();
   activeTerm?.paste(text);
+}
+
+function focusTerminal(): void {
+  // xterm clears its selection when its helper textarea loses focus, and nothing
+  // else in this panel re-asserts it -- so a drag-select could start (or end)
+  // with the terminal unfocused and the highlight would not survive. Re-assert
+  // focus on mousedown.
+  activeTerm?.focus();
 }
 
 function onTermMenuOutside(event: Event): void {
@@ -456,6 +492,10 @@ function getOrCreateTerm(id: string): { term: Terminal; fitAddon: FitAddon } {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
+    term.onSelectionChange(() => {
+      const value = term.getSelection();
+      if (value) lastSelection = value;
+    });
     term.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
       const mod = event.ctrlKey || event.metaKey;
@@ -756,6 +796,7 @@ onUnmounted(() => {
           ref="terminalRef"
           class="terminal-xterm"
           :style="{ backgroundColor: terminalBg }"
+          @mousedown="focusTerminal"
           @contextmenu.prevent="openTermMenu"
           @paste="handleTermPaste"
           @touchstart="handleTerminalTouchStart"
