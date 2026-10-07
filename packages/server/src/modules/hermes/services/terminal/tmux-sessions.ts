@@ -103,10 +103,12 @@ export function ensureTmuxSession(name: string, cwd: string): string {
   // Embedding tmux in an xterm.js client:
   //  - terminal-overrides smcup@/rmcup@: avoid the alternate screen so we do
   //    not lose as much rendering context.
-  //  - mouse on: tmux owns wheel scrolling via copy-mode. xterm.js has no
-  //    usable local scrollback when tmux repaints the pane, so this is the
-  //    only path that actually scrolls history. Hold Shift to drag-select for
-  //    native copy.
+  //  - mouse off: xterm keeps the drag, so plain drag-select works and Ctrl+C
+  //    copies with no modifier. `mouse on` instead gave tmux the mouse, which
+  //    meant dragging produced NO xterm selection at all -- copy then silently
+  //    did nothing unless Shift was held -- and tmux's mouse-tracking sequences
+  //    were echoed by bash as literal text into the prompt. The wheel now
+  //    scrolls xterm's own scrollback rather than tmux copy-mode history.
   //  - window-size largest: a single client size wins, preventing the
   //    redraw/overdraw that came from two clients fighting over the pane.
   try {
@@ -116,7 +118,7 @@ export function ensureTmuxSession(name: string, cwd: string): string {
     runTmux(['set-option', '-t', name, 'history-limit', '50000'])
     runTmux(['set-option', '-t', name, 'window-size', 'largest'])
     runTmux(['set-window-option', '-t', name, 'aggressive-resize', 'off'])
-    runTmux(['set-option', '-t', name, 'mouse', 'on'])
+    runTmux(['set-option', '-t', name, 'mouse', 'off'])
     runTmux(['set-option', '-t', name, 'focus-events', 'on'])
   } catch {
     // Option tuning is best-effort.
