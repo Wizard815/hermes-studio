@@ -193,14 +193,16 @@ function managedConfig(
   return {
     ...managedCommandConfig(toolset, bundledScript),
     ...(toolset === 'use' ? { timeout: MANAGED_USE_MCP_TIMEOUT_SECONDS } : {}),
-    // Register from the schema cache instead of requiring a live connection.
-    // Hermes recycles stdio MCP servers on a lifetime/idle deadline and
-    // deregisters their tools when it does; the name then stops resolving, so
-    // the model sees the tool advertised in its catalog but gets
-    // "is not a deferrable tool" / "does not exist" when it calls it. Lazy
-    // registration keeps the tools registered and defers the spawn to first use
-    // (missing or stale cache entries still fall back to an eager connect).
-    lazy: true,
+    // Eager, not lazy. Lazy registration was added here to survive Hermes
+    // recycling stdio MCP servers and deregistering their tools -- but with no
+    // idle_timeout_seconds / max_lifetime_seconds configured there is nothing to
+    // survive, and lazy only creates the failure it was meant to prevent: the
+    // tools are absent from the live registry until first use, so a call in that
+    // window answers "does not exist" while tool_search still advertises the
+    // name from the catalog. agent.log shows this server doing "lazy start on
+    // first use" repeatedly (15:22, 17:37, 21:45). The schema cache still
+    // supplies the schemas; it no longer decides registration.
+    lazy: false,
     env,
     enabled: true,
   }

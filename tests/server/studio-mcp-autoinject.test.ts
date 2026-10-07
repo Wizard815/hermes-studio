@@ -129,9 +129,10 @@ describe('studio MCP autoinject', () => {
         HERMES_WEB_UI_MANAGED_MCP: '1',
       },
       enabled: true,
-      // Lazily registered from the schema cache so the tools stay resolvable
-      // after Hermes recycles the stdio server.
-      lazy: true,
+      // Eager. Lazy registration leaves the tool out of the live registry until
+      // first use, so a call in that window answers "does not exist" while the
+      // catalog still advertises the name.
+      lazy: false,
     })
     expect(injectedDefault.data.mcp_servers['ekko-studio-browser']).toMatchObject({
       command: process.execPath,
@@ -232,31 +233,32 @@ describe('studio MCP autoinject', () => {
     expect(resynced.data.mcp_servers['ekko-studio-api'].timeout).toBe(42)
   })
 
-  it('adds lazy registration to a managed entry written before the flag existed', async () => {
+  it('rewrites a managed entry that still carries the obsolete lazy flag', async () => {
     const { injectBundledMcpServer } = await import('../../packages/server/src/modules/hermes/services/mcp/studio-autoinject')
     await injectBundledMcpServer()
 
     const updater = updateConfigYamlForProfileMock.mock.calls[0][1]
     const initial = await updater({})
     const legacy = structuredClone(initial.data)
-    // An entry from an older build: correct command/env, but no `lazy`.
-    delete legacy.mcp_servers['ekko-studio-interaction'].lazy
+    // An entry written while the server was registered lazily.
+    legacy.mcp_servers['ekko-studio-interaction'].lazy = true
 
     const migrated = await updater(legacy)
 
-    // Must be rewritten, otherwise the stdio server stays eager and its tools
-    // are deregistered the moment Hermes recycles it.
+    // Must be rewritten back to eager. Lazy registration leaves the tool out of
+    // the live registry until first use, so a call in that window answers
+    // "does not exist" while tool_search still advertises it from the catalog.
     expect(migrated.result.status).toBe('updated')
-    expect(migrated.data.mcp_servers['ekko-studio-interaction'].lazy).toBe(true)
+    expect(migrated.data.mcp_servers['ekko-studio-interaction'].lazy).toBe(false)
   })
 
-  it('leaves a managed entry carrying lazy registration unchanged', async () => {
+  it('leaves an eager managed entry unchanged on a second pass', async () => {
     const { injectBundledMcpServer } = await import('../../packages/server/src/modules/hermes/services/mcp/studio-autoinject')
     await injectBundledMcpServer()
 
     const updater = updateConfigYamlForProfileMock.mock.calls[0][1]
     const initial = await updater({})
-    expect(initial.data.mcp_servers['ekko-studio-interaction'].lazy).toBe(true)
+    expect(initial.data.mcp_servers['ekko-studio-interaction'].lazy).toBe(false)
 
     const again = await updater(structuredClone(initial.data))
 
