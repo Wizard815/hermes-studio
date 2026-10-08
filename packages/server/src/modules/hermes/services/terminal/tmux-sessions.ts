@@ -99,7 +99,14 @@ export function listChatSessions(chatSessionId: string): TmuxSessionInfo[] {
 }
 
 export function ensureTmuxSession(name: string, cwd: string): string {
-  runTmux(['new-session', '-A', '-d', '-s', name, '-c', cwd])
+  // systemd does not export TERM to the Studio server, so the tmux server it
+  // spawns inherits none, and a session created here would leave the pane's
+  // TERM empty. Without terminfo neither bash nor tmux can recognise the
+  // terminal's DA1/DA2 attribute replies, so xterm.js' answers get echoed into
+  // the prompt as literal text ("1;2c0;276;0c", ";3~"). Pin it explicitly
+  // rather than depending on the service environment.
+  const paneTerm = process.env.TERM && process.env.TERM !== 'dumb' ? process.env.TERM : 'tmux-256color'
+  runTmux(['new-session', '-A', '-d', '-e', `TERM=${paneTerm}`, '-s', name, '-c', cwd])
   // Embedding tmux in an xterm.js client:
   //  - terminal-overrides smcup@/rmcup@: avoid the alternate screen so we do
   //    not lose as much rendering context.
