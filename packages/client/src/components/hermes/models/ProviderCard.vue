@@ -243,7 +243,12 @@ async function handleDelete() {
 async function handleRefreshModels(confirm = false) {
   refreshingModels.value = true
   try {
-    const result = await modelsStore.refreshProviderModels(props.provider.provider, { confirm })
+    // Refresh mirrors the provider: apply removals as well as additions.
+    // Without this the server's confirm gate returned applied:false and the
+    // list only ever grew, so a model that had disappeared still looked
+    // present. The server keeps a `previous_models` snapshot, so the old list
+    // stays recoverable through "restore models".
+    const result = await modelsStore.refreshProviderModels(props.provider.provider, { confirm: true })
     if (result.requires_confirmation && !confirm) {
       dialog.warning({
         title: t('models.refreshModelsConfirmTitle'),
