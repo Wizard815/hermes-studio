@@ -88,6 +88,8 @@ export interface HermesSessionSearchRow extends HermesSessionRow {
 export interface SessionListOptions {
   offset?: number
   categoryId?: number | null
+  /** Skip preview/parent-message subqueries when only metadata is needed. */
+  lite?: boolean
   pinned?: boolean
   includeSessionIds?: string[]
   sources?: string[]
@@ -588,6 +590,20 @@ export function listSessions(
   const filters = sessionFilterSql(profile, source ? { ...options, sources: [source] } : options)
   if (!filters) return []
   const db = getDb()!
+
+  if (options.lite) {
+    // Callers that only need session metadata (counts, permission filters)
+    // skip the per-row preview and parent-message subqueries.
+    const liteSql = `
+      SELECT s.*, '' AS preview, NULL AS parent_title, NULL AS parent_last_message, NULL AS parent_last_message_role
+      FROM ${SESSIONS_TABLE} s
+      WHERE ${filters.sql}
+      ORDER BY ${options.historySource ? '' : 's.is_pinned DESC, '}s.last_active DESC, s.id DESC
+      LIMIT ? OFFSET ?
+    `
+    const liteOffset = Number.isSafeInteger(options.offset) && options.offset! > 0 ? options.offset! : 0
+    return mapSessionRows(db.prepare(liteSql).all(...filters.params, limit, liteOffset) as Record<string, unknown>[])
+  }
 
   // Use a subquery to generate preview from first user message if not set
   const sql = `
@@ -1101,7 +1117,6 @@ export function updateSessionStats(id: string): void {
          last_active = COALESCE((SELECT MAX(timestamp) FROM ${MESSAGES_TABLE} WHERE session_id = ?), started_at)
      WHERE id = ?`,
   ).run(id, id, id)
-  console.log(`Updated session ${id} stats`)
 }
 
 export function getSessionDetailPaginated(

@@ -706,7 +706,11 @@ export function getOrCreateSession(sessionMap: Map<string, SessionState>, sessio
 export function pushState(sessionMap: Map<string, SessionState>, sessionId: string, event: string, data: any) {
   const state = getOrCreateSession(sessionMap, sessionId)
   state.events.push({ event, data })
+  // Bridge tool events carry full outputs; keep the resume buffer bounded like the Ekko path does.
+  if (state.events.length > MAX_BUFFERED_RUN_EVENTS) state.events.splice(0, state.events.length - MAX_BUFFERED_RUN_EVENTS)
 }
+
+const MAX_BUFFERED_RUN_EVENTS = 500
 
 export function replaceState(sessionMap: Map<string, SessionState>, sessionId: string, event: string, data: any) {
   const state = sessionMap.get(sessionId)

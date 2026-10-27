@@ -2,12 +2,15 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/layout/PageHeader.vue'
+import { getApiKey } from '@/api/client'
 
 const { t } = useI18n()
 
 // Upstream Management app served by Studio's own /upstream proxy so it lives on
 // the same origin/port as Studio (#/hermes/upstream) instead of a separate localhost:5001. It renders in a full-frame iframe.
 const UPSTREAM_PATH = import.meta.env.VITE_UPSTREAM_PATH || '/upstream'
+// The proxy requires a Studio login; the token is exchanged for a scoped cookie on first load.
+const frameSrc = `${UPSTREAM_PATH}?token=${encodeURIComponent(getApiKey())}`
 const loaded = ref(false)
 const frameError = ref(false)
 </script>
@@ -22,7 +25,7 @@ const frameError = ref(false)
 
     <div class="upstream-frame-wrap">
       <iframe
-        :src="UPSTREAM_PATH"
+        :src="frameSrc"
         class="upstream-frame"
         title="Upstream Management"
         loading="lazy"

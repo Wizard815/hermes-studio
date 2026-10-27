@@ -52,6 +52,11 @@ export const USAGE_SCHEMA: Record<string, string> = {
   created_at: 'INTEGER NOT NULL DEFAULT 0',
 }
 
+export const USAGE_TIME_INDEXES = [
+  'CREATE INDEX IF NOT EXISTS idx_session_usage_created_at ON session_usage(created_at)',
+  'CREATE INDEX IF NOT EXISTS idx_session_usage_profile_created ON session_usage(profile, created_at)',
+]
+
 export const USAGE_RUN_INDEX = `CREATE UNIQUE INDEX IF NOT EXISTS idx_session_usage_run
   ON ${USAGE_TABLE}(session_id, run_id, source) WHERE run_id <> ''`
 
@@ -247,6 +252,8 @@ export const SESSIONS_SCHEMA: Record<string, string> = {
 
 export const SESSIONS_INDEXES = {
   idx_sessions_category_id: 'CREATE INDEX IF NOT EXISTS idx_sessions_category_id ON sessions(category_id)',
+  idx_sessions_list_order: 'CREATE INDEX IF NOT EXISTS idx_sessions_list_order ON sessions(is_pinned DESC, last_active DESC)',
+  idx_sessions_parent: 'CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id)',
 }
 
 export const MESSAGES_TABLE = 'messages'
@@ -271,6 +278,8 @@ export const MESSAGES_SCHEMA: Record<string, string> = {
 }
 
 export const MESSAGES_INDEX = 'CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)'
+// Serves the first-user-message preview and last-message lookups without sorting per session.
+export const MESSAGES_ROLE_INDEX = 'CREATE INDEX IF NOT EXISTS idx_messages_session_role_time ON messages(session_id, role, timestamp, id)'
 
 export const SKILL_USAGE_EVENTS_TABLE = 'skill_usage_events'
 
@@ -1728,6 +1737,7 @@ export function initAllHermesTables(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_usage_model_api_key ON ${USAGE_TABLE}(model_api_key_id, account_id)`)
     syncTable(USAGE_PRICING_TABLE, USAGE_PRICING_SCHEMA, { primaryKey: 'profile' })
     db.exec(USAGE_RUN_INDEX)
+    for (const statement of USAGE_TIME_INDEXES) db.exec(statement)
     syncTable(RUN_USAGE_TABLE, RUN_USAGE_SCHEMA, { indexes: RUN_USAGE_INDEXES })
     // syncTable only creates indexes for a new table. Existing tables need
     // these on every startup as well: completion uses the unique run key.
@@ -1768,6 +1778,7 @@ export function initAllHermesTables(): void {
     createIndexes(db, SESSIONS_INDEXES)
     syncTable(MESSAGES_TABLE, MESSAGES_SCHEMA)
     db.exec(MESSAGES_INDEX)
+    db.exec(MESSAGES_ROLE_INDEX)
     syncTable(SKILL_USAGE_EVENTS_TABLE, SKILL_USAGE_EVENTS_SCHEMA, {
       indexes: SKILL_USAGE_EVENTS_INDEXES,
     })

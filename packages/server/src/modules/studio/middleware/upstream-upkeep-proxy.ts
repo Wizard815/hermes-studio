@@ -1,5 +1,6 @@
 import type { Context, Next } from 'koa'
 import { logger } from '../public/logging'
+import { authenticateUserToken } from './auth'
 
 /**
  * Reverse proxy for the Upstream Management Flask app (Upstream-Upkeep).
@@ -12,8 +13,11 @@ import { logger } from '../public/logging'
  *
  * It MUST be registered before the SPA/`securityHeaders()` middleware so the
  * proxied frame responses are not tagged with `X-Frame-Options: DENY` (which
- * would block the in-app iframe) and before the auth middleware (Upstream
- * Management is a local tool, no Studio token required).
+ * would block the in-app iframe) and therefore before the global auth
+ * middleware, so it authenticates itself: only a Studio super administrator may
+ * reach it. The iframe passes the login token once as `?token=`; it is moved
+ * into a path-scoped HttpOnly cookie so the Flask app's relative sub-requests
+ * stay authenticated, and neither is forwarded to the Flask app.
  */
 
 const DEFAULT_TARGET = process.env.UPSTREAM_UPKEEP_TARGET || 'http://127.0.0.1:5001'
@@ -33,11 +37,56 @@ function readRawBody(req: any): Promise<Buffer> {
   })
 }
 
+const AUTH_COOKIE = 'studio_upstream_token'
+
+function readCookie(req: any, name: string): string {
+  for (const part of String(req.headers.cookie || '').split(';')) {
+    const index = part.indexOf('=')
+    if (index > 0 && part.slice(0, index).trim() === name) {
+      try { return decodeURIComponent(part.slice(index + 1).trim()) } catch { return '' }
+    }
+  }
+  return ''
+}
+
+/** Returns true when the caller is a super administrator; otherwise answers 401/403. */
+async function authorize(ctx: Context): Promise<boolean> {
+  const bearer = String(ctx.headers.authorization || '')
+  const queryToken = typeof ctx.query.token === 'string' ? ctx.query.token.trim() : ''
+  const token = (bearer.startsWith('Bearer ') ? bearer.slice(7).trim() : '')
+    || queryToken
+    || readCookie(ctx.req, AUTH_COOKIE)
+  const user = token ? await authenticateUserToken(token) : null
+  if (!user) {
+    ctx.status = 401
+    ctx.body = { error: 'Unauthorized' }
+    return false
+  }
+  if (user.role !== 'super_admin') {
+    ctx.status = 403
+    ctx.body = { error: 'Super administrator privileges are required' }
+    return false
+  }
+  if (queryToken) {
+    ctx.cookies.set(AUTH_COOKIE, queryToken, {
+      httpOnly: true, sameSite: 'strict', path: prefixPath, secure: ctx.secure, overwrite: true,
+    })
+  }
+  return true
+}
+
+function stripToken(search: string): string {
+  const params = new URLSearchParams(search)
+  params.delete('token')
+  const rest = params.toString()
+  return rest ? `?${rest}` : ''
+}
+
 function copyHeaders(req: any): Record<string, string> {
   const headers: Record<string, string> = {}
   const hopByHop = new Set([
     'host', 'connection', 'keep-alive', 'transfer-encoding', 'content-length',
-    'te', 'trailer', 'upgrade', 'proxy-authorization',
+    'te', 'trailer', 'upgrade', 'proxy-authorization', 'authorization', 'cookie',
   ])
   for (const [key, value] of Object.entries(req.headers)) {
     if (!value || hopByHop.has(key.toLowerCase())) continue
@@ -47,7 +96,7 @@ function copyHeaders(req: any): Record<string, string> {
 }
 
 async function forward(ctx: Context, next: Next, backendPath: string, method: string): Promise<void> {
-  const url = `${targetBase}${backendPath}${ctx.search ?? ''}`
+  const url = `${targetBase}${backendPath}${stripToken(ctx.search ?? '')}`
   const headers = copyHeaders(ctx.req)
   headers['host'] = new URL(url).host
   headers['x-upstream-base'] = upstreamBaseHeader
@@ -83,6 +132,7 @@ async function forward(ctx: Context, next: Next, backendPath: string, method: st
 export function upstreamUpkeepProxy(): (ctx: Context, next: Next) => Promise<void> {
   return async (ctx: Context, next: Next): Promise<void> => {
     const { path, method } = ctx
+    if ((path === prefixPath || path.startsWith(`${prefixPath}/`)) && !(await authorize(ctx))) return
     if (path === prefixPath || path === `${prefixPath}/`) {
       await forward(ctx, next, '/', method)
       return

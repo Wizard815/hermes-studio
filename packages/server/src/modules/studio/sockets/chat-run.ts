@@ -3048,6 +3048,18 @@ export class ChatRunSocket {
     })
   }
 
+  /** Stops a run and forgets its in-memory state; persistence is left to the caller's delete. */
+  async abortSessionForDeletion(sessionId: string): Promise<void> {
+    const sid = String(sessionId || '').trim()
+    if (!sid) return
+    codingAgentRunManager.stop(sid, { reportClosed: false })
+    const state = this.sessionMap.get(sid)
+    this.finishTaskPlanRun(sid, 'abort.completed')
+    state?.abortController?.abort()
+    this.sessionMap.delete(sid)
+    this.runWaiters.delete(sid)
+  }
+
   async disposeSession(sessionId: string): Promise<void> {
     const sid = String(sessionId || '').trim()
     if (!sid) return

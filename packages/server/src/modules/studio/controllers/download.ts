@@ -66,6 +66,15 @@ function requestedProfile(ctx: any): string {
   return ctx.state?.profile?.name || getActiveProfileName() || 'default'
 }
 
+/**
+ * Absolute paths can point anywhere on the host (tokens, .env, databases), so
+ * only super administrators may read outside Studio's upload directory.
+ */
+function authorizeAbsoluteDownload(ctx: any, validPath: string): string {
+  if (isInUploadDir(validPath) || ctx.state?.user?.role === 'super_admin') return validPath
+  throw Object.assign(new Error('Absolute paths outside the upload directory require super administrator privileges'), { code: 'forbidden_path' })
+}
+
 export async function download(ctx: any) {
   const filePath = ctx.query.path as string | undefined
   const fileName = ctx.query.name as string | undefined
@@ -83,7 +92,7 @@ export async function download(ctx: any) {
     // Support both absolute and relative paths
     const validPath = ctx.state?.sessionShare
       ? await authorizeShareDownload(ctx.state.sessionShare, filePath)
-      : isAbsolute(filePath) ? validatePath(filePath) : resolveProfileFilePath(filePath, profile)
+      : isAbsolute(filePath) ? authorizeAbsoluteDownload(ctx, validatePath(filePath)) : resolveProfileFilePath(filePath, profile)
 
     // Choose provider: always use local for upload directory files
     let data: Buffer
@@ -118,6 +127,7 @@ export async function download(ctx: any) {
     const statusMap: Record<string, number> = {
       missing_path: 400,
       invalid_path: 400,
+      forbidden_path: 403,
       not_found: 404,
       ENOENT: 404,
       file_too_large: 413,

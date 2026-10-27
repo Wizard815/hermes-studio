@@ -653,7 +653,7 @@ export async function removeCategory(ctx: any) {
 export async function count(ctx: any) {
   const source = (ctx.query.source as string) || undefined
   const profile = explicitProfileFilter(ctx)
-  const allSessions = localListSessions(profile, source, 2147483647)
+  const allSessions = localListSessions(profile, source, 2147483647, { lite: true })
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   const sessions = filterPendingDeletedSessions(filterArchivedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s =>
     isRequestedSessionSource(source, s.source) &&
@@ -800,7 +800,7 @@ export async function search(ctx: any) {
     ? undefined
     : listProfileNamesFromDisk().filter(name => !allowedProfiles || allowedProfiles.has(name))
   const pendingDeletedIds = [...getPendingDeletedSessionIds()]
-  const results = localSearchSessions(profile, q, limit && limit > 0 ? limit : 20, {
+  const results = localSearchSessions(profile, q, limit && limit > 0 ? Math.min(limit, 100) : 20, {
     sources: requestedSessionSources(source),
     profiles: searchableProfiles,
     includeArchived: false,
@@ -1487,6 +1487,8 @@ export async function remove(ctx: any) {
   const hermesProfile = requestedProfile(ctx) || existing?.profile || getActiveProfileName()
   const providerAgentSession = isProviderAgentSession(existing)
   if (providerAgentSession) stopCodingAgentSessionRun(sessionId, { reportClosed: false })
+  // Abort an in-flight run and drop its queued state so it cannot keep writing into the deleted session.
+  await getChatRunServer()?.abortSessionForDeletion?.(sessionId)
   const hermes = providerAgentSession
     ? { attempted: false, deleted: false, profile: hermesProfile }
     : await deleteHermesSessionIfPresent(sessionId, hermesProfile)
@@ -1563,6 +1565,7 @@ export async function batchRemove(ctx: any) {
 
     const providerAgentSession = isProviderAgentSession(existing)
     if (providerAgentSession) stopCodingAgentSessionRun(id, { reportClosed: false })
+    await getChatRunServer()?.abortSessionForDeletion?.(id)
     const hermes = providerAgentSession
       ? { attempted: false, deleted: false, profile: targetProfile || 'default' }
       : await deleteHermesSessionIfPresent(id, targetProfile)

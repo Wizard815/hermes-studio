@@ -108,6 +108,18 @@ export async function closeTab(ctx: Context) {
 
 // ─── Navigation ────────────────────────────────────────────────────
 
+/** Only web pages: no file:// or other schemes, and never cloud metadata/link-local hosts. */
+export function browsableUrlError(raw: string): string | null {
+  let parsed: URL
+  try { parsed = new URL(raw) } catch { return 'url is not valid' }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'Only http and https URLs can be opened'
+  const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  if (/^169\.254\./.test(host) || host === 'metadata.google.internal' || /^fe80:/.test(host) || host === 'fd00:ec2::254') {
+    return 'Link-local and cloud metadata addresses cannot be opened'
+  }
+  return null
+}
+
 export async function navigate(ctx: Context) {
   const tabId = ctx.request.body?.tab_id
   const url = ctx.request.body?.url
@@ -115,6 +127,12 @@ export async function navigate(ctx: Context) {
   if (!url || typeof url !== 'string') {
     ctx.status = 400
     ctx.body = { error: 'url is required' }
+    return
+  }
+  const urlError = browsableUrlError(url)
+  if (urlError) {
+    ctx.status = 400
+    ctx.body = { error: urlError }
     return
   }
   if (unavailable(ctx)) return

@@ -1375,6 +1375,7 @@ function createChatState(scopedSessionId?: string) {
   })
 
   onScopeDispose(() => {
+    flushPendingMessageDeltas()
     unsubscribeAuthInvalidation()
     runtimeGeneration += 1
     clearBackgroundObservers()
@@ -4097,6 +4098,7 @@ function createChatState(scopedSessionId?: string) {
         // onEvent
         (evt: RunEvent) => {
           if (generation !== runtimeGeneration || (evt.session_id && evt.session_id !== sid)) return
+          if (evt.event !== 'message.delta') flushPendingMessageDeltas()
           applyBackgroundPendingEvent(sid, evt)
           const eventRunMarker = readRunMarker(evt)
           if (eventRunMarker) activeRunMarker = eventRunMarker
@@ -4300,12 +4302,12 @@ function createChatState(scopedSessionId?: string) {
                 ? msgs.find(m => m.id === activeAssistantMessageId)
                 : null
               if (last?.role === 'assistant' && last.isStreaming) {
-                const prev = last.content
+                const prev = last.content + pendingDeltaText(last.id)
                 const next = prev + (evt.delta || '')
                 noteThinkingDelta(last.id, prev, next)
                 // 若之前有 reasoning 累积，则 content 到达即视为推理结束。
                 if (last.reasoning) noteReasoningEnd(last.id)
-                last.content = next
+                queueMessageDelta(last, evt.delta || '')
               } else {
                 const newId = uid()
                 const nextContent = evt.delta || ''
@@ -4766,6 +4768,7 @@ function createChatState(scopedSessionId?: string) {
       if (closed || generation !== runtimeGeneration) return
       // Filter events for this session (server tags all events with session_id)
       if (evt.session_id && evt.session_id !== sid) return
+      if (evt.event !== 'message.delta') flushPendingMessageDeltas()
       applyBackgroundPendingEvent(sid, evt)
       const eventRunMarker = readRunMarker(evt)
       if (eventRunMarker) activeRunMarker = eventRunMarker
@@ -4962,11 +4965,11 @@ function createChatState(scopedSessionId?: string) {
             ? msgs.find(m => m.id === activeAssistantMessageId)
             : null
           if (last?.role === 'assistant' && last.isStreaming) {
-            const prev = last.content
+            const prev = last.content + pendingDeltaText(last.id)
             const next = prev + (evt.delta || '')
             noteThinkingDelta(last.id, prev, next)
             if (last.reasoning) noteReasoningEnd(last.id)
-            last.content = next
+            queueMessageDelta(last, evt.delta || '')
           } else {
             const newId = uid()
             const nextContent = evt.delta || ''
@@ -5537,6 +5540,35 @@ function createChatState(scopedSessionId?: string) {
 
   function getThinkingObservation(messageId: string) {
     return thinkingObservation.get(messageId)
+  }
+
+  // Streaming tokens arrive far faster than the UI can usefully re-render
+  // markdown, so deltas are buffered and applied at most every ~33ms. Any other
+  // event flushes first, so ordering relative to tool/complete events is kept.
+  const pendingMessageDeltas = new Map<string, { message: Message; text: string }>()
+  let pendingDeltaTimer: ReturnType<typeof setTimeout> | null = null
+
+  function pendingDeltaText(messageId: string): string {
+    return pendingMessageDeltas.get(messageId)?.text || ''
+  }
+
+  function flushPendingMessageDeltas() {
+    if (pendingDeltaTimer) {
+      clearTimeout(pendingDeltaTimer)
+      pendingDeltaTimer = null
+    }
+    if (pendingMessageDeltas.size === 0) return
+    const batch = [...pendingMessageDeltas.values()]
+    pendingMessageDeltas.clear()
+    for (const { message, text } of batch) message.content += text
+  }
+
+  function queueMessageDelta(message: Message, text: string) {
+    if (!text) return
+    const pending = pendingMessageDeltas.get(message.id)
+    if (pending) pending.text += text
+    else pendingMessageDeltas.set(message.id, { message, text })
+    if (!pendingDeltaTimer) pendingDeltaTimer = setTimeout(flushPendingMessageDeltas, 33)
   }
 
   function noteThinkingDelta(messageId: string, prevContent: string, nextContent: string) {
