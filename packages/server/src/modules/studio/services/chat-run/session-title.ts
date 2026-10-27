@@ -8,24 +8,28 @@ import {
 import { logger } from '../../public/logging'
 import { getSession, updateSession } from '../../repositories/session-store'
 
-export const SESSION_TITLE_MAX_WORDS = 15
+export const SESSION_TITLE_MAX_CHARS = 15
 const SESSION_TITLE_TIMEOUT_MS = 30_000
 const SESSION_TITLE_PROMPT_MAX_CHARS = 4000
 const SESSION_TITLE_SYSTEM_PROMPT = [
-  `You write short titles for chat conversations. Read the user's first message and reply with a title of at most ${SESSION_TITLE_MAX_WORDS} words.`,
+  `You write short titles for chat conversations. Read the user's first message and reply with a title of at most ${SESSION_TITLE_MAX_CHARS} characters (spaces included).`,
   'Reply in the same language as the message. Output only the title: no quotes, no markdown, no trailing punctuation, no explanation.',
 ].join(' ')
 
 type EmitFn = (event: string, payload: any) => void
 
-/** Clamp a raw model reply to a single-line title of at most 15 words. */
+/** Clamp a raw model reply to a single-line title of at most 15 characters. */
 export function normalizeGeneratedTitle(raw: unknown): string {
   const firstLine = String(raw ?? '').split(/\r?\n/).map(line => line.trim()).find(Boolean) || ''
   const cleaned = firstLine
     .replace(/^(?:title|标题)\s*[:：]\s*/i, '')
     .replace(/^["'“”‘’`*#\s]+|["'“”‘’`*\s.。]+$/g, '')
-  const words = cleaned.split(/\s+/).filter(Boolean)
-  return words.slice(0, SESSION_TITLE_MAX_WORDS).join(' ')
+  const chars = Array.from(cleaned.replace(/\s+/g, ' '))
+  if (chars.length <= SESSION_TITLE_MAX_CHARS) return chars.join('')
+  const clipped = chars.slice(0, SESSION_TITLE_MAX_CHARS).join('')
+  // Prefer ending on a whole word when that keeps most of the title.
+  const lastSpace = clipped.lastIndexOf(' ')
+  return (lastSpace >= SESSION_TITLE_MAX_CHARS / 2 ? clipped.slice(0, lastSpace) : clipped).trim()
 }
 
 export interface GenerateSessionTitleOptions {
@@ -107,7 +111,12 @@ export function scheduleSessionTitle(
     try {
       const title = await generateSessionTitle(options)
       if (!title) return
-      const session = getSession(sessionId)
+      // Coding-agent runtimes create the session row lazily; wait briefly for it.
+      let session = getSession(sessionId)
+      for (let i = 0; !session && i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        session = getSession(sessionId)
+      }
       if (!session || (session.title || '') !== provisionalTitle || title === session.title) return
       updateSession(sessionId, { title } as any)
       emit('session.title.updated', { event: 'session.title.updated', session_id: sessionId, title })
