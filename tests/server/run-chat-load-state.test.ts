@@ -212,7 +212,7 @@ describe('loadSessionStateFromDb', () => {
         display_content: null,
         tool_call_id: 'delegate-call-1',
         tool_name: 'delegate_task',
-        timestamp: 100,
+        timestamp: Math.floor(Date.now() / 1000),
       }],
     })
     const { loadSessionStateFromDb } = await import('../../packages/server/src/modules/studio/services/chat-run/load-state')
