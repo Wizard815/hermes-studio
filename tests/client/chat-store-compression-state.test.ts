@@ -1104,6 +1104,7 @@ describe('chat store compression state', () => {
       delta: ' continued',
       run_id: 'run-reconnect-streaming',
     })
+    await new Promise(resolve => setTimeout(resolve, 50)) // streamed deltas are flushed in ~33ms batches
     await nextTick()
 
     const assistantMessages = store.activeSession?.messages.filter((message: Message) => message.role === 'assistant') ?? []

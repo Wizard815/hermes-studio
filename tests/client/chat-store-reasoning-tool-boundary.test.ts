@@ -137,6 +137,7 @@ describe('chat store reasoning/tool boundaries', () => {
       output: 'tool output',
     } as RunEvent)
     onEvent({ event: 'message.delta', session_id: 'session-1', delta: 'After tool.' })
+    await new Promise(resolve => setTimeout(resolve, 50)) // streamed deltas are flushed in ~33ms batches
 
     expect(store.messages.map(message => message.role)).toEqual([
       'user',
@@ -722,6 +723,7 @@ describe('chat store reasoning/tool boundaries', () => {
     onEvent({ event: 'message.delta', session_id: 'session-1', delta: 'const value = 1' })
     onEvent({ event: 'message.delta', session_id: 'session-1', delta: '\n' })
     onEvent({ event: 'message.delta', session_id: 'session-1', delta: '```' })
+    await new Promise(resolve => setTimeout(resolve, 50)) // streamed deltas are flushed in ~33ms batches
 
     expect(store.messages.find(message => message.role === 'assistant')?.content).toBe([
       '```ts',

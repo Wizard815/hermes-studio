@@ -1364,7 +1364,7 @@ describe('session conversations controller', () => {
     }
     await mod.count(ctx)
 
-    expect(localListSessionsMock).toHaveBeenCalledWith(undefined, undefined, 2147483647)
+    expect(localListSessionsMock).toHaveBeenCalledWith(undefined, undefined, 2147483647, { lite: true })
     expect(ctx.body).toEqual({ count: 3 })
   })
 
@@ -1381,7 +1381,7 @@ describe('session conversations controller', () => {
     }
     await mod.count(ctx)
 
-    expect(localListSessionsMock).toHaveBeenCalledWith('travel', 'global_agent', 2147483647)
+    expect(localListSessionsMock).toHaveBeenCalledWith('travel', 'global_agent', 2147483647, { lite: true })
     expect(ctx.body).toEqual({ count: 1 })
   })
 
