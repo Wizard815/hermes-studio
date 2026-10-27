@@ -1386,6 +1386,7 @@ export default {
     deleteCategory: '刪除分類',
     enterCategoryName: '輸入分類名稱',
     createSubCategory: '新增子分類',
+    categoryPathHint: '使用 父層/子層 建立子分類。',
     moveCategory: '移動到…',
     moveCategoryTopLevel: '頂層',
     categoryMoved: '分類已移動',

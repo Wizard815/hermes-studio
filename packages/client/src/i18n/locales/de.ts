@@ -1334,6 +1334,7 @@ export default {
     deleteCategory: 'Kategorie löschen',
     enterCategoryName: 'Kategorienamen eingeben',
     createSubCategory: 'Neue Unterkategorie',
+    categoryPathHint: 'Mit Eltern/Kind legen Sie eine Unterkategorie an.',
     moveCategory: 'Verschieben nach…',
     moveCategoryTopLevel: 'Oberste Ebene',
     categoryMoved: 'Kategorie verschoben',

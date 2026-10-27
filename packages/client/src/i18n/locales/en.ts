@@ -1396,6 +1396,7 @@ export default {
     deleteCategory: 'Delete category',
     enterCategoryName: 'Enter category name',
     createSubCategory: 'New sub-category',
+    categoryPathHint: 'Use Parent/Child to create a sub-category.',
     moveCategory: 'Move to…',
     moveCategoryTopLevel: 'Top level',
     categoryMoved: 'Category moved',

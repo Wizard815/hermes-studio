@@ -1395,6 +1395,7 @@ export default {
     deleteCategory: '删除分类',
     enterCategoryName: '输入分类名称',
     createSubCategory: '新建子分类',
+    categoryPathHint: '使用 父级/子级 创建子分类。',
     moveCategory: '移动到…',
     moveCategoryTopLevel: '顶级',
     categoryMoved: '分类已移动',

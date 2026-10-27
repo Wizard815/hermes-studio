@@ -1334,6 +1334,7 @@ export default {
     deleteCategory: '카테고리 삭제',
     enterCategoryName: '카테고리 이름 입력',
     createSubCategory: '새 하위 카테고리',
+    categoryPathHint: '상위/하위 형식으로 하위 카테고리를 만들 수 있습니다.',
     moveCategory: '이동…',
     moveCategoryTopLevel: '최상위',
     categoryMoved: '카테고리를 이동했습니다',

@@ -1288,6 +1288,7 @@ export default {
     deleteCategory: 'Удалить категорию',
     enterCategoryName: 'Введите название категории',
     createSubCategory: 'Новая подкатегория',
+    categoryPathHint: 'Используйте Родитель/Дочерняя, чтобы создать подкатегорию.',
     moveCategory: 'Переместить в…',
     moveCategoryTopLevel: 'Верхний уровень',
     categoryMoved: 'Категория перемещена',

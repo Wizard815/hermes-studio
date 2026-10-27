@@ -1388,6 +1388,7 @@ export default {
     deleteCategory: 'حذف الفئة',
     enterCategoryName: 'أدخل اسم الفئة',
     createSubCategory: 'New sub-category',
+    categoryPathHint: 'Use Parent/Child to create a sub-category.',
     moveCategory: 'Move to…',
     moveCategoryTopLevel: 'Top level',
     categoryMoved: 'Category moved',

@@ -1334,6 +1334,7 @@ export default {
     deleteCategory: 'カテゴリーを削除',
     enterCategoryName: 'カテゴリー名を入力',
     createSubCategory: '新しいサブカテゴリー',
+    categoryPathHint: '親/子 の形式でサブカテゴリーを作成できます。',
     moveCategory: '移動先…',
     moveCategoryTopLevel: '最上位',
     categoryMoved: 'カテゴリーを移動しました',

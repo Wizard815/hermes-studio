@@ -1000,11 +1000,37 @@ watch(newChatNativeSelections, () => { if (showNewChatPage.value) persistNewChat
 
 const newChatCategoryOptions = computed(() => [
   { label: t("chat.uncategorized"), value: 0 },
-  ...sessionCategories.value.map((category) => ({
-    label: category.name,
-    value: category.id,
-  })),
+  ...sessionCategories.value
+    .map((category) => ({
+      label: categoryPathLabel(sessionCategories.value, category.id),
+      value: category.id,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label)),
 ]);
+
+// "HomeLab/Projects" creates (or reuses) each level of the path; a plain name is a top-level category.
+async function ensureCategoryPath(rawName: string): Promise<{ category: SessionCategory; created: boolean }> {
+  const parts = rawName.split("/").map((part) => part.trim().replace(/\s+/g, " ")).filter(Boolean);
+  if (parts.length === 0) throw new Error(t("chat.categoryCreateFailed"));
+  let parentId: number | null = null;
+  let current: SessionCategory | undefined;
+  let created = false;
+  for (const part of parts) {
+    current = sessionCategories.value.find(
+      (item) => (item.parent_id ?? null) === parentId && item.name.toLocaleLowerCase() === part.toLocaleLowerCase(),
+    );
+    if (!current) {
+      const next: SessionCategory = await createSessionCategory(part, parentId);
+      current = next;
+      created = true;
+      if (!sessionCategories.value.some((item) => item.id === next.id)) {
+        sessionCategories.value = [...sessionCategories.value, next].sort((a, b) => a.name.localeCompare(b.name));
+      }
+    }
+    parentId = current.id;
+  }
+  return { category: current!, created };
+}
 
 async function handleNewChatCategoryChange(value: string | number | null) {
   if (value === null || value === 0) {
@@ -1018,25 +1044,11 @@ async function handleNewChatCategoryChange(value: string | number | null) {
 
   const name = value.trim().replace(/\s+/g, " ");
   if (!name) return;
-  const existing = sessionCategories.value.find(
-    (category) => category.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
-  );
-  if (existing) {
-    newChatCategoryId.value = existing.id;
-    newChatCategorySelectRevision.value += 1;
-    return;
-  }
-
   newChatCategoryCreating.value = true;
   try {
-    const category = await createSessionCategory(name);
-    if (!sessionCategories.value.some((item) => item.id === category.id)) {
-      sessionCategories.value = [...sessionCategories.value, category].sort((a, b) =>
-        a.name.localeCompare(b.name),
-      );
-    }
+    const { category, created } = await ensureCategoryPath(name);
     newChatCategoryId.value = category.id;
-    message.success(t("chat.categoryCreated", { name: category.name }));
+    if (created) message.success(t("chat.categoryCreated", { name: categoryPathLabel(sessionCategories.value, category.id) }));
   } catch (error: any) {
     message.error(error?.message || t("chat.categoryCreateFailed"));
   } finally {
@@ -2205,19 +2217,9 @@ async function handleCreateCategoryConfirm() {
   try {
     try {
       if (!category) {
-        category = sessionCategories.value.find(
-          (item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
-        );
-      }
-      if (!category) {
-        const createdCategory = await createSessionCategory(name);
-        category = createdCategory;
-        created = true;
-        if (!sessionCategories.value.some((item) => item.id === createdCategory.id)) {
-          sessionCategories.value = [...sessionCategories.value, createdCategory].sort((a, b) =>
-            a.name.localeCompare(b.name),
-          );
-        }
+        const ensured = await ensureCategoryPath(name);
+        category = ensured.category;
+        created = ensured.created;
       }
     } catch (error: any) {
       message.error(error?.message || t("chat.categoryCreateFailed"));
@@ -2990,7 +2992,7 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
         ref="createCategoryInputRef"
         v-model:value="createCategoryValue"
         :placeholder="t('chat.enterCategoryName')"
-        :maxlength="40"
+        :maxlength="200"
         :disabled="createCategorySubmitting"
         :readonly="Boolean(createCategoryPendingCategory)"
         @keydown.enter="handleCreateCategoryEnter"
@@ -3342,7 +3344,7 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
                             tag
                             @update:value="handleNewChatCategoryChange"
                           />
-                          <span class="new-chat-field-hint">{{ t("chat.categoryCreateHint") }}</span>
+                          <span class="new-chat-field-hint">{{ t("chat.categoryCreateHint") }} {{ t("chat.categoryPathHint") }}</span>
                         </div>
                       </div>
                     </NPopover>
