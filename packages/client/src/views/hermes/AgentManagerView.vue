@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { deploymentUrl } from '@/utils/deployment-url'
 import { agentMetadata } from '@/utils/agent-catalog'
 import PageLoading from '@/components/common/PageLoading.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
@@ -383,7 +384,7 @@ async function submitLegacyDataMigrationDecision(action: 'migrate' | 'decline'):
 
 async function maybePromptLegacyWindowsDataMigration() {
   const bridge = desktopBridge()
-  if (legacyDataMigrationChecked.value || bridge?.isDesktop !== true || bridge.platform !== 'win32') return
+  if (legacyDataMigrationChecked.value || bridge?.isDesktop !== true || bridge.remoteMode === true || bridge.platform !== 'win32') return
   legacyDataMigrationChecked.value = true
 
   try {
@@ -524,7 +525,7 @@ onUnmounted(() => {
             <section class="agent-card coding-agent-card" data-testid="agent-card-ekko">
               <header class="agent-card-header compact">
                 <div class="agent-identity">
-                  <img :src="'/coding-agents/ekko-agent.png'" alt="" class="agent-logo" />
+                  <img :src="deploymentUrl('/coding-agents/ekko-agent.png')" alt="" class="agent-logo" />
                   <div>
                     <div class="agent-name-row">
                       <h3>Ekko</h3>
@@ -548,7 +549,7 @@ onUnmounted(() => {
           <section class="agent-card coding-agent-card hermes-card" data-testid="agent-card-hermes">
             <header class="agent-card-header compact">
               <div class="agent-identity">
-                <img :src="'/coding-agents/hermes.png'" alt="" class="agent-logo" />
+                <img :src="deploymentUrl('/coding-agents/hermes.png')" alt="" class="agent-logo" />
                 <div>
                   <div class="agent-name-row">
                     <h3>Hermes</h3>
@@ -756,33 +757,33 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: $bg-main-surface;
+  background: var(--theme-content-bg, $bg-main-surface);
 }
 
 .hermes-cli-details {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: calc(12px * var(--spacing-scale, 1));
 }
 
 .hermes-cli-detail-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
+  gap: calc(6px * var(--spacing-scale, 1));
+  padding: calc(12px * var(--spacing-scale, 1));
+  border: var(--border-width, 1px) solid var(--border-color);
+  border-radius: var(--radius-component, 6px);
 
   strong {
     color: var(--text-color-2);
-    font-size: 12px;
+    font-size: calc(var(--font-size-base, 14px) * 12 / 14);
   }
 
   code {
     overflow-wrap: anywhere;
     color: var(--text-color-1);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 12px;
+    font-size: calc(var(--font-size-base, 14px) * 12 / 14);
   }
 }
 
@@ -797,7 +798,7 @@ onUnmounted(() => {
 :global(.legacy-data-migration-dialog dl) {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: 8px 12px;
+  gap: calc(8px * var(--spacing-scale, 1)) calc(12px * var(--spacing-scale, 1));
   margin: 0 0 12px;
 }
 
@@ -822,12 +823,12 @@ onUnmounted(() => {
 :global(.agent-ai-help-error) {
   max-height: 180px;
   margin: 0;
-  padding: 10px 12px;
+  padding: calc(10px * var(--spacing-scale, 1)) calc(12px * var(--spacing-scale, 1));
   overflow: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-component, 8px);
   background: rgba(127, 127, 127, 0.1);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -847,12 +848,12 @@ onUnmounted(() => {
 
 .agent-manager-header-left {
   min-width: 0;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
 }
 
 .agent-manager-header-actions {
   flex: 0 0 auto;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
 }
 
 .header-title {
@@ -871,16 +872,16 @@ onUnmounted(() => {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: calc(16px * var(--spacing-scale, 1));
   margin: 0 auto;
-  padding: 24px;
+  padding: calc(24px * var(--spacing-scale, 1));
 }
 
 .agent-card {
-  padding: 18px;
-  border: 1px solid $border-color;
-  border-radius: 14px;
-  background: $bg-card;
+  padding: calc(18px * var(--spacing-scale, 1));
+  border: var(--border-width, 1px) solid $border-color;
+  border-radius: var(--radius-component, 14px);
+  background: var(--theme-card-bg, $bg-card);
   box-shadow: 0 5px 18px rgba(0, 0, 0, 0.05);
 }
 
@@ -888,7 +889,7 @@ onUnmounted(() => {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
+  gap: calc(18px * var(--spacing-scale, 1));
 
   &.compact {
     align-items: center;
@@ -898,23 +899,23 @@ onUnmounted(() => {
 .agent-identity {
   min-width: 0;
   align-items: flex-start;
-  gap: 12px;
+  gap: calc(12px * var(--spacing-scale, 1));
 
   h3 {
     margin: 0;
-    font-size: 17px;
+    font-size: calc(var(--font-size-base, 14px) * 17 / 14);
   }
 
   p {
     max-width: 720px;
     margin: 5px 0 0;
     color: $text-secondary;
-    font-size: 12px;
-    line-height: 1.55;
+    font-size: calc(var(--font-size-base, 14px) * 12 / 14);
+    line-height: var(--line-height, 1.55);
 
     &.agent-version {
       color: $text-primary;
-      font-size: 13px;
+      font-size: calc(var(--font-size-base, 14px) * 13 / 14);
       font-weight: 650;
       letter-spacing: 0.01em;
     }
@@ -923,16 +924,16 @@ onUnmounted(() => {
 
 .agent-name-row {
   flex-wrap: wrap;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
 }
 
 .agent-logo {
   width: 42px;
   height: 42px;
   flex: 0 0 auto;
-  padding: 4px;
-  border: 1px solid $border-color;
-  border-radius: 11px;
+  padding: calc(4px * var(--spacing-scale, 1));
+  border: var(--border-width, 1px) solid $border-color;
+  border-radius: var(--radius-component, 11px);
   background: rgba(255, 255, 255, 0.92);
   object-fit: contain;
 }
@@ -941,7 +942,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: 1fr;
   align-items: stretch;
-  gap: 16px;
+  gap: calc(16px * var(--spacing-scale, 1));
 }
 
 // Keep cards at least 340px wide when showing multiple columns, including 16px gaps.
@@ -961,18 +962,18 @@ onUnmounted(() => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: calc(15px * var(--spacing-scale, 1));
 }
 
 .agent-actions {
   flex-wrap: wrap;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
   margin-top: auto;
 }
 
 @media (max-width: $breakpoint-mobile) {
   .agent-manager-content {
-    padding: 16px;
+    padding: calc(16px * var(--spacing-scale, 1));
   }
 
   .coding-agent-grid {
@@ -993,8 +994,8 @@ onUnmounted(() => {
 </style>
 
 <style scoped>
-.agent-update-policy { min-width: 0; width: 100%; box-sizing: border-box; padding-top: 10px; border-top: 1px solid var(--border-color, #eee); }
-.agent-update-policy-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12px; }
+.agent-update-policy { min-width: 0; width: 100%; box-sizing: border-box; padding-top: calc(10px * var(--spacing-scale, 1)); border-top: var(--border-width, 1px) solid var(--border-color, #eee); }
+.agent-update-policy-row { display: flex; justify-content: space-between; align-items: center; gap: calc(12px * var(--spacing-scale, 1)); font-size: calc(var(--font-size-base, 14px) * 12 / 14); }
 .agent-update-policy small { display: block; margin-top: 6px; overflow-wrap: anywhere; }
 .agent-update-error { color: #c44; }
 </style>

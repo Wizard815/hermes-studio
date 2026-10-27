@@ -10,7 +10,7 @@ const sessionScrollPositions = new Map<string, MessageViewportScrollSnapshot>();
 </script>
 
 <script setup lang="ts">
-import { NSpin, NButton, NInput } from 'naive-ui'
+import { NSpin, NButton, NInput, NCheckbox, NModal, NDropdown } from 'naive-ui'
 import { usePageLoadingTask } from '@/composables/usePageLoading'
 import { ref, computed, nextTick, onBeforeUnmount, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -30,13 +30,18 @@ import { messageScrollPositionKey, rememberMessageScrollPosition } from "./messa
 import { chatSessionAgentAvatar } from "@/utils/chat-agent-avatar";
 import { parseThinking } from "@/utils/thinking-parser";
 import { groupCompletedToolsByRun } from "./tool-run-grouping";
+import { useMessageSelection } from './useMessageSelection';
+import type { MessageSelectionRow } from './message-selection';
+import { desktopBridge } from '@/utils/desktop-bridge';
 
 const props = withDefaults(defineProps<{
   approvalPortalToBody?: boolean
   scrollScope?: string
+  selectionActionsTarget?: HTMLElement | null
 }>(), {
   approvalPortalToBody: false,
   scrollScope: "chat",
+  selectionActionsTarget: null,
 })
 
 const chatStore = useChatStore();
@@ -102,7 +107,7 @@ function stopThinkingTimer() {
   }
 }
 
-const isRunIndicatorActive = computed(() => chatStore.isRunActive || !!chatStore.abortState);
+const isRunIndicatorActive = computed(() => chatStore.isRunActive || chatStore.abortState?.aborting === true);
 const formattedThinkingElapsed = computed(() => formatElapsed(thinkingElapsedMs.value));
 
 const currentToolCalls = computed(() => {
@@ -276,6 +281,96 @@ const displayMessagesWithForkDivider = computed<Message[]>(() => {
   ];
 });
 
+const {
+  selecting, loading: selectionLoading, deleting: deletingMessages, selected: selectedMessages,
+  supported: supportsMessageSelection, unavailable: selectionUnavailable, rows: messageRows,
+  start: startSelection, cancel: cancelSelection, toggle: toggleSelection, remove: deleteSelectedMessages,
+} = useMessageSelection(displayMessagesWithForkDivider);
+const showDeleteConfirmation = ref(false);
+watch(selecting, value => { if (!value) showDeleteConfirmation.value = false; });
+const selectionMenu = ref({ show: false, x: 0, y: 0 });
+const selectionMenuOptions = computed(() => [{
+  key: 'select-messages', label: t('chat.selectMessages'), disabled: selectionUnavailable.value,
+}]);
+const desktopMessageMenu = desktopBridge()?.isDesktop ? desktopBridge()?.messageContextMenu : undefined;
+let selectionMenuGeneration = 0;
+let nativeSelectionMenuOpen = false;
+function closeSelectionMenu() {
+  selectionMenuGeneration += 1;
+  selectionMenu.value.show = false;
+  if (nativeSelectionMenuOpen) {
+    nativeSelectionMenuOpen = false;
+    void desktopMessageMenu?.close().catch(() => undefined);
+  }
+}
+async function openSelectionMenu(event: MouseEvent) {
+  if (!supportsMessageSelection.value || selecting.value) return;
+  const target = event.target instanceof Element ? event.target : null;
+  // Child menus and editable fields retain their own native editing actions.
+  if (event.defaultPrevented
+    || target?.closest('input, textarea, select')
+    || (target instanceof HTMLElement && target.isContentEditable)) {
+    closeSelectionMenu();
+    return;
+  }
+  const hasSelection = !!window.getSelection()?.toString();
+  if (desktopMessageMenu) {
+    event.preventDefault();
+    event.stopPropagation();
+    selectionMenu.value.show = false;
+    const generation = ++selectionMenuGeneration;
+    nativeSelectionMenuOpen = true;
+    try {
+      const action = await desktopMessageMenu.show({
+        label: t('chat.selectMessages'), enabled: !selectionUnavailable.value, hasSelection,
+      });
+      if (generation !== selectionMenuGeneration) return;
+      nativeSelectionMenuOpen = false;
+      if (action === 'select-messages' && supportsMessageSelection.value && !selectionUnavailable.value && !selecting.value) {
+        window.getSelection()?.removeAllRanges();
+        void startSelection();
+      }
+    } catch (error) {
+      console.warn('[chat] Could not open native message menu', error);
+      if (generation === selectionMenuGeneration && !hasSelection) {
+        selectionMenu.value = { show: true, x: event.clientX, y: event.clientY };
+      }
+    } finally {
+      if (generation === selectionMenuGeneration) nativeSelectionMenuOpen = false;
+    }
+    return;
+  }
+  // On the web (and older desktop shells), preserve the browser Copy menu.
+  if (hasSelection) {
+    selectionMenu.value.show = false;
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  selectionMenu.value = { show: true, x: event.clientX, y: event.clientY };
+}
+function selectFromMenu() {
+  selectionMenu.value.show = false;
+  void startSelection();
+}
+function handleSelectionRowClick(event: MouseEvent, row: MessageSelectionRow) {
+  if (!selecting.value || !row.group) return;
+  // Let the checkbox handle its own click once; other content acts as one hit area.
+  if (event.target instanceof Element && event.target.closest('.message-selection-checkbox')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  // Dragging to copy text also emits a click; it must not select the whole run.
+  if (window.getSelection()?.toString()) return;
+  if (selectionUnavailable.value || row.group.deleteBlockedReason) return;
+  toggleSelection(row.group.id, !selectedMessages.value.has(row.group.id));
+}
+watch([
+  () => chatStore.activeSessionId,
+  () => chatStore.activeSession?.historyRevision,
+  () => chatStore.focusMessageId,
+  supportsMessageSelection, selectionUnavailable, selecting,
+], closeSelectionMenu, { flush: 'sync' });
+
 const canForkActiveSession = computed(() => {
   const session = chatStore.activeSession;
   const hasConversation = displayMessages.value.some((message) => message.role === "user" || message.role === "assistant");
@@ -428,11 +523,19 @@ function scrollToBottom(options?: BottomScrollOptions) {
   showScrollBottomButton.value = false;
 }
 
-function scrollToMessage(messageId: string) {
+async function scrollToMessage(messageId: string) {
+  if (selecting.value) {
+    cancelSelection();
+    await nextTick();
+  }
   listRef.value?.scrollToMessage(messageId);
 }
 
-function scrollToAnchor(messageId: string, anchorId: string) {
+async function scrollToAnchor(messageId: string, anchorId: string) {
+  if (selecting.value) {
+    cancelSelection();
+    await nextTick();
+  }
   listRef.value?.scrollToAnchor(messageId, anchorId);
 }
 
@@ -641,6 +744,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  closeSelectionMenu();
   stopThinkingTimer();
   saveSessionScrollPosition(activeSessionScrollKey.value);
 });
@@ -658,6 +762,17 @@ defineExpose({
 
 <template>
   <div class="message-list-shell" :aria-busy="isSearchLoading">
+    <NDropdown trigger="manual" placement="bottom-start" :show="selectionMenu.show"
+      :x="selectionMenu.x" :y="selectionMenu.y" :options="selectionMenuOptions"
+      @select="selectFromMenu" @clickoutside="selectionMenu.show = false" @update:show="selectionMenu.show = $event" />
+    <NSpin v-if="selectionLoading" size="small" class="message-selection-loading" />
+    <NModal v-if="selecting" v-model:show="showDeleteConfirmation" preset="dialog" type="warning"
+      :style="{ width: 'min(460px, calc(100vw - 32px))' }"
+      :title="t('chat.deleteSelectedMessages')" :content="t('chat.deleteMessagesConfirm', { count: selectedMessages.size })"
+      :positive-text="t('common.delete')" :negative-text="t('common.cancel')"
+      :positive-button-props="{ loading: deletingMessages, disabled: selectionUnavailable }"
+      :negative-button-props="{ disabled: deletingMessages }" :mask-closable="!deletingMessages" :closable="!deletingMessages"
+      @positive-click="deleteSelectedMessages" />
     <VirtualMessageList
       v-if="!isSearchFetching"
       :key="activeSessionScrollKey || 'chat-empty'"
@@ -665,7 +780,7 @@ defineExpose({
       :class="{ 'message-list--search-loading': isSearchLoading }"
       :inert="isSearchLoading || undefined"
       :aria-hidden="isSearchLoading || undefined"
-      :messages="displayMessagesWithForkDivider"
+      :messages="messageRows"
       :virtualized="(chatStore.activeSession?.loadedMessageCount || 0) > LIVE_CHAT_MAX_LOADED_MESSAGES"
       :padding="virtualListPadding"
       @scroll="handleListScroll"
@@ -690,45 +805,65 @@ defineExpose({
           <span v-if="chatStore.activeSession?.isLoadingOlderMessages" class="history-loader-spinner" role="status" :aria-label="t('common.loading')"></span>
         </div>
       </template>
-      <template #item="{ message: msg }">
-        <ToolRunCard
-          v-if="msg.systemType === 'tool-run' && msg.toolRunId && msg.toolMessages"
-          :run-id="msg.toolRunId"
-          :tools="msg.toolMessages"
-        />
-        <div v-else-if="msg.systemType === 'fork-divider' && forkLineage" class="fork-divider" role="separator">
-          <div class="fork-divider-line" aria-hidden="true"></div>
-          <div class="fork-divider-pill">
-            <span class="fork-divider-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M6 3v6a4 4 0 0 0 4 4h4.2" />
-                <path d="M18 9l4 4-4 4" />
-                <path d="M6 21V3" />
-                <circle cx="6" cy="5" r="2" />
-                <circle cx="6" cy="19" r="2" />
-              </svg>
-            </span>
-            <span class="fork-divider-text">{{ t("chat.forkedFrom") }}</span>
-            <a class="fork-divider-link" :href="forkLineage.parentHref" @click="openForkParent">
-              {{ forkLineage.parentTitle }}
-            </a>
+      <template #item="{ message: row }">
+        <div @contextmenu="openSelectionMenu" @click.capture="handleSelectionRowClick($event, row)" :class="{
+          'message-selection-row': selecting && row.group,
+          'message-selection-user': selecting && row.group?.kind === 'message' && ['user', 'command'].includes(row.messages[0]?.role),
+          'is-selected': row.group && selectedMessages.has(row.group.id),
+          'is-locked': selecting && row.group?.deleteBlockedReason,
+        }">
+          <NCheckbox v-if="selecting && row.group" class="message-selection-checkbox"
+            :checked="selectedMessages.has(row.group.id)" :disabled="selectionUnavailable || !!row.group.deleteBlockedReason"
+            :aria-disabled="selectionUnavailable || !!row.group.deleteBlockedReason"
+            :aria-label="row.group.kind === 'run' ? t('chat.selectAgentRun') : t('chat.selectSingleMessage')"
+            @update:checked="toggleSelection(row.group.id, $event)" />
+          <div class="message-selection-body">
+            <div v-for="msg in row.messages" :key="msg.id" class="message-selection-content">
+              <ToolRunCard
+                v-if="msg.systemType === 'tool-run' && msg.toolRunId && msg.toolMessages"
+                :run-id="msg.toolRunId"
+                :tools="msg.toolMessages"
+              />
+              <div v-else-if="msg.systemType === 'fork-divider' && forkLineage" class="fork-divider" role="separator">
+                <div class="fork-divider-line" aria-hidden="true"></div>
+                <div class="fork-divider-pill">
+                  <span class="fork-divider-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                      <path d="M6 3v6a4 4 0 0 0 4 4h4.2" />
+                      <path d="M18 9l4 4-4 4" />
+                      <path d="M6 21V3" />
+                      <circle cx="6" cy="5" r="2" />
+                      <circle cx="6" cy="19" r="2" />
+                    </svg>
+                  </span>
+                  <span class="fork-divider-text">{{ t("chat.forkedFrom") }}</span>
+                  <a class="fork-divider-link" :href="forkLineage.parentHref" @click="openForkParent">
+                    {{ forkLineage.parentTitle }}
+                  </a>
+                </div>
+                <div class="fork-divider-line" aria-hidden="true"></div>
+              </div>
+              <MessageItem
+                v-else
+                :message="msg"
+                :assistant-agent="assistantAgent"
+                :user-profile-name="userProfileName"
+                :user-profile-avatar="userProfileAvatar"
+                :highlight="chatStore.focusMessageId === msg.id"
+                :show-fork-action="!selecting && canForkActiveSession && msg.id === lastForkActionMessageId"
+              />
+            </div>
+            <div v-if="selecting && row.group?.deleteBlockedReason" class="message-selection-locked-hint">
+              {{ t(row.group.deleteBlockedReason === 'compressed' ? 'chat.messageAlreadyCompressed' : 'chat.messageCompressionBoundaryUnknown') }}
+            </div>
           </div>
-          <div class="fork-divider-line" aria-hidden="true"></div>
         </div>
-        <MessageItem
-          v-else
-          :message="msg"
-          :assistant-agent="assistantAgent"
-          :user-profile-name="userProfileName"
-          :user-profile-avatar="userProfileAvatar"
-          :highlight="chatStore.focusMessageId === msg.id"
-          :show-fork-action="canForkActiveSession && msg.id === lastForkActionMessageId"
-        />
       </template>
       <template #after>
         <Transition name="fade">
         <div v-if="isRunIndicatorActive" class="streaming-indicator">
           <LiveReasoningStatus
+            :deployment-session-id="chatStore.activeSessionId || ''"
             :agent="assistantAgent"
             :reasoning="liveReasoningDetail?.reasoning"
             :reasoning-id="liveReasoningDetail?.messageId"
@@ -901,6 +1036,25 @@ defineExpose({
         </Transition>
       </template>
     </VirtualMessageList>
+    <Teleport v-if="selecting" :to="selectionActionsTarget || 'body'" :disabled="!selectionActionsTarget">
+      <div class="message-selection-toolbar">
+        <NButton size="small" quaternary circle :title="t('chat.deleteSelectedMessages')" :aria-label="t('chat.deleteSelectedMessages')"
+          :loading="deletingMessages" :disabled="selectionUnavailable || !selectedMessages.size" @click="showDeleteConfirmation = true">
+          <template #icon>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+            </svg>
+          </template>
+        </NButton>
+        <NButton size="small" quaternary circle :title="t('common.cancel')" :aria-label="t('common.cancel')" :disabled="deletingMessages" @click="cancelSelection">
+          <template #icon>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </template>
+        </NButton>
+      </div>
+    </Teleport>
     <div v-if="isSearchLoading" class="message-search-loading" role="status" :aria-label="t('common.loading')">
       <NSpin :description="t('common.loading')" />
     </div>
@@ -1078,6 +1232,68 @@ defineExpose({
   min-height: 0;
   position: relative;
   display: flex;
+  flex-direction: column;
+}
+
+.message-selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  margin-bottom: 4px;
+}
+
+.message-selection-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-areas: 'checkbox body';
+  align-items: center;
+  gap: 12px;
+  // Selection boundaries remain visible even when the content surface is transparent.
+  border: 1px dashed color-mix(in srgb, var(--accent-primary) 40%, transparent);
+  border-radius: var(--radius-component, 8px);
+  padding: 12px;
+  cursor: pointer;
+
+  &.is-locked {
+    cursor: not-allowed;
+  }
+
+  &.is-selected {
+    border-style: solid;
+    border-color: var(--accent-primary);
+  }
+
+  &.message-selection-user {
+    grid-template-columns: minmax(0, 1fr) 20px;
+    grid-template-areas: 'body checkbox';
+  }
+
+  .message-selection-checkbox {
+    grid-area: checkbox;
+    justify-self: center;
+  }
+
+  .message-selection-body {
+    grid-area: body;
+    min-width: 0;
+  }
+
+  .message-selection-content + .message-selection-content {
+    margin-top: 16px;
+  }
+}
+
+.message-selection-locked-hint {
+  margin-top: 8px;
+  color: $text-secondary;
+  font-size: 12px;
+}
+
+.message-selection-loading {
+  align-self: center;
+  padding: 8px;
 }
 
 .message-list--search-loading {
@@ -1091,7 +1307,7 @@ defineExpose({
   z-index: 9;
   display: grid;
   place-items: center;
-  background: $bg-main-surface;
+  background: var(--theme-content-bg, $bg-main-surface);
 }
 
 .message-float-stack {
@@ -1101,7 +1317,7 @@ defineExpose({
   z-index: 8;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: calc(10px * var(--spacing-scale, 1));
   width: min(720px, calc(100% - 32px));
   pointer-events: none;
 }
@@ -1117,7 +1333,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  border: 1px solid rgba(var(--accent-primary-rgb), 0.24);
+  border: var(--border-width, 1px) solid rgba(var(--accent-primary-rgb), 0.24);
   background: rgba(255, 255, 255, 0.94);
   color: var(--accent-primary);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
@@ -1142,9 +1358,9 @@ defineExpose({
 .queue-float-panel {
   pointer-events: auto;
   width: 100%;
-  padding: 10px;
-  border: 1px solid rgba(var(--accent-info-rgb), 0.22);
-  border-radius: 16px;
+  padding: calc(10px * var(--spacing-scale, 1));
+  border: var(--border-width, 1px) solid rgba(var(--accent-info-rgb), 0.22);
+  border-radius: var(--radius-component, 16px);
   background: #ffffff;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.14);
   backdrop-filter: blur(14px);
@@ -1174,12 +1390,12 @@ defineExpose({
 .float-panel-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 4px 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
+  padding: calc(2px * var(--spacing-scale, 1)) calc(4px * var(--spacing-scale, 1)) calc(8px * var(--spacing-scale, 1));
   color: var(--accent-primary);
-  font-size: 11px;
+  font-size: calc(var(--font-size-base, 14px) * 11 / 14);
   font-weight: 700;
-  line-height: 1.2;
+  line-height: var(--line-height, 1.2);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1193,22 +1409,22 @@ defineExpose({
   justify-content: center;
   color: var(--accent-primary);
   background: rgba(var(--accent-primary-rgb), 0.12);
-  border: 1px solid rgba(var(--accent-primary-rgb), 0.24);
+  border: var(--border-width, 1px) solid rgba(var(--accent-primary-rgb), 0.24);
 }
 
 .approval-float-title {
-  padding: 0 4px;
-  font-size: 14px;
+  padding: 0 calc(4px * var(--spacing-scale, 1));
+  font-size: calc(var(--font-size-base, 14px) * 14 / 14);
   font-weight: 700;
-  line-height: 1.3;
+  line-height: var(--line-height, 1.3);
   color: $text-primary;
 }
 
 .approval-float-desc {
-  padding: 0 4px;
+  padding: 0 calc(4px * var(--spacing-scale, 1));
   margin-top: 5px;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
+  line-height: var(--line-height, 1.45);
   color: $text-secondary;
 }
 
@@ -1220,13 +1436,13 @@ defineExpose({
   white-space: pre-wrap;
   word-break: break-word;
   font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: calc(var(--font-size-base, 14px) * 11 / 14);
+  line-height: var(--line-height, 1.45);
   color: $text-primary;
   background: rgba(255, 255, 255, 0.68);
-  border: 1px solid $border-color;
-  border-radius: 11px;
-  padding: 8px 10px;
+  border: var(--border-width, 1px) solid $border-color;
+  border-radius: var(--radius-component, 11px);
+  padding: calc(8px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
 
   .dark & {
     background: rgba(255, 255, 255, 0.08);
@@ -1237,18 +1453,18 @@ defineExpose({
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-start;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
   margin-top: 10px;
-  padding: 10px 4px 0;
-  border-top: 1px solid $border-color;
+  padding: calc(10px * var(--spacing-scale, 1)) calc(4px * var(--spacing-scale, 1)) 0;
+  border-top: var(--border-width, 1px) solid $border-color;
 }
 
 .clarify-float-input-row {
   display: flex;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
   margin-top: 10px;
-  padding: 10px 4px 0;
-  border-top: 1px solid $border-color;
+  padding: calc(10px * var(--spacing-scale, 1)) calc(4px * var(--spacing-scale, 1)) 0;
+  border-top: var(--border-width, 1px) solid $border-color;
 
   :deep(.n-input) {
     flex: 1 1 auto;
@@ -1263,10 +1479,10 @@ defineExpose({
 .queue-float-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 4px 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
+  padding: calc(2px * var(--spacing-scale, 1)) calc(4px * var(--spacing-scale, 1)) calc(8px * var(--spacing-scale, 1));
   color: $text-secondary;
-  font-size: 12px;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
   font-weight: 600;
 
   strong {
@@ -1286,7 +1502,7 @@ defineExpose({
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border: var(--border-width, 1px) solid rgba(var(--accent-info-rgb), 0.28);
   position: relative;
   animation: queue-spin 1.6s linear infinite;
 
@@ -1305,7 +1521,7 @@ defineExpose({
 .queue-float-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: calc(6px * var(--spacing-scale, 1));
   max-height: 172px;
   overflow-y: auto;
 }
@@ -1313,10 +1529,10 @@ defineExpose({
 .queue-float-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
   min-height: 34px;
-  padding: 7px 8px;
-  border-radius: 11px;
+  padding: calc(7px * var(--spacing-scale, 1)) calc(8px * var(--spacing-scale, 1));
+  border-radius: var(--radius-component, 11px);
   background: rgba(255, 255, 255, 0.68);
   color: $text-primary;
 
@@ -1329,11 +1545,11 @@ defineExpose({
   flex: 0 0 auto;
   width: 20px;
   height: 20px;
-  border-radius: 7px;
+  border-radius: var(--radius-component, 7px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: calc(var(--font-size-base, 14px) * 11 / 14);
   color: var(--accent-info);
   background: rgba(var(--accent-info-rgb), 0.12);
 }
@@ -1344,7 +1560,7 @@ defineExpose({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
 }
 
 .queue-insert,
@@ -1353,7 +1569,7 @@ defineExpose({
   width: 24px;
   height: 24px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-component, 8px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1402,13 +1618,13 @@ defineExpose({
     right: 8px;
     bottom: 8px;
     width: auto;
-    gap: 8px;
+    gap: calc(8px * var(--spacing-scale, 1));
   }
 
   .approval-float-panel,
   .queue-float-panel {
-    padding: 7px;
-    border-radius: 14px;
+    padding: calc(7px * var(--spacing-scale, 1));
+    border-radius: var(--radius-component, 14px);
   }
 
   .approval-float-panel--global {
@@ -1419,8 +1635,8 @@ defineExpose({
   }
 
   .queue-float-header {
-    padding: 0 2px;
-    font-size: 11px;
+    padding: 0 calc(2px * var(--spacing-scale, 1));
+    font-size: calc(var(--font-size-base, 14px) * 11 / 14);
 
     span:nth-child(2) {
       display: none;
@@ -1446,18 +1662,18 @@ defineExpose({
 
   .queue-float-item {
     min-height: 30px;
-    padding: 5px 6px;
+    padding: calc(5px * var(--spacing-scale, 1)) calc(6px * var(--spacing-scale, 1));
   }
 
   .queue-index {
     width: 18px;
     height: 18px;
-    border-radius: 6px;
-    font-size: 10px;
+    border-radius: var(--radius-component, 6px);
+    font-size: calc(var(--font-size-base, 14px) * 10 / 14);
   }
 
   .queue-text {
-    font-size: 11px;
+    font-size: calc(var(--font-size-base, 14px) * 11 / 14);
   }
 
   .queue-insert,
@@ -1521,7 +1737,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   color: $text-muted;
-  gap: 12px;
+  gap: calc(12px * var(--spacing-scale, 1));
 
   .empty-logo {
     width: 48px;
@@ -1530,7 +1746,7 @@ defineExpose({
   }
 
   p {
-    font-size: 14px;
+    font-size: calc(var(--font-size-base, 14px) * 14 / 14);
   }
 }
 
@@ -1560,7 +1776,7 @@ defineExpose({
 .history-archive-link-wrap {
   display: flex;
   justify-content: center;
-  padding-bottom: 8px;
+  padding-bottom: calc(8px * var(--spacing-scale, 1));
 }
 
 .history-archive-link {
@@ -1569,14 +1785,14 @@ defineExpose({
   justify-content: center;
   max-width: 100%;
   min-height: 28px;
-  padding: 5px 10px;
-  border: 1px solid rgba(var(--accent-primary-rgb), 0.22);
+  padding: calc(5px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
+  border: var(--border-width, 1px) solid rgba(var(--accent-primary-rgb), 0.22);
   border-radius: 999px;
   background: rgba(var(--accent-primary-rgb), 0.08);
   color: var(--accent-primary);
-  font-size: 12px;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
   font-weight: 600;
-  line-height: 1.3;
+  line-height: var(--line-height, 1.3);
   text-decoration: none;
   white-space: normal;
   text-align: center;
@@ -1590,7 +1806,7 @@ defineExpose({
   display: grid;
   grid-template-columns: minmax(24px, 1fr) auto minmax(24px, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: calc(12px * var(--spacing-scale, 1));
   width: min(760px, 100%);
   margin: 12px auto 18px;
   color: var(--text-secondary);
@@ -1606,15 +1822,15 @@ defineExpose({
   align-items: center;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
   max-width: min(560px, calc(100vw - 56px));
-  padding: 7px 12px;
-  border: 1px solid rgba(var(--accent-primary-rgb), 0.22);
+  padding: calc(7px * var(--spacing-scale, 1)) calc(12px * var(--spacing-scale, 1));
+  border: var(--border-width, 1px) solid rgba(var(--accent-primary-rgb), 0.22);
   border-radius: 999px;
-  background: var(--bg-card);
+  background: var(--theme-card-bg, var(--bg-card));
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
+  line-height: var(--line-height, 1.35);
 }
 
 .fork-divider-icon {
@@ -1662,7 +1878,7 @@ defineExpose({
 @media (max-width: 640px) {
   .fork-divider {
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: calc(8px * var(--spacing-scale, 1));
   }
 
   .fork-divider-line {
@@ -1684,14 +1900,14 @@ defineExpose({
   flex-direction: column;
   align-items: flex-start;
   flex: 0 0 120px;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
   width: 100%;
   max-width: 100%;
   height: 120px;
   min-height: 120px;
   max-height: 120px;
   min-width: 0;
-  padding: 4px;
+  padding: calc(4px * var(--spacing-scale, 1));
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -1702,7 +1918,7 @@ defineExpose({
   flex-direction: row;
   flex-wrap: nowrap;
   align-items: stretch;
-  gap: 4px;
+  gap: calc(4px * var(--spacing-scale, 1));
   width: 520px;
   min-width: 0;
   max-width: 100%;
@@ -1721,7 +1937,7 @@ defineExpose({
   display: flex;
   flex: 1 1 0;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--spacing-scale, 1));
   width: auto;
   max-width: 100%;
   height: 26px;
@@ -1730,9 +1946,9 @@ defineExpose({
   min-width: 0;
   box-sizing: border-box;
   overflow: hidden;
-  font-size: 11px;
+  font-size: calc(var(--font-size-base, 14px) * 11 / 14);
   color: $text-secondary;
-  padding: 3px 8px;
+  padding: calc(3px * var(--spacing-scale, 1)) calc(8px * var(--spacing-scale, 1));
   background: rgba(0, 0, 0, 0.03);
   border-radius: $radius-sm;
 
@@ -1752,7 +1968,7 @@ defineExpose({
 
   &.compression-item {
     color: $text-muted;
-    font-size: 10px;
+    font-size: calc(var(--font-size-base, 14px) * 10 / 14);
 
     .tool-call-name {
       flex: 1 1 auto;
@@ -1769,7 +1985,7 @@ defineExpose({
   }
 
   .tool-call-name {
-    font-family: $font-code;
+    font-family: var(--font-code, $font-code);
     flex: 0 1 auto;
     min-width: 0;
     max-width: 34%;
@@ -1810,9 +2026,9 @@ defineExpose({
 }
 
 .tool-call-duration {
-  font-size: 10px;
+  font-size: calc(var(--font-size-base, 14px) * 10 / 14);
   color: $text-muted;
-  font-family: $font-code;
+  font-family: var(--font-code, $font-code);
   margin-inline-start: 4px;
   flex-shrink: 0;
 }

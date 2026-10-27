@@ -16,6 +16,7 @@ import { ClarificationRuns } from '../services/clarification-runs'
 import { TaskPlanRuns, taskPlanRunInstruction } from '../services/task-plan-runs'
 import { runMcpCredentials } from '../services/auth/run-mcp-credentials'
 import { saveTaskPlan } from '../repositories/task-plan-store'
+import { getSessionTasks, updateSessionTasks, SessionTasksError } from '../services/session-tasks'
 import { getSessionTaskPlans } from '../services/task-plans'
 import { bindLegacyAppEvents } from '../services/webhooks/legacy-app-events'
 import { bindAppEventSubscription } from '../services/webhooks/app-events'
@@ -34,6 +35,7 @@ import { randomUUID } from 'crypto'
 import { logger } from '../public/logging'
 import { getSystemPrompt } from '../public/runs/prompt'
 import { clearSessionMessages, deleteSession, getSession, getSessionMetadata, listSessions, updateMessageDisplayContent } from '../repositories/session-store'
+import { deleteSessionMessageGroups } from '../repositories/session-message-deletion'
 import { listWorkspaceRunChangesForAssistantMessages } from '../repositories/workspace-run-changes-store'
 import { getSessionCategory } from '../repositories/session-category-store'
 import { getActiveProfileName, getProfileDir, listProfileNamesFromDisk } from '../public/profile-config'
@@ -43,6 +45,7 @@ import {
   chatCodingAgentRunManager as codingAgentRunManager,
   createPrimaryAgentBridge,
   getChatEkkoAgent as getGlobalEkkoAgent,
+  hasChatEkkoBackgroundTasks,
   getPrimaryAgentBridgeManager as getAgentBridgeManager,
   handleChatCodingAgentSessionCommand as handleCodingAgentSessionCommand,
   parseChatCodingAgentSessionCommand as parseCodingAgentSessionCommand,
@@ -57,6 +60,7 @@ import { handleEkkoSessionCommand, parseEkkoRunCommand } from '../services/chat-
 import { handleAbort } from '../services/chat-run/abort'
 import { getOrCreateSession } from '../services/chat-run/compression'
 import { loadSessionStateFromDb, resolveRunSource } from '../services/chat-run/load-state'
+import { getSessionContextOverhead, refreshContextUsageAfterDeletion } from '../services/chat-run/context-usage'
 import { handleSessionCommand, isSessionCommand, parseSessionCommand } from '../services/chat-run/session-command'
 import { contentBlocksToString } from '../services/chat-run/content-blocks'
 import {
@@ -422,6 +426,7 @@ export class ChatRunSocket {
   private backgroundBridge = createPrimaryAgentBridge({ timeoutMs: 1000, connectRetryMs: 0 })
   /** sessionId → session state (messages, working status, events, run tracking) */
   private sessionMap = new Map<string, SessionState>()
+  private hermesQueueInsertionOperations = new Map<string, Promise<void>>()
   private readonly taskPlanRuns = new TaskPlanRuns(saveTaskPlan, (sessionId, snapshot) => {
     this.emitExternalEvent(sessionId, 'plan.updated', { event: 'plan.updated', ...snapshot })
   })
@@ -487,6 +492,26 @@ export class ChatRunSocket {
     return this.taskPlanRuns.update(contextId, profile, input)
   }
 
+  private sessionTasksContext(contextId: string, profile: string) {
+    const sessionId = this.taskPlanRuns.sessionForContext(contextId, profile)
+    const session = getSession(sessionId)
+    const state = this.sessionMap.get(sessionId)
+    if (!session || (session.profile || 'default') !== profile
+      || ['group_chat', 'workflow', 'global_agent'].includes(session.source || '')
+      || ['group_chat', 'workflow', 'global_agent'].includes(state?.source || '')) {
+      throw new SessionTasksError('Session goals are unavailable in this context', 409)
+    }
+    return sessionId
+  }
+
+  listSessionTasks(contextId: string, profile: string) {
+    return getSessionTasks(this.sessionTasksContext(contextId, profile))
+  }
+
+  updateSessionTasks(contextId: string, profile: string, input: Record<string, unknown>) {
+    return updateSessionTasks(this.sessionTasksContext(contextId, profile), profile, input)
+  }
+
   requestClarification(contextId: string, profile: string, input: Record<string, unknown>, signal?: AbortSignal) {
     return this.clarificationRuns.request(contextId, profile, input, signal)
   }
@@ -497,18 +522,20 @@ export class ChatRunSocket {
     return { contextId, finish: (state: 'ended' | 'interrupted' | 'failed') => this.taskPlanRuns.finish(contextId, state) }
   }
 
-  private beginTaskPlanRun(sessionId: string | undefined, profile: string) {
+  private beginTaskPlanRun(sessionId: string | undefined, profile: string, sessionTasksEnabled = true) {
     if (!sessionId) return undefined
     runMcpCredentials.revoke(sessionId)
     this.clarificationRuns.finishSession(sessionId)
-    return this.taskPlanRuns.begin(sessionId, profile, () => this.sessionMap.get(sessionId))
+    return this.taskPlanRuns.begin(sessionId, profile, () => this.sessionMap.get(sessionId), undefined, sessionTasksEnabled)
   }
 
   private finishTaskPlanRun(sessionId: string, event: string, payload?: any, contextId?: string) {
     if (!['run.completed', 'run.failed', 'abort.completed'].includes(event)) return
     runMcpCredentials.revoke(sessionId, contextId)
     this.clarificationRuns.finishSession(sessionId, contextId)
-    const interrupted = event === 'abort.completed' || payload?.interrupted === true || payload?.result?.interrupted === true || this.sessionMap.get(sessionId)?.isAborting
+    // A queue boundary can finish after its queued input was removed. Runtime
+    // interrupt flags alone do not mean the user pressed Stop.
+    const interrupted = event === 'abort.completed' || this.sessionMap.get(sessionId)?.isAborting
     const executionState = interrupted ? 'interrupted' : event === 'run.failed' ? 'failed' : 'ended'
     try {
       if (contextId) this.taskPlanRuns.finish(contextId, executionState)
@@ -858,11 +885,10 @@ export class ChatRunSocket {
       }
       return profile
     }
-    const requireSocketSessionAccess = (sessionId: string) => {
+    const requireSocketSessionAccess = (sessionId: string, authorizedProfile = currentProfile()) => {
       const session = getSession(sessionId)
       if (!session) throw new Error('Session not found')
       const sessionProfile = String(session.profile || 'default').trim() || 'default'
-      const authorizedProfile = currentProfile()
       if (sessionProfile !== authorizedProfile) {
         throw new Error(`Profile "${sessionProfile}" is not available on this connection`)
       }
@@ -878,7 +904,7 @@ export class ChatRunSocket {
     // user can access: the UI switches between profiles without always reconnecting (see
     // #1884), so pinning every read to the handshake profile made `resume` fail and left
     // the conversation permanently blank. Mutating operations keep the stricter
-    // connection-scoped check above (see the attachment provenance boundary in `run`).
+    // connection-scoped check above; attachment runs pass their separately authorized run profile.
     const requireSocketSessionReadAccess = (sessionId: string) => {
       const session = getSession(sessionId)
       if (!session) throw new Error('Session not found')
@@ -946,7 +972,7 @@ export class ChatRunSocket {
         normalizeEkkoRunData(data, data.session_id ? getSession(data.session_id) : undefined)
         if (!shared && data.session_id && Array.isArray(data.input)) {
           // New chats carry a client-generated id; the runtime persists them on the first run.
-          if (getSession(data.session_id)) requireSocketSessionAccess(data.session_id)
+          if (getSession(data.session_id)) requireSocketSessionAccess(data.session_id, runProfile)
           await recordSessionUploadAttachments(data.session_id, runProfile, data.input, { allowPendingSession: true })
         }
       } catch (err) {
@@ -1621,6 +1647,7 @@ export class ChatRunSocket {
     }
     if (data.session_id) {
       const state = getOrCreateSession(this.sessionMap, data.session_id)
+      if (!data.autonomous && !data.background_delegation_id) state.backgroundWakeStopped = false
       state.webhookAgent = webhookAgentForRun(data)
       state.webhookRoomId = data.group_room_id
       state.webhookWorkflowId = data.workflow_id
@@ -1694,7 +1721,7 @@ export class ChatRunSocket {
         return
       }
 
-      const planContext = mcpCapabilities.interaction ? this.beginTaskPlanRun(data.session_id, profile) : undefined
+      const planContext = mcpCapabilities.interaction ? this.beginTaskPlanRun(data.session_id, profile, !data.background_delegation_id) : undefined
       if (planContext) data.instructions = [data.instructions, taskPlanRunInstruction()].filter(Boolean).join('\n\n')
       let fullInstructions = data.instructions
         ? `${getSystemPrompt(undefined, { source, mcpCapabilities })}\n${data.instructions}`
@@ -1952,6 +1979,10 @@ export class ChatRunSocket {
       await releaseClaim()
       return
     }
+    if (state.backgroundWakeStopped) {
+      await this.backgroundBridge.completeBackgroundNotification(sessionId, notification.profile, delegationId, claimId)
+      return
+    }
     if (this.closing) {
       await releaseClaim()
       return
@@ -2089,6 +2120,10 @@ export class ChatRunSocket {
       this.sessionMap.set(sid, state)
     }
     await this.reattachBridgeRun(socket, sid, state)
+    if (this.sessionMap.get(sid) !== state) {
+      state = this.sessionMap.get(sid) || await loadSessionStateFromDb(sid, this.sessionMap)
+      this.sessionMap.set(sid, state)
+    }
     const resumeEvents = state.isWorking
       ? state.events
       : (state.events || []).filter(evt => evt?.event === 'run.reattach_failed')
@@ -2157,17 +2192,25 @@ export class ChatRunSocket {
   }
 
   private async reattachBridgeRun(socket: Socket, sid: string, state: SessionState) {
-    if (state.runId && state.isWorking) return
     const session = getSession(sid)
     const source = state.source || session?.source
     if (!isHermesWorkerBackedSession({ source, agent: session?.agent, agent_session_id: session?.agent_session_id })) return
     const profile = session?.profile || currentProfileFromSocket(socket)
+    const previousRunId = state.runId
+    const previousRunMarker = state.activeRunMarker
     let pollKey: string | undefined
     try {
       const status = await this.bridge.statusIfLoaded(sid, profile, { timeoutMs: 1000 }) as Record<string, unknown>
+      if (this.sessionMap.get(sid) !== state || state.runId !== previousRunId || state.activeRunMarker !== previousRunMarker) return
+      // A live consumer may be finishing accounting after Hermes has already
+      // stopped. Let it deliver the terminal event; do not attach a second poll.
+      if (state.bridgeRunPollMarker && state.bridgeRunPollMarker === state.activeRunMarker) return
       const running = status.running === true
-      const runId = typeof status.current_run_id === 'string' ? status.current_run_id : ''
-      if (!running || !runId) return
+      const currentRunId = typeof status.current_run_id === 'string' ? status.current_run_id : ''
+      // Recover terminal output as well as running output when a cached run has
+      // lost its consumer. Unknown run ids become run.failed in resumeBridgeRun.
+      const runId = running && currentRunId ? currentRunId : state.isWorking ? previousRunId : undefined
+      if (!runId) return
       pollKey = `${sid}:${runId}`
       if (this.bridgeResumePolls.has(pollKey)) return
       this.bridgeResumePolls.add(pollKey)
@@ -2225,6 +2268,7 @@ export class ChatRunSocket {
       logger.info('[chat-run-socket] reattached running bridge run %s for session %s', runId, sid)
     } catch (err) {
       if (pollKey) this.bridgeResumePolls.delete(pollKey)
+      if (this.sessionMap.get(sid) !== state || state.runId !== previousRunId || state.activeRunMarker !== previousRunMarker) return
       if (isBridgeStatusLookupTimeout(err)) {
         logger.debug(err, '[chat-run-socket] bridge status lookup timed out while resuming session %s', sid)
         return
@@ -2298,6 +2342,13 @@ export class ChatRunSocket {
     const control = state.queueInsertion
     if (!control) return
     state.queueInsertion = undefined
+    if (reason === 'queued_message_removed' && control.runtime === 'hermes' && control.runId) {
+      const runId = control.runId
+      const profile = state.profile
+      void this.serializeHermesQueueInsertion(sessionId, () =>
+        this.bridge.cancelBoundaryInterrupt(sessionId, runId, profile))
+        .catch((err: unknown) => logger.warn(err, '[chat-run-socket] failed to recall queue boundary for %s', sessionId))
+    }
     this.emitQueueInsertionUpdate(sessionId, control, 'cancelled', reason)
   }
 
@@ -2349,6 +2400,28 @@ export class ChatRunSocket {
   }
 
   private async activateQueueInsertion(sessionId: string, generation: string) {
+    if (this.sessionMap.get(sessionId)?.queueInsertion?.runtime === 'hermes') {
+      // Each bridge request uses a separate connection. Keep recalls and new
+      // requests ordered, including the cleanup of a late acknowledgement.
+      return this.serializeHermesQueueInsertion(sessionId, () => this.activateQueueInsertionNow(sessionId, generation))
+    }
+    return this.activateQueueInsertionNow(sessionId, generation)
+  }
+
+  private serializeHermesQueueInsertion<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.hermesQueueInsertionOperations.get(sessionId) || Promise.resolve()
+    const result = previous.then(operation)
+    const settled = result.then(() => {}, () => {})
+    this.hermesQueueInsertionOperations.set(sessionId, settled)
+    void settled.then(() => {
+      if (this.hermesQueueInsertionOperations.get(sessionId) === settled) {
+        this.hermesQueueInsertionOperations.delete(sessionId)
+      }
+    })
+    return result
+  }
+
+  private async activateQueueInsertionNow(sessionId: string, generation: string) {
     const state = this.sessionMap.get(sessionId)
     const control = state?.queueInsertion
     if (!state || !control || control.generation !== generation || control.phase !== 'requesting' || !control.runId) return
@@ -2375,7 +2448,14 @@ export class ChatRunSocket {
         : await this.bridge.requestBoundaryInterrupt(sessionId, control.runId, state.profile)
 
       const current = this.sessionMap.get(sessionId)?.queueInsertion
-      if (!current || current.generation !== generation) return
+      if (!current || current.generation !== generation) {
+        // Cancellation may race the asynchronous request acknowledgement.
+        if (!current && control.runtime === 'hermes' && control.runId
+          && (result.status === 'accepted' || result.status === 'already_pending')) {
+          await this.bridge.cancelBoundaryInterrupt(sessionId, control.runId, state.profile)
+        }
+        return
+      }
       if (result.status !== 'accepted' && result.status !== 'already_pending') {
         this.clearQueueInsertion(sessionId, state, result.status === 'unsupported'
           ? String('reason' in result && result.reason ? result.reason : 'runtime_unsupported')
@@ -2843,6 +2923,47 @@ export class ChatRunSocket {
       const socket = this.socketForQueuedRun(sessionId, state.queue[0])
       if (socket) this.dequeueNextQueuedRun(socket, sessionId)
     }
+  }
+
+  private assertSessionMessageEditIdle(sessionId: string) {
+    const state = this.sessionMap.get(sessionId)
+    if (hasChatEkkoBackgroundTasks(sessionId)
+      || (state && (state.isWorking || state.isAborting || state.isCompressing || state.queue.length > 0 || this.backgroundPendingCount(state) > 0))) {
+      throw Object.assign(new Error('Wait for the run and pending tasks to finish before selecting or deleting messages.'), { status: 409 })
+    }
+  }
+
+  async assertSessionMessagesEditable(sessionId: string) {
+    this.assertSessionMessageEditIdle(sessionId)
+    const session = getSession(sessionId)
+    if (session && isHermesWorkerBackedSession(session)) {
+      const status = await this.bridge.statusIfLoaded(sessionId, session.profile, { timeoutMs: 1000 })
+      if (status.running) throw Object.assign(new Error('Wait for the run to finish before selecting or deleting messages.'), { status: 409 })
+    }
+    this.assertSessionMessageEditIdle(sessionId)
+  }
+
+  async deleteSessionMessages(sessionId: string, messageIds: number[], historyRevision: number) {
+    await this.assertSessionMessagesEditable(sessionId)
+    // No await between the final idle check, transaction, and cache invalidation.
+    this.assertSessionMessageEditIdle(sessionId)
+    const fixedTokens = getSessionContextOverhead(sessionId, this.sessionMap.get(sessionId))
+    const deletion = deleteSessionMessageGroups(sessionId, messageIds, historyRevision)
+    const contextTokens = refreshContextUsageAfterDeletion(sessionId, fixedTokens)
+    const result = { ...deletion, contextTokens: contextTokens ?? null }
+    this.sessionMap.delete(sessionId)
+    logger.info({
+      sessionId,
+      requestedMessageIds: messageIds,
+      deletedMessageIds: deletion.messageIds,
+      deletedGroups: deletion.deletedGroups,
+      previousHistoryRevision: historyRevision,
+      historyRevision: deletion.historyRevision,
+    }, '[chat-run-socket] session messages deleted')
+    this.nsp.to(`session:${sessionId}`).emit('session.command', {
+      event: 'session.command', session_id: sessionId, action: 'messages_deleted', ok: true, ...result,
+    })
+    return result
   }
 
   clearSessionHistory(sessionId: string): { deleted: number; hadMemoryState: boolean } {

@@ -9,6 +9,12 @@ vi.mock('../../packages/server/src/modules/studio/services/session-shares/socket
 }))
 
 const saveTaskPlanMock = vi.hoisted(() => vi.fn())
+const updateSessionTasksMock = vi.hoisted(() => vi.fn((sessionId: string) => ({ session_id: sessionId, revision: 1, updated_at: 1, tasks: [] })))
+vi.mock('../../packages/server/src/modules/studio/services/session-tasks', async importOriginal => ({
+  ...await importOriginal<typeof import('../../packages/server/src/modules/studio/services/session-tasks')>(),
+  getSessionTasks: (sessionId: string) => ({ session_id: sessionId, revision: 0, updated_at: 0, tasks: [] }),
+  updateSessionTasks: updateSessionTasksMock,
+}))
 vi.mock('../../packages/server/src/modules/studio/repositories/task-plan-store', () => ({
   saveTaskPlan: saveTaskPlanMock, listTaskPlansForPage: vi.fn(() => []),
 }))
@@ -49,6 +55,7 @@ vi.mock('../../packages/server/src/modules/studio/services/chat-run/handle-bridg
 
 vi.mock('../../packages/server/src/modules/studio/services/chat-run/load-state', () => ({
   loadSessionStateFromDb: loadSessionStateFromDbMock,
+  readSessionStateFromDb: vi.fn(() => ({ messages: [], isWorking: false, events: [], queue: [] })),
   resolveRunSource: vi.fn((source?: string) => source || 'cli'),
 }))
 
@@ -158,6 +165,25 @@ function makeServerHarness() {
 }
 
 describe('ChatRunSocket global pending interactions', () => {
+  it('binds session goals to the active primary turn without publishing a plan card', async () => {
+    const { ChatRunSocket } = await import('../../packages/server/src/modules/studio/sockets/chat-run')
+    const { io, emitted } = makeServerHarness()
+    const server = new ChatRunSocket(io as any)
+    ;(server as any).sessionMap.set('goal-session', { isWorking: true, activeRunMarker: 'turn-1', source: 'cli' })
+    const contextId = (server as any).beginTaskPlanRun('goal-session', 'default')
+    expect(server.listSessionTasks(contextId, 'default')).toMatchObject({ session_id: 'goal-session' })
+    const input = { context_id: contextId, revision: 0, changes: [{ title: 'Export', summary: 'Requested', status: 'open' }] }
+    server.updateSessionTasks(contextId, 'default', input)
+    expect(updateSessionTasksMock).toHaveBeenCalledWith('goal-session', 'default', input)
+    expect(saveTaskPlanMock).not.toHaveBeenCalled()
+    expect(emitted.some(entry => entry.event === 'plan.updated')).toBe(false)
+    expect(() => server.listSessionTasks(contextId, 'other')).toThrow('expired')
+    ;(server as any).finishTaskPlanRun('goal-session', 'run.completed', undefined, contextId)
+    expect(() => server.updateSessionTasks(contextId, 'default', input)).toThrow('expired')
+    const background = (server as any).beginTaskPlanRun('goal-session', 'default', false)
+    expect(() => server.listSessionTasks(background, 'default')).toThrow('unavailable')
+  })
+
   it('publishes a running snapshot and lightweight completion activity for the profile', async () => {
     const { ChatRunSocket } = await import('../../packages/server/src/modules/studio/sockets/chat-run')
     const { emitted, io, socket } = makeServerHarness()
@@ -656,6 +682,53 @@ describe('ChatRunSocket bridge readiness gating', () => {
     })
   })
 
+  it('recovers the terminal result of a cached run that lost its consumer', async () => {
+    const { ChatRunSocket } = await import('../../packages/server/src/modules/studio/sockets/chat-run')
+    const { handlers, io, socket } = makeServerHarness()
+    const server = new ChatRunSocket(io as any)
+    ;(server as any).sessionMap.set('session-1', {
+      messages: [], events: [], queue: [], source: 'cli', isWorking: true,
+      runId: 'old-run', activeRunMarker: 'old-marker',
+    })
+    ;(server as any).onConnection(socket)
+    await handlers.get('resume')?.({ session_id: 'session-1' })
+    expect(bridgeMock.statusIfLoaded).toHaveBeenCalledWith('session-1', 'default', { timeoutMs: 1000 })
+    expect(resumeBridgeRunMock).toHaveBeenCalledWith(expect.anything(), socket,
+      expect.objectContaining({ sessionId: 'session-1', runId: 'old-run' }), expect.anything(), bridgeMock, expect.any(Function))
+  })
+
+  it('preserves a live consumer while its terminal accounting is pending', async () => {
+    const { ChatRunSocket } = await import('../../packages/server/src/modules/studio/sockets/chat-run')
+    const { handlers, io, socket } = makeServerHarness()
+    const server = new ChatRunSocket(io as any)
+    ;(server as any).sessionMap.set('session-1', {
+      messages: [], events: [], queue: [], source: 'cli', isWorking: true,
+      runId: 'old-run', activeRunMarker: 'old-marker', bridgeRunPollMarker: 'old-marker',
+    })
+    ;(server as any).onConnection(socket)
+    await handlers.get('resume')?.({ session_id: 'session-1' })
+    expect(bridgeMock.statusIfLoaded).toHaveBeenCalled()
+    expect(resumeBridgeRunMock).not.toHaveBeenCalled()
+    expect(socket.emit).toHaveBeenCalledWith('resumed', expect.objectContaining({ isWorking: true }))
+  })
+
+  it('ignores a status reply for a run superseded during reconnect', async () => {
+    const { ChatRunSocket } = await import('../../packages/server/src/modules/studio/sockets/chat-run')
+    const { handlers, io, socket } = makeServerHarness()
+    const server = new ChatRunSocket(io as any)
+    const state = { messages: [], events: [], queue: [], source: 'cli', isWorking: true,
+      runId: 'old-run', activeRunMarker: 'old-marker' }
+    ;(server as any).sessionMap.set('session-1', state)
+    bridgeMock.statusIfLoaded.mockImplementationOnce(async () => {
+      Object.assign(state, { runId: 'new-run', activeRunMarker: 'new-marker' })
+      return { running: true, current_run_id: 'old-run' }
+    })
+    ;(server as any).onConnection(socket)
+    await handlers.get('resume')?.({ session_id: 'session-1' })
+    expect(resumeBridgeRunMock).not.toHaveBeenCalled()
+    expect(state).toMatchObject({ runId: 'new-run', activeRunMarker: 'new-marker' })
+  })
+
   it('reattaches a loaded running bridge run without probing manager readiness again', async () => {
     bridgeMock.statusIfLoaded
       .mockResolvedValueOnce({
@@ -1123,7 +1196,7 @@ describe('ChatRunSocket MCP task plan lifecycle', () => {
     expect(() => server.updateTaskPlan(contextId, 'default', input)).toThrow('expired')
   })
 
-  it.each([false, true])('keeps Hermes plans alive until its stream completes (interrupted=%s)', async interrupted => {
+  it.each([false, true])('keeps Hermes plans alive until completion without treating runtime interrupted=%s as Stop', async interrupted => {
     getSessionMock.mockReturnValue({ id: 'session-1', profile: 'default', source: 'cli', agent: 'hermes' })
     const { ChatRunSocket } = await import('../../packages/server/src/modules/studio/sockets/chat-run')
     const { emitted, io, socket } = makeServerHarness()
@@ -1140,7 +1213,9 @@ describe('ChatRunSocket MCP task plan lifecycle', () => {
       data.onEvent('run.completed', { event: 'run.completed', result: { interrupted } })
     }) as any)
     await (server as any).handleRun(socket, { session_id: 'session-1', source: 'cli', input: 'Implement a feature' }, 'default')
-    expect(emitted.filter(item => item.event === 'plan.updated').map(item => item.payload.execution_state)).toEqual(['running', interrupted ? 'interrupted' : 'ended'])
+    const updates = emitted.filter(item => item.event === 'plan.updated')
+    expect(updates.map(item => item.payload.execution_state)).toEqual(['running', 'ended'])
+    expect(updates[1].payload.plan).toEqual([{ id: 'verify', step: 'Verify the change', status: 'pending' }])
     expect(() => server.updateTaskPlan(contextId, 'default', input)).toThrow('expired')
   })
 })
@@ -1231,14 +1306,14 @@ describe('session upload provenance at the socket boundary', () => {
     expect(recordSessionUploadAttachmentsMock).toHaveBeenCalledWith('new-local-session', 'default', input, { allowPendingSession: true })
   })
 
-  it('still rejects existing attachments from a different profile before registering or running', async () => {
+  it('rejects attachments when the requested run profile differs from the stored session profile', async () => {
     getSessionMock.mockReturnValue({ id: 'research-session', profile: 'research', source: 'cli', model: 'gpt-test', provider: 'openai' })
     const { ChatRunSocket } = await import('../../packages/server/src/modules/studio/sockets/chat-run')
     const { handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
     const run = vi.spyOn(server as any, 'handleRun').mockResolvedValue(undefined)
     ;(server as any).onConnection(socket)
-    await handlers.get('run')!({ session_id: 'research-session', input: [{ type: 'file', path: '/uploads/private.txt' }] })
+    await handlers.get('run')!({ session_id: 'research-session', profile: 'default', input: [{ type: 'file', path: '/uploads/private.txt' }] })
     expect(socket.emit).toHaveBeenCalledWith('run.failed', expect.objectContaining({ error: 'Profile "research" is not available on this connection' }))
     expect(recordSessionUploadAttachmentsMock).not.toHaveBeenCalled()
     expect(run).not.toHaveBeenCalled()

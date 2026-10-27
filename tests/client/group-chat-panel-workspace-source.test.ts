@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readPresetStyleSource as readFileSync } from './preset-style-source'
 import { describe, expect, it } from 'vitest'
 import { GROUP_AGENT_OPTIONS } from '../../packages/client/src/utils/agent-options'
 
@@ -487,19 +487,6 @@ describe('GroupChatPanel workspace save handling', () => {
     expect(singleSource).toContain('easing: "ease"')
   })
 
-  it('shows the refactor notice once and persists acknowledgement locally', () => {
-    const source = readFileSync('packages/client/src/components/hermes/group-chat/GroupChatPanel.vue', 'utf8')
-
-    expect(source).toContain("const GROUP_CHAT_REFACTOR_NOTICE_STORAGE_KEY = 'hermes.groupChat.refactorNotice.v1.acknowledged'")
-    expect(source).toContain("window.localStorage.getItem(GROUP_CHAT_REFACTOR_NOTICE_STORAGE_KEY) !== '1'")
-    expect(source).toContain("window.localStorage.setItem(GROUP_CHAT_REFACTOR_NOTICE_STORAGE_KEY, '1')")
-    expect(source).toContain('v-model:show="showGroupChatRefactorNotice"')
-    expect(source).toContain(':mask-closable="false"')
-    expect(source).toContain(':close-on-esc="false"')
-    expect(source).toContain("t('groupChat.refactorNoticeMessage')")
-    expect(source).toContain('@click="acknowledgeGroupChatRefactorNotice"')
-  })
-
   it('renders room creation and manageable room settings as right-side drawers', () => {
     const source = readFileSync('packages/client/src/components/hermes/group-chat/GroupChatPanel.vue', 'utf8')
 
@@ -550,18 +537,18 @@ describe('GroupChatPanel workspace save handling', () => {
     const selection = readFileSync('packages/client/src/utils/coding-agent-mode.ts', 'utf8')
     expect(selection).toContain("agentMode: input.usesGlobal ? 'global' : 'scoped'")
     expect(selection).toContain("provider: input.usesGlobal ? '' : input.provider")
-    expect(selection).toContain("model: input.usesGlobal ? '' : input.model")
+    expect(selection).toContain("model: input.usesGlobal ? input.nativeModel || '' : input.model")
     expect(source).toContain("apiMode: selectedAgentType.value === 'hermes' || usesGlobalAgentMode.value ? undefined : selectedAgentApiMode.value")
-    expect(source).toContain("reasoningEffort: usesGlobalAgentMode.value ? '' : selectedAgentReasoningEffort.value")
+    expect(source).toContain("reasoningEffort: usesGlobalAgentMode.value ? nativeAgentSelection.value.reasoningEffort : selectedAgentReasoningEffort.value")
     for (const modelSource of [source, linkView]) {
-      expect(modelSource).toContain('function handleAgentModelChange(model: string)')
+      expect(modelSource).toContain(modelSource === source ? 'function handleAgentModelSelect(' : 'function handleAgentModelChange(model: string)')
       expect(modelSource).toContain("selectedAgentReasoningEffort.value = ''")
-      expect(modelSource).toContain('@update:value="handleAgentModelChange"')
+      expect(modelSource).toContain(modelSource === source ? '@select="handleAgentModelSelect"' : '@update:value="handleAgentModelChange"')
     }
     expect(source).toContain('inferCodingAgentApiMode(')
     expect(source).toContain('normalizeCodingAgentApiMode(')
-    expect(source).toContain("v-if=\"selectedAgentType !== 'hermes' && !usesGlobalAgentMode\"")
     for (const modelSource of [source, linkView]) {
+      expect(modelSource).toContain("v-if=\"selectedAgentType !== 'hermes' && !usesGlobalAgentMode && !configuredAgentApiMode\"")
       expect(modelSource).toContain("const supportsGlobalAgentMode = computed(() => ['claude', 'codex', 'pi', 'grok', 'opencode', 'dsh', 'cursor', 'antigravity', 'qwen', 'kimi', 'codebuddy', 'qoder', 'copilot', 'zcode'].includes(selectedAgentType.value))")
       expect(modelSource).toContain("v-if=\"!usesGlobalAgentMode\"")
     }

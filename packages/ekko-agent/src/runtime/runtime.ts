@@ -454,8 +454,13 @@ export class AgentRuntime {
 
     emit({ type: 'run.started', runId, maxSteps })
 
+    const computerUseScope = new AbortController()
+    const cancelComputerUse = () => computerUseScope.abort()
+    input.signal?.addEventListener('abort', cancelComputerUse, { once: true })
+    if (input.signal?.aborted) computerUseScope.abort()
     const executionToolContext: AgentToolContext = {
       ...(this.runToolContext(input, memoryPreparation?.sourceMessageIds) || {}),
+      computerUseSessionSignal: computerUseScope.signal,
       updatePlan: update => {
         throwIfAborted(input.signal)
         return taskPlan.update(update)
@@ -744,6 +749,8 @@ export class AgentRuntime {
       throw error
     } finally {
       input.signal?.removeEventListener('abort', interruptPlan)
+      input.signal?.removeEventListener('abort', cancelComputerUse)
+      computerUseScope.abort()
       for (const subagentId of pendingBackgroundSubagentIds) {
         const task = this.backgroundTasks.get(subagentId)
         task?.controller.abort()
@@ -914,6 +921,7 @@ export class AgentRuntime {
       userSystemMessages,
       memoryContext,
       planningEnabled: this.toolsEnabled && !!this.tools.get('update_plan'),
+      sessionTasksEnabled: this.toolsEnabled && !!this.tools.get('list_session_tasks'),
       clarificationEnabled: this.toolsEnabled && !!this.tools.get('clarify'),
       skillDiscoveryEnabled: this.toolsEnabled && this.areSkillsAvailable() &&
         !!this.tools.get('skill_list') &&

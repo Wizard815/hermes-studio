@@ -110,7 +110,10 @@ export function parseSessionCommand(input: string | ContentBlock[]): ParsedSessi
   if (typeof input !== 'string') return null
   const trimmed = input.trim()
   if (!trimmed.startsWith('/')) return null
-  const match = trimmed.match(/^\/([a-zA-Z][\w-]*)(?:\s+([\s\S]*))?$/)
+  // Whitespace ends the separator: punctuation after it belongs to the argument.
+  // Consume at most one punctuation separator, or allow an adjacent CJK letter.
+  // Other boundaries (paths, extensions, query strings) are not commands.
+  const match = trimmed.match(/^\/([a-zA-Z][\w-]*)(?:\s+|[:：、,，]\s*|(?=[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])|$)([\s\S]*)$/u)
   if (!match) return null
   const rawName = match[1].toLowerCase()
   const name = COMMAND_ALIASES[rawName]
@@ -732,11 +735,12 @@ export async function handleSessionCommand(
     }
 
     case 'compress': {
-      if (state.isWorking) {
+      if (state.isWorking || state.isCompressing) {
         emitCommand({ ok: false, action: 'compress', terminal: false, message: 'Compression can only run while the session is idle.' })
         return
       }
       clearTransientRunState(state)
+      state.isCompressing = true
       const emit = (event: string, payload: any) => emitToSession(ctx.nsp, ctx.socket, sessionId, event, payload)
       try {
         const session = getSession(sessionId)
@@ -806,6 +810,8 @@ export async function handleSessionCommand(
           action: 'compress',
           message: `Compression failed: ${err instanceof Error ? err.message : String(err)}`,
         })
+      } finally {
+        state.isCompressing = false
       }
       return
     }

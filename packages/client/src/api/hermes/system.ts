@@ -29,10 +29,12 @@ export interface AvailableModelGroup {
   label: string      // display name (e.g. "zai", "subrouter.ai")
   base_url: string
   models: string[]
-  /** Full unfiltered model catalog for this provider, used to restore hidden WUI models. */
+  /** Legacy server field. Full directories are now fetched with fetchProviderModelCatalog. */
   available_models?: string[]
+  model_count?: number
   api_key: string
   api_mode?: ProviderApiMode
+  api_mode_by_model?: Record<string, ProviderApiMode | null>
   builtin?: boolean
   /** Env var used by Hermes to override this provider's base URL. If present, the preset URL is editable. */
   base_url_env?: string
@@ -73,8 +75,9 @@ export interface CustomProvider {
   api_key: string
   model: string
   context_length?: number
-  api_mode?: ProviderApiMode
+  api_mode?: ProviderApiMode | null
   providerKey?: string | null
+  create_only?: boolean
 }
 
 export type ProviderEditableField =
@@ -117,7 +120,7 @@ export interface ProviderEditorDetail {
 export interface ProviderEditorPatch {
   label?: string
   base_url?: string
-  api_mode?: ProviderApiMode
+  api_mode?: ProviderApiMode | null
   preferred_model?: string
   credential_action?: ProviderCredentialAction
   api_key?: string
@@ -146,6 +149,19 @@ export async function fetchAvailableModelsForProfile(profile: string): Promise<A
   const params = new URLSearchParams()
   params.set('profile', profile || 'default')
   return request<AvailableModelsResponse>(`/api/hermes/available-models?${params.toString()}`)
+}
+
+export interface ProviderModelCatalog {
+  provider: string
+  models: string[]
+  visible_models: string[]
+  model_aliases: Record<string, string>
+}
+
+export async function fetchProviderModelCatalog(provider: string, profile?: string): Promise<ProviderModelCatalog> {
+  const params = new URLSearchParams({ provider })
+  if (profile) params.set('profile', profile)
+  return request<ProviderModelCatalog>(`/api/hermes/provider-models?${params}`)
 }
 
 export async function fetchProviderModels(data: {
@@ -191,9 +207,10 @@ export async function updateModelAlias(data: {
   })
 }
 
-export async function addCustomProvider(data: CustomProvider): Promise<void> {
+export async function addCustomProvider(data: CustomProvider, profile?: string): Promise<void> {
   await request('/api/hermes/config/providers', {
     method: 'POST',
+    ...(profile ? { headers: { 'X-Hermes-Profile': profile } } : {}),
     body: JSON.stringify(data),
   })
 }

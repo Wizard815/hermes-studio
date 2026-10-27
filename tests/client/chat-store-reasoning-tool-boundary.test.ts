@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { notifyComputerUseStarted } from '@/composables/useComputerUsePermissionPrompt'
+
+vi.mock('@/composables/useComputerUsePermissionPrompt', () => ({ notifyComputerUseStarted: vi.fn() }))
 
 const chatApi = vi.hoisted(() => ({
   startRunViaSocket: vi.fn(),
@@ -84,6 +87,23 @@ describe('chat store reasoning/tool boundaries', () => {
     chatApi.startRunViaSocket.mockReturnValue({ abort: vi.fn() })
     sessionsApi.deleteSession.mockResolvedValue(true)
     sessionsApi.setSessionModel.mockResolvedValue(true)
+  })
+
+  it.each(['ekko-agent', 'hermes'])('only checks permissions for the active live Ekko session: %s', async agent => {
+    const store = useChatStore()
+    const session = { ...makeSession(), agent }
+    store.sessions = [session]
+    store.activeSessionId = session.id
+    store.activeSession = session
+    await store.sendMessage('use the desktop')
+    const onEvent = chatApi.startRunViaSocket.mock.calls[0][1] as (event: RunEvent) => void
+    onEvent({ event: 'tool.started', session_id: session.id, tool: 'computer_use', arguments: '{"action":"call","tool":"list_apps"}' })
+    if (agent === 'ekko-agent') expect(notifyComputerUseStarted).toHaveBeenCalledWith('computer_use', { action: 'call', tool: 'list_apps' })
+    else expect(notifyComputerUseStarted).not.toHaveBeenCalled()
+    vi.mocked(notifyComputerUseStarted).mockClear()
+    store.activeSessionId = 'another-session'
+    onEvent({ event: 'tool.started', session_id: session.id, tool: 'computer_use', arguments: { action: 'call' } })
+    expect(notifyComputerUseStarted).not.toHaveBeenCalled()
   })
 
   it('keeps reasoning with the assistant segment that follows each tool boundary', async () => {
@@ -850,7 +870,7 @@ describe('chat store reasoning/tool boundaries', () => {
     session.codingAgentId = 'codex'
     session.codingAgentMode = 'global'
     session.provider = 'should-not-send'
-    session.model = 'should-not-send'
+    session.model = 'native-selected'
     session.baseUrl = 'http://example.invalid'
     session.apiKey = 'secret'
     session.apiMode = 'chat_completions'
@@ -868,11 +888,11 @@ describe('chat store reasoning/tool boundaries', () => {
       mode: 'global',
     }))
     expect(body.provider).toBeUndefined()
-    expect(body.model).toBeUndefined()
+    expect(body.model).toBe('native-selected')
     expect(body.baseUrl).toBeUndefined()
     expect(body.apiKey).toBeUndefined()
     expect(body.apiMode).toBeUndefined()
-    expect(body.reasoning_effort).toBeUndefined()
+    expect(body.reasoning_effort).toBe('high')
   })
 
   it('sends the hidden API mode when starting a scoped Ekko run', async () => {

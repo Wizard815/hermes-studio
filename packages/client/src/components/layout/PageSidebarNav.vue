@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { deploymentUrl } from '@/utils/deployment-url'
 import { computed } from 'vue'
 import { NTooltip } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -8,7 +9,7 @@ import { useSessionSearch } from '@/composables/useSessionSearch'
 import DesktopUpdateDownloadTab from './DesktopUpdateDownloadTab.vue'
 import { useNavigationRail } from '@/composables/useNavigationRail'
 
-type ActiveSection = 'chat' | 'history' | 'connections' | 'agents' | 'models' | 'apiRelay' | 'upstream' | 'group' | 'global' | 'workflow'
+type ActiveSection = 'chat' | 'history' | 'connections' | 'agents' | 'models' | 'usage' | 'apiRelay' | 'upstream' | 'group' | 'global' | 'workflow'
 
 const props = defineProps<{
   active: ActiveSection
@@ -50,6 +51,11 @@ function openAgentManager() {
 function openModels() {
   if (props.active === 'models') return
   void router.push({ name: 'hermes.models' })
+}
+
+function openUsage() {
+  if (props.active === 'usage') return
+  void router.push({ name: 'hermes.usage' })
 }
 
 function openGroupChat() {
@@ -184,8 +190,16 @@ function openUpstream() {
         </svg>
         <span>{{ t('sidebar.models') }}</span>
       </button>
+      <button v-if="!hasNavigationRail" class="page-sidebar-tab" :class="{ active: active === 'usage' }" type="button" :aria-current="active === 'usage' ? 'page' : undefined" @click="openUsage">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="12" width="4" height="9" rx="1" />
+          <rect x="10" y="7" width="4" height="14" rx="1" />
+          <rect x="17" y="3" width="4" height="18" rx="1" />
+        </svg>
+        <span>{{ t('sidebar.usage') }}</span>
+      </button>
       <button v-if="!hasNavigationRail" class="page-sidebar-tab" :class="{ active: active === 'upstream' }" type="button" :aria-current="active === 'upstream' ? 'page' : undefined" @click="openUpstream">
-        <img class="api-relay-logo" src="/relay-logo.png" width="18" height="18" alt="" aria-hidden="true" />
+        <img class="api-relay-logo" :src="deploymentUrl('/relay-logo.png')" width="18" height="18" alt="" aria-hidden="true" />
         <span>{{ t('sidebar.upstream') }}</span>
       </button>
     </div>
@@ -280,20 +294,20 @@ function openUpstream() {
 .page-sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
 }
 
 .page-sidebar-tabs {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(4px * var(--spacing-scale, 1));
 }
 
 .page-sidebar-search-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: calc(4px * var(--spacing-scale, 1));
   min-width: 0;
 
   .page-sidebar-primary { flex: 0 0 100%; }
@@ -305,7 +319,7 @@ function openUpstream() {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 4px;
+  gap: calc(4px * var(--spacing-scale, 1));
 }
 
 .page-sidebar-nav--compact {
@@ -315,7 +329,7 @@ function openUpstream() {
   .page-sidebar-primary span { display: none; }
 }
 
-.api-relay-logo { border-radius: 4px; }
+.api-relay-logo { border-radius: var(--radius-component, 4px); }
 
 .page-sidebar-tab {
   width: 100%;
@@ -329,8 +343,8 @@ function openUpstream() {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
-  padding: 7px 10px;
+  gap: calc(8px * var(--spacing-scale, 1));
+  padding: calc(7px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
   cursor: pointer;
   transition:
     background-color $transition-fast,
@@ -345,8 +359,8 @@ function openUpstream() {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 13px;
-    line-height: 18px;
+    font-size: calc(var(--font-size-base, 14px) * 13 / 14);
+    line-height: var(--line-height, calc(var(--font-size-base, 14px) * 18 / 14));
   }
 
   &:hover,
@@ -359,8 +373,8 @@ function openUpstream() {
 .conversation-switch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px;
-  padding: 2px;
+  gap: calc(2px * var(--spacing-scale, 1));
+  padding: calc(2px * var(--spacing-scale, 1));
   border-radius: $radius-sm;
   background: rgba(var(--accent-primary-rgb), 0.05);
 }
@@ -374,7 +388,7 @@ function openUpstream() {
   min-width: 0;
   height: 30px;
   border: none;
-  border-radius: 5px;
+  border-radius: var(--radius-component, 5px);
   background: transparent;
   color: $text-secondary;
   display: inline-flex;
@@ -394,14 +408,14 @@ function openUpstream() {
   }
 
   &.active {
-    background: $bg-card;
+    background: var(--theme-card-bg, $bg-card);
     color: $text-primary;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   }
 }
 
 :global(.dark .conversation-switch--four .conversation-switch-tab.active) {
-  background: $bg-card-hover;
+  background: var(--theme-card-bg, $bg-card-hover);
   color: $accent-primary;
   box-shadow:
     inset 0 0 0 1px $border-color,

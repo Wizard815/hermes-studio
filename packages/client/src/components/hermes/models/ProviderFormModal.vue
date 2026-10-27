@@ -44,7 +44,7 @@ const formData = ref({
   api_key: '',
   model: '',
   context_length: null as number | null,
-  api_mode: 'chat_completions' as ProviderApiMode,
+  api_mode: 'chat_completions' as ProviderApiMode | 'auto',
 })
 
 const providerNameInputProps = {
@@ -76,13 +76,14 @@ const providerModelInputProps = {
 }
 
 const modelOptions = ref<Array<{ label: string; value: string }>>([])
-const apiModeOptions: Array<{ label: string; value: ProviderApiMode }> = [
+const apiModeOptions = computed(() => [
   { label: 'chat_completions (/chat/completions)', value: 'chat_completions' },
   { label: 'codex_responses (/responses)', value: 'codex_responses' },
   { label: 'anthropic_messages (/messages)', value: 'anthropic_messages' },
   { label: 'bedrock_converse (Converse API)', value: 'bedrock_converse' },
   { label: 'codex_app_server (App Server)', value: 'codex_app_server' },
-]
+  { label: t('models.apiModeAuto'), value: 'auto' },
+])
 
 const CODEX_KEY = 'openai-codex'
 const NOUS_KEY = 'nous'
@@ -173,7 +174,10 @@ function customProviderKey(name: string): string {
   return `custom:${name.trim().toLowerCase().replace(/ /g, '-')}`
 }
 
+let presetCatalogRequest = 0
 watch(selectedPreset, (val) => {
+  const request = ++presetCatalogRequest
+  fetchingModels.value = false
   formData.value.model = ''
   alibabaCodingRegion.value = 'intl'
   if (val) {
@@ -186,6 +190,7 @@ watch(selectedPreset, (val) => {
       if (group.models.length > 0) {
         formData.value.model = group.models[0]
       }
+      void loadPresetCatalog(val, request)
     }
     if (val === COPILOT_KEY) {
       // 判断是否已能解析到 token：有 → 弹简单确认；无 → 走 in-app device flow
@@ -199,6 +204,20 @@ watch(selectedPreset, (val) => {
     }
   }
 })
+
+async function loadPresetCatalog(provider: string, request: number) {
+  fetchingModels.value = true
+  try {
+    const catalog = await modelsStore.fetchProviderCatalog(provider)
+    if (request !== presetCatalogRequest || selectedPreset.value !== provider || providerType.value !== 'preset') return
+    modelOptions.value = catalog.models.map(model => ({ label: model, value: model }))
+    if (!formData.value.model) formData.value.model = catalog.models[0] || ''
+  } catch (error: any) {
+    if (request === presetCatalogRequest) message.error(error?.message || t('models.providerEditorLoadFailed'))
+  } finally {
+    if (request === presetCatalogRequest) fetchingModels.value = false
+  }
+}
 
 watch(alibabaCodingRegion, (region) => {
   if (isAlibabaCoding.value) {
@@ -339,7 +358,7 @@ async function handleSave() {
       api_key: formData.value.api_key.trim(),
       model: formData.value.model,
       context_length: contextLength,
-      api_mode: formData.value.api_mode,
+      api_mode: formData.value.api_mode === 'auto' ? null : formData.value.api_mode,
       providerKey,
     })
     message.success(t('models.providerAdded'))
@@ -632,13 +651,13 @@ function handleClose() {
 <style scoped lang="scss">
 .fun-provider-hint {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
 
   a {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
+    gap: calc(6px * var(--spacing-scale, 1));
+    padding: calc(4px * var(--spacing-scale, 1)) calc(8px * var(--spacing-scale, 1));
     white-space: nowrap;
     color: var(--accent-primary);
     text-decoration: none;
@@ -656,6 +675,6 @@ function handleClose() {
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
 }
 </style>

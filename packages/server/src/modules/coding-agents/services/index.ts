@@ -2,6 +2,7 @@ import type { CodingAgentDefinition, CodingAgentConfigFileDefinition } from '../
 import { TOOL_DEFINITIONS, CONFIG_FILE_DEFINITIONS } from './registry/definitions'
 import { createOpenCodeConfig, mergeOpenCodeSettingsConfig, openCodeSettingsConfig, opencodeMcpServerConfig, openCodeRuntimeEnv, OPENCODE_CONFIG_FILE, OPENCODE_DATABASE_FILE, OPENCODE_API_KEY_ENV, OPENCODE_PROVIDER_ID } from './opencode/config'
 import { prepareOpenCodeBaseConfig } from './opencode/runtime-config'
+import { prepareZcodeGlobalModel } from './zcode/runtime-config'
 import { NATIVE_CODING_AGENTS, prepareNativeScopedRuntime, nativeScopedUsesChatCompletions, checkNativeCodingAgentEnvironment, checkNativeCodingAgentPlatform } from './registry/native-agents'
 import { resolveZcodeCommand } from './zcode/installation'
 import { isNativeCodingAgent, nativeCodingAgentSupportsScoped, isGlobalOnlyCodingAgent } from '../../studio/contracts/agents/native-coding-agents'
@@ -17,7 +18,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID }
 import { existsSync, readdirSync, realpathSync } from 'fs'
 import { chmod, copyFile, cp, lstat, mkdir, open, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'fs/promises'
 import { homedir } from 'os'
-import { delimiter, dirname, join } from 'path'
+import { delimiter, dirname, join, win32 as win32Path } from 'path'
 import { promisify } from 'util'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { getWebUiHome } from '../../studio/public/config'
@@ -26,7 +27,7 @@ import { getCompatibleCustomProviders } from '../../studio/contracts/provider-co
 import { registerClaudeCodeProxyTarget } from './claude-code/proxy'
 import { registerCodexProxyTarget, restoreCodexProxyTarget } from './codex/proxy'
 import { compactCodexThread } from './codex/compact'
-import { hermesPromptDocument, writeManagedPromptFile } from './prompt-file'
+import { writeManagedPromptFile } from './prompt-file'
 import type { ApiMode, CodingAgentImageInput } from '../protocol/types'
 import { PROVIDER_PRESETS, assertProviderAvailable, isRetiredProvider } from '../../studio/contracts/providers'
 import { getModelContextLength, getModelRuntimeCapabilities } from '../../studio/public/provider-runtime'
@@ -35,7 +36,7 @@ import { codingAgentRunManager } from './runtime/run-manager'
 import { mergePiSettings, userSettingsProvidesPiMcpAdapter } from './pi/settings'
 import { ANTIGRAVITY_DEFAULT_SETTINGS, ANTIGRAVITY_INSTALL_URL, prepareAntigravityRuntime, validateAntigravitySettings } from './antigravity/config'
 import { CURSOR_DEFAULT_SETTINGS, cursorSettingsPath, validateCursorSettings } from './cursor/settings'
-import { PI_EXTENDED_THINKING_LEVEL_MAP, piModelSupportsThinking } from './pi/thinking'
+import { normalizePiThinkingLevel, PI_EXTENDED_THINKING_LEVEL_MAP, piModelSupportsThinking } from './pi/thinking'
 import { GROK_API_KEY_ENV, GROK_PROVIDER_ID } from './grok/definition'
 import { getDisabledManagedMcpServers, getManagedMcpServerOverride } from './mcp-overrides'
 import {
@@ -58,6 +59,8 @@ import { defaultCodingAgentWorkspace } from '../../studio/public/workspace-manag
 import { isolateUnhealthyRuntimeMcpServers } from './mcp-runtime-isolation'
 import { getCodingAgentGlobalHome } from '../../studio/public/coding-agent-global-home'
 import { codingAgentContextPolicy, compactionPercent, claudeCompactionPercent, piCompactionSettings, type CodingAgentContextPolicy } from './context-policy'
+import { createCodingAgentModelDiscovery } from './models'
+import { nativeModelVariant } from './models/variants'
 
 const execFileAsync = promisify(execFile)
 const LAUNCH_API_MODES = new Set<ApiMode>(['chat_completions', 'codex_responses', 'anthropic_messages'])
@@ -83,7 +86,6 @@ const CODEX_VERSION_CACHE_TTL_MS = 5 * 60 * 1000
 const HERMES_MCP_SERVERS: ReadonlyArray<{ name: string; toolset: string }> = [
   { name: 'ekko-studio-api', toolset: 'api' },
   { name: 'ekko-studio-browser', toolset: 'browser' },
-  { name: 'ekko-studio-devices', toolset: 'devices' },
   { name: 'ekko-studio-use', toolset: 'use' },
   { name: 'ekko-studio-interaction', toolset: 'plan' },
 ]
@@ -93,6 +95,7 @@ const LEGACY_HERMES_MCP_SERVER_NAMES = new Set([
   'hermes-studio-api',
   'hermes-studio-browser',
   'hermes-studio-devices',
+  'ekko-studio-devices',
   'hermes-studio-use',
   'hermes-studio', 'hermes-studio-mcp', 'ekko-studio-mcp', 'hermes-web-ui-mcp',
 ])
@@ -471,21 +474,24 @@ function getDesktopCommonBinPaths(): string[] {
 }
 
 function prependPathEntries(env: NodeJS.ProcessEnv, entries: Array<string | null | undefined>) {
+  const pathDelimiter = process.platform === 'win32' ? ';' : delimiter
   const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path') || 'PATH'
   const currentPath = env[pathKey] || ''
-  const existing = new Set(currentPath.split(delimiter).filter(Boolean))
+  const existing = new Set(currentPath.split(pathDelimiter).filter(Boolean))
   const prepended: string[] = []
 
   for (const entry of entries) {
     if (!entry) continue
-    for (const segment of entry.split(delimiter).map(item => item.trim()).filter(Boolean)) {
+    for (const segment of entry.split(pathDelimiter).map(item => item.trim()).filter(Boolean)) {
       if (existing.has(segment) || prepended.includes(segment)) continue
       prepended.push(segment)
     }
   }
 
   if (prepended.length > 0) {
-    env[pathKey] = currentPath ? `${prepended.join(delimiter)}${delimiter}${currentPath}` : prepended.join(delimiter)
+    env[pathKey] = currentPath
+      ? `${prepended.join(pathDelimiter)}${pathDelimiter}${currentPath}`
+      : prepended.join(pathDelimiter)
   }
 }
 
@@ -1085,6 +1091,9 @@ function hermesMcpServerConfig(profile: string, serverName: string, toolset: str
     ...hermesMcpCommandConfig(toolset),
     env: {
       ELECTRON_RUN_AS_NODE: '1',
+      // Managed transports read the current profile or run credential, not parent bearer tokens.
+      HERMES_WEB_UI_TOKEN: '',
+      AUTH_TOKEN: '',
       HERMES_WEB_UI_URL: `http://127.0.0.1:${process.env.PORT || '8648'}`,
       HERMES_WEB_UI_HOME: appHome,
       HERMES_WEBUI_STATE_DIR: appHome,
@@ -1584,12 +1593,18 @@ function piMcpConfig(profile: string, runTokenFile: string | undefined, ...exter
     .map((item) => {
     const server = managedHermesMcpServerConfig('pi', profile, item.name, item.toolset, runTokenFile)
     const requestTimeoutMs = item.toolset === 'api' ? 120_000 : item.toolset === 'use' ? 360_000 : 1_860_000
-    const interaction = item.toolset === 'plan'
+    // plan and use are always-on direct tools. The use toolset collapses all
+    // Studio operations (including session_get / session_messages) into a
+    // single toolset meta-tool, so registering it directly costs one tool, not
+    // dozens. Pi previously demoted `use` to lazy/non-direct, which left
+    // session-readability dependent on the model remembering to lazy-load it -
+    // the source of "can sometimes, sometimes cannot read a session id".
+    const directToolset = item.toolset === 'plan' || item.toolset === 'use'
     return [item.name, {
       ...server,
-      lifecycle: interaction ? 'eager' : 'lazy',
-      directTools: interaction,
-      toolPrefix: interaction ? 'server' : 'none',
+      lifecycle: directToolset ? 'eager' : 'lazy',
+      directTools: directToolset,
+      toolPrefix: directToolset ? 'server' : 'none',
       requestTimeoutMs,
     }]
   }))
@@ -1617,11 +1632,15 @@ export function getCodingAgentManagedMcpServerConfigs(
     const server = managedHermesMcpServerConfig(id, profile || 'default', item.name, item.toolset, runTokenFile)
     if (id === 'pi') {
       const requestTimeoutMs = item.toolset === 'api' ? 120_000 : item.toolset === 'use' ? 360_000 : 1_860_000
+      // plan and use are always-on direct tools (use collapses all Studio
+      // operations into one toolset meta-tool, so direct registration costs a
+      // single tool). See piMcpConfig for the session-readability rationale.
+      const directToolset = item.toolset === 'plan' || item.toolset === 'use'
       return [item.name, {
         ...server,
-        lifecycle: item.toolset === 'plan' ? 'eager' : 'lazy',
-        directTools: item.toolset === 'plan',
-        toolPrefix: item.toolset === 'plan' ? 'server' : 'none',
+        lifecycle: directToolset ? 'eager' : 'lazy',
+        directTools: directToolset,
+        toolPrefix: directToolset ? 'server' : 'none',
         requestTimeoutMs,
         ...(disabledManaged.has(item.name) ? { enabled: false } : {}),
       }]
@@ -1644,6 +1663,26 @@ export function getCodingAgentManagedMcpServerConfigs(
   }))
 }
 
+function piManagedServerToolset(name: string, server: Record<string, unknown>): string {
+  // Authoritative source is the injected env; fall back to the managed server
+  // name suffix (ekko-studio-use -> use, ekko-studio-interaction -> plan).
+  const env = (server.env && typeof server.env === 'object' ? server.env : {}) as Record<string, unknown>
+  if (typeof env.HERMES_MCP_TOOLSET === 'string' && env.HERMES_MCP_TOOLSET) return env.HERMES_MCP_TOOLSET
+  const bare = String(name).replace(/^mcp__/, '')
+  const suffix = /-(api|browser|devices|use|interaction|plan)$/.exec(bare)?.[1]
+  if (suffix) return suffix === 'interaction' ? 'plan' : suffix
+  return ''
+}
+
+function piManagedServerIsDirectTool(name: string, server: Record<string, unknown>): boolean {
+  // The use and plan toolsets collapse their operations into a single toolset
+  // meta-tool, so they register as direct always-on tools. api/browser/devices
+  // stay lazy to keep the tool surface small. Decided from the toolset, never
+  // from the persisted lifecycle/directTools (those are what we are fixing).
+  const toolset = piManagedServerToolset(name, server)
+  return toolset === 'use' || toolset === 'plan'
+}
+
 function migratePiRuntimeMcpContent(content: string): string | null {
   try {
     const parsed = JSON.parse(content)
@@ -1663,11 +1702,18 @@ function migratePiRuntimeMcpContent(content: string): string | null {
     }
     delete parsed.settings.freezeDirectTools
 
-    for (const [, server] of managedServers) {
+    for (const [name, server] of managedServers) {
       if (!server || typeof server !== 'object' || Array.isArray(server)) continue
       const managedServer = server as Record<string, unknown>
-      managedServer.lifecycle = 'lazy'
-      managedServer.directTools = false
+      if (piManagedServerIsDirectTool(name, managedServer)) {
+        managedServer.lifecycle = 'eager'
+        managedServer.directTools = true
+        managedServer.toolPrefix = 'server'
+      } else {
+        managedServer.lifecycle = 'lazy'
+        managedServer.directTools = false
+        managedServer.toolPrefix = 'none'
+      }
     }
 
     const migrated = `${JSON.stringify(parsed, null, 2)}\n`
@@ -2233,9 +2279,10 @@ function getScopedConfigFileDefinition(
 }
 
 function getCurrentNodeEnv(): NodeJS.ProcessEnv {
+  const pathDelimiter = process.platform === 'win32' ? ';' : delimiter
   return {
     ...process.env,
-    PATH: [getNodeBinDir(), getNvmNodeBinPaths(), process.env.PATH].filter(Boolean).join(delimiter),
+    PATH: [getNodeBinDir(), getNvmNodeBinPaths(), process.env.PATH].filter(Boolean).join(pathDelimiter),
     npm_node_execpath: process.execPath,
   }
 }
@@ -2317,10 +2364,56 @@ function normalizeErrorCode(err: any): string | undefined {
 }
 
 async function findCommandPaths(command: string, env: NodeJS.ProcessEnv): Promise<string[]> {
+  if (process.platform === 'win32') {
+    const envValue = (name: string): string => {
+      if (typeof env[name] === 'string') return env[name]
+      const entry = Object.entries(env).find(([key]) => key.toLowerCase() === name.toLowerCase())
+      return typeof entry?.[1] === 'string' ? entry[1] : ''
+    }
+    const normalizedCommand = normalizeWindowsCommandPath(command)
+    if (win32Path.isAbsolute(normalizedCommand) || /[\\/]/.test(normalizedCommand)) {
+      return existsSync(normalizedCommand) ? [normalizedCommand] : []
+    }
+
+    const extensions = win32Path.extname(normalizedCommand)
+      ? ['']
+      : (envValue('PATHEXT') || '.COM;.EXE;.BAT;.CMD')
+          .split(';')
+          .map(extension => extension.trim())
+          .filter(Boolean)
+    const paths: string[] = []
+    const seen = new Set<string>()
+    for (const rawDirectory of envValue('PATH').split(';')) {
+      const directory = rawDirectory.trim().replace(/^"(.*)"$/, '$1')
+      if (!directory) continue
+      for (const extension of extensions) {
+        const candidate = win32Path.join(directory, `${normalizedCommand}${extension}`)
+        const key = candidate.toLowerCase()
+        if (seen.has(key) || !existsSync(candidate)) continue
+        seen.add(key)
+        paths.push(candidate)
+      }
+    }
+    if (paths.length > 0) return paths
+
+    // Keep the legacy fallback for environments where PATH entries cannot be
+    // inspected directly (for example, mocked or virtual command shims). Real
+    // files found above never pass through the console code-page decoding path.
+    try {
+      const { stdout } = await execFileAsync('where', [command], {
+        encoding: 'utf-8',
+        timeout: 5000,
+        windowsHide: true,
+        env,
+      })
+      return stdout.split(/\r?\n/).map(line => normalizeWindowsCommandPath(line.trim())).filter(Boolean)
+    } catch {
+      return []
+    }
+  }
+
   try {
-    const lookupCommand = process.platform === 'win32' ? 'where' : 'which'
-    const lookupArgs = process.platform === 'win32' ? [command] : ['-a', command]
-    const { stdout } = await execFileAsync(lookupCommand, lookupArgs, {
+    const { stdout } = await execFileAsync('which', ['-a', command], {
       encoding: 'utf-8',
       timeout: 5000,
       windowsHide: true,
@@ -2440,6 +2533,24 @@ async function nativeAgentEnvironment(id: Parameters<typeof checkNativeCodingAge
     },
   })
 }
+
+export const getCodingAgentModels = createCodingAgentModelDiscovery({
+  definitions: TOOL_DEFINITIONS, commandEnv, commandExecution,
+  home: getCodingAgentGlobalHome, dataHome: getWebUiHome,
+  async resolveCommand(definition, env) {
+    if (definition.id === 'zcode') {
+      const resolved = await resolveZcodeCommand([], env, findCommandPaths)
+      return resolved.path === 'zcode' ? null : resolved
+    }
+    const paths = await findCommandPaths(definition.command, env)
+    if (!paths.length) return null
+    const command = process.platform === 'win32'
+      ? paths.find(windowsCommandNeedsShell) || paths[0]
+      : paths[0]
+    const nativeEnv = isNativeCodingAgent(definition.id) ? await nativeAgentEnvironment(definition.id, env) : {}
+    return { command, env: nativeEnv }
+  },
+})
 
 export function getCodingAgentDefinitions(): CodingAgentDefinition[] {
   return TOOL_DEFINITIONS.map(tool => ({ ...tool }))
@@ -2945,6 +3056,12 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
   const mcpCapabilities = studioMcpCapabilities(getCodingAgentManagedMcpServerConfigs(tool.id, input.profile || 'default'))
   const mode = resolvedCodingAgentLaunchMode(tool.id, input.mode)
   if (mode === 'global') {
+    const model = String(input.model || '').trim()
+    const reasoningEffort = String(input.reasoningEffort || '').trim()
+    const variant = ['cursor', 'antigravity'].includes(tool.id) ? nativeModelVariant(model) : undefined
+    if (variant && reasoningEffort && variant.effort !== reasoningEffort) {
+      throw Object.assign(new Error('Native model ID and reasoning effort must select the same variant'), { status: 400 })
+    }
     const scope = normalizeConfigScope({ profile: input.profile, provider: 'global' })
     const workspaceDir = resolveLaunchWorkspaceRoot(scope, input.workspace)
     await mkdir(workspaceDir, { recursive: true })
@@ -2968,6 +3085,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       }
       const args = [
         '--mode', 'rpc',
+        ...(model ? ['--model', model] : []),
         ...(input.agentNativeSessionId ? ['--session-id', input.agentNativeSessionId] : []),
         '--extension', studioExtensionPath,
         ...mcp.args,
@@ -2990,7 +3108,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
         mode,
         profile: scope.profile,
         provider: scope.provider,
-        model: '',
+        model,
         rootDir,
         workspaceDir,
         command: tool.command,
@@ -2998,7 +3116,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
         env,
         shellCommand: buildLauncherShellCommand(workspaceDir, launcherPath),
         files,
-        reasoningEffort: String(input.reasoningEffort || '').trim(),
+        reasoningEffort,
       }
     }
     const rootDir = getScopedRuntimeConfigRoot(tool.id, scope, input)
@@ -3015,8 +3133,14 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
         ? await resolveZcodeCommand([], await commandEnv(), findCommandPaths, { preferDesktop: process.platform === 'win32' })
         : { command: tool.command, args: [], env: {} }
       execution.env = { ...nativeEnvironment, ...execution.env }
-      return { agentId: tool.id, mode, profile: scope.profile, provider: 'global', model: '', rootDir, workspaceDir,
-        command: execution.command, args: execution.args, env: execution.env, files: [], nativeSystemPrompt: systemPrompt, nativeMcpServers,
+      const nativeFiles = []
+      if (tool.id === 'zcode' && (model || reasoningEffort)) {
+        const selection = await prepareZcodeGlobalModel(rootDir, model, { ...await commandEnv(), ...execution.env }, reasoningEffort)
+        execution.env = { ...execution.env, ...selection.env }
+        nativeFiles.push(selection.file)
+      }
+      return { agentId: tool.id, mode, profile: scope.profile, provider: 'global', model, reasoningEffort, rootDir, workspaceDir,
+        command: execution.command, args: execution.args, env: execution.env, files: nativeFiles, nativeSystemPrompt: systemPrompt, nativeMcpServers,
         shellCommand: buildLaunchShellCommand({ workspaceDir, ...execution }) }
     }
 
@@ -3038,6 +3162,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       ]
       env = { IS_SANDBOX: '1' }
       args = ['--append-system-prompt-file', promptFile, '--mcp-config', mcpPath, ...CLAUDE_CODE_SKIP_PERMISSIONS_ARGS]
+      if (reasoningEffort) args.push('--effort', reasoningEffort)
     } else if (tool.id === 'codex') {
       promptFile = await prepareGlobalCodexShadowHome(rootDir, systemPrompt, scope.profile, input.studioMcpTokenFile)
       files = [
@@ -3045,6 +3170,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
         { key: 'config', path: 'config.toml', absolutePath: join(rootDir, 'config.toml') },
       ]
       env = { CODEX_HOME: rootDir }
+      if (reasoningEffort) args.push('-c', `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`)
     } else if (tool.id === 'grok') {
       const prepared = await prepareGlobalGrokRuntime({
         sourceHome: process.env.GROK_HOME?.trim() || join(getGlobalConfigHome(), '.grok'),
@@ -3056,6 +3182,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       files = prepared.files
       env = { GROK_HOME: rootDir }
       args = ['--always-approve', '--no-auto-update']
+      if (reasoningEffort) args.push('--reasoning-effort', reasoningEffort)
     } else if (tool.id === 'dsh') {
       const prepared = await prepareDshRuntime({
         ...await dshHost.runtimeInput(),
@@ -3072,8 +3199,9 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       promptFile = prepared.promptFile
       env = prepared.env
       const effort = String(input.reasoningEffort || '').trim()
-      if (effort && !['low', 'medium', 'high', 'max'].includes(effort)) throw Object.assign(new Error('Antigravity effort must be low, medium, high or max'), { status: 400 })
-      args = ['--dangerously-skip-permissions', ...(effort ? ['--effort', effort] : [])]
+      if (!variant && effort && !['low', 'medium', 'high', 'max'].includes(effort)) throw Object.assign(new Error('Antigravity effort must be low, medium, high or max'), { status: 400 })
+      // A literal effort variant already fixes the strength; do not override it twice.
+      args = ['--dangerously-skip-permissions', ...(!variant && effort ? ['--effort', effort] : [])]
     } else if (tool.id === 'cursor') {
       const prepared = await prepareCursorMcp(rootDir, scope.profile, input.studioMcpTokenFile)
       files = prepared.files
@@ -3121,6 +3249,8 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       }
     }
     const chatSessionId = String(input.sessionId || '').trim()
+    if (model && tool.id !== 'dsh') args.push('--model', model)
+    if (tool.id === 'pi' && normalizePiThinkingLevel(reasoningEffort)) args.push('--thinking', normalizePiThinkingLevel(reasoningEffort)!)
     if (chatSessionId) env[HERMES_STUDIO_SESSION_ENV_KEY] = chatSessionId
     const shellCommand = buildLaunchShellCommand({
       workspaceDir,
@@ -3133,7 +3263,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       mode,
       profile: scope.profile,
       provider: scope.provider,
-      model: '',
+      model,
       rootDir,
       workspaceDir,
       command: tool.command,
@@ -3142,7 +3272,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       shellCommand,
       files,
       promptFile,
-      ...(tool.id === 'antigravity' ? { reasoningEffort: String(input.reasoningEffort || '').trim() } : {}),
+      reasoningEffort,
     }
   }
 
@@ -3281,7 +3411,14 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
     const globalMcpConfig = globalMcpPath ? await safeReadFile(globalMcpPath) : ''
     const existingMcpConfig = existingMcpPath ? await safeReadFile(existingMcpPath) : ''
     await writeScopedFile('mcp', claudeMcpConfigJson(scope.profile, input.studioMcpTokenFile, globalMcpConfig, existingMcpConfig))
-    await writeScopedFile('prompt', hermesPromptDocument(scopedSystemPrompt))
+    // User instructions must stay outside the block replaced before every Claude turn.
+    const claudeInstructions = [
+      (await safeReadFile(getLiveConfigFileDefinition(tool.id, 'memory')?.absolutePath || ''))?.trim() || '',
+      (await safeReadFile(getScopedConfigFileDefinition(tool.id, 'memory', scope)?.absolutePath || ''))?.trim() || '',
+    ].filter((value, index, values) => value && values.indexOf(value) === index)
+    const promptDefinition = getScopedConfigFileDefinition(tool.id, 'prompt', scope, rootDir)!
+    await writeManagedPromptFile(promptDefinition.absolutePath, scopedSystemPrompt, claudeInstructions.join('\n\n'))
+    files.push({ key: 'prompt', path: promptDefinition.path, absolutePath: promptDefinition.absolutePath })
 
     const settingsPath = join(rootDir, 'settings.json')
     const mcpPath = join(rootDir, 'mcp.json')

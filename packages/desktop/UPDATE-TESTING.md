@@ -20,6 +20,7 @@
 | macOS Apple Silicon | `https://github.com/EKKOLearnAI/ekko-studio-update-test/releases/download/update-test-darwin-arm64/` | `latest-mac.yml` |
 | macOS Intel | `https://github.com/EKKOLearnAI/ekko-studio-update-test/releases/download/update-test-darwin-x64/` | `latest-mac.yml` |
 | Windows x64 | `https://github.com/EKKOLearnAI/ekko-studio-update-test/releases/download/update-test-win32-x64/` | `latest.yml` |
+| Windows ARM64 | `https://github.com/EKKOLearnAI/ekko-studio-update-test/releases/download/update-test-win32-arm64/` | `latest-arm64.yml` |
 | Linux x64 | `https://github.com/EKKOLearnAI/ekko-studio-update-test/releases/download/update-test-linux-x64/` | `latest-linux.yml` |
 | Linux arm64 | `https://github.com/EKKOLearnAI/ekko-studio-update-test/releases/download/update-test-linux-arm64/` | `latest-linux-arm64.yml` |
 
@@ -29,7 +30,7 @@
 
 在 GitHub Actions 运行 **Desktop Update Test Build**（`desktop-update-test.yml`），选择包含新更新逻辑的分支，填写：
 
-- `target`：测试机器的系统和架构：`darwin-arm64`、`darwin-x64`、`win32-x64`、`linux-x64`、`linux-arm64`。
+- `target`：测试机器的系统和架构：`darwin-arm64`、`darwin-x64`、`win32-x64`、`win32-arm64`、`linux-x64`、`linux-arm64`。
 - `version`：纯数字 `X.Y.Z`，例如 A=`0.7.900`、B=`0.7.901`。必须 B > A，不使用 `-beta` 等预发布后缀。
 - `runtime_release_tag`：可选的现有运行时版本，A 和 B 保持一致，以便只测试桌面更新。
 
@@ -46,6 +47,9 @@ Linux 两种架构均使用 AppImage 验证应用内更新，分别使用原生 
 清单先用临时名称上传，再通过重命名切换，保留 `previous-<asset-id>-latest*.yml` 作为备份。GitHub 不提供原子替换接口，切换瞬间可能短暂返回 404，客户端稍后重试即可。切换失败会尝试恢复旧清单；若 runner 在中间被终止，下次发布会先恢复备份。若网络导致自动恢复也失败，按错误中给出的 asset ID 在测试 Release 把备份改回原清单名后重试。首次发布失败的 Release 保持草稿。不同内容的同版本重建请直接升版本，不要覆盖已发布安装器。
 
 ## 3. 在测试机器完成 A → B
+
+Windows ARM64 使用 `win32-arm64` 目标；其更新清单为 `latest-arm64.yml`，
+与 Windows x64 的 `latest.yml` 分开。两种架构分别构建、安装和验收。
 
 测试包保留正式应用身份，可能覆盖同机正式安装、共用本地数据和命令入口。使用专用测试机、虚拟机快照或独立系统用户，不要在日常工作的正式安装上试升级。
 

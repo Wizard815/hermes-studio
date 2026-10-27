@@ -181,10 +181,10 @@ async function fixture(t, mac = false, testSource, linuxArch) {
     realUpdater.quitAndInstall = () => { control.installs++ }
   }
   const setFeed = realUpdater.setFeedURL.bind(realUpdater)
-  realUpdater.setFeedURL = ({ url }) => {
+  realUpdater.setFeedURL = ({ url, channel }) => {
     control.feedUrls.push(url)
     const path = url.startsWith('https://updates.example.com/') ? 'test' : url.includes('github.com') ? 'gh' : 'cf'
-    setFeed({ provider: 'generic', url: `${base}/${path}` })
+    setFeed({ provider: 'generic', url: `${base}/${path}`, channel })
   }
   const controllerPath = require.resolve('../dist/main/updater.js')
   delete require.cache[controllerPath]
@@ -192,6 +192,7 @@ async function fixture(t, mac = false, testSource, linuxArch) {
   const controller = require(controllerPath)
   controller.initAutoUpdater({
     onStateChange: state => control.snapshots.push(state),
+    acquireInstall: () => { if (control.otherDeviceOpen) throw new Error('Close other device windows'); control.installGate = true; return () => { control.installGate = false } },
     beforeQuitAndInstall: () => { control.shutdowns++ },
   })
   const updater = realUpdater
@@ -267,7 +268,7 @@ test('real HTTP progress, fallback feed, cancellation and retry', { timeout: 200
   await ready('downloaded')
   assert.equal(control.downloads, 2)
   assert.equal(control.signatureChecks, 1)
-  assert.equal(control.quitHandlers.length, 1)
+  assert.equal(control.quitHandlers.length, 0, 'implicit quit installation must remain disabled')
   assert.equal(control.installs, 0)
   assert(!control.dialogs.some(dialog => dialog.type === 'error'))
 })
@@ -280,6 +281,21 @@ test('packaged test source downloads exclusively through its own feed', { timeou
   assert.deepEqual(control.feedUrls, ['https://updates.example.com/windows/'])
   assert(control.requests.length >= 2)
   assert(control.requests.every(url => url.startsWith('/test/')))
+})
+
+test('Windows ARM64 uses its own manifest through primary and fallback feeds', { timeout: 20000 }, async t => {
+  const { control, controller, ready } = await fixture(t)
+  const originalArch = process.arch
+  t.after(() => Object.defineProperty(process, 'arch', { value: originalArch }))
+  Object.defineProperty(process, 'platform', { value: 'win32' })
+  Object.defineProperty(process, 'arch', { value: 'arm64' })
+  control.failPrimary = true
+  control.slow = false
+  await controller.checkForDesktopUpdates(false)
+  await ready('downloaded')
+  assert(control.requests.some(url => url.startsWith('/cf/latest-arm64.yml')))
+  assert(control.requests.some(url => url.startsWith('/gh/latest-arm64.yml')))
+  assert(!control.requests.some(url => /\/latest\.yml/.test(url)))
 })
 
 test('offline test feed never retries against production and can recover on the same feed', { timeout: 20000 }, async t => {
@@ -342,7 +358,7 @@ test('cancellation at completion suppresses auto-install and a retry reuses veri
   controller.downloadDesktopUpdate()
   await ready('downloaded')
   assert.equal(control.downloads, 1, 'retry should use the real updater cache')
-  assert.equal(control.quitHandlers.length, 1)
+  assert.equal(control.quitHandlers.length, 0, 'implicit quit installation must remain disabled')
 })
 
 test('unknown-length cancellation and connection loss close files before retry', { timeout: 20000 }, async t => {
@@ -384,6 +400,24 @@ test('real differential download aborts its range request and retries without a 
   assert.deepEqual(control.ranges, ['bytes=524288-1048575', 'bytes=524288-1048575'])
   assert.equal(control.downloads, 2, 'both attempts should only download the changed range')
   assert.equal(control.signatureChecks, 1)
+})
+
+test('other device windows block installation before shutdown and can retry', { timeout: 20000 }, async t => {
+  const { control, controller, ready } = await fixture(t)
+  control.slow = false
+  await controller.checkForDesktopUpdates(false)
+  await ready('downloaded')
+  electron.dialog.showMessageBox = async () => ({ response: 0 })
+  control.otherDeviceOpen = true
+  await assert.rejects(controller.installDesktopUpdate(), /Close other device/)
+  assert.equal(controller.getDesktopUpdateState().status, 'downloaded')
+  assert.equal(control.shutdowns, 0)
+  assert.equal(control.installs, 0)
+  control.otherDeviceOpen = false
+  await controller.installDesktopUpdate()
+  assert.equal(control.shutdowns, 1)
+  assert.equal(control.installs, 1)
+  assert.equal(control.installGate, true)
 })
 
 test('real MacUpdater proxy waits for native verification, handles errors, and retries', { timeout: 20000 }, async t => {

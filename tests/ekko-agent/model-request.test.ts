@@ -132,6 +132,22 @@ describe('ekko-agent model requests', () => {
     ]))
   })
 
+  it.each([false, true])('still rejects an empty tool-call termination when completed calls exist=%s', async completed => {
+    const frames = [
+      ...(completed ? [{ choices: [{ delta: { tool_calls: [{ index: 0, id: 'valid', function: { name: 'weather', arguments: '{}' } }] }, finish_reason: 'tool_calls' }] }] : []),
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: 'invalid', function: { name: '', arguments: '{}' } }] }, finish_reason: 'tool_calls' }] },
+    ]
+    const client = createModelClient(providerConfig, { fetch: async () => new Response(frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`).join('')) })
+    await expect(collectModelEvents(client.stream({ messages: [{ role: 'user', content: 'Check weather' }] })))
+      .rejects.toThrow('complete id and function name')
+  })
+
+  it('rejects a tool-call finish reason with no tool data', async () => {
+    const client = createModelClient(providerConfig, { fetch: async () => new Response('data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n') })
+    await expect(collectModelEvents(client.stream({ messages: [{ role: 'user', content: 'Check weather' }] })))
+      .rejects.toThrow('complete id and function name')
+  })
+
   it('filters invalid Chat tool history and its orphaned tool result', () => {
     const payload = toOpenAIChatPayload(providerConfig, {
       messages: [
@@ -1301,8 +1317,14 @@ describe('ekko-agent model requests', () => {
     ])
   })
 
-  it('replays encrypted OpenAI Responses reasoning items without flattening them', () => {
-    const response = normalizeOpenAIResponsesResponse({
+  it('replays encrypted OpenAI Responses reasoning items without flattening them', async () => {
+    const config: ModelProviderConfig = {
+      id: 'openai',
+      type: 'openai',
+      requestStyle: 'openai-responses',
+      defaultModel: 'gpt-5.4',
+    }
+    const nativeResponse = {
       id: 'resp_reasoning',
       model: 'gpt-5.4',
       status: 'completed',
@@ -1321,14 +1343,13 @@ describe('ekko-agent model requests', () => {
           arguments: '{"city":"Xiamen"}',
         },
       ],
+    }
+    const client = createModelClient(config, {
+      fetch: async () => new Response(JSON.stringify(nativeResponse)),
     })
+    const response = await client.create({ messages: [{ role: 'user', content: 'Weather?' }] })
     const message = modelResponseToAgentMessage(response)
-    const payload = toOpenAIResponsesPayload({
-      id: 'openai',
-      type: 'openai',
-      requestStyle: 'openai-responses',
-      defaultModel: 'gpt-5.4',
-    }, {
+    const payload = toOpenAIResponsesPayload(config, {
       messages: [message],
     })
 
@@ -1336,6 +1357,7 @@ describe('ekko-agent model requests', () => {
       text: 'Checked the weather.',
       native: {
         format: 'openai-responses-items',
+        replayScope: expect.any(String),
         data: [expect.objectContaining({
           id: 'rs_1',
           type: 'reasoning',
@@ -1571,6 +1593,64 @@ describe('ekko-agent model requests', () => {
       thinking: 'Use a tool.',
       signature: 'signed-thinking',
     }])
+  })
+
+  it.each([
+    { baseUrl: undefined, expected: 'https://api.anthropic.com/v1/messages' },
+    { baseUrl: 'https://api.anthropic.com', expected: 'https://api.anthropic.com/v1/messages' },
+    { baseUrl: 'https://api.anthropic.com/v1/', expected: 'https://api.anthropic.com/v1/messages' },
+    { baseUrl: 'https://relay.example', expected: 'https://relay.example/v1/messages' },
+    { baseUrl: 'https://relay.example/', expected: 'https://relay.example/v1/messages' },
+    { baseUrl: 'https://relay.example/v1', expected: 'https://relay.example/v1/messages' },
+    { baseUrl: 'https://relay.example/v1/messages', expected: 'https://relay.example/v1/messages' },
+    { baseUrl: 'https://relay.example/v1/messages/', expected: 'https://relay.example/v1/messages' },
+    { baseUrl: 'https://api.z.ai/api/anthropic', expected: 'https://api.z.ai/api/anthropic/v1/messages' },
+    { baseUrl: 'https://api.minimax.io/anthropic', expected: 'https://api.minimax.io/anthropic/v1/messages' },
+    { baseUrl: 'https://relay.example/api/v4', expected: 'https://relay.example/api/v4/messages' },
+    { baseUrl: 'https://relay.example/tenant', expected: 'https://relay.example/tenant/v1/messages' },
+    { baseUrl: 'https://relay.example/v1?tenant=one', expected: 'https://relay.example/v1/messages?tenant=one' },
+    { baseUrl: 'https://relay.example/gateway', endpointPath: 'special/messages', expected: 'https://relay.example/gateway/special/messages' },
+  ])('uses the Anthropic endpoint $expected for create and stream', async ({ baseUrl, endpointPath, expected }) => {
+    const fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      if (JSON.parse(String(init?.body)).stream) {
+        return new Response('event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK"}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n', {
+          status: 200, headers: { 'Content-Type': 'text/event-stream' },
+        })
+      }
+      return new Response(JSON.stringify({ content: [{ type: 'text', text: 'OK' }], stop_reason: 'end_turn' }), { status: 200 })
+    })
+    const client = new AnthropicMessagesModelClient({
+      id: 'custom:relay.example',
+      type: 'anthropic',
+      requestStyle: 'anthropic-messages',
+      baseUrl,
+      endpointPath,
+      defaultModel: 'claude-opus-5-5',
+    }, { fetch: fetchMock })
+
+    expect(client.requestTarget()).toBe(expected)
+    expect((await client.create({ messages: [{ role: 'user', content: 'hi' }] })).content).toBe('OK')
+    const events = []
+    for await (const event of client.stream({ messages: [{ role: 'user', content: 'hi' }], stream: true })) events.push(event)
+    expect(events).toContainEqual({ type: 'text-delta', text: 'OK' })
+    expect(fetchMock.mock.calls.map(call => call[0])).toEqual([expected, expected])
+  })
+
+  it.each([
+    { id: 'anthropic', baseUrl: 'https://api.anthropic.com', bearer: false, apiKey: true },
+    { id: 'claude-oauth', baseUrl: 'https://api.anthropic.com/v1', bearer: true, apiKey: false },
+    { id: 'custom:lookalike', baseUrl: 'https://api.anthropic.com.relay.example/v1', bearer: true, apiKey: true },
+  ])('preserves Anthropic authentication for $id', async ({ id, baseUrl, bearer, apiKey }) => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ content: [{ type: 'text', text: 'OK' }] }), { status: 200 }))
+    const client = new AnthropicMessagesModelClient({
+      id, baseUrl, type: 'anthropic', requestStyle: 'anthropic-messages', apiKey: 'test-key',
+    }, { fetch: fetchMock })
+    await client.create({ messages: [{ role: 'user', content: 'hi' }] })
+    const headers = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers
+    if (bearer) expect(headers).toHaveProperty('authorization', 'Bearer test-key')
+    else expect(headers).not.toHaveProperty('authorization')
+    if (apiKey) expect(headers).toHaveProperty('x-api-key', 'test-key')
+    else expect(headers).not.toHaveProperty('x-api-key')
   })
 
   it('calls Anthropic-compatible /anthropic bases through /v1/messages', async () => {

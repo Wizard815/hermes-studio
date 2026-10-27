@@ -9,9 +9,26 @@
 
 export const USAGE_TABLE = 'session_usage'
 
+export const MODEL_API_KEYS_TABLE = 'model_api_keys'
+export const MODEL_API_KEYS_SCHEMA: Record<string, string> = {
+  id: 'TEXT PRIMARY KEY',
+  user_id: 'INTEGER NOT NULL',
+  name: 'TEXT NOT NULL',
+  preview: 'TEXT NOT NULL',
+  token_hash: 'TEXT NOT NULL UNIQUE',
+  models_json: "TEXT NOT NULL DEFAULT '[]'",
+  budget_usd: 'REAL',
+  created_at: 'INTEGER NOT NULL',
+  last_used_at: 'INTEGER',
+}
+
 export const USAGE_SCHEMA: Record<string, string> = {
   id: 'INTEGER PRIMARY KEY AUTOINCREMENT',
   session_id: 'TEXT NOT NULL',
+  account_id: 'TEXT',
+  model_api_key_id: 'TEXT',
+  model_api_pending: 'INTEGER NOT NULL DEFAULT 0',
+  origin: "TEXT NOT NULL DEFAULT 'internal'",
   run_id: "TEXT NOT NULL DEFAULT ''",
   parent_run_id: "TEXT NOT NULL DEFAULT ''",
   api_duration: 'REAL',
@@ -73,6 +90,20 @@ export const USAGE_PRICING_SCHEMA = {
 // ============================================================================
 
 export const TASK_PLANS_TABLE = 'task_plans'
+export const SESSION_TASKS_TABLE = 'session_tasks'
+export const SESSION_TASKS_SCHEMA: Record<string, string> = {
+  id: 'TEXT PRIMARY KEY',
+  session_id: 'TEXT NOT NULL',
+  title: 'TEXT NOT NULL',
+  summary: "TEXT NOT NULL DEFAULT ''",
+  status: "TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'completed', 'closed'))",
+  source_message_id: 'INTEGER NOT NULL',
+  evidence_message_id: 'INTEGER',
+  completion_evidence: "TEXT NOT NULL DEFAULT ''",
+  created_at: 'INTEGER NOT NULL',
+  updated_at: 'INTEGER NOT NULL',
+  completed_at: 'INTEGER',
+}
 export const TASK_PLANS_SCHEMA: Record<string, string> = {
   session_id: 'TEXT NOT NULL',
   plan_id: 'TEXT NOT NULL',
@@ -129,6 +160,23 @@ export const SESSION_UPLOADS_INDEXES = {
 
 export const SESSION_CATEGORIES_TABLE = 'session_categories'
 
+export const WORKSPACE_DIRECTORIES_TABLE = 'workspace_directories'
+export const WORKSPACE_DIRECTORIES_SCHEMA: Record<string, string> = {
+  id: 'INTEGER PRIMARY KEY AUTOINCREMENT',
+  user_id: 'INTEGER NOT NULL',
+  path: 'TEXT NOT NULL',
+  path_key: 'TEXT NOT NULL',
+  is_favorite: 'INTEGER NOT NULL DEFAULT 0',
+  last_used: 'INTEGER NOT NULL DEFAULT 0',
+  use_count: 'INTEGER NOT NULL DEFAULT 0',
+  created_at: 'INTEGER NOT NULL',
+  updated_at: 'INTEGER NOT NULL',
+}
+export const WORKSPACE_DIRECTORIES_INDEXES = {
+  uniq_workspace_directories_user_path: 'CREATE UNIQUE INDEX IF NOT EXISTS uniq_workspace_directories_user_path ON workspace_directories(user_id, path_key)',
+  idx_workspace_directories_user_recent: 'CREATE INDEX IF NOT EXISTS idx_workspace_directories_user_recent ON workspace_directories(user_id, last_used DESC)',
+}
+
 export const SESSION_CATEGORIES_SCHEMA: Record<string, string> = {
   id: 'INTEGER PRIMARY KEY AUTOINCREMENT',
   name: 'TEXT NOT NULL COLLATE NOCASE',
@@ -150,6 +198,7 @@ export const SESSIONS_SCHEMA: Record<string, string> = {
   agent_session_id: 'TEXT NOT NULL DEFAULT \'\'',
   agent_native_session_id: 'TEXT NOT NULL DEFAULT \'\'',
   user_id: 'TEXT',
+  studio_user_id: 'TEXT',
   model: 'TEXT NOT NULL DEFAULT \'\'',
   provider: 'TEXT NOT NULL DEFAULT \'\'',
   api_mode: 'TEXT NOT NULL DEFAULT \'\'',
@@ -179,6 +228,12 @@ export const SESSIONS_SCHEMA: Record<string, string> = {
   workspace: 'TEXT',
   category_id: 'INTEGER',
   history_revision: 'INTEGER NOT NULL DEFAULT 0',
+  task_summary_revision: 'INTEGER NOT NULL DEFAULT 0',
+  task_summary_updated_at: 'INTEGER NOT NULL DEFAULT 0',
+  /** Milliseconds of the last history clear; provider usage before it describes deleted history. */
+  history_cleared_at: 'INTEGER NOT NULL DEFAULT 0',
+  /** Context estimate after a history edit, separate from cumulative billed usage. */
+  context_usage_estimate: 'TEXT',
 }
 
 export const SESSIONS_INDEXES = {
@@ -556,15 +611,32 @@ export const USER_PROFILES_INDEXES = {
 }
 
 export const USER_THEMES_TABLE = 'user_themes'
+export const USER_THEME_PRESETS_TABLE = 'user_theme_presets'
+
+export const USER_THEME_PRESETS_SCHEMA: Record<string, string> = {
+  id: 'TEXT PRIMARY KEY',
+  user_id: 'INTEGER NOT NULL',
+  name: 'TEXT NOT NULL',
+  settings_json: 'TEXT NOT NULL',
+  background_filename: 'TEXT',
+  created_at: 'INTEGER NOT NULL',
+  updated_at: 'INTEGER NOT NULL',
+}
+
 
 export const USER_THEMES_SCHEMA: Record<string, string> = {
   user_id: 'INTEGER PRIMARY KEY',
+  active_preset_id: 'TEXT',
+  brightness: 'TEXT',
+  style: 'TEXT',
   font_size: 'INTEGER NOT NULL DEFAULT 14',
   text_color: 'TEXT',
   accent_color: 'TEXT',
   background_filename: 'TEXT',
   background_original_name: 'TEXT',
   background_mime: 'TEXT',
+  appearance_json: "TEXT NOT NULL DEFAULT '{}'",
+  background_updated_at: 'INTEGER NOT NULL DEFAULT 0',
   created_at: 'INTEGER NOT NULL',
   updated_at: 'INTEGER NOT NULL',
 }
@@ -605,41 +677,6 @@ export const SOCIAL_MESSAGE_RUNTIME_STATES_SCHEMA: Record<string, string> = {
 
 export const SOCIAL_MESSAGE_RUNTIME_STATES_INDEXES = {
   idx_social_message_runtime_states_user: 'CREATE INDEX IF NOT EXISTS idx_social_message_runtime_states_user ON social_message_runtime_states(user_id)',
-}
-
-// ============================================================================
-// LAN Devices
-// ============================================================================
-
-export const DEVICES_TABLE = 'devices'
-
-export const DEVICES_SCHEMA: Record<string, string> = {
-  id: 'TEXT PRIMARY KEY',
-  status: "TEXT NOT NULL DEFAULT 'none'",
-  inbound_status: "TEXT NOT NULL DEFAULT 'none'",
-  outbound_status: "TEXT NOT NULL DEFAULT 'none'",
-  device_public_key: "TEXT NOT NULL DEFAULT ''",
-  computer_name: "TEXT NOT NULL DEFAULT ''",
-  endpoint_kind: "TEXT NOT NULL DEFAULT 'custom'",
-  ip: "TEXT NOT NULL DEFAULT ''",
-  http_port: 'INTEGER NOT NULL DEFAULT 0',
-  url: "TEXT NOT NULL DEFAULT ''",
-  os_json: "TEXT NOT NULL DEFAULT '{}'",
-  hermes_agent_version: "TEXT NOT NULL DEFAULT ''",
-  hermes_web_ui_version: "TEXT NOT NULL DEFAULT ''",
-  response_ms: 'INTEGER NOT NULL DEFAULT 0',
-  requested_at: 'INTEGER NOT NULL DEFAULT 0',
-  decided_at: 'INTEGER',
-  outbound_requested_at: 'INTEGER NOT NULL DEFAULT 0',
-  outbound_decided_at: 'INTEGER',
-  inbound_history_deleted_at: 'INTEGER',
-  last_seen_at: 'INTEGER NOT NULL DEFAULT 0',
-  updated_at: 'INTEGER NOT NULL',
-}
-
-export const DEVICES_INDEXES = {
-  idx_devices_status: 'CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status)',
-  idx_devices_last_seen: 'CREATE INDEX IF NOT EXISTS idx_devices_last_seen ON devices(last_seen_at)',
 }
 
 // ============================================================================
@@ -830,6 +867,7 @@ export const GC_ROOMS_SCHEMA: Record<string, string> = {
   summaryApiMode: "TEXT NOT NULL DEFAULT ''",
   summaryEveryTurns: 'INTEGER NOT NULL DEFAULT 20',
   summaryGeneration: 'INTEGER NOT NULL DEFAULT 0',
+  messageDeletionRevision: 'INTEGER NOT NULL DEFAULT 0',
   triggerTokens: 'INTEGER NOT NULL DEFAULT 100000',
   maxHistoryTokens: 'INTEGER NOT NULL DEFAULT 32000',
   tailMessageCount: 'INTEGER NOT NULL DEFAULT 10',
@@ -1576,6 +1614,33 @@ export function syncTable(
   addMissingSafeColumns(db, tableName, schema)
 }
 
+/** SQLite cannot alter a CHECK constraint; preserve the table and its custom objects. */
+function migrateSessionTaskClosedStatus(db: NonNullable<ReturnType<typeof getDb>>): void {
+  const legacyCheck = /CHECK\s*\(\s*status\s+IN\s*\(\s*'open'\s*,\s*'completed'\s*\)\s*\)/i
+  const readSql = () => (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(SESSION_TASKS_TABLE) as { sql: string } | undefined)?.sql
+  if (!legacyCheck.test(readSql() || '')) return
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const sql = readSql() || ''
+    if (legacyCheck.test(sql)) {
+      const objects = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN ('index', 'trigger') AND sql IS NOT NULL")
+        .all(SESSION_TASKS_TABLE) as Array<{ sql: string }>
+      const columns = (db.prepare(`PRAGMA table_info(${quoteIdentifier(SESSION_TASKS_TABLE)})`).all() as Array<{ name: string }>)
+        .map(column => quoteIdentifier(column.name)).join(', ')
+      const temporary = 'session_tasks_closed_upgrade'
+      const createSql = sql.replace(legacyCheck, "CHECK(status IN ('open', 'completed', 'closed'))")
+        .replace(/^(CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?)(?:"session_tasks"|session_tasks)(?=\s*\()/i, `$1${quoteIdentifier(temporary)}`)
+      db.exec(createSql)
+      db.exec(`INSERT INTO ${quoteIdentifier(temporary)} (${columns}) SELECT ${columns} FROM ${quoteIdentifier(SESSION_TASKS_TABLE)}`)
+      db.exec(`DROP TABLE ${quoteIdentifier(SESSION_TASKS_TABLE)}`)
+      db.exec(`ALTER TABLE ${quoteIdentifier(temporary)} RENAME TO ${quoteIdentifier(SESSION_TASKS_TABLE)}`)
+      for (const object of objects) db.exec(object.sql)
+    }
+    db.exec('COMMIT')
+  } catch (error) { db.exec('ROLLBACK'); throw error }
+}
+
 function cleanupHistoricalZeroLineWorkspaceDiffs(
   db: NonNullable<ReturnType<typeof getDb>>,
 ): void {
@@ -1635,7 +1700,7 @@ function cleanupHistoricalZeroLineWorkspaceDiffs(
 
 /**
  * Initialize missing Hermes SQLite tables with proper schemas.
- * Existing tables only receive safe additive columns.
+ * Existing tables receive safe additive columns and explicit domain migrations.
  * Call this once at application bootstrap.
  */
 export function initAllHermesTables(): void {
@@ -1645,6 +1710,7 @@ export function initAllHermesTables(): void {
   try {
     // Usage store
     syncTable(USAGE_TABLE, USAGE_SCHEMA, { primaryKey: 'id' })
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_usage_model_api_key ON ${USAGE_TABLE}(model_api_key_id, account_id)`)
     syncTable(USAGE_PRICING_TABLE, USAGE_PRICING_SCHEMA, { primaryKey: 'profile' })
     db.exec(USAGE_RUN_INDEX)
     syncTable(RUN_USAGE_TABLE, RUN_USAGE_SCHEMA, { indexes: RUN_USAGE_INDEXES })
@@ -1654,6 +1720,9 @@ export function initAllHermesTables(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_usage_parent_run ON ${USAGE_TABLE}(session_id, parent_run_id)`)
 
     // Session store
+    syncTable(WORKSPACE_DIRECTORIES_TABLE, WORKSPACE_DIRECTORIES_SCHEMA, {
+      indexes: WORKSPACE_DIRECTORIES_INDEXES,
+    })
     syncTable(SESSION_CATEGORIES_TABLE, SESSION_CATEGORIES_SCHEMA, {
       indexes: SESSION_CATEGORIES_INDEXES,
     })
@@ -1664,6 +1733,10 @@ export function initAllHermesTables(): void {
         idx_task_plans_latest: 'CREATE INDEX IF NOT EXISTS idx_task_plans_latest ON task_plans(session_id, created_at DESC)',
       },
     })
+    syncTable(SESSION_TASKS_TABLE, SESSION_TASKS_SCHEMA, {
+      indexes: { idx_session_tasks_session: 'CREATE INDEX IF NOT EXISTS idx_session_tasks_session ON session_tasks(session_id, created_at, id)' },
+    })
+    migrateSessionTaskClosedStatus(db)
     syncTable(SESSIONS_TABLE, SESSIONS_SCHEMA, {
       indexes: SESSIONS_INDEXES,
     })
@@ -1725,11 +1798,17 @@ export function initAllHermesTables(): void {
 
     // Users and profile access
     syncTable(USERS_TABLE, USERS_SCHEMA)
+    syncTable(MODEL_API_KEYS_TABLE, MODEL_API_KEYS_SCHEMA, {
+      indexes: { idx_model_api_keys_owner: `CREATE INDEX IF NOT EXISTS idx_model_api_keys_owner ON ${MODEL_API_KEYS_TABLE}(user_id)` },
+    })
     syncTable(USER_PROFILES_TABLE, USER_PROFILES_SCHEMA, {
       primaryKey: 'user_id, profile_name',
       indexes: USER_PROFILES_INDEXES,
     })
     syncTable(USER_THEMES_TABLE, USER_THEMES_SCHEMA)
+    syncTable(USER_THEME_PRESETS_TABLE, USER_THEME_PRESETS_SCHEMA, {
+      indexes: { idx_user_theme_presets_user: 'CREATE INDEX IF NOT EXISTS idx_user_theme_presets_user ON user_theme_presets(user_id)' },
+    })
 
     // User-scoped Social Messages accounts. Only one account per user may be active.
     syncTable(SOCIAL_MESSAGE_ACCOUNTS_TABLE, SOCIAL_MESSAGE_ACCOUNTS_SCHEMA, {
@@ -1742,11 +1821,6 @@ export function initAllHermesTables(): void {
     })
     createIndexes(db, SOCIAL_MESSAGE_ACCOUNTS_INDEXES)
     createIndexes(db, SOCIAL_MESSAGE_RUNTIME_STATES_INDEXES)
-
-    // LAN devices and link request status
-    syncTable(DEVICES_TABLE, DEVICES_SCHEMA, {
-      indexes: DEVICES_INDEXES,
-    })
 
     // MCU devices
     syncTable(MCU_DEVICES_TABLE, MCU_DEVICES_SCHEMA, {

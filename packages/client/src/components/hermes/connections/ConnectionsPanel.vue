@@ -1,24 +1,24 @@
 <script setup lang="ts">
 import PageHeader from '@/components/layout/PageHeader.vue'
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { NTabPane, NTabs } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import AppConnectionsPanel from '@/components/hermes/connections/AppConnectionsPanel.vue'
 import McuDevicesPanel from '@/components/hermes/connections/McuDevicesPanel.vue'
-import DevicesView from '@/views/hermes/DevicesView.vue'
-import { isStoredSuperAdmin } from '@/api/client'
+import RemoteDevicesPanel from '@/components/hermes/connections/RemoteDevicesPanel.vue'
+import { desktopBridge } from '@/utils/desktop-bridge'
 
-type ConnectionTab = 'app' | 'mcu' | 'devices'
+type ConnectionTab = 'app' | 'mcu' | 'remote'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
-const isSuperAdmin = computed(() => isStoredSuperAdmin())
+const hasRemoteDevices = desktopBridge()?.isDesktop === true && !!desktopBridge()?.remoteDevices
 
 function normalizeTab(value: unknown): ConnectionTab {
+  if (value === 'remote' && hasRemoteDevices) return value
   if (value === 'mcu') return value
-  if (value === 'devices' && isSuperAdmin.value) return value
   return 'app'
 }
 
@@ -67,8 +67,8 @@ function updateTab(value: string | number) {
       <NTabPane name="mcu" :tab="t('connections.tabs.mcu')" display-directive="if">
         <McuDevicesPanel />
       </NTabPane>
-      <NTabPane v-if="isSuperAdmin" name="devices" :tab="t('connections.tabs.devices')" display-directive="if">
-        <DevicesView embedded />
+      <NTabPane v-if="hasRemoteDevices" name="remote" :tab="t('remoteDevices.title')" display-directive="if">
+        <RemoteDevicesPanel />
       </NTabPane>
     </NTabs>
   </div>
@@ -82,14 +82,14 @@ function updateTab(value: string | number) {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: $bg-main-surface;
+  background: var(--theme-content-bg, $bg-main-surface);
 }
 
 .connections-header-left {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
 }
 
 .connections-tabs {
@@ -98,9 +98,9 @@ function updateTab(value: string | number) {
 
   :deep(.n-tabs-nav) {
     flex: 0 0 auto;
-    padding: 0 20px;
-    border-bottom: 1px solid var(--n-tab-border-color);
-    background: $bg-main-surface;
+    padding: 0 calc(20px * var(--spacing-scale, 1));
+    border-bottom: var(--border-width, 1px) solid var(--n-tab-border-color);
+    background: var(--theme-content-bg, $bg-main-surface);
   }
 
   :deep(.n-tabs-nav-scroll-content) {
@@ -117,7 +117,7 @@ function updateTab(value: string | number) {
 
 @media (max-width: $breakpoint-mobile) {
   .connections-tabs :deep(.n-tabs-nav) {
-    padding: 0 12px;
+    padding: 0 calc(12px * var(--spacing-scale, 1));
   }
 }
 </style>

@@ -271,13 +271,26 @@ export function codingAgentGatewayErrorMessage(text: string): string | null {
   return null
 }
 
-function responseErrorMessage(error: unknown): string {
+function responseErrorMessage(error: unknown, seen = new Set<object>(), depth = 0): string {
   if (!error) return ''
-  if (typeof error === 'string') return error
+  if (typeof error === 'string') return error.trim() ? error : ''
   if (typeof error === 'object') {
+    if (depth >= 6 || seen.has(error)) return ''
+    seen.add(error)
+    if (Array.isArray(error)) return error.slice(0, 16).map(value => responseErrorMessage(value, seen, depth + 1)).filter(Boolean).join('\n')
     const record = error as Record<string, unknown>
-    const message = record.message || record.error || record.detail
-    if (typeof message === 'string') return message
+    // OpenCode NamedError serializes the human-readable message inside data.
+    // Pick error fields only; native response bodies and headers stay private.
+    for (const key of ['message', 'error', 'detail', 'data', 'cause']) {
+      const message = responseErrorMessage(record[key], seen, depth + 1)
+      if (message) return message
+    }
+    for (const key of ['description', 'code', 'name']) {
+      const value = record[key]
+      if (typeof value === 'string' && value.trim()) return value
+      if (key === 'code' && typeof value === 'number') return String(value)
+    }
+    return ''
   }
   return String(error)
 }
@@ -420,7 +433,7 @@ function hasManagedHermesMcpConfig(run: ManagedCodingAgentRun): boolean {
   if (!codexHome) return false
   try {
     const config = readFileSync(join(codexHome, 'config.toml'), 'utf-8')
-    return ['api', 'browser', 'devices', 'use', 'interaction'].every(toolset => config.includes(`[mcp_servers.ekko-studio-${toolset}]`))
+    return ['api', 'browser', 'use', 'interaction'].every(toolset => config.includes(`[mcp_servers.ekko-studio-${toolset}]`))
   } catch {
     return false
   }
@@ -726,6 +739,7 @@ export class CodingAgentRunManager {
     if (run.launch.agentId !== launch.agentId) return false
     if (run.launch.mode !== mode) return false
     if (run.launch.studioMcpTokenFile !== launch.studioMcpTokenFile) return false
+    if (mode === 'global' && String(run.launch.model || '').trim() !== String(launch.model || '').trim()) return false
     if (mode === 'scoped') {
       const provider = String(launch.provider || '').trim()
       const model = String(launch.model || '').trim()
@@ -1488,14 +1502,15 @@ export class CodingAgentRunManager {
 
   private addUserMessage(run: ManagedCodingAgentRun, content: string) {
     const timestamp = nowSeconds()
-    run.state.messages.push({
+    const message = {
       id: run.state.messages.length + 1,
       session_id: run.launch.sessionId,
       runMarker: run.runMarker,
       role: 'user',
       content,
       timestamp,
-    })
+    }
+    run.state.messages.push(message)
     const id = addMessage({
       session_id: run.launch.sessionId,
       role: 'user',
@@ -1503,6 +1518,8 @@ export class CodingAgentRunManager {
       run_marker: run.runMarker ?? null,
       timestamp,
     })
+    // Task/search links use database IDs, including while this run stays live.
+    if (id != null) message.id = id
     logger.debug({ runId: run.id, sessionId: run.launch.sessionId, messageId: id }, '[coding-agent-run] recorded user message')
     return id
   }

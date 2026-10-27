@@ -9,9 +9,12 @@ import { getApiKey, getBaseUrlValue } from "@/api/client";
 
 import { useI18n } from "vue-i18n";
 import type { ITheme } from "@xterm/xterm";
+import { useTheme } from "@/composables/useTheme";
+import { terminalTheme } from "@/styles/theme-integrations";
 
 const { t } = useI18n();
 const message = useMessage();
+const { customization, isDark } = useTheme();
 
 const props = defineProps<{ visible?: boolean; initialCommand?: string }>();
 
@@ -93,7 +96,8 @@ const terminalRef = ref<HTMLDivElement | null>(null);
 const termMenuRef = ref<HTMLDivElement | null>(null);
 const sessions = ref<SessionInfo[]>([]);
 const activeSessionId = ref<string | null>(null);
-const selectedTheme = ref(localStorage.getItem(STORAGE_KEY_THEME) || "default");
+const storedTheme = localStorage.getItem(STORAGE_KEY_THEME);
+const selectedTheme = ref(storedTheme && (storedTheme === "studio" || TERMINAL_THEMES[storedTheme]) ? storedTheme : "studio");
 const connectionError = ref<string | null>(null);
 const isConnecting = ref(false);
 
@@ -118,11 +122,22 @@ const initialCommandTimers = new Set<ReturnType<typeof setTimeout>>();
 
 // ─── Computed ──────────────────────────────────────────────────
 
-const terminalBg = computed(
-  () => TERMINAL_THEMES[selectedTheme.value]?.theme.background ?? "#1a1a2e",
-);
+const activeTerminalTheme = computed(() => selectedTheme.value === "studio"
+  ? terminalTheme(customization.value, isDark.value)
+  : TERMINAL_THEMES[selectedTheme.value].theme);
+const terminalBg = computed(() => selectedTheme.value === "studio" ? "transparent" : activeTerminalTheme.value.background);
+watch([activeTerminalTheme, customization], () => {
+  for (const entry of termMap.values()) {
+    entry.term.options.theme = { ...activeTerminalTheme.value };
+    entry.term.options.fontSize = customization.value.fontSize;
+  }
+  if (terminalRef.value?.clientWidth && terminalRef.value?.clientHeight) {
+    tryFit();
+    sendResize();
+  }
+});
 const selectedThemeLabel = computed(
-  () => TERMINAL_THEMES[selectedTheme.value]?.label ?? TERMINAL_THEMES.default.label,
+  () => selectedTheme.value === "studio" ? t("theme.customization.followStudio") : TERMINAL_THEMES[selectedTheme.value].label,
 );
 const selectedThemeInitial = computed(
   () => selectedThemeLabel.value.charAt(0).toUpperCase(),
@@ -149,7 +164,7 @@ function buildWsUrl(): string {
       : "ws:";
 
   if (base) {
-    return `${wsProtocol}//${new URL(base).host}/api/hermes/terminal${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+    return `${wsProtocol}//${new URL(base).host}${new URL(base).pathname.replace(/\/$/, "")}/api/hermes/terminal${token ? `?token=${encodeURIComponent(token)}` : ""}`;
   }
 
   const directDevPort = import.meta.env.VITE_HERMES_DIRECT_WS_PORT;
@@ -474,9 +489,10 @@ function getOrCreateTerm(id: string): { term: Terminal; fitAddon: FitAddon } {
   if (!entry) {
     const term = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
+      fontSize: customization.value.fontSize,
+      allowTransparency: true,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      theme: { ...TERMINAL_THEMES[selectedTheme.value].theme },
+      theme: { ...activeTerminalTheme.value },
       // Upstream's panel shipped none of the clipboard plumbing, which is why
       // copy-out did nothing and the browser's own context menu landed on top
       // of the terminal.
@@ -659,15 +675,10 @@ function handleTerminalTouchEnd() {
 function applyTheme(themeName: string) {
   selectedTheme.value = themeName;
   localStorage.setItem(STORAGE_KEY_THEME, themeName);
-  const themeObj = TERMINAL_THEMES[themeName]?.theme;
-  if (!themeObj) return;
-  for (const entry of termMap.values()) {
-    entry.term.options.theme = { ...themeObj };
-  }
 }
 
 function cycleTheme() {
-  const themeNames = Object.keys(TERMINAL_THEMES);
+  const themeNames = ["studio", ...Object.keys(TERMINAL_THEMES)];
   const currentIndex = themeNames.indexOf(selectedTheme.value);
   applyTheme(themeNames[(currentIndex + 1 + themeNames.length) % themeNames.length]);
 }
@@ -837,13 +848,13 @@ onUnmounted(() => {
 
 .terminal-session-rail {
   width: 48px;
-  border-inline-end: 1px solid $border-color;
-  background: $bg-sidebar-surface;
+  border-inline-end: var(--border-width, 1px) solid $border-color;
+  background: var(--theme-sidebar-bg, $bg-sidebar-surface);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 8px 0;
+  gap: calc(6px * var(--spacing-scale, 1));
+  padding: calc(8px * var(--spacing-scale, 1)) 0;
   flex-shrink: 0;
   box-sizing: border-box;
 }
@@ -856,7 +867,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: calc(4px * var(--spacing-scale, 1));
   scrollbar-width: none;
 
   &::-webkit-scrollbar {
@@ -900,9 +911,9 @@ onUnmounted(() => {
   flex-shrink: 0;
   color: $text-primary;
   background: rgba(var(--accent-primary-rgb), 0.08);
-  font-size: 13px;
+  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
   font-weight: 700;
-  line-height: 1;
+  line-height: var(--line-height, 1);
 }
 
 .terminal-add-button {
@@ -970,10 +981,10 @@ onUnmounted(() => {
   width: 18px;
   height: 18px;
   padding: 0;
-  border: 1px solid $border-color;
+  border: var(--border-width, 1px) solid $border-color;
   border-radius: 50%;
   color: $text-muted;
-  background: $bg-card;
+  background: var(--theme-card-bg, $bg-card);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
   opacity: 0;
   pointer-events: none;
@@ -1020,12 +1031,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 24px;
+  gap: calc(8px * var(--spacing-scale, 1));
+  padding: calc(24px * var(--spacing-scale, 1));
   color: $text-muted;
-  font-size: 12px;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
   text-align: center;
-  background: $bg-card;
+  background: var(--theme-card-bg, $bg-card);
 }
 
 .terminal-state-error {
@@ -1077,7 +1088,7 @@ onUnmounted(() => {
 
   :deep(.xterm) {
     height: 100%;
-    padding: 8px;
+    padding: calc(8px * var(--spacing-scale, 1));
   }
 
   :deep(.xterm-viewport) {
@@ -1113,7 +1124,7 @@ onUnmounted(() => {
 
   .terminal-xterm {
     :deep(.xterm) {
-      padding: 6px;
+      padding: calc(6px * var(--spacing-scale, 1));
     }
 
     :deep(.xterm-viewport),

@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { authenticate, TEST_MODEL_GROUP } from './fixtures'
+import type { AvailableModelGroup } from '../../packages/client/src/api/hermes/system'
 
 type DesktopPlatform = 'darwin' | 'win32'
 
@@ -96,7 +97,7 @@ const agentsByRoom: Record<string, unknown[]> = {
   ],
 }
 
-async function mockGroupChatApi(page: Page, offlinePresence = false) {
+async function mockGroupChatApi(page: Page, offlinePresence = false, modelGroups: AvailableModelGroup[] = [TEST_MODEL_GROUP]) {
   const rooms = baseRooms.map(room => ({ ...room }))
   let roomMessages = structuredClone(messagesByRoom)
   const roomDetailRequests: Array<{ roomId: string, offset: number, limit: number, before: string, history: boolean }> = []
@@ -169,18 +170,18 @@ async function mockGroupChatApi(page: Page, offlinePresence = false) {
     if (pathname === '/health') return json({ status: 'ok' })
     if (pathname === '/api/auth/status') return json({ hasPasswordLogin: false, username: null })
     if (pathname === '/api/hermes/runtime-versions/jobs' && request.method() === 'GET') return json({ jobs: [] })
-    if (pathname === '/api/agents/status' && request.method() === 'GET') {
+    if (pathname === '/api/agents/availability' && request.method() === 'GET') {
       return json({
         revision: 1,
         updatedAt: '2026-01-01T00:00:00.000Z',
         agents: [
-          { id: 'hermes', name: 'Hermes', provider: 'Nous Research', kind: 'hermes', installed: true, version: '0.19.1', source: 'user-cli', path: '/usr/local/bin/hermes', error: '', installations: [] },
-          { id: 'ekko-agent', name: 'Ekko', provider: 'Ekko Studio', kind: 'built-in', installed: true, version: '0.7.0', source: 'built-in', path: '', error: '', installations: [] },
-          { id: 'claude-code', name: 'Claude', provider: 'Anthropic', kind: 'coding-agent', installed: true, version: '1.0.0', source: 'user-cli', path: '/usr/local/bin/claude', error: '', installations: [] },
-          { id: 'codex', name: 'Codex', provider: 'OpenAI', kind: 'coding-agent', installed: true, version: '1.0.0', source: 'user-cli', path: '/usr/local/bin/codex', error: '', installations: [] },
-          { id: 'pi', name: 'Pi', provider: 'Pi', kind: 'coding-agent', installed: true, version: '1.0.0', source: 'user-cli', path: '/usr/local/bin/pi', error: '', installations: [] },
-          { id: 'grok', name: 'Grok', provider: 'xAI', kind: 'coding-agent', installed: true, version: '1.0.0', source: 'user-cli', path: '/usr/local/bin/grok', error: '', installations: [] },
-          { id: 'dsh', name: 'DeepSeek Harness', provider: 'DeepSeek', kind: 'coding-agent', installed: true, version: '0.1.5-rc.1', source: 'user-cli', path: '/usr/local/bin/dsh', error: '', installations: [] },
+          { id: 'hermes', name: 'Hermes', provider: 'Nous Research', kind: 'hermes', installed: true, available: true, version: '0.19.1', source: 'user-cli', path: '/usr/local/bin/hermes', error: '', installations: [] },
+          { id: 'ekko-agent', name: 'Ekko', provider: 'Ekko Studio', kind: 'built-in', installed: true, available: true, version: '0.7.0', source: 'built-in', path: '', error: '', installations: [] },
+          { id: 'claude-code', name: 'Claude', provider: 'Anthropic', kind: 'coding-agent', installed: true, available: true, version: '1.0.0', source: 'user-cli', path: '/usr/local/bin/claude', error: '', installations: [] },
+          { id: 'codex', name: 'Codex', provider: 'OpenAI', kind: 'coding-agent', installed: true, available: true, version: '1.0.0', source: 'user-cli', path: '/usr/local/bin/codex', error: '', installations: [] },
+          { id: 'pi', name: 'Pi', provider: 'Pi', kind: 'coding-agent', installed: true, available: true, version: '1.0.0', source: 'user-cli', path: '/usr/local/bin/pi', error: '', installations: [] },
+          { id: 'grok', name: 'Grok', provider: 'xAI', kind: 'coding-agent', installed: true, available: true, version: '1.0.0', source: 'user-cli', path: '/usr/local/bin/grok', error: '', installations: [] },
+          { id: 'dsh', name: 'DeepSeek Harness', provider: 'DeepSeek', kind: 'coding-agent', installed: true, available: true, version: '0.1.5-rc.1', source: 'user-cli', path: '/usr/local/bin/dsh', error: '', installations: [] },
         ],
       })
     }
@@ -193,13 +194,13 @@ async function mockGroupChatApi(page: Page, offlinePresence = false) {
       return json({
         default: 'test-model',
         default_provider: 'test-provider',
-        groups: [TEST_MODEL_GROUP],
-        allProviders: [TEST_MODEL_GROUP],
+        groups: modelGroups,
+        allProviders: modelGroups,
         profiles: [{
           profile: 'default',
           default: 'test-model',
           default_provider: 'test-provider',
-          groups: [TEST_MODEL_GROUP],
+          groups: modelGroups,
         }],
         model_aliases: {},
         model_visibility: {},
@@ -576,14 +577,11 @@ async function installMockVoiceCapture(page: Page) {
   })
 }
 
-async function setup(page: Page, path: string, platform?: DesktopPlatform, offlinePresence = false) {
+async function setup(page: Page, path: string, platform?: DesktopPlatform, offlinePresence = false, modelGroups?: AvailableModelGroup[]) {
   if (platform) await installDesktopBridge(page, platform)
-  await page.addInitScript(() => {
-    window.localStorage.setItem('hermes.groupChat.refactorNotice.v1.acknowledged', '1')
-  })
   await authenticate(page)
   await mockGroupChatSocket(page)
-  const api = await mockGroupChatApi(page, offlinePresence)
+  const api = await mockGroupChatApi(page, offlinePresence, modelGroups)
   await page.goto(path)
   return api
 }
@@ -633,7 +631,7 @@ for (const { label, platform, width } of [
   { label: 'Windows', platform: 'win32' as const, width: 1280 },
   { label: 'mobile', width: 390 },
 ]) {
-  test(`keeps the Agent drawer header above the application header on ${label}`, async ({ page }) => {
+  test(`keeps the Agent drawer square, below the shared header and usable on ${label}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 })
     await setup(page, '/#/hermes/group-chat/room/room-alpha', platform)
 
@@ -642,7 +640,14 @@ for (const { label, platform, width } of [
       const drawer = page.locator('.n-drawer').filter({ hasText: editing ? 'Edit Worker' : 'Add Agent' })
       await expect(drawer).toBeVisible()
       await expect(drawer).toHaveCSS('width', `${width < 769 ? width : 520}px`)
-      await expect(drawer).toHaveCSS('border-top-left-radius', '5px')
+      await expect(drawer).toHaveCSS('border-radius', '0px')
+      const expectedTop = width < 769 ? 0 : await page.locator('.studio-page-header').evaluate(element => element.getBoundingClientRect().bottom)
+      for (const surface of [drawer, page.locator('.n-drawer-mask:visible')]) {
+        await expect.poll(async () => {
+          const box = (await surface.boundingBox())!
+          return { top: box.y, bottom: box.y + box.height }
+        }).toEqual({ top: expectedTop, bottom: 844 })
+      }
       for (const selector of ['.n-drawer-header__main', '.n-drawer-header__close']) {
         await expect.poll(() => drawer.locator(selector).evaluate(element => {
           const box = element.getBoundingClientRect()
@@ -711,7 +716,7 @@ for (const editing of [false, true]) {
   }
 }
 
-for (const endpoint of ['/api/hermes/profiles', '/api/hermes/available-models', '/api/agents/status']) {
+for (const endpoint of ['/api/hermes/profiles', '/api/hermes/available-models', '/api/agents/availability']) {
   test(`opens the Agent drawer before ${endpoint} finishes and preserves a reopened edit`, async ({ page }) => {
     await setup(page, '/#/hermes/group-chat/room/room-alpha')
     await page.locator('.agent-avatar-rail-add').click()
@@ -736,10 +741,10 @@ for (const endpoint of ['/api/hermes/profiles', '/api/hermes/available-models', 
       await expect(addDrawer).toBeVisible({ timeout: 1000 })
       await expect(addDrawer.locator('.agent-form-loading')).toBeVisible()
       await expect(addDrawer.getByRole('button', { name: 'Add', exact: true })).toBeDisabled()
-      await addDrawer.getByPlaceholder('Custom name (leave empty to use profile name)').fill('Draft while loading')
       if (endpoint === '/api/hermes/profiles') {
-        await page.screenshot({ path: test.info().outputPath('agent-drawer-loading.png'), animations: 'disabled' })
+        await addDrawer.screenshot({ path: test.info().outputPath('agent-drawer-loading.png'), animations: 'disabled' })
       }
+      await addDrawer.getByPlaceholder('Custom name (leave empty to use profile name)').fill('Draft while loading')
       await addDrawer.getByRole('button', { name: 'Cancel', exact: true }).click()
       await expect(addDrawer).toBeHidden()
 
@@ -808,7 +813,7 @@ test('keeps the Agent drawer closable when Agent status fails to load', async ({
   await expect(drawer.locator('.agent-form-loading')).toBeHidden()
   await drawer.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(drawer).toBeHidden()
-  await page.route('**/api/agents/status', route => route.fulfill({ status: 500, json: { error: 'Status unavailable' } }))
+  await page.route('**/api/agents/availability', route => route.fulfill({ status: 500, json: { error: 'Status unavailable' } }))
   await page.locator('.agent-avatar-rail-add').click()
   await expect(drawer).toBeVisible()
   await expect(drawer.locator('.agent-form-loading')).toBeHidden()
@@ -1461,6 +1466,35 @@ test.describe('group chat room deep links', () => {
     }])
   })
 
+  test('uses per-model Provider protocols in the Agent drawer and retains selection for missing metadata', async ({ page }, testInfo) => {
+    const api = await setup(page, '/#/hermes/group-chat/room/room-alpha', undefined, false, [{
+      ...TEST_MODEL_GROUP, models: ['test-model', 'claude-next', 'unknown-model'],
+      api_mode_by_model: { 'test-model': 'codex_responses', 'claude-next': 'anthropic_messages' },
+    }])
+    await page.locator('.agent-avatar-rail-add').click()
+    const drawer = page.locator('.n-drawer').filter({ hasText: 'Add Agent' })
+    await expect(drawer.locator('.agent-form-loading')).toBeHidden()
+    await drawer.locator('.n-select').first().click()
+    await page.locator('.n-base-select-option__content:visible').getByText('Codex', { exact: true }).click()
+    const protocol = drawer.locator('.form-group').filter({ hasText: /^Protocol/ })
+    await expect(protocol).toHaveCount(0)
+    const selectModel = async (model: string) => {
+      await drawer.locator('.model-trigger').click()
+      await page.locator('.model-cascader:visible').getByRole('menuitemradio').filter({ hasText: model }).click()
+    }
+    await selectModel('unknown-model')
+    await expect(protocol).toBeVisible()
+    await selectModel('claude-next')
+    await expect(protocol).toHaveCount(0)
+    await page.screenshot({ path: testInfo.outputPath('provider-protocol-agent.png'), animations: 'disabled' })
+    await drawer.getByPlaceholder('Custom name (leave empty to use profile name)').fill('Provider Protocol Worker')
+    await drawer.getByRole('button', { name: 'Add', exact: true }).click()
+    await expect.poll(() => api.addedAgents.length).toBe(1)
+    expect(api.addedAgents[0]).toMatchObject({ roomId: 'room-alpha', body: {
+      agent: 'codex', agentMode: 'scoped', provider: 'test-provider', model: 'claude-next', apiMode: 'anthropic_messages',
+    } })
+  })
+
   for (const mobile of [false, true]) test(`adds DSH from the ${mobile ? 'mobile' : 'desktop'} Agent drawer with the selected mode`, async ({ page }) => {
     if (mobile) await page.setViewportSize({ width: 390, height: 844 })
     const api = await setup(page, '/#/hermes/group-chat/room/room-alpha')
@@ -1505,6 +1539,23 @@ test.describe('group chat room deep links', () => {
     await presetDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
     await expect(presetDialog).toHaveCount(0)
     await expect(nameInput).toHaveValue('Keep this draft')
+  })
+
+  for (const apiMode of [undefined, 'anthropic_messages'] as const) test(`room summary protocol ${apiMode ? 'comes from the Provider' : 'remains selectable when unknown'}`, async ({ page }) => {
+    const api = await setup(page, '/#/hermes/group-chat', undefined, false, [{ ...TEST_MODEL_GROUP, api_mode: apiMode }])
+    await page.getByRole('button', { name: 'Create Room', exact: true }).click()
+    const drawer = page.locator('.n-drawer').filter({ hasText: 'Create Room' })
+    const protocol = drawer.locator('.form-group').filter({ hasText: /^API Mode/ })
+    if (apiMode) await expect(protocol).toHaveCount(0)
+    else await expect(protocol).toBeVisible()
+    await drawer.getByPlaceholder('Enter room name').fill('Protocol Room')
+    await drawer.getByPlaceholder('Enter your display name').fill('Owner')
+    await drawer.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect.poll(() => api.createdRooms.length).toBe(1)
+    expect(api.createdRooms[0]).toMatchObject({
+      name: 'Protocol Room',
+      summary: { provider: 'test-provider', model: 'test-model', apiMode: apiMode || 'chat_completions' },
+    })
   })
 
   test('does not offer or apply Agent presets while creating a Room', async ({ page }) => {
@@ -2042,12 +2093,12 @@ test.describe('group chat room deep links', () => {
 
 test('group-chat Agent picker only lists installed Agents in catalog order', async ({ page }) => {
   await setup(page, '/#/hermes/group-chat/room/room-alpha')
-  await page.route('**/api/agents/status', route => route.fulfill({ json: {
+  await page.route('**/api/agents/availability', route => route.fulfill({ json: {
     revision: 1, updatedAt: new Date().toISOString(), agents: [
-      { id: 'ekko-agent', installed: true, source: 'built-in', path: '', version: '' },
-      { id: 'claude-code', installed: false, source: 'not-installed', path: '', version: '' },
-      { id: 'codex', installed: true, source: 'user-cli', path: '/test/codex', version: '' },
-      { id: 'qwen', installed: true, source: 'user-cli', path: '/test/qwen', version: '' },
+      { id: 'ekko-agent', installed: true, available: true, source: 'built-in', path: '', version: '' },
+      { id: 'claude-code', installed: false, available: false, source: 'not-installed', path: '', version: '' },
+      { id: 'codex', installed: true, available: true, source: 'user-cli', path: '/test/codex', version: '' },
+      { id: 'qwen', installed: true, available: true, source: 'user-cli', path: '/test/qwen', version: '' },
     ],
   } }))
   await page.locator('.agent-avatar-rail-add').click()
@@ -2056,4 +2107,106 @@ test('group-chat Agent picker only lists installed Agents in catalog order', asy
   await drawer.locator('.n-select').first().click()
   await expect.poll(async () => (await page.locator('.n-base-select-option__content:visible').allTextContents())
     .map(label => label.split(' · ')[0])).toEqual(['Ekko', 'Codex', 'Qwen Code'])
+})
+
+for (const mobile of [false, true]) test(`group-chat ${mobile ? 'mobile' : 'desktop'} uses the shared dialog for scoped and global native model and effort`, async ({ page }) => {
+  if (mobile) await page.setViewportSize({ width: 390, height: 844 })
+  const api = await setup(page, '/#/hermes/group-chat/room/room-alpha')
+  let discoveries = 0
+  let finishRefresh: (() => void) | undefined
+  await page.route('**/api/coding-agents/models?*', async route => {
+    discoveries++
+    if (discoveries > 1) await new Promise<void>(resolve => { finishRefresh = resolve })
+    await route.fulfill({ json: { agents: [{ agentId: 'codex', name: 'Codex', status: 'ready', source: 'cli',
+      models: [{ id: 'native-review', name: 'Native Review', reasoningEfforts: ['low', 'high'] }] }] } })
+  })
+  await page.locator('.agent-avatar-rail-add').click()
+  const drawer = page.locator('.n-drawer').filter({ hasText: 'Add Agent' })
+  await expect(drawer.locator('.agent-form-loading')).toBeHidden()
+  await drawer.locator('.n-select').first().click()
+  await page.getByText('Codex', { exact: true }).last().click()
+  await drawer.locator('.model-trigger').click()
+  const menu = page.locator('.model-cascader:visible')
+  await expect(menu).toBeVisible()
+  await menu.getByRole('menuitemradio', { name: 'test-model', exact: true }).click()
+  const mode = drawer.locator('.form-group').filter({ has: page.locator('.form-label', { hasText: 'Launch mode' }) }).locator('.n-select')
+  await expect(mode).toContainText('Model')
+  await mode.click()
+  await page.getByText('Global', { exact: true }).last().click()
+  await drawer.locator('.native-model-trigger').click()
+  await menu.getByRole('menuitemradio', { name: 'Native Review', exact: true }).click()
+  const effortField = drawer.locator('.form-group').filter({ has: page.locator('.native-reasoning-effort') })
+  await expect(effortField.locator('.form-label')).toHaveText('Reasoning effort')
+  await expect(effortField.locator('.native-model-trigger')).toHaveCount(0)
+  await effortField.locator('.native-reasoning-effort').click()
+  await page.getByText('High', { exact: true }).last().click()
+  await mode.click()
+  await page.getByText('Model', { exact: true }).last().click()
+  await expect(drawer.locator('.model-trigger')).toContainText('test-model')
+  await mode.click()
+  await page.getByText('Global', { exact: true }).last().click()
+  await expect(drawer.locator('.native-model-trigger')).toHaveText('Native Review')
+  await expect(drawer.locator('.native-reasoning-effort')).toContainText('High')
+  await drawer.getByPlaceholder('Custom name (leave empty to use profile name)').fill('Native Reviewer')
+  await drawer.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect.poll(() => api.addedAgents.length).toBe(1)
+  expect(api.addedAgents[0].body).toMatchObject({ agent: 'codex', agentMode: 'global', provider: '', model: 'native-review', reasoningEffort: 'high' })
+  expect(api.addedAgents[0].body.apiMode).toBeUndefined()
+  await page.getByRole('button', { name: 'Native Reviewer', exact: true }).click()
+  const edit = page.locator('.n-drawer').filter({ hasText: 'Edit Native Reviewer' })
+  await expect(edit.locator('.native-model-trigger')).toHaveText('Native Review')
+  await expect(edit.locator('.native-reasoning-effort')).toContainText('High')
+  await edit.locator('.native-model-trigger').click()
+  await expect(menu.getByRole('menuitemradio', { name: 'Native Review', exact: true })).toBeVisible()
+  await expect.poll(() => Boolean(finishRefresh)).toBe(true)
+  finishRefresh!()
+  await menu.getByRole('button', { name: 'Close', exact: true }).click()
+})
+
+test('group-chat applies a global native preset and uses edited effort instead of the preset snapshot', async ({ page }) => {
+  const api = await setup(page, '/#/hermes/group-chat/room/room-alpha')
+  await page.route('**/api/studio/group-chat/agent-presets', route => route.fulfill({ json: { presets: [{
+    id: 'native-preset', agent: 'codex', agentMode: 'global', profile: 'default', provider: '', model: 'native-review',
+    apiMode: '', reasoningEffort: 'high', name: 'Native preset', description: '', avatar: '', available: true,
+  }] } }))
+  await page.route('**/api/coding-agents/models?*', route => route.fulfill({ json: { agents: [{
+    agentId: 'codex', name: 'Codex', status: 'ready', source: 'cli',
+    models: [{ id: 'native-review', name: 'Native Review', reasoningEfforts: ['low', 'high'] }],
+  }] } }))
+  await page.locator('.agent-avatar-rail-add').click()
+  const drawer = page.locator('.n-drawer').filter({ hasText: 'Add Agent' })
+  await expect(drawer.locator('.agent-form-loading')).toBeHidden()
+  await drawer.getByRole('button', { name: 'Choose preset', exact: true }).click()
+  const presets = page.locator('.agent-preset-dialog').filter({ hasText: 'Choose preset' })
+  await presets.getByRole('button', { name: /Native preset/ }).click()
+  await presets.getByRole('button', { name: 'Apply', exact: true }).click()
+  await expect(drawer.locator('.native-model-trigger')).toHaveText('Native Review')
+  await expect(drawer.locator('.native-reasoning-effort')).toContainText('High')
+  await drawer.locator('.native-reasoning-effort').click()
+  await page.getByText('Low', { exact: true }).last().click()
+  await drawer.getByRole('button', { name: 'Add', exact: true }).click()
+  await expect.poll(() => api.addedAgents.length).toBe(1)
+  expect(api.addedAgents[0].body).toMatchObject({ agentMode: 'global', model: 'native-review', reasoningEffort: 'low' })
+  expect(api.addedAgents[0].body.presetId).toBeUndefined()
+})
+
+
+test('can select public available Agents while private status is denied', async ({ page }) => {
+  await setup(page, '/#/hermes/group-chat/room/room-alpha')
+  let privateRequests = 0
+  await page.route('**/api/agents/status', route => { privateRequests++; return route.fulfill({ status: 403, json: { error: 'Forbidden' } }) })
+  await page.route('**/api/agents/availability', route => route.fulfill({ json: {
+    revision: 2, updatedAt: '', agents: [
+      { id: 'hermes', installed: true, source: 'managed-runtime', available: false },
+      { id: 'ekko-agent', installed: true, source: 'built-in', available: true },
+      { id: 'codex', installed: true, source: 'user-cli', available: true },
+    ],
+  } }))
+  await page.locator('.agent-avatar-rail-add').click()
+  const drawer = page.locator('.n-drawer').filter({ hasText: 'Add Agent' })
+  await expect(drawer.locator('.agent-form-loading')).toBeHidden()
+  await drawer.locator('.n-select').first().click()
+  await expect.poll(async () => (await page.locator('.n-base-select-option__content:visible').allTextContents())
+    .map(label => label.split(' · ')[0])).toEqual(['Ekko', 'Codex'])
+  expect(privateRequests).toBe(0)
 })

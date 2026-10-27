@@ -1,10 +1,12 @@
+import { socketEndpoint } from '@/utils/deployment-url'
 import { io } from 'socket.io-client'
-import { request, getApiKey } from '../client'
+import { request, getApiKey, getBaseUrlValue } from '../client'
 import { fetchAuthenticatedBlob, saveBlob } from './binary-content'
 
 // ─── Types ──────────────────────────────────────────────────
 
 export interface RoomInfo {
+    messageDeletionRevision?: number
     id: string
     name: string
     inviteCode: string | null
@@ -333,7 +335,8 @@ export function connectGroupChat(opts?: {
     const userId = opts?.userId || localStorage.getItem('gc_user_id') || generateUUID()
     if (!opts?.userId) localStorage.setItem('gc_user_id', userId)
 
-    socket = io('/group-chat', {
+    socket = io(socketEndpoint(getBaseUrlValue(), '/group-chat').url, {
+    path: socketEndpoint(getBaseUrlValue(), '/group-chat').path,
         auth: {
             token: token || undefined,
             userId,
@@ -657,5 +660,33 @@ export async function renameGroupWorkspaceFile(roomId: string, oldPath: string, 
 export async function copyGroupWorkspaceFile(roomId: string, srcPath: string, destPath: string): Promise<void> {
     await request(`/api/studio/group-chat/rooms/${encodeURIComponent(roomId)}/workspace-file/copy`, {
         method: 'POST', body: JSON.stringify({ srcPath, destPath }),
+    })
+}
+
+
+export interface GroupMessageSelectionGroup {
+    id: string
+    kind: 'message' | 'run'
+    messageIds: string[]
+    deleteBlockedReason?: 'summarized' | 'summary_boundary_unknown'
+}
+
+export interface GroupMessagesDeleted {
+    roomId: string
+    messageIds: string[]
+    deletedGroups: number
+    messageCount: number
+    totalTokens: number
+    messageDeletionRevision: number
+}
+
+export function getGroupMessageSelection(roomId: string): Promise<{ groups: GroupMessageSelectionGroup[]; historyRevision: string }> {
+    return request(`/api/studio/group-chat/rooms/${encodeURIComponent(roomId)}/message-selection`)
+}
+
+export function deleteGroupMessages(roomId: string, messageIds: string[], historyRevision: string): Promise<GroupMessagesDeleted> {
+    return request(`/api/studio/group-chat/rooms/${encodeURIComponent(roomId)}/messages/delete`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageIds, historyRevision }),
     })
 }

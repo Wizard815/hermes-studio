@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { modelReasoningEfforts } from '@/utils/model-reasoning-effort'
-import { isBuiltinEkkoSession, isExternalCodingAgentSession } from '@/utils/hermes/session-agent'
+import { DEFAULT_REASONING_EFFORTS, agentReasoningEffortOptions, modelReasoningEfforts } from '@/utils/model-reasoning-effort'
+import type { NativeEffortChoice } from '@/utils/native-model-families'
+import { isBuiltinEkkoSession, isExternalCodingAgentSession, isHermesSession } from '@/utils/hermes/session-agent'
 import { EKKO_SESSION_COMMAND_DEFINITIONS } from '@/utils/hermes/bridge-session-commands'
-import type { Attachment } from '@/stores/hermes/chat'
+import type { Attachment, Session } from '@/stores/hermes/chat'
 import { useChatStore } from '@/stores/hermes/chat'
 import { useAppStore } from '@/stores/hermes/app'
 import { useProfilesStore } from '@/stores/hermes/profiles'
@@ -24,6 +25,7 @@ import { normalizeComposerVoiceTranscript, useComposerVoiceInput } from '@/compo
 import { extractRepresentativeVideoFrames, isVideoFile } from '@/utils/video-frame-extraction'
 import ImagePreviewOverlay from './ImagePreviewOverlay.vue'
 import { readDraft, writeDraft, reloadComposerDrafts, migratePendingDraft } from '@/composables/useComposerDraft'
+import ScreenshotButton from './ScreenshotButton.vue'
 
 const chatStore = useChatStore()
 const appStore = useAppStore()
@@ -37,30 +39,61 @@ const { toolTraceVisible, toggleToolTraceVisible } = useToolTraceVisibility()
 const props = withDefaults(defineProps<{
   modelLabel?: string
   modelDisabled?: boolean
+  modelExpanded?: boolean
   initialText?: string
   persistDraft?: boolean
+  draft?: boolean
+  draftConfig?: Pick<Session, 'profile' | 'provider' | 'model' | 'codingAgentMode' | 'agent'>
+  reasoningEffort?: string
+  reasoningEffortDisabled?: boolean
+  nativeReasoningEfforts?: string[]
+  nativeEffortChoices?: NativeEffortChoice[]
+  sendDisabled?: boolean
+  submit?: (text: string, attachments?: Attachment[]) => Promise<boolean>
 }>(), {
   modelLabel: '',
   modelDisabled: false,
+  modelExpanded: false,
   initialText: '',
   persistDraft: true,
+  draft: false,
+  reasoningEffort: '',
+  reasoningEffortDisabled: false,
+  sendDisabled: false,
 })
 
+const composerSession = computed(() => props.draft ? null : chatStore.activeSession)
+const submitting = ref(false)
+
 const emit = defineEmits<{
-  modelClick: []
+  modelClick: [event: MouseEvent]
   voiceClick: []
+  'update:reasoningEffort': [value: string]
 }>()
 
-const reasoningEffortOptions = computed(() => [
-  { label: t('chat.reasoningEffort.options.default'), value: '' },
-  ...modelReasoningEfforts(
-    appStore.profileModelGroups?.find(entry => entry.profile === (chatStore.activeSession?.profile || profilesStore.activeProfileName))?.groups || appStore.modelGroups || [],
-    chatStore.activeSession?.provider || appStore.selectedProvider || '',
-    chatStore.activeSession?.model || appStore.selectedModel || '',
-  ).map(value => ({ label: t(`chat.reasoningEffort.options.${value}`), value })),
-])
+const reasoningSession = computed(() => props.draft ? props.draftConfig : composerSession.value)
+const defaultReasoningEffortLabel = computed(() => t(isHermesSession(reasoningSession.value)
+  ? 'chat.reasoningEffort.options.default' : 'chat.reasoningEffort.options.none'))
+const isMoaSession = computed(() => reasoningSession.value?.provider === 'moa')
+const isGlobalCodingAgentSession = computed(() => reasoningSession.value?.codingAgentMode === 'global')
+const isReadOnlyCodingAgentEffort = computed(() => !props.draft && isGlobalCodingAgentSession.value && isExternalCodingAgentSession(composerSession.value))
+function effortLabel(value: string) {
+  return DEFAULT_REASONING_EFFORTS.includes(value) || ['ultra', 'disabled', 'enabled'].includes(value) ? t(`chat.reasoningEffort.options.${value}`) : value
+}
+const showReasoningEffort = ref(false)
+const reasoningEffortOptions = computed(() => agentReasoningEffortOptions(isGlobalCodingAgentSession.value && props.nativeEffortChoices
+  ? props.nativeEffortChoices.map(choice => ({ value: choice.effort,
+    label: choice.effort ? effortLabel(choice.effort) : defaultReasoningEffortLabel.value })) : [
+  { label: defaultReasoningEffortLabel.value, value: '' },
+  ...(isGlobalCodingAgentSession.value ? props.nativeReasoningEfforts || [] : modelReasoningEfforts(
+    appStore.profileModelGroups?.find(entry => entry.profile === (reasoningSession.value?.profile || profilesStore.activeProfileName))?.groups || appStore.modelGroups || [],
+    reasoningSession.value?.provider || appStore.selectedProvider || '',
+    reasoningSession.value?.model || appStore.selectedModel || '',
+  )).map(value => ({ label: effortLabel(value), value })),
+], isHermesSession(reasoningSession.value)))
 const currentReasoningEffort = computed<string>(() =>
-  chatStore.activeSession?.reasoningEffort || ''
+  (props.draft ? props.reasoningEffort : composerSession.value?.reasoningEffort
+    || props.nativeEffortChoices?.find(choice => choice.model === composerSession.value?.model)?.effort) || ''
 )
 const reasoningEffortSliderValue = computed(() => {
   const index = reasoningEffortOptions.value.findIndex(option => option.value === currentReasoningEffort.value)
@@ -69,6 +102,8 @@ const reasoningEffortSliderValue = computed(() => {
 const reasoningEffortAccentColors: Record<string, string> = {
   '': '#94a3b8',
   none: '#2ac8e9',
+  disabled: '#2ac8e9',
+  enabled: '#b9d93a',
   minimal: '#2bd9b4',
   low: '#4ed786',
   medium: '#b9d93a',
@@ -81,24 +116,33 @@ const reasoningEffortAccentStyle = computed(() => ({
   '--reasoning-effort-accent-color': reasoningEffortAccentColors[currentReasoningEffort.value]
     || reasoningEffortAccentColors[''],
 }))
-const isMoaSession = computed(() => chatStore.activeSession?.provider === 'moa')
-const isGlobalCodingAgentSession = computed(() =>
-  chatStore.activeSession?.codingAgentMode === 'global'
-)
+const supportsNativeReasoning = computed(() => (props.nativeReasoningEfforts?.length || 0) > 0)
+const canEditReasoningEffort = computed(() => !props.reasoningEffortDisabled && !isReadOnlyCodingAgentEffort.value && (!isGlobalCodingAgentSession.value || (supportsNativeReasoning.value && reasoningEffortOptions.value.length > 1
+  && (!currentReasoningEffort.value || reasoningEffortOptions.value.some(option => option.value === currentReasoningEffort.value)))))
 const reasoningEffortLabel = computed<string>(() => {
   const v = currentReasoningEffort.value
-  if (!v) return t('chat.reasoningEffort.defaultLabel')
+  if (!v) return defaultReasoningEffortLabel.value
   const opt = reasoningEffortOptions.value.find(o => o.value === v)
-  return opt?.label || v
+  return opt?.label || effortLabel(v)
 })
 function onReasoningEffortChange(value: string | null | undefined) {
+  if (!canEditReasoningEffort.value) return
+  if (props.draft) {
+    emit('update:reasoningEffort', value || '')
+    return
+  }
   const sid = chatStore.activeSessionId
   if (!sid) return
-  chatStore.setSessionReasoningEffort(sid, value || '')
+  const variant = props.nativeEffortChoices?.find(choice => choice.effort === (value || ''))
+  if (variant) void chatStore.setSessionReasoningEffort(sid, variant.effort, variant.model)
+  else void chatStore.setSessionReasoningEffort(sid, value || '')
 }
-watch([reasoningEffortOptions, currentReasoningEffort], ([options]) => {
-  if (isMoaSession.value || isGlobalCodingAgentSession.value) return
-  if (currentReasoningEffort.value && !options.some(option => option.value === currentReasoningEffort.value)) {
+watch([reasoningEffortOptions, currentReasoningEffort, canEditReasoningEffort], ([options]) => {
+  if (isMoaSession.value || !canEditReasoningEffort.value) {
+    showReasoningEffort.value = false
+    return
+  }
+  if (!isGlobalCodingAgentSession.value && currentReasoningEffort.value && !options.some(option => option.value === currentReasoningEffort.value)) {
     onReasoningEffortChange('')
   }
 }, { immediate: true })
@@ -111,9 +155,9 @@ function onReasoningEffortSliderChange(value: number | [number, number]) {
   if (option) onReasoningEffortChange(option.value)
 }
 
-function handleModelButtonClick() {
+function handleModelButtonClick(event: MouseEvent) {
   if (props.modelDisabled) return
-  emit('modelClick')
+  emit('modelClick', event)
 }
 
 const compactModelLabel = computed(() => {
@@ -145,7 +189,7 @@ let sendAwaitingAttachments = false
 const isDragging = ref(false)
 const dragCounter = ref(0)
 const isComposing = ref(false)
-const activeMessageReference = computed(() => chatStore.activeMessageReference)
+const activeMessageReference = computed(() => props.draft ? null : chatStore.activeMessageReference)
 const messageReferencePreview = computed(() =>
   activeMessageReference.value?.content.replace(/\s+/g, ' ').trim() || '',
 )
@@ -246,15 +290,16 @@ let bundlesLoadedKey = ''
 let bundlesLoadRequest: Promise<void> | null = null
 let bundlesLoadRequestKey = ''
 const isBridgeSession = computed(() => {
-  const session = chatStore.activeSession
+  if (props.draft) return false
+  const session = composerSession.value
   if (!session) return chatStore.runtimeMode !== 'global_agent'
   return session.source === 'cli' && !isBuiltinEkkoSession(session)
 })
-const isEkkoSession = computed(() => isBuiltinEkkoSession(chatStore.activeSession))
-const isCodingAgentSession = computed(() => isExternalCodingAgentSession(chatStore.activeSession))
-const isCursorSession = computed(() => (chatStore.activeSession?.codingAgentId === 'cursor' || chatStore.activeSession?.codingAgentId === 'antigravity') || (chatStore.activeSession?.agent === 'cursor' || chatStore.activeSession?.agent === 'antigravity'))
+const isEkkoSession = computed(() => isBuiltinEkkoSession(composerSession.value))
+const isCodingAgentSession = computed(() => isExternalCodingAgentSession(composerSession.value))
+const isCursorSession = computed(() => (composerSession.value?.codingAgentId === 'cursor' || composerSession.value?.codingAgentId === 'antigravity') || (composerSession.value?.agent === 'cursor' || composerSession.value?.agent === 'antigravity'))
 const showSessionUsage = computed(() => isCodingAgentSession.value)
-const isForkCommandSession = computed(() => !!chatStore.activeSession && !isEkkoSession.value && !isCodingAgentSession.value)
+const isForkCommandSession = computed(() => !!composerSession.value && !isEkkoSession.value && !isCodingAgentSession.value)
 const skillPickerItems = computed(() => {
   const byName = new Map<string, SkillInfo>()
   for (const category of skillCategories.value) {
@@ -283,8 +328,8 @@ const filteredBridgeCommands = computed(() => {
       ? bridgeCommands.value.filter(command => CODING_AGENT_SLASH_COMMANDS.includes(command.name)
         && !(command.name === 'context' && isCursorSession.value)
         && !(command.name === 'compact' && (
-          chatStore.activeSession?.codingAgentId === 'opencode'
-          || chatStore.activeSession?.agent === 'opencode'
+          composerSession.value?.codingAgentId === 'opencode'
+          || composerSession.value?.agent === 'opencode'
           || isCursorSession.value
         )))
       : isForkCommandSession.value
@@ -330,7 +375,7 @@ function skillCommandName(name: string) {
 }
 
 function currentSkillsKey() {
-  return chatStore.activeSession?.profile || profilesStore.activeProfileName || 'default'
+  return composerSession.value?.profile || profilesStore.activeProfileName || 'default'
 }
 
 async function loadSkills() {
@@ -475,6 +520,7 @@ const inputSettingsOptions = computed<DropdownOption[]>(() => [
   {
     label: t('realtimeVoice.mode'),
     key: 'voiceMode',
+    disabled: props.draft,
     icon: () => h('span', {
       class: 'settings-voice-mode-icon',
       'aria-hidden': 'true',
@@ -514,7 +560,7 @@ onMounted(() => {
 
 function handleInputSettingsSelect(key: string | number) {
   if (key === 'voiceMode') {
-    if (chatStore.activeSessionId) emit('voiceClick')
+    if (!props.draft && chatStore.activeSessionId) emit('voiceClick')
     return
   }
 
@@ -547,7 +593,7 @@ watch(() => settingsStore.display.chat_input_height, () => {
 })
 
 watch(
-  () => [chatStore.activeSession?.profile, profilesStore.activeProfileName],
+  () => [composerSession.value?.profile, profilesStore.activeProfileName],
   () => {
     skillsLoadedKey = ''
     skillCategories.value = []
@@ -557,7 +603,7 @@ watch(
 )
 
 const canSend = computed(() => inputText.value.trim().length > 0 || attachments.value.length > 0)
-const sendButtonIsStop = computed(() => chatStore.isStreaming && !canSend.value)
+const sendButtonIsStop = computed(() => !props.draft && chatStore.isStreaming && !canSend.value)
 
 function scrollCommandIntoView() {
   nextTick(() => {
@@ -729,8 +775,8 @@ async function saveContextLimit() {
 
   isSavingContextLimit.value = true
   try {
-    const provider = chatStore.activeSession?.provider || appStore.selectedProvider || ''
-    const model = chatStore.activeSession?.model || appStore.selectedModel || ''
+    const provider = composerSession.value?.provider || appStore.selectedProvider || ''
+    const model = composerSession.value?.model || appStore.selectedModel || ''
 
     if (!provider || !model) {
       message.error(t('chat.contextEditFailed'))
@@ -750,7 +796,7 @@ async function saveContextLimit() {
 }
 
 function currentContextLengthParams() {
-  const activeSession = chatStore.activeSession
+  const activeSession = composerSession.value
   return {
     profile: activeSession?.profile || profilesStore.activeProfileName || undefined,
     provider: activeSession?.provider || undefined,
@@ -764,7 +810,7 @@ function currentContextLengthKey() {
 }
 
 async function loadContextLength() {
-  if (showSessionUsage.value) return
+  if (props.draft || showSessionUsage.value) return
   const key = currentContextLengthKey()
   if (key === contextLengthLoadedKey) return
   if (key === contextLengthRequestKey && contextLengthRequest) return contextLengthRequest
@@ -780,7 +826,8 @@ async function loadContextLength() {
     } catch {
       if (currentContextLengthKey() !== key) return
       contextLength.value = FALLBACK_CONTEXT
-      contextLengthLoadedKey = key
+      // The fallback keeps the usage UI usable, but it is not resolved model
+      // metadata. Leave this key retryable on the next session/model lifecycle.
     } finally {
       if (contextLengthRequestKey === key) {
         contextLengthRequest = null
@@ -797,41 +844,41 @@ watch(
     profilesStore.activeProfileName,
     appStore.selectedProvider,
     appStore.selectedModel,
-    chatStore.activeSession?.id,
-    chatStore.activeSession?.profile,
-    chatStore.activeSession?.provider,
-    chatStore.activeSession?.model,
-    chatStore.activeSession?.source,
-    chatStore.activeSession?.agent,
-    chatStore.activeSession?.codingAgentId,
+    composerSession.value?.id,
+    composerSession.value?.profile,
+    composerSession.value?.provider,
+    composerSession.value?.model,
+    composerSession.value?.source,
+    composerSession.value?.agent,
+    composerSession.value?.codingAgentId,
   ],
   loadContextLength,
   { flush: 'post' },
 )
 
 const cumulativeTokens = computed(() => {
-  const session = chatStore.activeSession
+  const session = composerSession.value
   return (session?.inputTokens ?? 0) + (session?.outputTokens ?? 0)
     + (session?.cacheReadTokens ?? 0) + (session?.cacheWriteTokens ?? 0)
 })
 const totalTokens = computed(() => {
   if (showSessionUsage.value) return cumulativeTokens.value
-  const context = chatStore.activeSession?.contextTokens
-  if (typeof context === 'number' && Number.isFinite(context) && context > 0) return context
-  const input = chatStore.activeSession?.inputTokens ?? 0
-  const output = chatStore.activeSession?.outputTokens ?? 0
-  return input + output
+  const context = composerSession.value?.contextTokens
+  if (typeof context === 'number' && Number.isFinite(context) && context >= 0) return context
+  // Cumulative consumption is not the size of the current context window.
+  return null
 })
-const showContextUsage = computed(() => !!chatStore.activeSession)
+const showContextUsage = computed(() => !!composerSession.value)
 const showContextLimit = computed(() => !showSessionUsage.value)
 
-const remainingTokens = computed(() => Math.max(0, contextLength.value - totalTokens.value))
+const remainingTokens = computed(() => totalTokens.value == null ? null : Math.max(0, contextLength.value - totalTokens.value))
 
 const usagePercent = computed(() =>
-  Math.min((totalTokens.value / contextLength.value) * 100, 100),
+  Math.min(((totalTokens.value ?? 0) / contextLength.value) * 100, 100),
 )
 
-function formatTokens(n: number): string {
+function formatTokens(n: number | null): string {
+  if (n == null) return '—'
   if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
   if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
   return String(n)
@@ -951,6 +998,7 @@ defineExpose({ addFiles, focusComposer })
 // --- Send ---
 
 async function handleSend() {
+  if (props.sendDisabled || submitting.value) return
   if (isPreparingAttachments.value) {
     if (sendAwaitingAttachments) return
     sendAwaitingAttachments = true
@@ -977,7 +1025,17 @@ async function handleSend() {
     return
   }
 
-  chatStore.sendMessage(text, attachments.value.length > 0 ? attachments.value : undefined)
+  const files = attachments.value.length > 0 ? [...attachments.value] : undefined
+  if (props.submit) {
+    submitting.value = true
+    try {
+      if (!await props.submit(text, files)) return
+    } finally {
+      submitting.value = false
+    }
+  } else {
+    chatStore.sendMessage(text, files)
+  }
   inputText.value = ''
   saveDraftForActiveSession('')
   previewAttachment.value = null
@@ -1154,6 +1212,7 @@ function openAttachmentPreview(attachment: Attachment) {
       </button>
     </div>
 
+    <slot name="before-context-usage" />
     <div v-if="showContextUsage" class="context-usage-row">
       <span class="context-info" :class="{ 'context-warning': showContextLimit && usagePercent > 80 }">
         <template v-if="showSessionUsage">{{ t('chat.sessionUsage') }} </template>
@@ -1171,7 +1230,7 @@ function openAttachmentPreview(attachment: Attachment) {
           · {{ t('chat.contextRemaining') }} {{ formatTokens(remainingTokens) }}
         </template>
       </span>
-      <div v-if="showContextLimit" class="context-bar">
+      <div v-if="showContextLimit && totalTokens != null" class="context-bar">
         <div
           class="context-bar-fill"
           :class="{
@@ -1209,6 +1268,7 @@ function openAttachmentPreview(attachment: Attachment) {
       <textarea
         ref="textareaRef"
         v-model="inputText"
+        :readonly="submitting"
         class="input-textarea"
         dir="auto"
         :style="textareaHeight ? { height: textareaHeight + 'px' } : {}"
@@ -1234,61 +1294,7 @@ function openAttachmentPreview(attachment: Attachment) {
             {{ t('chat.attachFiles') }}
           </NTooltip>
 
-          <NPopover
-            v-if="!isMoaSession && !isGlobalCodingAgentSession"
-            trigger="click"
-            placement="top-start"
-          >
-            <template #trigger>
-              <NTooltip trigger="hover" :disabled="isMobileViewport">
-                <template #trigger>
-                  <NButton
-                    quaternary
-                    size="tiny"
-                    class="reasoning-effort-button"
-                    :class="{ active: !!currentReasoningEffort }"
-                    :style="reasoningEffortAccentStyle"
-                    :aria-label="`${t('chat.reasoningEffort.tooltip')}: ${reasoningEffortLabel}`"
-                  >
-                    <template #icon>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
-                        <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
-                      </svg>
-                    </template>
-                    <span class="reasoning-effort-label">{{ reasoningEffortLabel }}</span>
-                    <svg class="toolbar-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
-                  </NButton>
-                </template>
-                {{ t('chat.reasoningEffort.tooltip') }}: {{ reasoningEffortLabel }}
-              </NTooltip>
-            </template>
-
-            <div class="reasoning-effort-slider-popover" :style="reasoningEffortAccentStyle">
-              <div class="reasoning-effort-slider-heading">
-                <span>{{ t('chat.reasoningEffort.tooltip') }}</span>
-                <strong>{{ reasoningEffortLabel }}</strong>
-              </div>
-              <NSlider
-                class="reasoning-effort-slider"
-                :class="{ 'reasoning-effort-slider--max': currentReasoningEffort === 'max' }"
-                :value="reasoningEffortSliderValue"
-                :min="0"
-                :max="reasoningEffortOptions.length - 1"
-                :disabled="reasoningEffortOptions.length <= 1"
-                :step="1"
-                :format-tooltip="reasoningEffortSliderLabel"
-                @update:value="onReasoningEffortSliderChange"
-              />
-              <div class="reasoning-effort-slider-range" aria-hidden="true">
-                <span>{{ reasoningEffortOptions[0].label }}</span>
-                <span>{{ reasoningEffortOptions[reasoningEffortOptions.length - 1].label }}</span>
-              </div>
-              <div class="reasoning-effort-slider-hint">
-                {{ t('chat.reasoningEffort.dragHint', { count: reasoningEffortOptions.length }) }}
-              </div>
-            </div>
-          </NPopover>
+          <ScreenshotButton :key="chatStore.activeSessionId || 'new'" :mobile="isMobileViewport" @capture="file => addFiles([file])" />
 
           <NDropdown
             trigger="click"
@@ -1327,6 +1333,8 @@ function openAttachmentPreview(attachment: Attachment) {
                 :disabled="props.modelDisabled"
                 :title="isMobileViewport ? undefined : props.modelLabel || t('models.selectModel')"
                 :aria-label="props.modelLabel || t('models.selectModel')"
+                aria-haspopup="dialog"
+                :aria-expanded="props.modelExpanded"
                 @click="handleModelButtonClick"
               >
                 <template #icon>
@@ -1358,6 +1366,65 @@ function openAttachmentPreview(attachment: Attachment) {
             {{ props.modelLabel || t('models.selectModel') }}
           </NTooltip>
 
+          <NPopover
+            v-if="(!draft || draftConfig) && !isMoaSession && (!isGlobalCodingAgentSession || supportsNativeReasoning || currentReasoningEffort)"
+            v-model:show="showReasoningEffort"
+            trigger="click"
+            placement="top-start"
+            :disabled="!canEditReasoningEffort"
+          >
+            <template #trigger>
+              <NTooltip trigger="hover" :disabled="isMobileViewport">
+                <template #trigger>
+                  <NButton
+                    quaternary
+                    size="tiny"
+                    class="reasoning-effort-button"
+                    :disabled="submitting || (draft && modelDisabled) || !canEditReasoningEffort"
+                    :class="{ active: !!currentReasoningEffort }"
+                    :aria-label="`${t('chat.reasoningEffort.tooltip')}: ${reasoningEffortLabel}`"
+                    @keydown.esc.stop="showReasoningEffort = false"
+                  >
+                    <template #icon>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
+                        <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
+                      </svg>
+                    </template>
+                    <span class="reasoning-effort-label">{{ reasoningEffortLabel }}</span>
+                    <svg v-if="canEditReasoningEffort" class="toolbar-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                  </NButton>
+                </template>
+                {{ t('chat.reasoningEffort.tooltip') }}: {{ reasoningEffortLabel }}
+              </NTooltip>
+            </template>
+
+            <div class="reasoning-effort-slider-popover" :style="reasoningEffortAccentStyle" @keydown.esc.stop="showReasoningEffort = false">
+              <div class="reasoning-effort-slider-heading">
+                <span>{{ t('chat.reasoningEffort.tooltip') }}</span>
+                <strong>{{ reasoningEffortLabel }}</strong>
+              </div>
+              <NSlider
+                class="reasoning-effort-slider"
+                :class="{ 'reasoning-effort-slider--max': currentReasoningEffort === 'max' }"
+                :value="reasoningEffortSliderValue"
+                :min="0"
+                :max="reasoningEffortOptions.length - 1"
+                :disabled="!canEditReasoningEffort || reasoningEffortOptions.length <= 1"
+                :step="1"
+                :format-tooltip="reasoningEffortSliderLabel"
+                @update:value="onReasoningEffortSliderChange"
+              />
+              <div class="reasoning-effort-slider-range" aria-hidden="true">
+                <span>{{ reasoningEffortOptions[0].label }}</span>
+                <span>{{ reasoningEffortOptions[reasoningEffortOptions.length - 1].label }}</span>
+              </div>
+              <div class="reasoning-effort-slider-hint">
+                {{ t('chat.reasoningEffort.dragHint', { count: reasoningEffortOptions.length }) }}
+              </div>
+            </div>
+          </NPopover>
+
         </div>
         <div class="input-actions">
           <VoiceDialogueControls
@@ -1375,7 +1442,7 @@ function openAttachmentPreview(attachment: Attachment) {
             circle
             class="send-button"
             :class="{ 'send-button--stop': sendButtonIsStop }"
-            :disabled="sendButtonIsStop ? chatStore.isAborting : !canSend"
+            :disabled="sendButtonIsStop ? chatStore.isAborting : !canSend || sendDisabled || submitting"
             :aria-label="sendButtonIsStop ? 'Stop' : 'Send'"
             @click="sendButtonIsStop ? chatStore.stopStreaming() : handleSend()"
           >
@@ -1580,16 +1647,16 @@ function openAttachmentPreview(attachment: Attachment) {
 .chat-input-area {
   position: relative;
   z-index: 80;
-  padding: 6px 12px 10px;
+  padding: calc(6px * var(--spacing-scale, 1)) calc(12px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
   border-top: 0;
-  background-color: $bg-main-surface;
+  background-color: var(--theme-content-bg, $bg-main-surface);
   flex-shrink: 0;
 }
 
 .input-top-bar {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: calc(7px * var(--spacing-scale, 1));
   min-width: 0;
   flex: 1;
   padding: 0;
@@ -1598,8 +1665,8 @@ function openAttachmentPreview(attachment: Attachment) {
 .auto-play-speech-switch {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 0 0 2px;
+  gap: calc(5px * var(--spacing-scale, 1));
+  padding: 0 0 0 calc(2px * var(--spacing-scale, 1));
   margin-inline-start: 0;
 
   .switch-label {
@@ -1608,8 +1675,8 @@ function openAttachmentPreview(attachment: Attachment) {
     justify-content: center;
     width: 16px;
     height: 16px;
-    color: #999999;
-    font-size: 12px;
+    color: var(--text-muted);
+    font-size: calc(var(--font-size-base, 14px) * 12 / 14);
 
     svg {
       opacity: 1;
@@ -1626,7 +1693,7 @@ function openAttachmentPreview(attachment: Attachment) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #999999;
+  color: var(--text-muted);
   width: 24px;
   min-width: 24px;
   height: 22px;
@@ -1649,12 +1716,12 @@ function openAttachmentPreview(attachment: Attachment) {
   }
 
   &.active {
-    color: #999999;
+    color: var(--text-muted);
     opacity: 1;
   }
 
   &:hover {
-    color: #999999;
+    color: var(--text-muted);
     opacity: 1;
   }
 }
@@ -1662,10 +1729,10 @@ function openAttachmentPreview(attachment: Attachment) {
 .input-settings-button {
   color: $text-secondary;
   border-radius: 999px;
-  padding: 0 7px 0 6px;
+  padding: 0 calc(7px * var(--spacing-scale, 1)) 0 calc(6px * var(--spacing-scale, 1));
 
   :deep(.n-button__content) {
-    gap: 4px;
+    gap: calc(4px * var(--spacing-scale, 1));
   }
 
   :deep(.n-button__state-border),
@@ -1679,10 +1746,10 @@ function openAttachmentPreview(attachment: Attachment) {
   color: $text-secondary;
   border-radius: 999px;
   max-width: 190px;
-  padding: 0 4px 0 6px;
+  padding: 0 calc(4px * var(--spacing-scale, 1)) 0 calc(6px * var(--spacing-scale, 1));
 
   :deep(.n-button__content) {
-    gap: 4px;
+    gap: calc(4px * var(--spacing-scale, 1));
     min-width: 0;
   }
 
@@ -1705,14 +1772,10 @@ function openAttachmentPreview(attachment: Attachment) {
 .reasoning-effort-button {
   color: $text-secondary;
   border-radius: 999px;
-  padding: 0 4px 0 6px;
-
-  &.active {
-    color: var(--reasoning-effort-accent-color);
-  }
+  padding: 0 calc(4px * var(--spacing-scale, 1)) 0 calc(6px * var(--spacing-scale, 1));
 
   :deep(.n-button__content) {
-    gap: 4px;
+    gap: calc(4px * var(--spacing-scale, 1));
     min-width: 0;
   }
 }
@@ -1728,7 +1791,7 @@ function openAttachmentPreview(attachment: Attachment) {
 
 .reasoning-effort-slider-popover {
   width: min(320px, calc(100vw - 64px));
-  padding: 4px 2px 2px;
+  padding: calc(4px * var(--spacing-scale, 1)) calc(2px * var(--spacing-scale, 1)) calc(2px * var(--spacing-scale, 1));
 }
 
 .reasoning-effort-slider-heading,
@@ -1736,20 +1799,20 @@ function openAttachmentPreview(attachment: Attachment) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: calc(16px * var(--spacing-scale, 1));
 }
 
 .reasoning-effort-slider-hint {
   margin-top: 6px;
   color: $text-muted;
-  font-size: 11px;
+  font-size: calc(var(--font-size-base, 14px) * 11 / 14);
   text-align: center;
 }
 
 .reasoning-effort-slider-heading {
   margin-bottom: 10px;
   color: $text-secondary;
-  font-size: 12px;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
 
   strong {
     color: var(--reasoning-effort-accent-color);
@@ -1863,7 +1926,7 @@ function openAttachmentPreview(attachment: Attachment) {
 .reasoning-effort-slider-range {
   margin-top: 4px;
   color: $text-muted;
-  font-size: 10px;
+  font-size: calc(var(--font-size-base, 14px) * 10 / 14);
 }
 
 .toolbar-chevron {
@@ -1875,22 +1938,22 @@ function openAttachmentPreview(attachment: Attachment) {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 7px;
+  gap: calc(7px * var(--spacing-scale, 1));
   position: relative;
   width: 100%;
   min-width: 0;
   max-width: 100%;
   margin-inline-start: 0;
-  padding: 4px 10px;
-  border: 1px solid var(--input-border-color);
+  padding: calc(4px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
+  border: var(--border-width, 1px) solid var(--input-border-color);
   border-bottom: 0;
   border-radius: $radius-sm $radius-sm 0 0;
-  background-color: $bg-card;
+  background-color: var(--theme-card-bg, $bg-card);
   color: $text-muted;
   transition: border-color $transition-fast;
 
   .dark & {
-    background-color: $bg-main-surface;
+    background-color: var(--theme-content-bg, $bg-main-surface);
   }
 }
 
@@ -1908,7 +1971,7 @@ function openAttachmentPreview(attachment: Attachment) {
 }
 
 .context-info {
-  font-size: 11px;
+  font-size: calc(var(--font-size-base, 14px) * 11 / 14);
   color: inherit;
   min-width: 0;
   white-space: nowrap;
@@ -1920,14 +1983,14 @@ function openAttachmentPreview(attachment: Attachment) {
 
 .context-limit-editable {
   cursor: pointer;
-  border-bottom: 1px dashed transparent;
+  border-bottom: var(--border-width, 1px) dashed transparent;
   transition: all 0.2s ease;
-  padding: 0 2px;
+  padding: 0 calc(2px * var(--spacing-scale, 1));
 
   &:hover {
     border-bottom-color: $text-muted;
     background: rgba(128, 128, 128, 0.1);
-    border-radius: 2px;
+    border-radius: var(--radius-component, 2px);
   }
 }
 
@@ -1936,7 +1999,7 @@ function openAttachmentPreview(attachment: Attachment) {
   height: 4px;
   margin-inline-start: -4px;
   background: rgba(var(--text-muted-rgb), 0.2);
-  border-radius: 2px;
+  border-radius: var(--radius-component, 2px);
   overflow: hidden;
 }
 
@@ -1947,7 +2010,7 @@ function openAttachmentPreview(attachment: Attachment) {
     rgba(var(--text-muted-rgb), 0.45),
     rgba(var(--text-muted-rgb), 0.85)
   );
-  border-radius: 2px;
+  border-radius: var(--radius-component, 2px);
   transition: width 0.3s ease;
 
   &.context-bar-warn {
@@ -1995,12 +2058,15 @@ function openAttachmentPreview(attachment: Attachment) {
   }
 
   .input-top-bar {
-    gap: 5px;
+    gap: calc(5px * var(--spacing-scale, 1));
   }
 
-  .reasoning-effort-label,
   .auto-play-speech-switch {
     display: none;
+  }
+
+  .reasoning-effort-label {
+    max-width: 64px;
   }
 
   .reasoning-effort-slider-popover {
@@ -2014,7 +2080,7 @@ function openAttachmentPreview(attachment: Attachment) {
   .input-model-button {
     min-width: 35px;
     max-width: 35px;
-    padding: 0 4px 0 6px;
+    padding: 0 calc(4px * var(--spacing-scale, 1)) 0 calc(6px * var(--spacing-scale, 1));
   }
 
   .input-model-label {
@@ -2023,10 +2089,10 @@ function openAttachmentPreview(attachment: Attachment) {
 
   .input-settings-button {
     min-width: 36px;
-    padding: 0 4px 0 6px;
+    padding: 0 calc(4px * var(--spacing-scale, 1)) 0 calc(6px * var(--spacing-scale, 1));
 
     :deep(.n-button__content) {
-      gap: 2px;
+      gap: calc(2px * var(--spacing-scale, 1));
     }
 
     :deep(.n-button__icon) {
@@ -2041,8 +2107,8 @@ function openAttachmentPreview(attachment: Attachment) {
   .context-info {
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: 10px;
-    line-height: 14px;
+    font-size: calc(var(--font-size-base, 14px) * 10 / 14);
+    line-height: var(--line-height, calc(var(--font-size-base, 14px) * 14 / 14));
   }
 
   .context-bar {
@@ -2055,8 +2121,8 @@ function openAttachmentPreview(attachment: Attachment) {
   width: 100%;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 0 10px;
+  gap: calc(8px * var(--spacing-scale, 1));
+  padding: 0 0 calc(10px * var(--spacing-scale, 1));
 }
 
 .attachment-preview {
@@ -2064,7 +2130,7 @@ function openAttachmentPreview(attachment: Attachment) {
   border-radius: $radius-sm;
   overflow: hidden;
   background-color: $bg-secondary;
-  border: 1px solid $border-color;
+  border: var(--border-width, 1px) solid $border-color;
 
   &.image {
     width: 112px;
@@ -2114,9 +2180,9 @@ function openAttachmentPreview(attachment: Attachment) {
 }
 
 .attachment-context {
-  padding: 7px 9px;
-  border-top: 1px solid $border-color;
-  font-size: 11px;
+  padding: calc(7px * var(--spacing-scale, 1)) calc(9px * var(--spacing-scale, 1));
+  border-top: var(--border-width, 1px) solid $border-color;
+  font-size: calc(var(--font-size-base, 14px) * 11 / 14);
   color: $text-secondary;
 
   summary { cursor: pointer; user-select: none; }
@@ -2128,14 +2194,14 @@ function openAttachmentPreview(attachment: Attachment) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 8px 12px;
+  gap: calc(2px * var(--spacing-scale, 1));
+  padding: calc(8px * var(--spacing-scale, 1)) calc(12px * var(--spacing-scale, 1));
   min-width: 80px;
   max-width: 140px;
   color: $text-secondary;
 
   .file-name {
-    font-size: 11px;
+    font-size: calc(var(--font-size-base, 14px) * 11 / 14);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2143,7 +2209,7 @@ function openAttachmentPreview(attachment: Attachment) {
   }
 
   .file-size {
-    font-size: 10px;
+    font-size: calc(var(--font-size-base, 14px) * 10 / 14);
     color: $text-muted;
   }
 }
@@ -2178,13 +2244,13 @@ function openAttachmentPreview(attachment: Attachment) {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
   width: 100%;
   min-height: 150px;
-  background-color: $bg-card;
-  border: 1px solid var(--input-border-color);
+  background-color: var(--theme-card-bg, $bg-card);
+  border: var(--border-width, 1px) solid var(--input-border-color);
   border-radius: $radius-md;
-  padding: 12px 10px 8px;
+  padding: calc(12px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1)) calc(8px * var(--spacing-scale, 1));
   position: relative;
   cursor: text;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
@@ -2205,7 +2271,7 @@ function openAttachmentPreview(attachment: Attachment) {
   }
 
   .dark & {
-    background-color: $bg-main-surface;
+    background-color: var(--theme-content-bg, $bg-main-surface);
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
   }
 }
@@ -2221,7 +2287,7 @@ function openAttachmentPreview(attachment: Attachment) {
 
   &:hover {
     background: rgba($accent-primary, 0.15);
-    border-radius: 4px;
+    border-radius: var(--radius-component, 4px);
   }
 }
 
@@ -2234,8 +2300,8 @@ function openAttachmentPreview(attachment: Attachment) {
   outline: none;
   color: $text-primary;
   font-family: $font-ui;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: calc(var(--font-size-base, 14px) * 14 / 14);
+  line-height: var(--line-height, 1.5);
   resize: none;
   max-height: 400px;
   min-height: 44px;
@@ -2243,7 +2309,7 @@ function openAttachmentPreview(attachment: Attachment) {
   overflow-y: auto;
 
   @media (max-width: 768px) {
-    font-size: 16px;
+    font-size: calc(var(--font-size-base, 14px) * 16 / 14);
   }
 
   &::placeholder {
@@ -2258,11 +2324,11 @@ function openAttachmentPreview(attachment: Attachment) {
 .message-reference-preview {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(10px * var(--spacing-scale, 1));
   min-width: 0;
   margin: 0 8px 8px;
-  padding: 4px 8px;
-  border-radius: 8px;
+  padding: calc(4px * var(--spacing-scale, 1)) calc(8px * var(--spacing-scale, 1));
+  border-radius: var(--radius-component, 8px);
   background: rgba(var(--accent-primary-rgb), 0.07);
   cursor: default;
 }
@@ -2272,8 +2338,8 @@ function openAttachmentPreview(attachment: Attachment) {
   min-width: 0;
   overflow: hidden;
   color: $text-secondary;
-  font-size: 12px;
-  line-height: 24px;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
+  line-height: var(--line-height, calc(var(--font-size-base, 14px) * 24 / 14));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2287,7 +2353,7 @@ function openAttachmentPreview(attachment: Attachment) {
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-component, 7px);
   background: transparent;
   color: $text-muted;
   cursor: pointer;
@@ -2300,7 +2366,7 @@ function openAttachmentPreview(attachment: Attachment) {
 
 .input-actions {
   display: flex;
-  gap: 7px;
+  gap: calc(7px * var(--spacing-scale, 1));
   flex-shrink: 0;
   align-items: center;
 }
@@ -2309,7 +2375,7 @@ function openAttachmentPreview(attachment: Attachment) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: calc(12px * var(--spacing-scale, 1));
   margin-top: auto;
   min-height: 32px;
 }
@@ -2368,11 +2434,11 @@ function openAttachmentPreview(attachment: Attachment) {
   max-height: 240px;
   overflow-y: auto;
   background: $bg-primary;
-  border: 1px solid $border-color;
+  border: var(--border-width, 1px) solid $border-color;
   border-radius: $radius-sm;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
   z-index: 20;
-  padding: 4px;
+  padding: calc(4px * var(--spacing-scale, 1));
 
   .dark & {
     background: #2a2a2a;
@@ -2383,8 +2449,8 @@ function openAttachmentPreview(attachment: Attachment) {
   display: grid;
   grid-template-columns: auto auto 1fr;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: calc(8px * var(--spacing-scale, 1));
+  padding: calc(8px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
   border-radius: $radius-sm;
   cursor: pointer;
   min-height: 36px;
@@ -2397,15 +2463,15 @@ function openAttachmentPreview(attachment: Attachment) {
 }
 
 .slash-command-name {
-  font-family: $font-code;
-  font-size: 13px;
+  font-family: var(--font-code, $font-code);
+  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
   color: $accent-primary;
   white-space: nowrap;
 }
 
 .slash-command-args {
-  font-family: $font-code;
-  font-size: 12px;
+  font-family: var(--font-code, $font-code);
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
   color: $text-muted;
   white-space: nowrap;
 }
@@ -2416,19 +2482,19 @@ function openAttachmentPreview(attachment: Attachment) {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: $text-secondary;
-  font-size: 12px;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
 }
 
 .skill-picker-modal {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: calc(12px * var(--spacing-scale, 1));
 }
 
 .bundle-picker-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--spacing-scale, 1));
 
   .skill-picker-search {
     min-width: 0;
@@ -2439,14 +2505,14 @@ function openAttachmentPreview(attachment: Attachment) {
 .skill-picker-search {
   width: 100%;
   height: 34px;
-  padding: 0 10px;
-  border: 1px solid $border-color;
+  padding: 0 calc(10px * var(--spacing-scale, 1));
+  border: var(--border-width, 1px) solid $border-color;
   border-radius: $radius-sm;
-  background: $bg-input;
+  background: var(--theme-input-bg, $bg-input);
   color: $text-primary;
   outline: none;
   font-family: $font-ui;
-  font-size: 13px;
+  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
 
   &:focus {
     border-color: $accent-primary;
@@ -2458,7 +2524,7 @@ function openAttachmentPreview(attachment: Attachment) {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: calc(6px * var(--spacing-scale, 1));
 }
 
 .skill-picker-item {
@@ -2467,8 +2533,8 @@ function openAttachmentPreview(attachment: Attachment) {
   width: 100%;
   height: 76px;
   box-sizing: border-box;
-  padding: 7px 10px;
-  border: 1px solid $border-color;
+  padding: calc(7px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
+  border: var(--border-width, 1px) solid $border-color;
   border-radius: $radius-sm;
   background: $bg-secondary;
   color: $text-primary;
@@ -2496,7 +2562,7 @@ function openAttachmentPreview(attachment: Attachment) {
   display: block;
   width: 100%;
   height: 100%;
-  padding: 7px 42px 7px 10px;
+  padding: calc(7px * var(--spacing-scale, 1)) calc(42px * var(--spacing-scale, 1)) calc(7px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
   border: 0;
   background: transparent;
   color: inherit;
@@ -2516,7 +2582,7 @@ function openAttachmentPreview(attachment: Attachment) {
   height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-component, 7px);
   background: transparent;
   color: $text-muted;
   cursor: pointer;
@@ -2539,9 +2605,9 @@ function openAttachmentPreview(attachment: Attachment) {
   width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: $font-code;
-  font-size: 12px;
-  line-height: 16px;
+  font-family: var(--font-code, $font-code);
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
+  line-height: var(--line-height, calc(var(--font-size-base, 14px) * 16 / 14));
   color: $accent-primary;
   white-space: nowrap;
 }
@@ -2563,29 +2629,29 @@ function openAttachmentPreview(attachment: Attachment) {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: $text-muted;
-  font-size: 11px;
-  line-height: 16px;
+  font-size: calc(var(--font-size-base, 14px) * 11 / 14);
+  line-height: var(--line-height, calc(var(--font-size-base, 14px) * 16 / 14));
 }
 
 .skill-picker-name {
   margin-top: 3px;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
+  line-height: var(--line-height, calc(var(--font-size-base, 14px) * 18 / 14));
   color: $text-primary;
 }
 
 .skill-picker-desc {
   margin-top: 3px;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
+  line-height: var(--line-height, calc(var(--font-size-base, 14px) * 16 / 14));
   color: $text-secondary;
 }
 
 .skill-picker-empty {
-  padding: 18px 10px;
+  padding: calc(18px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
   text-align: center;
   color: $text-muted;
-  font-size: 13px;
+  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
 }
 
 @media (max-width: 768px) {
@@ -2599,8 +2665,8 @@ function openAttachmentPreview(attachment: Attachment) {
 
   .input-wrapper {
     min-height: 96px;
-    gap: 6px;
-    padding: 8px 10px;
+    gap: calc(6px * var(--spacing-scale, 1));
+    padding: calc(8px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
   }
 
   .input-textarea {
@@ -2608,8 +2674,8 @@ function openAttachmentPreview(attachment: Attachment) {
   }
 
   .input-textarea::placeholder {
-    font-size: 13px;
-    line-height: 1.35;
+    font-size: calc(var(--font-size-base, 14px) * 13 / 14);
+    line-height: var(--line-height, 1.35);
   }
 }
 
