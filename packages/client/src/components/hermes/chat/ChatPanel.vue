@@ -2812,8 +2812,9 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
 
         <template v-for="group in visibleCategoryGroups" :key="group.key">
           <div
-            class="session-group-header"
-            :style="group.depth ? { paddingInlineStart: `calc(${10 + group.depth * 14}px * var(--spacing-scale, 1))` } : undefined"
+            class="session-group-header session-tree-row"
+            :class="{ 'session-tree-row--nested': !!group.depth }"
+            :style="{ '--tree-depth': group.depth || 0 }"
             @click="toggleCategoryGroup(group.key)"
             @contextmenu="handleCategoryContextMenu($event, group.key)"
           >
@@ -2828,6 +2829,22 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
               :class="{ collapsed: collapsedCategories.has(group.key) }"
             >
               <polyline points="9 18 15 12 9 6" />
+            </svg>
+            <svg
+              v-if="group.key !== 'category-none'"
+              class="session-group-folder"
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path v-if="collapsedCategories.has(group.key)" d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.2l2 2.2h8.8A1.5 1.5 0 0 1 21 8.7v8.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5Z" />
+              <path v-else d="M3 17.5V6.5A1.5 1.5 0 0 1 4.5 5h4.2l2 2.2h7.8A1.5 1.5 0 0 1 20 8.7V10M3.2 18.2l2.3-7.4a1.5 1.5 0 0 1 1.4-1h14.2a1 1 0 0 1 1 1.3l-2 6.6a1.5 1.5 0 0 1-1.4 1.1H4.5a1.5 1.5 0 0 1-1.3-.6Z" />
             </svg>
             <span class="session-group-label">{{ group.label }}</span>
             <span class="session-group-count">{{ group.totalCount ?? group.sessions.length }}</span>
@@ -2852,7 +2869,12 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
               </svg>
             </button>
           </div>
-          <template v-if="!collapsedCategories.has(group.key)">
+          <div
+            v-if="!collapsedCategories.has(group.key)"
+            class="session-group-body session-tree-row"
+            :class="{ 'session-tree-row--nested': !!group.depth }"
+            :style="{ '--tree-depth': group.depth || 0 }"
+          >
             <SessionListItem
               v-for="s in group.sessions"
               :key="s.id"
@@ -2876,7 +2898,7 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
               @delete="handleDeleteSession(s.id)"
               @toggle-select="toggleSessionSelection(s)"
             />
-          </template>
+          </div>
         </template>
       </div>
       <PageSidebarFooter v-if="showSessions" />
@@ -3906,6 +3928,44 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
   color: inherit;
   cursor: pointer;
   font: inherit;
+}
+
+// Tree view: each nesting level indents one step and draws a vertical guide line,
+// so every row under a nested category carries the guides of all its ancestors.
+.session-tree-row {
+  --tree-step: calc(14px * var(--spacing-scale, 1));
+  position: relative;
+}
+
+.session-group-body.session-tree-row--nested {
+  padding-inline-start: calc(var(--tree-depth) * var(--tree-step));
+}
+
+.session-group-header.session-tree-row--nested {
+  padding-inline-start: calc(10px * var(--spacing-scale, 1) + var(--tree-depth) * var(--tree-step));
+}
+
+.session-tree-row--nested::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(10px * var(--spacing-scale, 1));
+  width: calc(var(--tree-depth) * var(--tree-step));
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to right,
+    $border-light 0 var(--border-width, 1px),
+    transparent var(--border-width, 1px) var(--tree-step)
+  );
+}
+
+.session-group-header .session-group-folder + .session-group-label {
+  margin-inline-start: calc(2px * var(--spacing-scale, 1));
+}
+
+.session-group-folder {
+  flex-shrink: 0;
+  color: $text-muted;
 }
 
 .group-chevron {
