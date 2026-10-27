@@ -60,6 +60,8 @@ export interface SessionMessage {
 }
 
 export interface QueuedRun {
+  /** Internal account-bound Person result delivery. */
+  personDelivery?: { userId: number; executionId: string }
   /** Internal admission check, never serialized or supplied by the client. */
   authorize?: () => Promise<void>
   /** Captured at admission, independent of whichever socket drains the queue. */
@@ -169,6 +171,8 @@ export interface SessionState {
   contextTokens?: number
   /** Ekko's system/tool context, kept separately from conversation history. */
   ekkoContext?: { fixedContextTokens: number }
+  /** Bound to the actual agent for this turn, including account agents such as Person. */
+  ekkoBoundaryInterrupt?: (expectedRunId: string) => { status: string; phase?: string; reason?: string }
   bridgeContext?: BridgeContextState
   isAborting?: boolean
   queue: QueuedRun[]

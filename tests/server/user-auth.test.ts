@@ -12,6 +12,7 @@ describe('user auth tables and middleware', () => {
     vi.doMock('../../packages/server/src/modules/studio/infrastructure/database/index', () => ({
       getDb: () => db,
       getStoragePath: () => ':memory:',
+      isSqliteAvailable: () => true,
     }))
     vi.doMock('../../packages/server/src/modules/studio/public/profile-config', () => ({
       listProfileNamesFromDisk: () => ['default'],
@@ -365,6 +366,81 @@ describe('user auth tables and middleware', () => {
       exp: 3601,
     })
     expect(auth.verifyUserJwt(token, 'secret', 1000 + 60 * 60 * 1000)).toBeNull()
+  })
+
+  it('protects account Person sessions in HTTP independently of shared Profile or admin role', async () => {
+    const { users, auth } = await initUsers()
+    const owner = users.bootstrapDefaultSuperAdmin('admin', '123456')!
+    db.prepare("INSERT INTO users(username,password_hash,role,status,created_at,updated_at) VALUES ('other','unused','super_admin','active',1,1)").run()
+    const other = users.findUserByUsername('other')!
+    const { createSession } = await import('../../packages/server/src/modules/studio/repositories/session-store')
+    createSession({ id: `person-main-${owner.id}`, user_id: owner.id, studio_user_id: owner.id, source: 'builtin_agent', profile: 'resource-profile' })
+    for (const user of [owner, other]) {
+      const ctx = { path: `/api/studio/sessions/person-main-${owner.id}`, query: {}, request: { body: {} },
+        headers: { authorization: `Bearer ${auth.signUserJwt(user, 'test-secret')}` }, state: {}, status: 200, body: null,
+        get: (name: string) => name === 'x-hermes-profile' ? 'unrelated-profile' : '' } as any
+      const next = vi.fn()
+      await auth.requireUserJwt(ctx, next)
+      if (user.id === owner.id) {
+        expect(next).toHaveBeenCalledOnce()
+        await auth.resolveUserProfile(ctx, vi.fn())
+        expect(ctx.state.profile.name).toBe('resource-profile')
+      } else { expect(ctx.status).toBe(404); expect(next).not.toHaveBeenCalled() }
+    }
+  })
+
+  it('only allows owner-authenticated reads of hidden task sessions, never generic mutations', async () => {
+    const { users, auth } = await initUsers()
+    const owner = users.bootstrapDefaultSuperAdmin('admin', '123456')!
+    db.prepare("INSERT INTO users(username,password_hash,role,status,created_at,updated_at) VALUES ('other','unused','super_admin','active',1,1)").run()
+    const other = users.findUserByUsername('other')!
+    const { createPersonTask } = await import('../../packages/server/src/modules/studio/repositories/person-store')
+    const { createSession } = await import('../../packages/server/src/modules/studio/repositories/session-store')
+    const task = createPersonTask(owner.id, 'Owned task', 'Run privately', { runtime: 'ekko', mode: 'scoped', profile: 'default', provider: 'p', model: 'm' }, '/tmp')
+    const id = `person-task-${task.id}`
+    createSession({ id, user_id: owner.id, studio_user_id: owner.id, source: 'builtin_agent', profile: 'default' })
+    for (const [user, method, suffix, allowed] of [[owner,'GET','',true], [owner,'GET','/context',true], [other,'GET','',false], [owner,'DELETE','',false], [owner,'POST','/messages/batch-delete',false], [owner,'GET','/share-models',false]] as const) {
+      const ctx = { path: `/api/studio/sessions/${id}${suffix}`, method, query: {}, request: { body: {} },
+        headers: { authorization: `Bearer ${auth.signUserJwt(user, 'test-secret')}` }, state: {}, status: 200, body: null,
+        get: () => '' } as any
+      const next = vi.fn()
+      await auth.requireUserJwt(ctx, next)
+      if (allowed) { expect(next).toHaveBeenCalledOnce(); expect(ctx.state.personTaskRead).toBe(id) }
+      else { expect(ctx.status).toBe(404); expect(next).not.toHaveBeenCalled() }
+    }
+  })
+
+  it('protects Person sessions in structured batch deletes at both the middleware and controller', async () => {
+    const { users, auth } = await initUsers()
+    const owner = users.bootstrapDefaultSuperAdmin('admin', '123456')!
+    db.prepare("INSERT INTO users(username,password_hash,role,status,created_at,updated_at) VALUES ('other','unused','admin','active',1,1)").run()
+    const other = users.findUserByUsername('other')!
+    users.replaceUserProfiles(other.id, ['default'], 'default')
+    const sessions = await import('../../packages/server/src/modules/studio/repositories/session-store')
+    const sid = `person-main-${owner.id}`
+    sessions.createSession({ id: sid, user_id: owner.id, studio_user_id: owner.id, source: 'builtin_agent', agent: 'ekko-agent', profile: 'default' })
+    sessions.addMessage({session_id:sid,role:'user',content:'Private conversation'})
+    const runtime = await import('../../packages/server/src/modules/studio/public/session-agent-runtime')
+    runtime.configureSessionAgentRuntime({stopCodingAgentSessionRun:vi.fn()} as any)
+    const { batchRemove } = await import('../../packages/server/src/modules/studio/controllers/sessions')
+    const ctx = { path: '/api/studio/sessions/batch-delete', method:'POST', query: {}, request: { body: { sessions: [{id:sid,profile:'default'}] } },
+      headers: { authorization: `Bearer ${auth.signUserJwt(other, 'test-secret')}` }, state: {}, status: 200, body: null,
+      get: () => '' } as any
+    await auth.requireUserJwt(ctx, async () => { await auth.resolveUserProfile(ctx, async () => { await batchRemove(ctx) }) })
+    expect(ctx.status).toBe(404)
+    expect(sessions.getSession(sid)).not.toBeNull()
+    // The controller also enforces ownership if reached through another transport.
+    ctx.state = { user: { id: other.id, role: other.role } }
+    await batchRemove(ctx)
+    expect(ctx.body).toMatchObject({ deleted: 0, failed: 1 })
+    expect(sessions.getSessionDetail(sid)?.messages).toHaveLength(1)
+    const worker = 'person-task-private'
+    sessions.createSession({ id: worker, user_id: owner.id, studio_user_id: owner.id, source: 'builtin_agent', profile: 'default' })
+    ctx.state.user = { id: owner.id, role: owner.role }
+    ctx.request.body = { sessions: [{ id: worker, profile: 'default' }] }
+    await batchRemove(ctx)
+    expect(ctx.body).toMatchObject({ deleted: 0, failed: 1 })
+    expect(sessions.getSession(worker)).not.toBeNull()
   })
 
   it('authenticates JWTs passed as query tokens for download and websocket URLs', async () => {

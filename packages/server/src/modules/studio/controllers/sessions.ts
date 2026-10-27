@@ -1,5 +1,7 @@
+import { isPersonSession, isPrivatePersonSession, ownsPersonSession } from '../contracts/person-session'
 import { isNativeCodingAgent } from '../contracts/agents/native-coding-agents'
 import { withRunUsage } from '../public/usage'
+import { withPersonTaskReturns } from '../services/person/service'
 import { businessEvents } from '../services/webhooks/business-events'
 import { publishSessionRemoval } from '../services/notifications/session-removal'
 import { getUsagePricing, saveUsagePricing, validateUsagePricing } from '../services/usage/usage-pricing'
@@ -90,6 +92,7 @@ function getPendingDeletedSessionIds(): Set<string> {
 
 function filterPendingDeletedSessions<T extends { id: string }>(items: T[]): T[] {
   const pendingIds = getPendingDeletedSessionIds()
+  items = items.filter(item => !isPrivatePersonSession(item.id))
   if (pendingIds.size === 0) return items
   return items.filter(item => !pendingIds.has(item.id))
 }
@@ -154,6 +157,9 @@ function filterByAllowedProfiles<T>(ctx: any, items: T[]): T[] {
 }
 
 function denySessionAccess(ctx: any, session: any | null | undefined): boolean {
+  if (ctx.method === 'GET' && ctx.state?.personTaskRead === session?.id) return false
+  if (isPersonSession(session?.id) && ownsPersonSession(ctx.state?.user?.id, session)) return false
+  if (isPrivatePersonSession(session?.id)) { ctx.status = 404; ctx.body = { error: 'Session not found' }; return true }
   if (!session || canAccessProfile(ctx, session.profile)) return false
   ctx.status = 403
   ctx.body = { error: `Profile "${session.profile || 'default'}" is not available for this user` }
@@ -1538,6 +1544,11 @@ export async function batchRemove(ctx: any) {
   for (const target of targets) {
     const { id } = target
     const existing = localGetSession(id)
+    if (isPrivatePersonSession(id) && !ownsPersonSession(ctx.state?.user?.id, existing)) {
+      results.failed++
+      results.errors.push({ id, error: 'Session not found' })
+      continue
+    }
     const targetProfile = target.profile || existing?.profile
     if (targetProfile && !canAccessProfile(ctx, targetProfile)) {
       results.failed++
@@ -2348,7 +2359,7 @@ export async function getConversationMessagesPaginated(ctx: any) {
       input_tokens: session.input_tokens,
       output_tokens: session.output_tokens,
     },
-    messages: withRunUsage(ctx.params.id, result.messages),
+    messages: withPersonTaskReturns(ctx.params.id, withRunUsage(ctx.params.id, result.messages)),
     taskPlans: getSessionTaskPlans(ctx.params.id, result.messages, offset === 0),
     workspaceRunChanges: listWorkspaceRunChangesForAssistantMessages(ctx.params.id, assistantMessageIds),
     total: result.total,

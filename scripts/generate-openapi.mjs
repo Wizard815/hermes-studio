@@ -43,6 +43,7 @@ const openapi = {
 
 // Tag mappings based on route directories
 const tagMappings = {
+  'modules/studio/routes/person.ts': { name: 'Person', description: 'Account-owned assistant, independent memory, task execution, decisions and durable schedules' },
   'modules/studio/routes/desktop-browser.ts': { name: 'Desktop Browser', description: 'Authenticated remote Desktop browser relay with explicit Desktop consent' },
   'modules/hermes/routes/profiles.ts': { name: 'Profiles', description: 'Hermes profile management' },
   'modules/hermes/routes/models.ts': { name: 'Models', description: 'Model configuration' },
@@ -1958,6 +1959,37 @@ for (const action of ['list', 'update']) {
   }
   delete operation.responses['404']
 }
+
+// Person uses account identity from the login token; profile/model refs are resources, never ownership.
+const personFields = {
+  action: { type: 'string' }, idempotency_key: { type: 'string', maxLength: 200 }, expected_revision: { type: 'integer', minimum: 0 },
+  task_id: { type: 'string' }, schedule_id: { type: 'string' }, agent_id: { type: 'string', description: 'Configured execution agent ID; omitted selects the sole preset or default Ekko Agent' },
+  title: { type: 'string', maxLength: 200 }, goal: { type: 'string', maxLength: 8000 },
+  start: { type: 'boolean', default: true },
+}
+const personBodies = {
+  '/clear': {fields:{expected_history_revision:{type:'integer',minimum:0}},required:['expected_history_revision']},
+  '/settings': { fields: { workspace: {type:'string',maxLength:4000,description:'Shared absolute working directory for all Person background tasks; empty restores the account private workspace. Requires all tasks and deliveries to be idle. Existing tasks use it on their next execution.'}, agents: {type:'array', maxItems:20, description:'Execution presets; an empty list inherits Person provider/model through Ekko Agent', items:{type:'object',required:['id','name','description','selection'],properties:{id:{type:'string'},name:{type:'string'},description:{type:'string'},selection:{type:'object',required:['runtime','mode','profile','model'],properties:{runtime:{type:'string'},mode:{type:'string',enum:['scoped','global']},profile:{type:'string'},provider:{type:'string'},model:{type:'string'},reasoningEffort:{type:'string'}}}}}}, use_global_default: {type:'boolean'}, model: {type:'object',properties:{profile:{type:'string'},provider:{type:'string'},model:{type:'string'}},required:['profile','provider','model']}, reasoning_effort: {type:'string',enum:['','none','minimal','low','medium','high','xhigh','max']}, expected_revision: personFields.expected_revision, timezone: { type:'string' }, maxSteps:{type:'integer',minimum:2,maximum:30}, contextTokens:{type:'integer',minimum:8000,maximum:64000},maxConcurrentTasks:{type:'integer',minimum:1,maximum:4} }, required:['expected_revision'], method:'put' },
+  '/tasks/{id}/chat': {fields:{input:{type:'array',minItems:1,maxItems:50,items:{oneOf:[{type:'object',required:['type','text'],properties:{type:{type:'string',enum:['text']},text:{type:'string',maxLength:32000}}},{type:'object',required:['type','name','path'],properties:{type:{type:'string',enum:['file','image']},name:{type:'string'},path:{type:'string'},media_type:{type:'string'},context:{type:'string'},video_frame:{type:'boolean'}}}]}},expected_revision:personFields.expected_revision,idempotency_key:personFields.idempotency_key},required:['input','expected_revision','idempotency_key']},
+  '/tasks/query': {fields:{search:{type:'string'},offset:{type:'integer',minimum:0},status:{type:'string',enum:['','open','completed','closed']},order:{type:'string',enum:['newest','oldest']},limit:{type:'integer',minimum:1,maximum:100}}},
+  '/tasks/apply': {fields:{...personFields,action:{type:'string',enum:['create','adopt','update','start','close','reopen']}},required:['action','idempotency_key']},
+  '/schedules/apply': {fields:{action:{type:'string',enum:['create','update','pause','resume','cancel']},idempotency_key:personFields.idempotency_key,expected_revision:personFields.expected_revision,task_id:personFields.task_id,schedule_id:personFields.schedule_id,kind:{type:'string',enum:['once','cron']},expression:{type:'string',description:'ISO date with offset or five-field cron'},timezone:{type:'string'},misfire:{type:'string',enum:['skip','run_latest']}},required:['action','idempotency_key']},
+  '/interactions/{id}/answer': {fields:{answer:{type:'string',maxLength:4000},expected_revision:personFields.expected_revision},required:['answer','expected_revision']},
+  '/memory': {fields:{id:{type:'string'},content:{type:'string',maxLength:2000},forget:{type:'boolean'},expected_revision:personFields.expected_revision}},
+}
+for (const [suffix, schema] of Object.entries(personBodies)) {
+  const operation = openapi.paths['/api/studio/person'+suffix]?.[schema.method || 'post']
+  if (!operation) throw new Error('Missing Person API: '+suffix)
+  operation.requestBody={required:true,content:{'application/json':{schema:{type:'object',properties:schema.fields,required:schema.required || []}}}}
+  operation.description='Studio user login required. Account isolation is enforced by the server. Mutations use current revisions; task and schedule operations require an idempotency key. Worker question answers are delivered through their original interactive runtime.'
+}
+
+openapi.paths['/api/studio/person/tasks/{id}/chat'].get.description = 'Open the account-owned hidden task conversation. Returns task and session metadata for standard socket resume. It stays excluded from ordinary session lists. Read-only history is permitted to its owner; direct run, abort and other session mutations remain forbidden.'
+openapi.paths['/api/studio/person/tasks/{id}/chat'].post.description = 'Continue an idle, non-closed task in the same hidden worker session through the durable background runner. Completed tasks reopen automatically on new input. Running tasks, pending result delivery and stale revisions return 409. Completion wakes the original Person main session again.'
+
+openapi.paths['/api/studio/person/clear'].post.summary = 'Clear Person chat history and tasks'
+openapi.paths['/api/studio/person/clear'].post.description = 'Clear only the authenticated account Person chat history, tasks, hidden task conversations, related execution records and schedules atomically. Running replies/tasks and pending deliveries return 409; expected_history_revision must match the Person snapshot. Preserves memories, settings, usage ledger and workspace files. Broadcasts cleared conversation state to connected views.'
+openapi.paths['/api/studio/person/clear'].post.responses['409'] = { description: 'Person is busy, has pending results, or the history revision changed' }
 
 // Write output
 const outputPath = join(rootDir, 'docs/openapi.json')

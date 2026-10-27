@@ -1,3 +1,6 @@
+import { ownedPersonTaskSession } from '../services/person/task-chat'
+import { ownsPersonSession } from '../contracts/person-session'
+import { getSession } from '../repositories/session-store'
 import { handleSessionShareHttp } from '../services/session-shares/http-access'
 import type { Context, Next } from 'koa'
 import { createHmac, randomUUID, timingSafeEqual } from 'crypto'
@@ -322,7 +325,8 @@ export async function isAuthEnabled(): Promise<boolean> {
 function isAccountModelApiPath(path: string | undefined): boolean {
   // Router paths are case-insensitive and allow a trailing slash.
   path = path?.toLowerCase()
-  return path === '/api/studio/models/cloud-link' || !!path?.startsWith('/api/studio/models/cloud-link/')
+  return path === '/api/studio/person' || !!path?.startsWith('/api/studio/person/')
+    || path === '/api/studio/models/cloud-link' || !!path?.startsWith('/api/studio/models/cloud-link/')
     || path === '/api/studio/models/api-keys' || !!path?.startsWith('/api/studio/models/api-keys/')
     || path === '/api/ekko-studio/models/v1/models' || path === '/api/ekko-studio/models/v1/responses'
 }
@@ -333,7 +337,20 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
     return
   }
 
-  if (await handleSessionShareHttp(ctx, next)) return
+  // Internal Person sessions never become profile-shared HTTP resources.
+  const body = ctx.request.body as Record<string, unknown> | undefined
+  let decodedPath = ctx.path
+  try { decodedPath = decodeURIComponent(ctx.path) } catch { /* Router handles invalid escapes. */ }
+  const batchRefs = Array.isArray(body?.sessions) ? body.sessions.map(target =>
+    typeof target === 'string' ? target : target && typeof target === 'object' ? target.id : undefined) : []
+  const refs = [decodedPath, ...Object.values(ctx.query || {}), body?.session_id, body?.sessionId, body?.session_ids, body?.ids, body?.parent_session_id, ...batchRefs]
+  const workerRefs = [...new Set(refs.flatMap(ref => String(ref || '').match(/person-task-[^/\s?"&,]+/g) || []))]
+  const workerRead = ctx.method === 'GET' && /^\/api\/studio\/sessions\/(?:conversations\/)?person-task-[^/]+(?:\/(?:messages(?:\/paginated)?|context|usage|workspace-files\/list|workspace-file\/(?:read|content|diff)))?$/.test(decodedPath)
+  if (workerRefs.length && !workerRead) {
+    ctx.status = 404; ctx.body = { error: 'Session not found' }; return
+  }
+  const personRefs = [...new Set(refs.flatMap(ref => typeof ref === 'string' ? ref.match(/person-main-[^/\s?"&,]+/g) || [] : Array.isArray(ref) ? ref.filter(value => typeof value === 'string' && value.startsWith('person-main-')) : []))]
+  if (!workerRefs.length && !personRefs.length && await handleSessionShareHttp(ctx, next)) return
 
   const secret = await getJwtSecret()
   const token = requestToken(ctx)
@@ -363,9 +380,9 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
   if (runMcpCredentials.recognizes(token)) {
     // A turn-scoped credential must not mint permanent account-wide keys or
     // escape its bound Profile through the aggregated model directory.
-    if (isAccountModelApiPath(ctx.path)) {
+    if (workerRefs.length || personRefs.length || isAccountModelApiPath(ctx.path)) {
       ctx.status = 403
-      ctx.body = { error: 'Model API requires a Studio login token or a Model API key' }
+      ctx.body = { error: 'This account endpoint requires a Studio login token' }
       return
     }
     const binding = runMcpCredentials.authenticate(token)
@@ -406,7 +423,7 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
   }
   const payload = token ? verifyUserJwt(token, secret) : null
   if (!payload) {
-    if (await allowServerTokenForAgentEndpoint(ctx, token)) {
+    if (!workerRefs.length && !personRefs.length && await allowServerTokenForAgentEndpoint(ctx, token)) {
       await next()
       return
     }
@@ -433,6 +450,16 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
     return
   }
 
+  if (workerRefs.length) {
+    try { for (const id of workerRefs) ownedPersonTaskSession(user.id, id) }
+    catch { ctx.status = 404; ctx.body = { error: 'Session not found' }; return }
+    ctx.state.personTaskRead = workerRefs[0]
+    ctx.state.personSession = getSession(workerRefs[0])
+  }
+  if (personRefs.some(id => !ownsPersonSession(user.id, getSession(id)))) {
+    ctx.status = 404; ctx.body = { error: 'Session not found' }; return
+  }
+  if (personRefs.length) ctx.state.personSession = getSession(personRefs[0])
   ctx.state.user = toAuthenticatedUser(user)
   touchUserLogin(user.id)
   await next()
@@ -469,6 +496,7 @@ export function resolveRequestedProfile(ctx: Context): string {
 }
 
 export async function resolveUserProfile(ctx: Context, next: Next): Promise<void> {
+  if (ctx.state.personSession) { ctx.state.profile = { name: ctx.state.personSession.profile || 'default' }; await next(); return }
   if (isAccountModelApiPath(ctx.path)) { await next(); return }
   if (ctx.state.sessionShare) { await next(); return }
   const user = ctx.state.user

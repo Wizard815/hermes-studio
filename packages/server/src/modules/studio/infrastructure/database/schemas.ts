@@ -93,16 +93,23 @@ export const TASK_PLANS_TABLE = 'task_plans'
 export const SESSION_TASKS_TABLE = 'session_tasks'
 export const SESSION_TASKS_SCHEMA: Record<string, string> = {
   id: 'TEXT PRIMARY KEY',
-  session_id: 'TEXT NOT NULL',
+  session_id: 'TEXT',
   title: 'TEXT NOT NULL',
   summary: "TEXT NOT NULL DEFAULT ''",
   status: "TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'completed', 'closed'))",
-  source_message_id: 'INTEGER NOT NULL',
+  source_message_id: 'INTEGER',
   evidence_message_id: 'INTEGER',
   completion_evidence: "TEXT NOT NULL DEFAULT ''",
   created_at: 'INTEGER NOT NULL',
   updated_at: 'INTEGER NOT NULL',
   completed_at: 'INTEGER',
+  owner_user_id: 'INTEGER',
+  bot_id: 'TEXT',
+  revision: 'INTEGER NOT NULL DEFAULT 0',
+  requirements_revision: 'INTEGER NOT NULL DEFAULT 0',
+  requirements_json: "TEXT NOT NULL DEFAULT '{}'",
+  selection_json: "TEXT NOT NULL DEFAULT '{}'",
+  workspace: "TEXT NOT NULL DEFAULT ''",
 }
 export const TASK_PLANS_SCHEMA: Record<string, string> = {
   session_id: 'TEXT NOT NULL',
@@ -1227,6 +1234,7 @@ export const GC_SESSION_PROFILES_SCHEMA: Record<string, string> = {
 // ============================================================================
 
 import { getDb, getStoragePath } from './index'
+import { initPersonTables } from './person-schema'
 import { BUILTIN_EKKO_AGENT_IDS, BUILTIN_HISTORY_SOURCES } from '../../contracts/history-source'
 
 function quoteIdentifier(identifier: string): string {
@@ -1616,22 +1624,27 @@ export function syncTable(
   addMissingSafeColumns(db, tableName, schema)
 }
 
-/** SQLite cannot alter a CHECK constraint; preserve the table and its custom objects. */
-function migrateSessionTaskClosedStatus(db: NonNullable<ReturnType<typeof getDb>>): void {
+/** Rebuild constraints for account-owned tasks, preserving rows and custom schema objects. */
+function migrateSessionTaskSchema(db: NonNullable<ReturnType<typeof getDb>>): void {
   const legacyCheck = /CHECK\s*\(\s*status\s+IN\s*\(\s*'open'\s*,\s*'completed'\s*\)\s*\)/i
+  const upgradedSql = (sql: string) => sql
+    .replace(legacyCheck, "CHECK(status IN ('open', 'completed', 'closed'))")
+    .replace(/((?:"session_id"|\bsession_id)\s+TEXT)\s+NOT\s+NULL\b/i, '$1')
+    .replace(/((?:"source_message_id"|\bsource_message_id)\s+INTEGER)\s+NOT\s+NULL\b/i, '$1')
   const readSql = () => (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
     .get(SESSION_TASKS_TABLE) as { sql: string } | undefined)?.sql
-  if (!legacyCheck.test(readSql() || '')) return
+  const original = readSql() || ''
+  if (upgradedSql(original) === original) return
   db.exec('BEGIN IMMEDIATE')
   try {
     const sql = readSql() || ''
-    if (legacyCheck.test(sql)) {
+    if (upgradedSql(sql) !== sql) {
       const objects = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN ('index', 'trigger') AND sql IS NOT NULL")
         .all(SESSION_TASKS_TABLE) as Array<{ sql: string }>
       const columns = (db.prepare(`PRAGMA table_info(${quoteIdentifier(SESSION_TASKS_TABLE)})`).all() as Array<{ name: string }>)
         .map(column => quoteIdentifier(column.name)).join(', ')
-      const temporary = 'session_tasks_closed_upgrade'
-      const createSql = sql.replace(legacyCheck, "CHECK(status IN ('open', 'completed', 'closed'))")
+      const temporary = 'session_tasks_schema_upgrade'
+      const createSql = upgradedSql(sql)
         .replace(/^(CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?)(?:"session_tasks"|session_tasks)(?=\s*\()/i, `$1${quoteIdentifier(temporary)}`)
       db.exec(createSql)
       db.exec(`INSERT INTO ${quoteIdentifier(temporary)} (${columns}) SELECT ${columns} FROM ${quoteIdentifier(SESSION_TASKS_TABLE)}`)
@@ -1738,7 +1751,8 @@ export function initAllHermesTables(): void {
     syncTable(SESSION_TASKS_TABLE, SESSION_TASKS_SCHEMA, {
       indexes: { idx_session_tasks_session: 'CREATE INDEX IF NOT EXISTS idx_session_tasks_session ON session_tasks(session_id, created_at, id)' },
     })
-    migrateSessionTaskClosedStatus(db)
+    migrateSessionTaskSchema(db)
+    initPersonTables(db)
     syncTable(SESSIONS_TABLE, SESSIONS_SCHEMA, {
       indexes: SESSIONS_INDEXES,
     })
