@@ -3,7 +3,7 @@
  * Uses the same ensureTable/getDb pattern as usage-store.ts.
  */
 import { isSqliteAvailable, getDb } from '../infrastructure/database'
-import { TASK_PLANS_TABLE, SESSION_TASKS_TABLE, COMPRESSION_SNAPSHOT_TABLE, SESSIONS_TABLE, MESSAGES_TABLE, SESSION_CATEGORIES_TABLE } from '../infrastructure/database/schemas'
+import { TASK_PLANS_TABLE, SESSION_TASKS_TABLE, COMPRESSION_SNAPSHOT_TABLE, SESSIONS_TABLE, MESSAGES_TABLE, SESSION_CATEGORIES_TABLE, SESSION_SHARES_TABLE } from '../infrastructure/database/schemas'
 import { normalizeMessageContentForStorageRole } from './message-content'
 import { copyCompressionSnapshot } from './compression-snapshot'
 import { recordSkillUsageMessage } from './skill-usage-store'
@@ -345,8 +345,8 @@ export function createBranchedSession(data: {
     ).run(data.ended_at, 'branched', data.parent_session_id)
 
     db.prepare(
-      `INSERT INTO ${SESSIONS_TABLE} (id, profile, source, agent, agent_mode, agent_preset, agent_session_id, agent_native_session_id, user_id, model, provider, api_mode, reasoning_effort, title, parent_session_id, started_at, last_active, workspace, category_id, message_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ${SESSIONS_TABLE} (id, profile, source, agent, agent_mode, agent_preset, agent_session_id, agent_native_session_id, user_id, studio_user_id, push_enabled, model, provider, api_mode, reasoning_effort, title, parent_session_id, started_at, last_active, workspace, category_id, message_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT studio_user_id FROM ${SESSIONS_TABLE} WHERE id = ?), COALESCE((SELECT push_enabled FROM ${SESSIONS_TABLE} WHERE id = ?), 1), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       data.id,
       data.profile || 'default',
@@ -357,6 +357,9 @@ export function createBranchedSession(data: {
       data.agent_session_id || '',
       data.agent_native_session_id || '',
       data.user_id == null ? null : String(data.user_id),
+      // A branch keeps the parent's owner attribution and push preference.
+      data.parent_session_id,
+      data.parent_session_id,
       data.model || '',
       data.provider || '',
       data.api_mode || '',
@@ -515,6 +518,8 @@ export function deleteSession(id: string): boolean {
     db.prepare(`DELETE FROM ${TASK_PLANS_TABLE} WHERE session_id = ?`).run(id)
     db.prepare(`DELETE FROM ${SESSION_TASKS_TABLE} WHERE session_id = ?`).run(id)
     db.prepare(`DELETE FROM ${COMPRESSION_SNAPSHOT_TABLE} WHERE session_id = ?`).run(id)
+    // Share links to a deleted session must stop resolving.
+    db.prepare(`DELETE FROM ${SESSION_SHARES_TABLE} WHERE session_id = ?`).run(id)
     db.prepare(`DELETE FROM ${MESSAGES_TABLE} WHERE session_id = ?`).run(id)
     const result = db.prepare(`DELETE FROM ${SESSIONS_TABLE} WHERE id = ?`).run(id)
     db.exec('COMMIT')

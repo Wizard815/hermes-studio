@@ -2252,13 +2252,18 @@ export class ChatRunSocket {
     options?: { event: 'app.resumed'; cachedId: string },
   ) {
     let state = this.sessionMap.get(sid)
+    // Re-read a placeholder left behind by a transient DB failure instead of resuming with empty history.
+    if (state?.loadFailed && !state.isWorking && state.messages.length === 0) state = undefined
     if (!state) {
       state = await loadSessionStateFromDb(sid, this.sessionMap)
       this.sessionMap.set(sid, state)
     }
     await this.reattachBridgeRun(socket, sid, state)
     if (this.sessionMap.get(sid) !== state) {
-      state = this.sessionMap.get(sid) || await loadSessionStateFromDb(sid, this.sessionMap)
+      const cached = this.sessionMap.get(sid)
+      state = cached && !(cached.loadFailed && !cached.isWorking && cached.messages.length === 0)
+        ? cached
+        : await loadSessionStateFromDb(sid, this.sessionMap)
       this.sessionMap.set(sid, state)
     }
     const resumeEvents = state.isWorking

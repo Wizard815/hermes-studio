@@ -164,7 +164,7 @@ export async function rename(ctx: any) {
     ctx.body = { error: 'Missing oldPath or newPath', code: 'missing_path' }
     return
   }
-  if (isSensitivePath(oldPath)) {
+  if (isSensitivePath(oldPath) || isSensitivePath(newPath)) {
     ctx.status = 403
     ctx.body = { error: 'Cannot rename sensitive file', code: 'permission_denied' }
     return
@@ -204,6 +204,11 @@ export async function copy(ctx: any) {
   if (!srcPath || !destPath) {
     ctx.status = 400
     ctx.body = { error: 'Missing srcPath or destPath', code: 'missing_path' }
+    return
+  }
+  if (isSensitivePath(srcPath) || isSensitivePath(destPath)) {
+    ctx.status = 403
+    ctx.body = { error: 'Cannot copy sensitive file', code: 'permission_denied' }
     return
   }
   try {

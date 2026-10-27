@@ -202,7 +202,15 @@ function registerCheckpoint(key: string, checkpoint: WorkspaceRunCheckpoint): vo
     }
   }
   checkpoints.set(key, checkpoint)
+  // A run that never completes (superseded, crashed) must not pin its file snapshot forever.
+  while (checkpoints.size > MAX_LIVE_CHECKPOINTS) {
+    const oldest = checkpoints.keys().next().value
+    if (oldest === undefined || oldest === key) break
+    checkpoints.delete(oldest)
+  }
 }
+
+const MAX_LIVE_CHECKPOINTS = 32
 
 function createRunChangeId(runId: string): string {
   return `run:${runId || 'unknown'}:${Date.now().toString(36)}:${randomUUID()}`

@@ -691,6 +691,10 @@ export async function forceCompressBridgeHistory(
 
 export function getOrCreateSession(sessionMap: Map<string, SessionState>, sessionId: string): SessionState {
   let state = sessionMap.get(sessionId)
+  if (state?.loadFailed && !state.isWorking && state.messages.length === 0 && getSession(sessionId)) {
+    // A transient DB error (e.g. SQLITE_BUSY) left an empty placeholder; heal it from disk.
+    state = undefined
+  }
   if (!state) {
     // A deleted cache entry does not mean the conversation is new. Run setup
     // calls this before the agent handler, so an empty placeholder would also

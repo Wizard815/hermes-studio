@@ -53,7 +53,9 @@ export function tmuxSessionName(chatSessionId: string, index: number): string {
 
 /** True when the name belongs to the given chat session. */
 export function isSessionForChat(name: string, chatSessionId: string): boolean {
-  return name.startsWith(`${TMUX_PREFIX}${sanitize(chatSessionId)}_`)
+  // Exact match on "<prefix><id>_<index>" so chat "a" does not also own chat "a_b"'s terminals.
+  const head = `${TMUX_PREFIX}${sanitize(chatSessionId)}_`
+  return name.startsWith(head) && /^\d+$/.test(name.slice(head.length))
 }
 
 function runTmux(args: string[], options?: { timeout?: number }): string {

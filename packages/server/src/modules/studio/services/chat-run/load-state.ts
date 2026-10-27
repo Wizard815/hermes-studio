@@ -12,6 +12,8 @@ import { getSessionContextUsageEstimate } from '../../repositories/session-conte
 import type { ChatRunSource, SessionState } from './types'
 import { historySessionSource, isBuiltinEkkoAgent } from '../../contracts/history-source'
 
+const STALE_BACKGROUND_DELEGATION_MS = 24 * 60 * 60 * 1000
+
 function restoreBackgroundDelegations(messages: any[]): SessionState['backgroundDelegations'] {
   const delegations: NonNullable<SessionState['backgroundDelegations']> = {}
   for (const message of messages) {
@@ -28,6 +30,10 @@ function restoreBackgroundDelegations(messages: any[]): SessionState['background
         else if (displayStatus === 'failed' || displayStatus === 'error') status = 'failed'
         else if (displayStatus === 'interrupted' || displayStatus === 'cancelled') status = 'interrupted'
       }
+      // A dispatch that never recorded a result and is a day old will not finish;
+      // leaving it 'running' would keep the background poll busy forever.
+      const startedMs = Number(message.timestamp || 0) * 1000
+      if (status === 'running' && startedMs > 0 && Date.now() - startedMs > STALE_BACKGROUND_DELEGATION_MS) status = 'interrupted'
       delegations[delegationId] = {
         delegationId,
         status,
@@ -118,6 +124,6 @@ export function readSessionStateFromDb(sid: string): SessionState {
     }
   } catch (err) {
     logger.warn(err, '[chat-run-socket] failed to load session %s from DB', sid)
-    return { messages: [], isWorking: false, events: [], queue: [] }
+    return { messages: [], isWorking: false, events: [], queue: [], loadFailed: true }
   }
 }

@@ -54,7 +54,7 @@ import { writeModelRunProfileToken } from './model-run-prompt'
 import type { AuthenticatedUser } from '../../public/auth'
 import { ensureHermesRunWorkspace } from './workspace'
 import { observeRunChatPetEvent } from '../../public/pet-events'
-import { completeWorkspaceRunCheckpoint, startWorkspaceRunCheckpoint } from './workspace-diff-tracker'
+import { completeWorkspaceRunCheckpoint, discardWorkspaceRunCheckpoint, startWorkspaceRunCheckpoint } from './workspace-diff-tracker'
 import { resolveAuthorizedProviderRuntimeCredentials } from '../../public/authorized-provider-runtime'
 import { saveEnvValueForProfile } from '../../public/profile-config'
 
@@ -1847,7 +1847,10 @@ async function applyBridgeChunkAsync(
     bridge,
     isCurrent,
   })
-  if (!isCurrent()) return
+  if (!isCurrent()) {
+    discardWorkspaceRunCheckpoint({ sessionId, runId: chunk.run_id })
+    return
+  }
   const hadQueuedRunBeforeGoalEvaluation = state.queue.length > 0
   const eventName = terminalError ? 'run.failed' : 'run.completed'
   if (runMetadata?.delegationId && state.backgroundDelegations?.[runMetadata.delegationId]) {

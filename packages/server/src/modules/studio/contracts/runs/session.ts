@@ -198,6 +198,8 @@ export interface SessionState {
   bridgeCompressionResults?: Record<string, BridgeCompressionResult>
   backgroundTasks?: Record<string, Record<string, unknown>>
   backgroundDelegations?: Record<string, BackgroundDelegationState>
+  /** Set when hydration from SQLite failed; the next access re-reads instead of trusting the empty state. */
+  loadFailed?: boolean
   /** Process-local by design; callbacks after a Studio restart are rejected instead of using live history. */
   backgroundContinuationContexts?: Record<string, BackgroundContinuationContext>
 }

@@ -95,4 +95,22 @@ describe('session category store', () => {
     for (let i = 1; i < SESSION_CATEGORY_MAX_DEPTH; i++) parent = createSessionCategory(`L${i}`, parent.id)
     expect(() => createSessionCategory('too deep', parent.id)).toThrow('nested at most')
   })
+
+  it('keeps owner attribution and push preference on a branch and drops shares on delete', async () => {
+    const { createSession, createBranchedSession, getSession, deleteSession, updateSession } = await import(
+      '../../packages/server/src/modules/studio/repositories/session-store'
+    )
+    createSession({ id: 'parent', profile: 'p', studio_user_id: '7' } as any)
+    updateSession('parent', { push_enabled: 0 } as any)
+    const branch = createBranchedSession({
+      id: 'child', parent_session_id: 'parent', profile: 'p', ended_at: 10, last_active: 10, messages: [],
+    } as any)
+    expect((branch as any).studio_user_id).toBe('7')
+    expect(Number((branch as any).push_enabled)).toBe(0)
+
+    db.exec("INSERT INTO session_shares (id, session_id, profile, created_by_user_id, sharer_app_user_id, sharer_name_snapshot, token_hash, permissions, workspace_root, created_at, updated_at, expires_at) VALUES ('s1', 'child', 'p', 1, 1, 'x', 'h', '[]', '/', 0, 0, 0)")
+    expect(deleteSession('child')).toBe(true)
+    expect(db.prepare("SELECT COUNT(*) AS n FROM session_shares WHERE session_id = 'child'").get().n).toBe(0)
+    expect(getSession('child')).toBeNull()
+  })
 })
