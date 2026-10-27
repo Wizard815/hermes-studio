@@ -806,8 +806,13 @@ watch(
     const expandedKey = categorizedSessions.value.some((group) => group.key === activeKey)
       ? activeKey
       : categorizedSessions.value[0]?.key;
+    // First run: collapse everything except the active chat's branch, including its ancestors.
+    const keepOpen = new Set([
+      expandedKey,
+      ...(categorizedSessions.value.find((group) => group.key === expandedKey)?.ancestorKeys || []),
+    ]);
     collapsedCategories.value = new Set(
-      categorizedSessions.value.map((group) => group.key).filter((key) => key !== expandedKey),
+      categorizedSessions.value.map((group) => group.key).filter((key) => !keepOpen.has(key)),
     );
     persistCollapsedCategories();
   },
