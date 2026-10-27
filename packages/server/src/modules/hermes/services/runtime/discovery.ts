@@ -99,7 +99,7 @@ function versionProbeError(error: unknown): string {
   const stderr = typeof detail?.stderr === 'string'
     ? detail.stderr.trim()
     : Buffer.isBuffer(detail?.stderr) ? detail.stderr.toString('utf8').trim() : ''
-  if (detail?.killed || detail?.code === 'ETIMEDOUT') return 'Hermes CLI import probe timed out after 5000ms'
+  if (detail?.killed || detail?.code === 'ETIMEDOUT') return 'Hermes CLI import probe timed out after 20000ms'
   const code = detail?.code !== undefined ? ` (${String(detail.code)})` : ''
   const message = error instanceof Error ? error.message.replace(/^Error:\s*/, '').trim() : String(error)
   return `Hermes CLI import probe failed${code}: ${stderr || message || 'unknown error'}`
@@ -130,7 +130,10 @@ export async function probeHermesCliVersion(
   try {
     const { stdout } = await execFileAsync(installation.python, ['-c', hermesVersionProbe(installation.agentRoot)], {
       encoding: 'utf8',
-      timeout: 5000,
+      // A cold Python start importing hermes_cli can exceed 5s on a loaded or
+      // small machine; a false timeout makes Studio treat an installed Hermes
+      // as missing for the whole server lifetime.
+      timeout: 20000,
       windowsHide: true,
       env,
     })

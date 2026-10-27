@@ -63,7 +63,7 @@ export class TaskPlanRuns {
   update(contextId: string, profile: string, input: Record<string, unknown>): TaskPlanSnapshot {
     const binding = this.bindings.get(contextId)
     if (!binding || binding.profile !== profile) throw new TaskPlanError(
-      'Task plan context is unavailable or has expired. This context_id is not from the current turn: use the context_id in the latest <studio_task_plan_context> block and resend the complete plan. Retrying other argument shapes cannot succeed.',
+      'Task plan context is unavailable or has expired. This context_id is not from the current turn: use the context_id in the latest <studio_task_plan_context> block, not plan_id or history, and resend the complete plan. Retrying other argument shapes cannot succeed.',
       409,
       'stale_context',
     )
@@ -71,7 +71,7 @@ export class TaskPlanRuns {
     const runId = activeTurnId(state)
     if (!state?.isWorking || state.isAborting || !runId || (binding.runId && binding.runId !== runId) || (binding.snapshot && binding.snapshot.run_id !== runId)) {
       throw new TaskPlanError(
-        'Task plan context has no active turn. The run for this context_id has already ended; a card can only be updated while its turn is running.',
+        'Task plan context has no active turn. The run for this context_id has already ended; a card can only be updated while its turn is running. Read the context_id from the current turn\'s <studio_task_plan_context> block, not plan_id or history.',
         409,
         'no_active_turn',
       )

@@ -457,7 +457,9 @@
       "literal-color | <script> | background: #1a1b26": 1,
       "unowned-background | <script> | background: #1a1b26": 1,
       "literal-color | <script> | background: #0d1117": 1,
-      "unowned-background | <script> | background: #0d1117": 1
+      "unowned-background | <script> | background: #0d1117": 1,
+      "unowned-background | .terminal-context-menu | background: $bg-card": 1,
+      "literal-color | .terminal-context-menu | box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35)": 1
     },
     "packages/client/src/components/hermes/chat/ToolChangeCard.vue": {
       "unowned-background | .tool-change-card | background: $bg-secondary": 1,
@@ -1259,6 +1261,38 @@
     "packages/client/src/views/social-messages/SocialMessagesView.vue": {
       "literal-color | .push-qr img | background: #fff": 1,
       "unowned-background | .push-qr img | background: #fff": 1
+    },
+    "packages/client/src/components/hermes/chat/BrowserPanel.vue": {
+      "unowned-background | .browser-panel-content | background: $bg-primary": 1,
+      "literal-color | .browser-tab-btn.active | background: rgba(122, 162, 247, 0.1)": 1,
+      "literal-color | .browser-tab-btn.active | color: #7aa2f7": 1,
+      "literal-color | .browser-tab-btn.active::after | background: #7aa2f7": 1,
+      "unowned-background | .browser-url-input :deep(.n-input__input-el) | background: $bg-input": 1,
+      "literal-color | .browser-live-view | background: #0d0e14": 1,
+      "unowned-background | .browser-live-view | background: #0d0e14": 1,
+      "literal-color | .browser-loading-overlay | background: rgba(13, 14, 20, 0.7)": 1,
+      "unowned-background | .browser-loading-overlay | background: rgba(13, 14, 20, 0.7)": 1,
+      "literal-color | .browser-gallery-delete | background: rgba(0, 0, 0, 0.6)": 1,
+      "unowned-background | .browser-gallery-delete | background: rgba(0, 0, 0, 0.6)": 1,
+      "literal-color | .browser-gallery-delete | color: #fff": 1,
+      "literal-color | .browser-gallery-delete:hover | background: rgba(220, 60, 60, 0.9)": 1,
+      "literal-color | .browser-gallery-thumb:hover | box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)": 1,
+      "literal-color | .browser-lightbox | background: rgba(0, 0, 0, 0.85)": 1,
+      "unowned-background | .browser-lightbox | background: rgba(0, 0, 0, 0.85)": 1,
+      "literal-color | .browser-lightbox-close | background: rgba(255, 255, 255, 0.1)": 1,
+      "unowned-background | .browser-lightbox-close | background: rgba(255, 255, 255, 0.1)": 1,
+      "literal-color | .browser-lightbox-close | color: #fff": 1,
+      "literal-color | .browser-lightbox-close:hover | background: rgba(255, 255, 255, 0.2)": 1,
+      "literal-color | .browser-lightbox-image | box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5)": 1
+    },
+    "packages/client/src/components/hermes/files/FileTree.vue": {
+      "unowned-background | .tree-error | background-color: rgba(var(--danger-color-rgb, 220, 38, 38), 0.08)": 1
+    },
+    "packages/client/src/views/hermes/UpstreamView.vue": {
+      "unowned-background | .upstream-view | background: $bg-main-surface": 1,
+      "literal-color | .upstream-frame | background: #0f1115": 1,
+      "unowned-background | .upstream-frame | background: #0f1115": 1,
+      "unowned-background | .upstream-frame-fallback | background: $bg-main-surface": 1
     }
   }
 }

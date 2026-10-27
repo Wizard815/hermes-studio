@@ -43,6 +43,7 @@ bridge_runtime._hermes_home = lambda *_a, **_k: Path(tempfile.gettempdir())
 bridge_runtime._install_execute_code_approval_memory_patch = lambda *_a, **_k: None
 bridge_runtime._jsonable = lambda value: value
 bridge_runtime._load_cfg = lambda *_a, **_k: {}
+bridge_runtime._load_disabled_toolsets = lambda *_a, **_k: []
 bridge_runtime._load_enabled_toolsets = lambda *_a, **_k: []
 bridge_runtime._load_fallback_model = lambda cfg: None
 bridge_runtime._load_reasoning_config = lambda *_a, **_k: {}
@@ -81,6 +82,16 @@ run_agent.AIAgent = AIAgent
 sys.modules["run_agent"] = run_agent
 
 pool = bridge_pool.AgentPool()
+
+class _FakeAgent:
+    _interrupt_requested = False
+
+class _FakeSession:
+    def __init__(self):
+        self.agent = _FakeAgent()
+        self.current_run_id = "run-1"
+
+pool._sessions["session-1"] = _FakeSession()
 events = []
 
 def fake_append_event(session_id, event):
@@ -98,10 +109,10 @@ pool._append_event = fake_append_event
 
 describe('Agent Bridge clarify payload', () => {
   // clarify_tool.py calls the bridge callback as callback(normalized) -- ONE
-  // argument, the normalized question list. Passing that list into a
-  // (question: str, choices) signature stringified it, so the UI received a
-  // Python repr of the whole payload as `question` and `choices: None` (no
-  // buttons). See bridge_pool._clarify_callback.
+  // argument, the normalized question list. The callback must unwrap each
+  // entry into a question string plus choices for the clarify.requested event
+  // (never a Python repr of the list) and answer with {answers, outcome}.
+  // See bridge_pool._clarify_callback / _clarify_question.
   it('unwraps the normalized question list into a question string plus choices', () => {
     const result = runPython(PRELUDE + String.raw`
 callback = pool._clarify_callback("session-1")
@@ -119,15 +130,13 @@ print(json.dumps({
     "question": event.get("question"),
     "choices": event.get("choices"),
     "multi_select": event.get("multi_select"),
-    "questions_is_list": isinstance(event.get("questions"), list),
 }))
 `)
 
-    expect(result.reply).toBe('commands')
+    expect(result.reply).toEqual({ answers: { q0: 'commands' }, outcome: 'submitted' })
     expect(result.question).toBe('How do you want to deploy the Upstream-Keep systemd service?')
     expect(result.choices).toEqual(["I'll run the commands myself", 'You DO have sudo'])
     expect(result.multi_select).toBe(false)
-    expect(result.questions_is_list).toBe(true)
     // The regression itself: the payload must never arrive as a list repr.
     expect(String(result.question).startsWith('[')).toBe(false)
   })
@@ -163,6 +172,7 @@ print(json.dumps({
 }))
 `)
 
+    expect(result.reply).toEqual({ answers: { q0: 'commands' }, outcome: 'submitted' })
     expect(result.question).toBe('Describe the failure')
     expect(result.choices).toBeNull()
     expect(result.multi_select).toBe(false)
