@@ -151,7 +151,7 @@ onUnmounted(() => {
           >
         </span>
         <span v-if="props.showProfile" class="session-item-profile">
-          <ProfileAvatar class="session-item-profile-avatar" :name="profileName" :avatar="profileAvatar" :size="16" />
+          <ProfileAvatar class="session-item-profile-avatar" :name="profileName" :avatar="profileAvatar" :size="14" />
           <span class="session-item-profile-name">{{ profileName }}</span>
         </span>
         <span
@@ -199,7 +199,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: calc(8px * var(--spacing-scale, 1)) calc(10px * var(--spacing-scale, 1));
+  padding: calc(4px * var(--spacing-scale, 1)) calc(8px * var(--spacing-scale, 1));
   border: none;
   background: none;
   border-radius: var(--radius-sm);
@@ -208,7 +208,7 @@ onUnmounted(() => {
   text-decoration: none;
   color: var(--text-secondary);
   transition: all var(--transition-fast);
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .session-item:hover {
@@ -262,7 +262,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: calc(10px * var(--spacing-scale, 1));
+  gap: calc(6px * var(--spacing-scale, 1));
   min-width: 0;
 }
 
@@ -396,8 +396,8 @@ onUnmounted(() => {
   align-items: center;
   gap: calc(4px * var(--spacing-scale, 1));
   min-width: 0;
-  margin-top: 3px;
-  padding: calc(3px * var(--spacing-scale, 1)) 0;
+  margin-top: 1px;
+  padding: calc(1px * var(--spacing-scale, 1)) 0;
 }
 
 .session-item-agent-logo-wrap {
@@ -406,8 +406,8 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
 }
 
@@ -427,8 +427,8 @@ onUnmounted(() => {
 .session-item-agent-logo {
   position: relative;
   z-index: 1;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   box-sizing: border-box;
   border: var(--border-width, 1px) solid #fff;
   border-radius: inherit;

@@ -3933,7 +3933,7 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
 // Tree view: each nesting level indents one step and draws a vertical guide line,
 // so every row under a nested category carries the guides of all its ancestors.
 .session-tree-row {
-  --tree-step: calc(14px * var(--spacing-scale, 1));
+  --tree-step: calc(11px * var(--spacing-scale, 1));
   position: relative;
 }
 
