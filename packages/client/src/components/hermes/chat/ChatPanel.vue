@@ -13,6 +13,7 @@ import DshSessionPresetSelect from "@/components/coding-agents/dsh/DshSessionPre
 import {
   batchDeleteSessions,
   createSessionCategory,
+  moveSessionCategory,
   deleteSessionCategory,
   exportSession,
   fetchSessionCategories,
@@ -66,7 +67,7 @@ import TerminalPanel from "./TerminalPanel.vue";
 import SubagentStreamPanel from "./SubagentStreamPanel.vue";
 import { chatSessionAgentAvatar } from "@/utils/chat-agent-avatar";
 import { isHermesSession } from "@/utils/hermes/session-agent";
-import { buildVisibleSessionCategoryGroups, partitionRecentSessions } from "./session-category-groups";
+import { buildVisibleSessionCategoryGroups, categoryPathLabel, categorySubtreeIds, partitionRecentSessions } from "./session-category-groups";
 import { buildSessionCategoryMenuChildren, resolveRecentSessionCategoryLabel } from "./session-category-menu";
 import { buildActiveSessionMenuOptions, buildSessionContextMenuOptions } from "./session-menu-options";
 import PageSidebarNav from "@/components/layout/PageSidebarNav.vue";
@@ -716,7 +717,7 @@ const recentSessionPartition = computed(() => partitionRecentSessions(
 const recentSessions = computed(() => recentSessionPartition.value.group);
 const nonRecentSessions = computed(() => recentSessionPartition.value.remaining);
 const sessionCategoryNames = computed(() => new Map(
-  sessionCategories.value.map(category => [category.id, category.name]),
+  sessionCategories.value.map(category => [category.id, categoryPathLabel(sessionCategories.value, category.id)]),
 ));
 
 function recentCategoryLabel(session: Session): string | undefined {
@@ -755,6 +756,11 @@ const categorizedSessions = computed(() => buildVisibleSessionCategoryGroups(
   t("chat.uncategorized"),
 ));
 
+// Groups nested under a collapsed ancestor are hidden along with its sessions.
+const visibleCategoryGroups = computed(() => categorizedSessions.value.filter(
+  (group) => !(group.ancestorKeys || []).some((key) => collapsedCategories.value.has(key)),
+));
+
 function openRecentCountModal(event: MouseEvent) {
   event.stopPropagation();
   recentCountDraft.value = sessionBrowserPrefsStore.recentCount;
@@ -788,9 +794,11 @@ watch(
     const shouldReveal = loaded !== previousLoaded
       || sessionId !== previousSessionId
       || activeKey !== previousActiveKey;
-    if (shouldReveal && collapsedCategories.value.has(activeKey)) {
+    const activeGroup = categorizedSessions.value.find((group) => group.key === activeKey);
+    const revealKeys = new Set([activeKey, ...(activeGroup?.ancestorKeys || [])]);
+    if (shouldReveal && [...revealKeys].some((key) => collapsedCategories.value.has(key))) {
       collapsedCategories.value = new Set(
-        [...collapsedCategories.value].filter((key) => key !== activeKey),
+        [...collapsedCategories.value].filter((key) => !revealKeys.has(key)),
       );
       persistCollapsedCategories();
     }
@@ -1856,10 +1864,35 @@ const categoryContextId = ref<number | null>(null);
 const categoryContextName = computed(() =>
   sessionCategories.value.find((item) => item.id === categoryContextId.value)?.name || "",
 );
-const categoryContextMenuOptions = computed<DropdownOption[]>(() => [
-  { label: t("chat.renameCategory"), key: "rename" },
-  { label: t("chat.deleteCategory"), key: "delete" },
-]);
+const categoryContextMenuOptions = computed<DropdownOption[]>(() => {
+  const id = categoryContextId.value;
+  const current = sessionCategories.value.find((item) => item.id === id);
+  const excluded = id == null ? new Set<number>() : categorySubtreeIds(sessionCategories.value, id);
+  const moveTargets: DropdownOption[] = [
+    { label: t("chat.moveCategoryTopLevel"), key: "move:top", disabled: current?.parent_id == null },
+    ...sessionCategories.value
+      .filter((item) => !excluded.has(item.id))
+      .map((item) => ({
+        id: item.id,
+        label: categoryPathLabel(sessionCategories.value, item.id),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+      .map(({ id: targetId, label }) => ({
+        label,
+        key: `move:${targetId}`,
+        disabled: current?.parent_id === targetId,
+      })),
+  ];
+  return [
+    { label: t("chat.createSubCategory"), key: "create-sub" },
+    { label: t("chat.moveCategory"), key: "move", children: moveTargets },
+    { label: t("chat.renameCategory"), key: "rename" },
+    { label: t("chat.deleteCategory"), key: "delete" },
+  ];
+});
+const showCreateSubCategoryModal = ref(false);
+const createSubCategoryValue = ref("");
+const createSubCategorySubmitting = ref(false);
 const showRenameCategoryModal = ref(false);
 const renameCategoryValue = ref("");
 const showDeleteCategoryModal = ref(false);
@@ -1901,6 +1934,53 @@ function handleCategoryContextMenuSelect(key: string) {
     showRenameCategoryModal.value = true;
   } else if (key === "delete") {
     showDeleteCategoryModal.value = true;
+  } else if (key === "create-sub") {
+    createSubCategoryValue.value = "";
+    showCreateSubCategoryModal.value = true;
+  } else if (key.startsWith("move:")) {
+    const target = key.slice("move:".length);
+    void handleMoveCategory(category.id, target === "top" ? null : Number(target));
+  }
+}
+
+function sortedCategories(list: SessionCategory[]): SessionCategory[] {
+  return [...list].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function handleCreateSubCategoryConfirm() {
+  const parentId = categoryContextId.value;
+  const name = createSubCategoryValue.value.trim().replace(/\s+/g, " ");
+  if (!parentId || !name || createSubCategorySubmitting.value) return false;
+  createSubCategorySubmitting.value = true;
+  try {
+    const category = await createSessionCategory(name, parentId);
+    if (!sessionCategories.value.some((item) => item.id === category.id)) {
+      sessionCategories.value = sortedCategories([...sessionCategories.value, category]);
+    }
+    // Make sure the new branch is visible under its parent.
+    const parentKey = `category-${parentId}`;
+    if (collapsedCategories.value.has(parentKey)) {
+      collapsedCategories.value = new Set([...collapsedCategories.value].filter((key) => key !== parentKey));
+      persistCollapsedCategories();
+    }
+    showCreateSubCategoryModal.value = false;
+  } catch (error: any) {
+    message.error(error?.message || t("chat.categoryCreateFailed"));
+    return false;
+  } finally {
+    createSubCategorySubmitting.value = false;
+  }
+}
+
+async function handleMoveCategory(categoryId: number, parentId: number | null) {
+  try {
+    const moved = await moveSessionCategory(categoryId, parentId);
+    sessionCategories.value = sortedCategories(
+      sessionCategories.value.map((item) => item.id === moved.id ? moved : item),
+    );
+    message.success(t("chat.categoryMoved"));
+  } catch (error: any) {
+    message.error(error?.message || t("chat.categoryMoveFailed"));
   }
 }
 
@@ -1926,9 +2006,13 @@ async function handleDeleteCategoryConfirm() {
   if (!categoryId) return false;
   try {
     await deleteSessionCategory(categoryId);
-    sessionCategories.value = sessionCategories.value.filter((item) => item.id !== categoryId);
+    // The server moves sub-categories and sessions up to the deleted category's parent.
+    const parentId = sessionCategories.value.find((item) => item.id === categoryId)?.parent_id ?? null;
+    sessionCategories.value = sessionCategories.value
+      .filter((item) => item.id !== categoryId)
+      .map((item) => item.parent_id === categoryId ? { ...item, parent_id: parentId } : item);
     for (const session of chatStore.sessions) {
-      if (session.categoryId === categoryId) session.categoryId = null;
+      if (session.categoryId === categoryId) session.categoryId = parentId;
     }
     const collapsedKey = `category-${categoryId}`;
     if (collapsedCategories.value.has(collapsedKey)) {
@@ -1956,7 +2040,8 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
   includeArchive: contextSession.value?.source !== "global_agent",
   includeModel: canSetContextSessionModel.value,
   categoryChildren: buildSessionCategoryMenuChildren({
-    categories: sessionCategories.value,
+    categories: [...sessionCategories.value].sort((a, b) =>
+      categoryPathLabel(sessionCategories.value, a.id).localeCompare(categoryPathLabel(sessionCategories.value, b.id))),
     currentCategoryId: contextSession.value?.categoryId,
     createCategoryLabel: t("chat.createCategory"),
     uncategorizedLabel: t("chat.uncategorized"),
@@ -2723,9 +2808,10 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
           </button>
         </div>
 
-        <template v-for="group in categorizedSessions" :key="group.key">
+        <template v-for="group in visibleCategoryGroups" :key="group.key">
           <div
             class="session-group-header"
+            :style="group.depth ? { paddingInlineStart: `calc(${10 + group.depth * 14}px * var(--spacing-scale, 1))` } : undefined"
             @click="toggleCategoryGroup(group.key)"
             @contextmenu="handleCategoryContextMenu($event, group.key)"
           >
@@ -2742,7 +2828,7 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
               <polyline points="9 18 15 12 9 6" />
             </svg>
             <span class="session-group-label">{{ group.label }}</span>
-            <span class="session-group-count">{{ group.sessions.length }}</span>
+            <span class="session-group-count">{{ group.totalCount ?? group.sessions.length }}</span>
             <button
               v-if="group.key !== 'category-none'"
               class="session-category-menu-button"
@@ -2908,6 +2994,27 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
         :disabled="createCategorySubmitting"
         :readonly="Boolean(createCategoryPendingCategory)"
         @keydown.enter="handleCreateCategoryEnter"
+      />
+    </NModal>
+
+    <NModal
+      v-model:show="showCreateSubCategoryModal"
+      preset="dialog"
+      :title="t('chat.createSubCategory')"
+      :positive-text="t('common.create')"
+      :negative-text="t('common.cancel')"
+      :positive-button-props="{
+        loading: createSubCategorySubmitting,
+        disabled: createSubCategorySubmitting || !createSubCategoryValue.trim(),
+      }"
+      @positive-click="handleCreateSubCategoryConfirm"
+    >
+      <NInput
+        v-model:value="createSubCategoryValue"
+        :placeholder="t('chat.enterCategoryName')"
+        :maxlength="40"
+        :disabled="createSubCategorySubmitting"
+        @keydown.enter="(e: KeyboardEvent) => { if (!e.isComposing) void handleCreateSubCategoryConfirm() }"
       />
     </NModal>
 

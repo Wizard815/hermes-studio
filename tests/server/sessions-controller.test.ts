@@ -1753,7 +1753,7 @@ describe('session conversations controller', () => {
 
     const createCtx: any = { request: { body: { name: '  Client   Work ' } }, body: null }
     await mod.createCategory(createCtx)
-    expect(createSessionCategoryMock).toHaveBeenCalledWith('Client Work')
+    expect(createSessionCategoryMock).toHaveBeenCalledWith('Client Work', null)
     expect(createCtx.body).toEqual({ category })
   })
 

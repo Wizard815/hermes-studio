@@ -51,6 +51,7 @@ import {
   findSessionCategoryByName,
   getSessionCategory,
   listSessionCategories,
+  moveSessionCategory,
   normalizeSessionCategoryName,
   renameSessionCategory,
   setSessionCategory,
@@ -547,54 +548,85 @@ export async function listCategories(ctx: any) {
   ctx.body = { categories: listSessionCategories() }
 }
 
-export async function createCategory(ctx: any) {
-  const body = ctx.request.body as { name?: string }
-  const name = normalizeSessionCategoryName(body?.name)
+function parseCategoryParentId(body: any): { provided: boolean; value: number | null; valid: boolean } {
+  const raw = body?.parentId !== undefined ? body.parentId : body?.parent_id
+  if (raw === undefined) return { provided: false, value: null, valid: true }
+  if (raw === null) return { provided: true, value: null, valid: true }
+  const value = Number(raw)
+  return { provided: true, value, valid: Number.isSafeInteger(value) && value > 0 }
+}
+
+function validateCategoryName(ctx: any, name: string): boolean {
   if (!name) {
     ctx.status = 400
     ctx.body = { error: 'Category name is required' }
-    return
+    return false
   }
   if (name.length > SESSION_CATEGORY_NAME_MAX_LENGTH) {
     ctx.status = 400
     ctx.body = { error: `Category name must be ${SESSION_CATEGORY_NAME_MAX_LENGTH} characters or fewer` }
+    return false
+  }
+  return true
+}
+
+export async function createCategory(ctx: any) {
+  const body = ctx.request.body as { name?: string }
+  const name = normalizeSessionCategoryName(body?.name)
+  if (!validateCategoryName(ctx, name)) return
+  const parent = parseCategoryParentId(body)
+  if (!parent.valid) {
+    ctx.status = 400
+    ctx.body = { error: 'parentId must be a positive integer or null' }
     return
   }
-  ctx.body = { category: createSessionCategory(name) }
+  try {
+    ctx.body = { category: createSessionCategory(name, parent.value) }
+  } catch (err) {
+    ctx.status = 400
+    ctx.body = { error: err instanceof Error ? err.message : 'Failed to create category' }
+  }
 }
 
 export async function renameCategory(ctx: any) {
   const categoryId = Number(ctx.params.id)
-  if (!Number.isSafeInteger(categoryId) || categoryId <= 0 || !getSessionCategory(categoryId)) {
+  const existing = Number.isSafeInteger(categoryId) && categoryId > 0 ? getSessionCategory(categoryId) : null
+  if (!existing) {
     ctx.status = 404
     ctx.body = { error: 'Category not found' }
     return
   }
   const body = ctx.request.body as { name?: string }
-  const name = normalizeSessionCategoryName(body?.name)
-  if (!name) {
+  const parent = parseCategoryParentId(body)
+  if (!parent.valid) {
+    ctx.status = 400
+    ctx.body = { error: 'parentId must be a positive integer or null' }
+    return
+  }
+  const hasName = body?.name !== undefined
+  if (!hasName && !parent.provided) {
     ctx.status = 400
     ctx.body = { error: 'Category name is required' }
     return
   }
-  if (name.length > SESSION_CATEGORY_NAME_MAX_LENGTH) {
-    ctx.status = 400
-    ctx.body = { error: `Category name must be ${SESSION_CATEGORY_NAME_MAX_LENGTH} characters or fewer` }
-    return
-  }
-  const duplicate = findSessionCategoryByName(name)
+  const name = hasName ? normalizeSessionCategoryName(body.name) : existing.name
+  if (!validateCategoryName(ctx, name)) return
+  const targetParent = parent.provided ? parent.value : existing.parent_id
+  const duplicate = findSessionCategoryByName(name, targetParent)
   if (duplicate && duplicate.id !== categoryId) {
     ctx.status = 409
     ctx.body = { error: 'A category with this name already exists' }
     return
   }
-  const category = renameSessionCategory(categoryId, name)
-  if (!category) {
-    ctx.status = 404
-    ctx.body = { error: 'Category not found' }
-    return
+  try {
+    let category = existing
+    if (name !== existing.name) category = renameSessionCategory(categoryId, name) || category
+    if (parent.provided) category = moveSessionCategory(categoryId, parent.value) || category
+    ctx.body = { category }
+  } catch (err) {
+    ctx.status = 400
+    ctx.body = { error: err instanceof Error ? err.message : 'Failed to update category' }
   }
-  ctx.body = { category }
 }
 
 export async function removeCategory(ctx: any) {

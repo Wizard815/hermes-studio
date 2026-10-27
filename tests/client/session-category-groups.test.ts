@@ -45,7 +45,32 @@ describe('session category groups', () => {
       key: 'category-none',
       label: 'Uncategorized',
       sessions: [{ id: 'session-1', categoryId: 999 }],
+      depth: 0,
+      ancestorKeys: [],
+      totalCount: 1,
     }])
+  })
+
+  it('flattens nested categories depth-first and keeps ancestors of non-empty branches', () => {
+    const categories = [
+      { id: 1, name: 'Work', parent_id: null },
+      { id: 2, name: 'Clients', parent_id: 1 },
+      { id: 3, name: 'Acme', parent_id: 2 },
+      { id: 4, name: 'Empty', parent_id: 1 },
+      { id: 5, name: 'Home', parent_id: null },
+    ]
+    const groups = buildVisibleSessionCategoryGroups(
+      categories,
+      [{ id: 'a', categoryId: 3 }, { id: 'b', categoryId: 1 }],
+      'Uncategorized',
+    )
+
+    expect(groups.map(group => [group.key, group.depth, group.totalCount])).toEqual([
+      ['category-1', 0, 2],
+      ['category-2', 1, 1],
+      ['category-3', 2, 1],
+    ])
+    expect(groups[2].ancestorKeys).toEqual(['category-1', 'category-2'])
   })
 
   it('builds a dynamic recent group by strict activity time without changing real categories', () => {

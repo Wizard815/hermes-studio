@@ -1,8 +1,10 @@
 import type { DropdownOption } from 'naive-ui'
+import { categoryPathLabel } from './session-category-groups'
 
 interface CategoryOption {
   id: number
   name: string
+  parent_id?: number | null
 }
 
 interface BuildSessionCategoryMenuChildrenOptions {
@@ -49,7 +51,7 @@ export function buildSessionCategoryMenuChildren({
       disabled: currentCategoryId == null,
     },
     ...categories.map(category => ({
-      label: category.name,
+      label: categoryPathLabel(categories, category.id),
       key: `category:${category.id}`,
       disabled: currentCategoryId === category.id,
     })),

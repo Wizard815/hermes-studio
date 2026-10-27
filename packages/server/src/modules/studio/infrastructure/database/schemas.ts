@@ -180,12 +180,14 @@ export const WORKSPACE_DIRECTORIES_INDEXES = {
 export const SESSION_CATEGORIES_SCHEMA: Record<string, string> = {
   id: 'INTEGER PRIMARY KEY AUTOINCREMENT',
   name: 'TEXT NOT NULL COLLATE NOCASE',
+  parent_id: 'INTEGER',
   created_at: 'INTEGER NOT NULL',
   updated_at: 'INTEGER NOT NULL',
 }
 
+// Names are unique per parent so sub-categories can reuse a name under different parents.
 export const SESSION_CATEGORIES_INDEXES = {
-  uniq_session_categories_name: 'CREATE UNIQUE INDEX IF NOT EXISTS uniq_session_categories_name ON session_categories(name COLLATE NOCASE)',
+  uniq_session_categories_parent_name: 'CREATE UNIQUE INDEX IF NOT EXISTS uniq_session_categories_parent_name ON session_categories(COALESCE(parent_id, 0), name COLLATE NOCASE)',
 }
 
 export const SESSIONS_SCHEMA: Record<string, string> = {
@@ -1747,6 +1749,7 @@ export function initAllHermesTables(): void {
       AND LOWER(TRIM(COALESCE(agent, ''))) IN (${BUILTIN_EKKO_AGENT_IDS.map(() => '?').join(', ')})
       AND (source <> 'builtin_agent' OR agent <> 'ekko-agent')`)
       .run(...BUILTIN_HISTORY_SOURCES, ...BUILTIN_EKKO_AGENT_IDS)
+    db.exec('DROP INDEX IF EXISTS uniq_session_categories_name')
     createIndexes(db, SESSION_CATEGORIES_INDEXES)
     createIndexes(db, SESSIONS_INDEXES)
     syncTable(MESSAGES_TABLE, MESSAGES_SCHEMA)

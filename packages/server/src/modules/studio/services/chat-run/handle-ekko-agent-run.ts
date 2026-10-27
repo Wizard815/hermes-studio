@@ -51,6 +51,7 @@ import { observeRunChatPetEvent } from '../../public/pet-events'
 import { contentBlocksToString, convertContentBlocksForAgent, extractTextForPreview } from './content-blocks'
 import { buildCompressedHistory, getOrCreateSession } from './compression'
 import { handleEkkoSessionCommand, parseEkkoRunCommand } from './ekko-session-command'
+import { scheduleSessionTitle } from './session-title'
 import { resolveBridgeRunModelConfig, type RunModelGroup } from './model-config'
 import { persistRunMessages, type RunMessageDraft } from './message-persistence'
 import { buildOutboundRunEvent } from './resume-payload'
@@ -564,9 +565,13 @@ export async function handleEkkoAgentRun(
     }
   }
 
+  let provisionalTitle: string | null = null
+  let titlePrompt = ''
   if (!storedSession) {
     const previewText = extractTextForPreview(displayInput === null ? data.input : displayInput || data.input)
     const title = previewText.replace(/[\r\n]/g, ' ').substring(0, 100)
+    provisionalTitle = title
+    titlePrompt = previewText
     createSession({
       id: sessionId,
       profile,
@@ -680,6 +685,15 @@ export async function handleEkkoAgentRun(
         }
       : undefined,
   })
+  if (provisionalTitle !== null && titlePrompt.trim()) {
+    scheduleSessionTitle(sessionId, provisionalTitle, emit, {
+      profile,
+      provider: modelConfig.provider,
+      model: modelConfig.model,
+      prompt: titlePrompt,
+      modelClient,
+    })
+  }
   const skillReviewUsageBatchId = randomUUID()
   const turnId = randomUUID()
   const currentInputTokens = estimateUsageTokensFromMessages([

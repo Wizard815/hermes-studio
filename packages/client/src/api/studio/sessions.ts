@@ -47,6 +47,7 @@ export interface SessionSummary {
 export interface SessionCategory {
   id: number
   name: string
+  parent_id?: number | null
   created_at: number
   updated_at: number
 }
@@ -213,11 +214,22 @@ export async function fetchSessionCategories(): Promise<SessionCategory[]> {
   return res.categories
 }
 
-export async function createSessionCategory(name: string): Promise<SessionCategory> {
+export async function createSessionCategory(name: string, parentId: number | null = null): Promise<SessionCategory> {
   const res = await request<{ category: SessionCategory }>('/api/studio/session-categories', {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, parentId }),
   })
+  return res.category
+}
+
+export async function moveSessionCategory(id: number, parentId: number | null): Promise<SessionCategory> {
+  const res = await request<{ category: SessionCategory }>(
+    `/api/studio/session-categories/${encodeURIComponent(String(id))}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ parentId }),
+    },
+  )
   return res.category
 }
 

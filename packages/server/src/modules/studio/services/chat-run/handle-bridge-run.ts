@@ -11,6 +11,7 @@ import type { Server, Socket } from 'socket.io'
 import { getSystemPrompt } from '../../public/runs/prompt'
 import { getFirstSessionMessageByRole, getSession, getSessionMessageCountByRole, createSession, addMessage, updateSession, updateSessionStats } from '../../repositories/session-store'
 import { logger, bridgeLogger } from '../../public/logging'
+import { scheduleSessionTitle } from './session-title'
 import { recordBridgeModelUsage } from '../usage/bridge-model-usage'
 import type {
   PrimaryAgentBridgeClient as AgentBridgeClient,
@@ -605,6 +606,7 @@ export async function handleBridgeRun(
   const displayRoleForStorage = shouldStoreInputInsteadOfDisplay ? displayRole : null
   const displayContentForStorage = shouldStoreInputInsteadOfDisplay ? inputStr : null
   let messageId: number | string | undefined
+  let newSessionTitle: { provisional: string; prompt: string } | null = null
 
   if (shouldPersistUserMessage) {
     const userMessage = {
@@ -623,6 +625,7 @@ export async function handleBridgeRun(
     if (!getSession(session_id)) {
       const previewText = extractTextForPreview(displayInput || input)
       const preview = previewText.replace(/[\r\n]/g, ' ').substring(0, 100)
+      newSessionTitle = { provisional: preview, prompt: previewText }
       createSession({ id: session_id, profile, source: runSource, user_id: socketUser?.id, studio_user_id: socketUser?.id, model: resolvedModel, provider: selectedProvider, reasoning_effort: reasoningEffort || '', title: preview, workspace, category_id: data.category_id, push_enabled: data.push_enabled })
     }
     messageId = addMessage({
@@ -648,6 +651,7 @@ export async function handleBridgeRun(
   } else if (!getSession(session_id)) {
     const previewText = displayInput === null ? extractTextForPreview(input) : extractTextForPreview(displayInput || input)
     const preview = previewText.replace(/[\r\n]/g, ' ').substring(0, 100)
+    newSessionTitle = { provisional: preview, prompt: previewText }
     createSession({ id: session_id, profile, source: runSource, user_id: socketUser?.id, studio_user_id: socketUser?.id, model: resolvedModel, provider: selectedProvider, reasoning_effort: reasoningEffort || '', title: preview, workspace, category_id: data.category_id, push_enabled: data.push_enabled })
   }
 
@@ -676,6 +680,14 @@ export async function handleBridgeRun(
     if (!data.onEvent && !nsp.adapter.rooms.get(`session:${session_id}`)?.size && socket.connected) {
       socket.emit(event, outbound)
     }
+  }
+  if (newSessionTitle?.prompt.trim()) {
+    scheduleSessionTitle(session_id, newSessionTitle.provisional, emit, {
+      profile,
+      provider: selectedProvider,
+      model: resolvedModel,
+      prompt: newSessionTitle.prompt,
+    })
   }
   if (shouldEmitWorkspaceUpdate) {
     emit('session.workspace.updated', {
