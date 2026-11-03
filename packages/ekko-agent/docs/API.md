@@ -821,6 +821,8 @@ export const DEFAULT_AGENT_MODEL_MAX_RETRIES = 3
 
 export const DEFAULT_AGENT_TOOL_FAILURE_RECOVERY_THRESHOLD = 3
 
+export const DEFAULT_AGENT_IDENTICAL_CALL_RECOVERY_THRESHOLD = 3
+
 export const DEFAULT_AGENT_MAX_CONSECUTIVE_TOOL_FAILURES = 6
 
 export const DEFAULT_AGENT_SUBTASK_MAX_STEPS = 30
@@ -1471,6 +1473,10 @@ export * from './tools/delegation'
 
 export * from './tools/files'
 
+export * from './tools/read-tracking'
+
+export * from './tools/search'
+
 export * from './tools/images'
 
 export * from './tools/manager'
@@ -1483,7 +1489,13 @@ export * from './tools/recovery'
 
 export * from './tools/skills'
 
+export * from './tools/background-process-registry'
+
+export * from './tools/process'
+
 export * from './tools/terminal'
+
+export * from './tools/studio-bridge'
 
 export * from './tools/tool-result-sanitizer'
 
@@ -2828,7 +2840,7 @@ export class EkkoRecoveryService {
 ### `src/runtime/events.ts`
 
 ```ts
-export type AgentRuntimeEvent = | { type: 'plan.updated'; runId: string; plan: import('../tools/plan').AgentTaskPlan } | { type: 'run.started'; runId: string; maxSteps: number } | { type: 'memory.retrieved'; runId: string; diagnostics: MemoryContextDiagnostics; memoryIds: string[] } | { type: 'skill.review.started'; runId: string; reviewId: string } | { type: 'skill.review.completed'; runId: string; reviewId: string; mutations: number } | { type: 'skill.review.failed'; runId: string; reviewId: string; error: string } | { type: 'model.started'; runId: string; step: number } | { type: 'context.estimated'; runId: string; step: number; estimate: AgentRuntimeContextEstimate } | { type: 'model.retry'; runId: string; step: number; retry: number; maxRetries: number; error: string } | { type: 'model.message'; runId: string; step: number; message: AgentOutputMessage } | { type: 'model.delta'; runId: string; step: number; text: string } | { type: 'model.reasoning'; runId: string; step: number; text: string } | { type: 'model.tool_call'; runId: string; step: number; toolCall: AgentToolCall } | { type: 'model.usage'; runId: string; step: number; usage: ModelUsage } | { type: 'model.context'; runId: string; step: number; context: unknown } | { type: 'tool.started'; runId: string; step: number; toolCallId: string; toolName: string; arguments: Record<string, unknown> } | { type: 'tool.completed'; runId: string; step: number; toolCallId: string; toolName: string; result: AgentToolResult; durationMs: number } | { type: 'tool.failed'; runId: string; step: number; toolCallId: string; toolName: string; result: AgentToolResult; durationMs: number } | { type: 'subagent.start'; runId: string; subagentId: string; goal: string; background: boolean; model?: string; startedAt: number } | { type: 'subagent.text'; runId: string; childRunId?: string; subagentId: string; goal: string; background: boolean; text: string } | { type: 'subagent.thinking'; runId: string; childRunId?: string; subagentId: string; goal: string; background: boolean; text: string } | { type: 'subagent.tool'; runId: string; childRunId?: string; subagentId: string; goal: string; background: boolean; toolName: string; arguments: Record<string, unknown>; toolCount: number } | { type: 'subagent.complete' runId: string childRunId?: string subagentId: string goal: string background: boolean status: 'completed' | 'failed' | 'interrupted' summary: string output: string outputTail: string durationMs: number toolCount: number apiCalls: number inputTokens: number outputTokens: number cacheReadTokens: number cacheWriteTokens: number reasoningTokens: number costUsd?: number costSource?: 'reported' | 'estimated' continuationContext?: EkkoBackgroundContinuationContext } | { type: 'run.tool_recovery_required'; runId: string; toolName: string; failures: number } | { type: 'run.completed'; runId: string; output: AgentOutputMessage; steps: number; context?: unknown; contextEstimate?: AgentRuntimeContextEstimate } | { type: 'run.failed'; runId: string; error: string; steps: number } | { type: 'run.max_steps'; runId: string; maxSteps: number }
+export type AgentRuntimeEvent = | { type: 'plan.updated'; runId: string; plan: import('../tools/plan').AgentTaskPlan } | { type: 'run.started'; runId: string; maxSteps: number } | { type: 'memory.retrieved'; runId: string; diagnostics: MemoryContextDiagnostics; memoryIds: string[] } | { type: 'skill.review.started'; runId: string; reviewId: string } | { type: 'skill.review.completed'; runId: string; reviewId: string; mutations: number } | { type: 'skill.review.failed'; runId: string; reviewId: string; error: string } | { type: 'model.started'; runId: string; step: number } | { type: 'context.estimated'; runId: string; step: number; estimate: AgentRuntimeContextEstimate } | { type: 'model.retry'; runId: string; step: number; retry: number; maxRetries: number; error: string } | { type: 'model.message'; runId: string; step: number; message: AgentOutputMessage } | { type: 'model.delta'; runId: string; step: number; text: string } | { type: 'model.reasoning'; runId: string; step: number; text: string } | { type: 'model.tool_call'; runId: string; step: number; toolCall: AgentToolCall } | { type: 'model.usage'; runId: string; step: number; usage: ModelUsage } | { type: 'model.context'; runId: string; step: number; context: unknown } | { type: 'tool.started'; runId: string; step: number; toolCallId: string; toolName: string; arguments: Record<string, unknown> } | { type: 'tool.completed'; runId: string; step: number; toolCallId: string; toolName: string; result: AgentToolResult; durationMs: number } | { type: 'tool.failed'; runId: string; step: number; toolCallId: string; toolName: string; result: AgentToolResult; durationMs: number } | { type: 'subagent.start'; runId: string; subagentId: string; goal: string; background: boolean; model?: string; startedAt: number } | { type: 'subagent.text'; runId: string; childRunId?: string; subagentId: string; goal: string; background: boolean; text: string } | { type: 'subagent.thinking'; runId: string; childRunId?: string; subagentId: string; goal: string; background: boolean; text: string } | { type: 'subagent.tool'; runId: string; childRunId?: string; subagentId: string; goal: string; background: boolean; toolName: string; arguments: Record<string, unknown>; toolCount: number } | { type: 'subagent.complete' runId: string childRunId?: string subagentId: string goal: string background: boolean status: 'completed' | 'failed' | 'interrupted' summary: string output: string outputTail: string durationMs: number toolCount: number apiCalls: number inputTokens: number outputTokens: number cacheReadTokens: number cacheWriteTokens: number reasoningTokens: number costUsd?: number costSource?: 'reported' | 'estimated' continuationContext?: EkkoBackgroundContinuationContext } | { type: 'run.tool_recovery_required'; runId: string; toolName: string; failures: number } | { type: 'run.identical_call_detected'; runId: string; toolName: string; count: number } | { type: 'run.completed'; runId: string; output: AgentOutputMessage; steps: number; context?: unknown; contextEstimate?: AgentRuntimeContextEstimate } | { type: 'run.failed'; runId: string; error: string; steps: number } | { type: 'run.max_steps'; runId: string; maxSteps: number }
 ```
 ### `src/runtime/manager.ts`
 
@@ -2942,6 +2954,7 @@ export interface AgentRuntimeOptions {
   maxModelRetries?: number
   toolFailureRecoveryThreshold?: number
   maxConsecutiveToolFailures?: number
+  identicalCallRecoveryThreshold?: number
   backgroundDelegationEnabled?: boolean
   subtaskMaxSteps?: number
   toolContext?: AgentToolContext
@@ -2962,6 +2975,7 @@ export interface AgentRuntimeRunInput {
   maxModelRetries?: number
   toolFailureRecoveryThreshold?: number
   maxConsecutiveToolFailures?: number
+  identicalCallRecoveryThreshold?: number
   toolContext?: AgentToolContext
   model?: string
   temperature?: number
@@ -3265,6 +3279,32 @@ export class EkkoToolApprovalService {
 
 export function toolApprovalRequirement( toolName: string, input: Record<string, unknown>, ): ToolApprovalRequirement | undefined
 ```
+### `src/tools/background-process-registry.ts`
+
+```ts
+export interface BackgroundProcess {
+  processId: string
+  pid: number
+  command: string
+  args: string[]
+  cwd: string
+  startedAt: number
+  child: ChildProcessWithoutNullStreams
+  stdout: { append(chunk: Buffer): void; text(): string; totalBytes: number; truncated: boolean }
+  stderr: { append(chunk: Buffer): void; text(): string; totalBytes: number; truncated: boolean }
+  status: 'running' | 'exited' | 'killed' | 'error'
+  exitCode: number | null
+  exitedAt: number | null
+  error: string | null
+  killRequested: boolean
+}
+
+export function registerBackgroundProcess( entry: Omit<BackgroundProcess, 'processId'>, ): BackgroundProcess
+
+export function getBackgroundProcess(processId: string): BackgroundProcess | undefined
+
+export function listBackgroundProcesses(): BackgroundProcess[]
+```
 ### `src/tools/browser.ts`
 
 ```ts
@@ -3405,6 +3445,8 @@ export async function ensureDirectory(target: string): Promise<string>
 ```ts
 export const DEFAULT_READ_FILE_MAX_BYTES = 50_000
 
+export const MIN_READ_FILE_BYTES = 20_000
+
 export interface ReadFileInput extends Record<string, unknown> {
   path: string
   encoding?: BufferEncoding
@@ -3421,13 +3463,25 @@ export interface WriteFileInput extends Record<string, unknown> {
 
 export class ReadFileTool implements AgentTool<ReadFileInput> {
   readonly concurrency = 'parallel' as const
-  readonly definition = { name: 'read_file', description: `Read a text file from the local filesystem, reading at most ${DEFAULT_READ_FILE_MAX_BYTES} file bytes per call. Relative paths resolve from the current working directory; absolute paths and paths outside workspaceRoot are supported. Use offset to continue a truncated read.`, parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path. Relative paths resolve from the current working directory; absolute paths are supported.' }, encoding: { type: 'string', description: 'Text encoding. Defaults to utf8.' }, offset: { type: 'number', description: 'Zero-based byte offset. Defaults to 0; use nextOffset from a truncated result to continue.' }, limit: { type: 'number', description: `Maximum file bytes to read (minimum 4). Defaults to and cannot exceed ${DEFAULT_READ_FILE_MAX_BYTES}.` }, }, required: ['path'], additionalProperties: false, }, }
+  readonly definition = { name: 'read_file', description: `Read a text file from the local filesystem. Omit limit to read up to ${DEFAULT_READ_FILE_MAX_BYTES} bytes (most source files) in one call; a larger file is truncated and the result tells you the offset and limit to read the rest. offset and limit are in BYTES, not lines, and limit is raised to at least ${MIN_READ_FILE_BYTES}. Relative paths resolve from the current working directory; absolute paths and paths outside workspaceRoot are supported.`, parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path. Relative paths resolve from the current working directory; absolute paths are supported.' }, encoding: { type: 'string', description: 'Text encoding. Defaults to utf8.' }, offset: { type: 'number', description: 'Zero-based BYTE offset (not a line number). Defaults to 0; use the offset from a truncated result to continue.' }, limit: { type: 'number', description: `Maximum BYTES (not lines) to read. Omit to read up to ${DEFAULT_READ_FILE_MAX_BYTES}. Values below ${MIN_READ_FILE_BYTES} are raised to ${MIN_READ_FILE_BYTES}; cannot exceed ${DEFAULT_READ_FILE_MAX_BYTES}.` }, }, required: ['path'], additionalProperties: false, }, }
   async execute(input: ReadFileInput, context: AgentToolContext = {}): Promise<AgentToolResult>
 }
 
 export class WriteFileTool implements AgentTool<WriteFileInput> {
   readonly definition = { name: 'write_file', description: 'Write UTF-8 text content to a file in the workspace.', parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to the current workspace.' }, content: { type: 'string', description: 'Text content to write.' }, encoding: { type: 'string', description: 'Text encoding. Defaults to utf8.' }, createDirs: { type: 'boolean', description: 'Create parent directories before writing. Defaults to true.' }, }, required: ['path', 'content'], additionalProperties: false, }, }
   async execute(input: WriteFileInput, context: AgentToolContext = {}): Promise<AgentToolResult>
+}
+
+export interface EditFileInput extends Record<string, unknown> {
+  path: string
+  oldString: string
+  newString: string
+  replaceAll?: boolean
+}
+
+export class EditFileTool implements AgentTool<EditFileInput> {
+  readonly definition = { name: 'edit_file', description: [ 'Replace an exact substring in an existing text file — a targeted change instead of rewriting the whole file.', 'oldString must match the file exactly (including whitespace and indentation) and, unless replaceAll is set, must occur exactly once; the call fails loudly instead of guessing if it is missing or ambiguous.', 'Read the file with read_file first: editing a path that has not been read this session is rejected, since oldString almost certainly needs to be copied from real file content, not assumed.', 'Use write_file instead for a brand-new file, or when replacing the whole file body is genuinely the intent.', ].join(' '), parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path relative to the current workspace.' }, oldString: { type: 'string', description: 'Exact text to replace. Must be unique in the file unless replaceAll is true.' }, newString: { type: 'string', description: 'Replacement text. May be empty to delete oldString.' }, replaceAll: { type: 'boolean', description: 'Replace every occurrence of oldString instead of requiring exactly one. Defaults to false.' }, }, required: ['path', 'oldString', 'newString'], additionalProperties: false, }, }
+  async execute(input: EditFileInput, context: AgentToolContext = {}): Promise<AgentToolResult>
 }
 
 export function createFileTools(): AgentTool[]
@@ -3523,6 +3577,30 @@ export class UpdatePlanTool implements AgentTool {
   async execute(input: Record<string, unknown>, context?: AgentToolContext): Promise<AgentToolResult>
 }
 ```
+### `src/tools/process.ts`
+
+```ts
+export interface ProcessExecInput extends Record<string, unknown> {
+  action: 'poll' | 'log' | 'kill' | 'list'
+  processId?: string
+}
+
+export class ProcessExecTool implements AgentTool<ProcessExecInput> {
+  readonly definition: AgentTool['definition']
+  async execute(input: ProcessExecInput, _context: AgentToolContext = {}): Promise<AgentToolResult>
+}
+
+export function createProcessTools(): AgentTool[]
+```
+### `src/tools/read-tracking.ts`
+
+```ts
+export function markFileRead(sessionId: string | undefined, absolutePath: string): void
+
+export function wasFileRead(sessionId: string | undefined, absolutePath: string): boolean
+
+export function _resetReadTrackingForTests(): void
+```
 ### `src/tools/recovery.ts`
 
 ```ts
@@ -3557,6 +3635,38 @@ export interface DefaultToolRegistryOptions {
 }
 
 export function createDefaultToolRegistry(options: DefaultToolRegistryOptions = {}): AgentToolRegistry
+```
+### `src/tools/search.ts`
+
+```ts
+export const DEFAULT_SEARCH_MAX_RESULTS = 200
+
+export const DEFAULT_SEARCH_MAX_FILES_SCANNED = 5_000
+
+export const DEFAULT_SEARCH_MAX_FILE_BYTES = 2 * 1024 * 1024
+
+export interface SearchFilesInput extends Record<string, unknown> {
+  pattern: string
+  path?: string
+  glob?: string
+  caseSensitive?: boolean
+  regex?: boolean
+  maxResults?: number
+}
+
+export interface SearchMatch {
+  file: string
+  line: number
+  text: string
+}
+
+export class SearchFilesTool implements AgentTool<SearchFilesInput> {
+  readonly concurrency = 'parallel' as const
+  readonly definition: AgentTool['definition']
+  async execute(input: SearchFilesInput, context: AgentToolContext = {}): Promise<AgentToolResult>
+}
+
+export function createSearchTools(): AgentTool[]
 ```
 ### `src/tools/session-tasks.ts`
 
@@ -3691,6 +3801,46 @@ export function validateSkillContent(name: string, content: string): string | nu
 
 export function skillValidationResult( name: string, content: string, ): { status: SkillValidationStatus; error?: string }
 ```
+### `src/tools/studio-bridge.ts`
+
+```ts
+export class StudioTerminalListTool implements AgentTool {
+  readonly definition = terminalListDefinition
+  async execute(_input: Record<string, unknown>, context: AgentToolContext): Promise<AgentToolResult>
+}
+
+export class StudioTerminalReadTool implements AgentTool {
+  readonly definition = terminalReadDefinition
+  async execute(input: Record<string, unknown>, context: AgentToolContext): Promise<AgentToolResult>
+}
+
+export class StudioTerminalWriteTool implements AgentTool {
+  readonly definition = terminalWriteDefinition
+  async execute(input: Record<string, unknown>, context: AgentToolContext): Promise<AgentToolResult>
+}
+
+export function createStudioBridgeTools(): AgentTool[]
+
+export class StudioBrowserStateTool implements AgentTool {
+  readonly definition = browserStateDefinition
+  async execute(_input: Record<string, unknown>, context: AgentToolContext): Promise<AgentToolResult>
+}
+
+export class StudioBrowserNavigateTool implements AgentTool {
+  readonly definition = browserNavigateDefinition
+  async execute(input: Record<string, unknown>, context: AgentToolContext): Promise<AgentToolResult>
+}
+
+export class StudioBrowserSnapshotTool implements AgentTool {
+  readonly definition = browserSnapshotDefinition
+  async execute(input: Record<string, unknown>, context: AgentToolContext): Promise<AgentToolResult>
+}
+
+export class StudioBrowserScreenshotTool implements AgentTool {
+  readonly definition = browserScreenshotDefinition
+  async execute(input: Record<string, unknown>, context: AgentToolContext): Promise<AgentToolResult>
+}
+```
 ### `src/tools/terminal.ts`
 
 ```ts
@@ -3705,6 +3855,7 @@ export interface TerminalExecInput extends Record<string, unknown> {
   args?: string[]
   cwd?: string
   timeoutMs?: number
+  background?: boolean
 }
 
 export interface TerminalExecToolOptions {
@@ -3802,6 +3953,8 @@ export interface AgentToolContext {
   memoryWriteScopes?: import('../memory/types').MemoryScope[]
   memoryDefaultWriteScope?: import('../memory/types').MemoryScope
   browserSessionId?: string
+  studioBaseUrl?: string
+  studioToken?: string
   mcpServers?: Record<string, unknown>
   mcpSessionSignal?: AbortSignal
   computerUseSessionSignal?: AbortSignal
