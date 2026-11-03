@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   AgentToolError,
-  DEFAULT_READ_FILE_MAX_BYTES,
+  DEFAULT_READ_FILE_MAX_BYTES, MIN_READ_FILE_BYTES,
   DEFAULT_TOOL_RESULT_MAX_TEXT_BYTES,
   DelegateTaskTool,
   EditFileTool,
@@ -289,7 +289,7 @@ describe('ekko-agent tools', () => {
     }, { workspaceRoot })
 
     expect(first.content.startsWith('x'.repeat(DEFAULT_READ_FILE_MAX_BYTES))).toBe(true)
-    expect(first.content).toContain(`[read_file truncated: returned bytes 0-${DEFAULT_READ_FILE_MAX_BYTES - 1} of ${content.length}; call again with offset=${DEFAULT_READ_FILE_MAX_BYTES}]`)
+    expect(first.content).toContain(`[read_file truncated: returned bytes 0-${DEFAULT_READ_FILE_MAX_BYTES - 1} of ${content.length}; to read the rest, call again with offset=${DEFAULT_READ_FILE_MAX_BYTES} limit=25]`)
     expect(first.data).toMatchObject({
       bytes: DEFAULT_READ_FILE_MAX_BYTES,
       totalBytes: content.length,
@@ -318,16 +318,17 @@ describe('ekko-agent tools', () => {
 
   it('does not split a UTF-8 code point at a read boundary', async () => {
     const reader = new ReadFileTool()
-    await writeFile(path.join(workspaceRoot, 'unicode.txt'), 'aaaa😀z')
+    // The emoji straddles the 20,000-byte minimum read size.
+    const head = 'a'.repeat(MIN_READ_FILE_BYTES - 1)
+    await writeFile(path.join(workspaceRoot, 'unicode.txt'), `${head}😀z`)
 
-    const first = await reader.execute({ path: 'unicode.txt', limit: 5 }, { workspaceRoot })
-    expect(first.content).toMatch(/^aaaa\n\n\[read_file truncated:/)
+    const first = await reader.execute({ path: 'unicode.txt', limit: MIN_READ_FILE_BYTES }, { workspaceRoot })
     expect(first.content).not.toContain('�')
-    expect(first.data).toMatchObject({ bytes: 4, nextOffset: 4, truncated: true })
+    expect(first.data).toMatchObject({ bytes: MIN_READ_FILE_BYTES - 1, nextOffset: MIN_READ_FILE_BYTES - 1, truncated: true })
 
-    await expect(reader.execute({ path: 'unicode.txt', offset: 4 }, { workspaceRoot })).resolves.toMatchObject({
+    await expect(reader.execute({ path: 'unicode.txt', offset: MIN_READ_FILE_BYTES - 1 }, { workspaceRoot })).resolves.toMatchObject({
       content: '😀z',
-      data: { bytes: 5, nextOffset: 9, truncated: false },
+      data: { bytes: 5, truncated: false },
     })
   })
 
@@ -341,6 +342,16 @@ describe('ekko-agent tools', () => {
       .rejects.toMatchObject({ code: 'INVALID_TOOL_INPUT' })
     await expect(reader.execute({ path: 'note.txt', limit: 3 }, { workspaceRoot }))
       .rejects.toMatchObject({ code: 'INVALID_TOOL_INPUT' })
+  })
+
+  it('raises a tiny limit to the minimum read size so a file is not read a few bytes at a time', async () => {
+    const reader = new ReadFileTool()
+    const content = 'line\n'.repeat(2_680) // 13,400 bytes
+    await writeFile(path.join(workspaceRoot, 'small.txt'), content)
+
+    const result = await reader.execute({ path: 'small.txt', limit: 100, offset: 0 }, { workspaceRoot })
+    expect(result.content).toBe(content)
+    expect(result.data).toMatchObject({ truncated: false, limit: MIN_READ_FILE_BYTES, requestedLimit: 100 })
   })
 
   it('reads files outside workspaceRoot while keeping writes isolated', async () => {

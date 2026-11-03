@@ -7,6 +7,9 @@ import { markFileRead, wasFileRead } from './read-tracking'
 import { ensureDirectory } from './directory'
 
 export const DEFAULT_READ_FILE_MAX_BYTES = 50_000
+// Models routinely pass limit: 100 expecting lines. Reading that few bytes costs a full
+// model round trip per fragment, so smaller requests are raised to this floor.
+export const MIN_READ_FILE_BYTES = 20_000
 
 export interface ReadFileInput extends Record<string, unknown> {
   path: string
@@ -27,14 +30,14 @@ export class ReadFileTool implements AgentTool<ReadFileInput> {
 
   readonly definition = {
     name: 'read_file',
-    description: `Read a text file from the local filesystem, reading at most ${DEFAULT_READ_FILE_MAX_BYTES} file bytes per call. Relative paths resolve from the current working directory; absolute paths and paths outside workspaceRoot are supported. Use offset to continue a truncated read.`,
+    description: `Read a text file from the local filesystem. Omit limit to read up to ${DEFAULT_READ_FILE_MAX_BYTES} bytes (most source files) in one call; a larger file is truncated and the result tells you the offset and limit to read the rest. offset and limit are in BYTES, not lines, and limit is raised to at least ${MIN_READ_FILE_BYTES}. Relative paths resolve from the current working directory; absolute paths and paths outside workspaceRoot are supported.`,
     parameters: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'File path. Relative paths resolve from the current working directory; absolute paths are supported.' },
         encoding: { type: 'string', description: 'Text encoding. Defaults to utf8.' },
-        offset: { type: 'number', description: 'Zero-based byte offset. Defaults to 0; use nextOffset from a truncated result to continue.' },
-        limit: { type: 'number', description: `Maximum file bytes to read (minimum 4). Defaults to and cannot exceed ${DEFAULT_READ_FILE_MAX_BYTES}.` },
+        offset: { type: 'number', description: 'Zero-based BYTE offset (not a line number). Defaults to 0; use the offset from a truncated result to continue.' },
+        limit: { type: 'number', description: `Maximum BYTES (not lines) to read. Omit to read up to ${DEFAULT_READ_FILE_MAX_BYTES}. Values below ${MIN_READ_FILE_BYTES} are raised to ${MIN_READ_FILE_BYTES}; cannot exceed ${DEFAULT_READ_FILE_MAX_BYTES}.` },
       },
       required: ['path'],
       additionalProperties: false,
@@ -46,7 +49,7 @@ export class ReadFileTool implements AgentTool<ReadFileInput> {
     const encoding = normalizeReadEncoding(input.encoding)
     const offset = nonNegativeInteger(input.offset, 'offset', 0)
     const requestedLimit = positiveInteger(input.limit, 'limit', DEFAULT_READ_FILE_MAX_BYTES, 4)
-    const limit = Math.min(requestedLimit, DEFAULT_READ_FILE_MAX_BYTES)
+    const limit = Math.min(Math.max(requestedLimit, MIN_READ_FILE_BYTES), DEFAULT_READ_FILE_MAX_BYTES)
     const file = await open(filePath, 'r')
 
     try {
@@ -67,7 +70,7 @@ export class ReadFileTool implements AgentTool<ReadFileInput> {
       const truncated = nextOffset < fileInfo.size
       const chunk = buffer.subarray(0, returnedBytes).toString(encoding)
       const content = truncated
-        ? `${chunk}${chunk && !chunk.endsWith('\n') ? '\n' : ''}\n[read_file truncated: returned bytes ${offset}-${nextOffset - 1} of ${fileInfo.size}; call again with offset=${nextOffset}]`
+        ? `${chunk}${chunk && !chunk.endsWith('\n') ? '\n' : ''}\n[read_file truncated: returned bytes ${offset}-${nextOffset - 1} of ${fileInfo.size}; to read the rest, call again with offset=${nextOffset} limit=${Math.min(fileInfo.size - nextOffset, DEFAULT_READ_FILE_MAX_BYTES)}]`
         : chunk
 
       markFileRead(context.sessionId, filePath)
@@ -82,6 +85,7 @@ export class ReadFileTool implements AgentTool<ReadFileInput> {
           nextOffset,
           truncated,
           limit,
+          requestedLimit,
         },
       }
     } finally {

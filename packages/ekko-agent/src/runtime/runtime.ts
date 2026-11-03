@@ -65,6 +65,8 @@ import {
 } from '../config'
 
 const MAX_TRACKED_SKILL_REVIEW_CONTEXTS = 1_024
+// Paged reads of very large files legitimately repeat; a loop of tiny reads does not stop before this.
+const MAX_REPEATED_TOOL_CALLS = 12
 const MAX_CONCURRENT_TOOL_CALLS = 8
 const SUBTASK_OUTPUT_TAIL_CHARS = 4_000
 const SUBTASK_SUMMARY_CHARS = 500
@@ -1287,6 +1289,36 @@ export class AgentRuntime {
     return results as ExecutedToolCall[]
   }
 
+  private readonly repeatedToolCalls = new Map<string, { signature: string; count: number }>()
+
+  /**
+   * Stops a model from issuing the same tool call over and over with only a paging
+   * argument changed (e.g. read_file with offset += 100). Returns an explanation
+   * instead of running the call once the streak passes MAX_REPEATED_TOOL_CALLS.
+   */
+  private noteRepeatedToolCall(runId: string, toolCall: AgentToolCall): string | null {
+    const { offset: _offset, ...rest } = (toolCall.arguments || {}) as Record<string, unknown>
+    // Only paged calls are guarded; polling tools may legitimately repeat identical arguments.
+    if (!toolCall.arguments || !('offset' in toolCall.arguments)) {
+      this.repeatedToolCalls.delete(runId)
+      return null
+    }
+    const signature = `${toolCall.name}:${JSON.stringify(rest)}`
+    const previous = this.repeatedToolCalls.get(runId)
+    const count = previous?.signature === signature ? previous.count + 1 : 1
+    this.repeatedToolCalls.delete(runId)
+    this.repeatedToolCalls.set(runId, { signature, count })
+    while (this.repeatedToolCalls.size > 64) {
+      const oldest = this.repeatedToolCalls.keys().next().value
+      if (oldest === undefined) break
+      this.repeatedToolCalls.delete(oldest)
+    }
+    if (count <= MAX_REPEATED_TOOL_CALLS) return null
+    return `Stopped: ${toolCall.name} has been called ${count} times in a row with the same arguments (apart from offset). `
+      + 'This looks like a loop. Make one larger request (for read_file, omit limit to read up to 50,000 bytes at once) '
+      + 'or stop and tell the user what you were trying to do.'
+  }
+
   private async executeTool(
     runId: string,
     step: number,
@@ -1304,6 +1336,21 @@ export class AgentRuntime {
       toolName: toolCall.name,
       arguments: toolCall.arguments,
     })
+
+    const loop = this.noteRepeatedToolCall(runId, toolCall)
+    if (loop) {
+      const result: AgentToolResult = { ok: false, content: loop, error: loop }
+      emit({
+        type: 'tool.failed',
+        runId,
+        step,
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        result,
+        durationMs: Date.now() - startedAt,
+      })
+      return result
+    }
 
     try {
       throwIfAborted(signal)
