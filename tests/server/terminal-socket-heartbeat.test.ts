@@ -185,4 +185,29 @@ describe('terminal socket liveness and session restore', () => {
     const [session] = reconnected.of('restored')[0].sessions
     expect(session.scrollback).toContain('live-shell-output')
   })
+
+  it('scrubs terminal queries from replayed scrollback so reopening types no phantom text', async () => {
+    const client = open('scrub-chat')
+    await ready(client.socket)
+    await vi.waitFor(() => expect(client.of('restored')).toHaveLength(1))
+
+    // tmux's attach-time handshake lands in the output stream alongside real
+    // shell output. The live socket answers it once — that part is fine.
+    await vi.waitFor(() => expect(ptyMock.instances).toHaveLength(1))
+    ptyMock.instances[0].emit('\x1b[c\x1b[>cprompt$ \x1b[1mbold\x1b[0m\r\n')
+
+    client.socket.close()
+    await vi.waitFor(() => expect(client.socket.readyState).toBe(WebSocket.CLOSED))
+
+    // On replay the queries must be gone — xterm.js would answer them again
+    // and the stale replies get typed into the shell ("1;2c0;276;0c") — while
+    // the painting sequences and text still repaint the pane.
+    const reconnected = open('scrub-chat')
+    await ready(reconnected.socket)
+    await vi.waitFor(() => expect(reconnected.of('restored')).toHaveLength(1))
+    const [session] = reconnected.of('restored')[0].sessions
+    expect(session.scrollback).not.toContain('\x1b[c')
+    expect(session.scrollback).not.toContain('\x1b[>c')
+    expect(session.scrollback).toContain('prompt$ \x1b[1mbold\x1b[0m')
+  })
 })

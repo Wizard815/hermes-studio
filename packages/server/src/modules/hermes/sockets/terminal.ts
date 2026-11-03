@@ -20,6 +20,7 @@ import {
   tmuxSessionExists,
   tmuxSessionName,
 } from '../services/terminal/tmux-sessions'
+import { stripTerminalQueries } from '../services/terminal/replay-scrub'
 
 function shellName(shell: string): string { return shell.split('/').pop() || 'shell' }
 
@@ -129,7 +130,9 @@ function getOrCreateAttach(name: string): AttachClient {
 function bindSink(client: AttachClient, owner: string, sink: (data: string) => void): string {
   client.sink = sink
   client.sinkOwner = owner
-  const pending = client.buffer.join('')
+  // Buffered output is a replay: any query in it was answered (or timed out)
+  // long ago, and answering again would type the reply into the shell.
+  const pending = stripTerminalQueries(client.buffer.join(''))
   client.buffer = []
   return pending
 }
@@ -344,8 +347,10 @@ export function setupTerminalWebSocket(
         pid: client.pid,
         exited: !tmuxSessionExists(session.name),
         // Replay the tail of the live buffer so reattaching repaints the pane
-        // instead of flashing an empty terminal.
-        scrollback: client.history.slice(-MAX_HISTORY),
+        // instead of flashing an empty terminal. Scrubbed of query sequences:
+        // xterm.js would answer them afresh on every reopen, and the stale
+        // replies end up typed into the prompt ("1;2c0;276;0c").
+        scrollback: stripTerminalQueries(client.history.slice(-MAX_HISTORY)),
       }
     })
     sendControl({ type: 'restored', activeSessionId: activeId, sessions: restored })
