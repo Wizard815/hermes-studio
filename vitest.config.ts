@@ -7,6 +7,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'packages/client/src'),
+      electron: resolve(__dirname, 'tests/mocks/electron.ts'),
+      'dbus-next': resolve(__dirname, 'tests/mocks/dbus-next.ts'),
+      'electron-updater': resolve(__dirname, 'tests/mocks/electron-updater.ts'),
       '/logo.png': resolve(__dirname, 'packages/client/public/logo.png'),
       '/relay-logo.png': resolve(__dirname, 'packages/client/public/relay-logo.png'),
     },
@@ -14,6 +17,8 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
     passWithNoTests: true,
+    // The fork keeps some pre-reset regression tests that rely on these globals and mocks.
+    setupFiles: ['tests/setup.ts'],
     coverage: {
       exclude: [
         '**/dist/**',
