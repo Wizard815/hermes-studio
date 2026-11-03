@@ -209,6 +209,7 @@ export const SESSIONS_SCHEMA: Record<string, string> = {
   agent: 'TEXT NOT NULL DEFAULT \'\'',
   agent_mode: 'TEXT NOT NULL DEFAULT \'\'',
   agent_preset: 'TEXT NOT NULL DEFAULT \'\'',
+  bot_type: 'TEXT NOT NULL DEFAULT \'\'',
   agent_session_id: 'TEXT NOT NULL DEFAULT \'\'',
   agent_native_session_id: 'TEXT NOT NULL DEFAULT \'\'',
   user_id: 'TEXT',
@@ -1244,6 +1245,8 @@ export const GC_SESSION_PROFILES_SCHEMA: Record<string, string> = {
 
 import { getDb, getStoragePath } from './index'
 import { initPersonTables } from './person-schema'
+import { initPersonWorkspaceBindings } from './person-workspace-schema'
+import { initSessionStateTables } from './session-state-schema'
 import { BUILTIN_EKKO_AGENT_IDS, BUILTIN_HISTORY_SOURCES } from '../../contracts/history-source'
 
 function quoteIdentifier(identifier: string): string {
@@ -1657,9 +1660,18 @@ function migrateSessionTaskSchema(db: NonNullable<ReturnType<typeof getDb>>): vo
         .replace(/^(CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?)(?:"session_tasks"|session_tasks)(?=\s*\()/i, `$1${quoteIdentifier(temporary)}`)
       db.exec(createSql)
       db.exec(`INSERT INTO ${quoteIdentifier(temporary)} (${columns}) SELECT ${columns} FROM ${quoteIdentifier(SESSION_TASKS_TABLE)}`)
+      // This cross-table gate references session_tasks from person_executions.
+      // SQLite validates all triggers during RENAME, including the short gap after DROP.
+      // Retire and restore only our gate inside this same transaction; rollback preserves it on failure.
+      const acceptanceGate = db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='person_acceptance_execution_gate'").get() as { sql: string } | undefined
+      const acceptanceView = db.prepare("SELECT sql FROM sqlite_master WHERE type='view' AND name='person_acceptance_passes'").get() as {sql:string} | undefined
+      if (acceptanceGate) db.exec('DROP TRIGGER person_acceptance_execution_gate')
+      if (acceptanceView) db.exec('DROP VIEW person_acceptance_passes')
       db.exec(`DROP TABLE ${quoteIdentifier(SESSION_TASKS_TABLE)}`)
       db.exec(`ALTER TABLE ${quoteIdentifier(temporary)} RENAME TO ${quoteIdentifier(SESSION_TASKS_TABLE)}`)
       for (const object of objects) db.exec(object.sql)
+      if (acceptanceView) db.exec(acceptanceView.sql)
+      if (acceptanceGate) db.exec(acceptanceGate.sql)
     }
     db.exec('COMMIT')
   } catch (error) { db.exec('ROLLBACK'); throw error }
@@ -1766,6 +1778,9 @@ export function initAllHermesTables(): void {
     syncTable(SESSIONS_TABLE, SESSIONS_SCHEMA, {
       indexes: SESSIONS_INDEXES,
     })
+    initPersonWorkspaceBindings(db)
+    db.prepare(`UPDATE ${SESSIONS_TABLE} SET bot_type = 'zhezhe'
+      WHERE id LIKE 'person-main-%' AND bot_type = ''`).run()
     // Idempotent classification migration. Messages, timestamps and metadata
     // stay intact; group/workflow/global-agent sessions keep their source.
     db.prepare(`UPDATE ${SESSIONS_TABLE} SET source = 'builtin_agent', agent = 'ekko-agent'
@@ -1777,6 +1792,7 @@ export function initAllHermesTables(): void {
     createIndexes(db, SESSION_CATEGORIES_INDEXES)
     createIndexes(db, SESSIONS_INDEXES)
     syncTable(MESSAGES_TABLE, MESSAGES_SCHEMA)
+    initSessionStateTables(db)
     db.exec(MESSAGES_INDEX)
     db.exec(MESSAGES_ROLE_INDEX)
     syncTable(SKILL_USAGE_EVENTS_TABLE, SKILL_USAGE_EVENTS_SCHEMA, {

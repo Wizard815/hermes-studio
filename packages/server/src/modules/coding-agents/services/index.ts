@@ -1,3 +1,5 @@
+import { lowestReasoningEffort } from '../../../../../shared/reasoning-effort'
+import { studioModelReasoningEffort } from '../../studio/public/model-reasoning-effort'
 import type { CodingAgentDefinition, CodingAgentConfigFileDefinition } from '../contracts/definition'
 import { TOOL_DEFINITIONS, CONFIG_FILE_DEFINITIONS } from './registry/definitions'
 import { createOpenCodeConfig, mergeOpenCodeSettingsConfig, openCodeSettingsConfig, opencodeMcpServerConfig, openCodeRuntimeEnv, OPENCODE_CONFIG_FILE, OPENCODE_DATABASE_FILE, OPENCODE_API_KEY_ENV, OPENCODE_PROVIDER_ID } from './opencode/config'
@@ -55,7 +57,7 @@ import { updateAgentStatus } from '../../studio/public/agent-status-registry'
 import { logger } from '../../studio/public/logging'
 import { assertScopedCodingAgentProviderAllowed } from '../protocol/provider-policy'
 import type { CodingAgentRuntime } from '../../studio/contracts/agents/runtime'
-import { defaultCodingAgentWorkspace } from '../../studio/public/workspace-manager'
+import { defaultCodingAgentWorkspace, requireExistingWorkspaceDirectory } from '../../studio/public/workspace-manager'
 import { isolateUnhealthyRuntimeMcpServers } from './mcp-runtime-isolation'
 import { getCodingAgentGlobalHome } from '../../studio/public/coding-agent-global-home'
 import { codingAgentContextPolicy, compactionPercent, claudeCompactionPercent, piCompactionSettings, type CodingAgentContextPolicy } from './context-policy'
@@ -3056,15 +3058,30 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
   const mcpCapabilities = studioMcpCapabilities(getCodingAgentManagedMcpServerConfigs(tool.id, input.profile || 'default'))
   const mode = resolvedCodingAgentLaunchMode(tool.id, input.mode)
   if (mode === 'global') {
-    const model = String(input.model || '').trim()
-    const reasoningEffort = String(input.reasoningEffort || '').trim()
+    let model = String(input.model || '').trim()
+    let reasoningEffort = String(input.reasoningEffort || '').trim()
     const variant = ['cursor', 'antigravity'].includes(tool.id) ? nativeModelVariant(model) : undefined
     if (variant && reasoningEffort && variant.effort !== reasoningEffort) {
       throw Object.assign(new Error('Native model ID and reasoning effort must select the same variant'), { status: 400 })
     }
+    if (!reasoningEffort && !variant) {
+      const catalog = (await getCodingAgentModels({ agent: tool.id })).agents[0]
+      const selected = catalog?.models.find(entry => !entry.hidden && (model ? entry.id === model : entry.isDefault))
+      // Native CLIs have their own capabilities; never guess unsupported CLI flags.
+      reasoningEffort = lowestReasoningEffort(selected?.reasoningEfforts || []) || ''
+      if (selected?.modelFamily && reasoningEffort) {
+        const target = catalog.models.find(entry => !entry.hidden && entry.provider === selected.provider
+          && entry.modelFamily === selected.modelFamily && entry.reasoningEffort === reasoningEffort)
+        if (target) model = target.id
+        else reasoningEffort = ''
+      }
+    }
+    input = { ...input, model, reasoningEffort }
     const scope = normalizeConfigScope({ profile: input.profile, provider: 'global' })
-    const workspaceDir = resolveLaunchWorkspaceRoot(scope, input.workspace)
-    await mkdir(workspaceDir, { recursive: true })
+    const workspaceDir = input.sessionId?.startsWith('person-task-')
+      ? requireExistingWorkspaceDirectory(input.workspace || '')
+      : resolveLaunchWorkspaceRoot(scope, input.workspace)
+    if (!input.sessionId?.startsWith('person-task-')) await mkdir(workspaceDir, { recursive: true })
     if (tool.id === 'pi' && input.piOutputMode === 'rpc') {
       const rootDir = getScopedRuntimeConfigRoot(tool.id, scope, input)
       const dynamicPromptPath = join(rootDir, PI_DYNAMIC_PROMPT_FILE)
@@ -3291,7 +3308,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
   const baseUrl = String(input.baseUrl || '').trim()
   const preset = PROVIDER_PRESETS.find(item => item.value === provider)
   const apiMode = normalizeLaunchApiMode(input.apiMode, preset?.api_mode || 'chat_completions')
-  const reasoningEffort = String(input.reasoningEffort || '').trim()
+  const reasoningEffort = studioModelReasoningEffort({ provider, model, baseUrl, reasoningEffort: input.reasoningEffort }) || ''
   const contextPolicy = await codingAgentContextPolicy({ profile: scope.profile, provider, model })
   const groupSystemPrompt = String(input.groupSystemPrompt || '').trim()
   const scopedSystemPrompt = tool.id === 'pi' && groupSystemPrompt
@@ -3307,9 +3324,11 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       }
     : input
   const rootDir = getScopedRuntimeConfigRoot(tool.id, scope, isolatedInput)
-  const workspaceDir = resolveLaunchWorkspaceRoot(scope, input.workspace)
+  const workspaceDir = input.sessionId?.startsWith('person-task-')
+    ? requireExistingWorkspaceDirectory(input.workspace || '')
+    : resolveLaunchWorkspaceRoot(scope, input.workspace)
   await mkdir(rootDir, { recursive: true })
-  await mkdir(workspaceDir, { recursive: true })
+  if (!input.sessionId?.startsWith('person-task-')) await mkdir(workspaceDir, { recursive: true })
 
   const files: Array<{ key: string; path: string; absolutePath: string }> = []
   const writeScopedFile = async (key: string, content: string) => {

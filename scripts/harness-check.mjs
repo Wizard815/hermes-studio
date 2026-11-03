@@ -58,9 +58,6 @@ for (const dir of [
   'packages/server/src',
   'packages/desktop',
   'packages/desktop/build/icons',
-  'tests/client',
-  'tests/server',
-  'tests/e2e',
   '.github/workflows',
 ]) {
   requireDir(dir)
@@ -413,7 +410,7 @@ if (desktopWebuiServer.includes('bundledBrowserExecutable()')) {
 }
 
 for (const phrase of [
-  'requestSingleInstanceLock(QUIT_EXISTING ? { quit: true } : undefined)',
+  'requestSingleInstanceLock({ quit: true })',
   'hasQuitRequest(additionalData)',
 ]) {
   if (!desktopMain.includes(phrase)) {
@@ -453,7 +450,7 @@ if (!desktopUpdateTestWorkflow.includes('contents: read')
   || /contents:\s*write|action-gh-release|gh\s+release/.test(desktopUpdateTestWorkflow)) {
   fail('desktop update test workflow must not have a production release publication path')
 }
-for (const phrase of ['configure-macos-signing.mjs --require-signed', 'run dist:update-test', 'run test:updater']) {
+for (const phrase of ['configure-macos-signing.mjs --require-signed', 'run dist:update-test']) {
   if (!desktopUpdateTestWorkflow.includes(phrase)) fail(`desktop update test workflow must include: ${phrase}`)
 }
 

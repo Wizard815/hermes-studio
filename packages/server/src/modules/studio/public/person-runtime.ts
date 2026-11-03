@@ -1,24 +1,37 @@
+import type { MemoryService } from '../../../../../ekko-agent/src/memory/service'
+import type { MemoryRuntimeIdentity } from '../../../../../ekko-agent/src/memory/types'
 import type { AgentRuntimeRunInput, AgentRuntimeRunResult, AgentRuntimeContextEstimate, AgentRuntimeBoundaryInterruptRequest, AgentRuntimeBoundaryInterruptResult } from '../../../../../ekko-agent/src/runtime/types'
 import type { AgentMessage, AgentToolDefinition, ModelRequest, ModelResponse } from '../../../../../ekko-agent/src/model/types'
 import type { PersonSelection, PersonTaskOrigin } from '../contracts/person'
 import type { AuthenticatedUser } from '../middleware/auth'
 
 export interface PersonModelCall {
+  workspace?: string
   selection: PersonSelection
   messages: AgentMessage[]
   systemPrompt: string
   tools: Array<AgentToolDefinition & { execute(input: Record<string, unknown>, origin?: PersonTaskOrigin): Promise<unknown> }>
   maxSteps: number
   contextTokens: number
+  compression?: { enabled: boolean; threshold: number }
   reasoningEffort?: ModelRequest['reasoningEffort']
   signal: AbortSignal
   beforeRequest?: () => void
   onEvent?: (event: unknown) => void
   onUsage?: (response: ModelResponse) => void
-  prepare?: (request: ModelRequest, summarize: (text: string) => Promise<string>) => Promise<ModelRequest>
+  onSummaryUsage?: (response: ModelResponse) => void
+  summaryCache?: { get(key: string): string | undefined; set(key: string, summary: string): void }
+  onPrepared?: (request: ModelRequest) => void
 }
-export interface PersonChatAgentOptions extends Pick<PersonModelCall, 'selection' | 'tools' | 'systemPrompt' | 'maxSteps' | 'contextTokens' | 'beforeRequest'> {
+export interface PersonChatAgentOptions extends Pick<PersonModelCall, 'selection' | 'tools' | 'systemPrompt' | 'maxSteps' | 'contextTokens' | 'compression' | 'beforeRequest' | 'summaryCache' | 'onSummaryUsage'> {
+  returnExecutionId?: string
+  acceptanceReturnId?: string
+  stage?: import('../contracts/person-stage').PersonStageContext
   workspace: string
+  memory?: { service: MemoryService; identity: MemoryRuntimeIdentity }
+  loadHistory?: (query: string) => AgentMessage[]
+  captureMemoryRequest?: () => PersonTaskOrigin['memoryRequest']
+  returnMemoryInput?: () => AgentRuntimeRunInput['memoryInput']
 }
 export interface PersonResultDelivery {
   user: AuthenticatedUser
@@ -29,9 +42,14 @@ export interface PersonResultDelivery {
   status: string
   output: string
   error: string
+  acceptance?: Record<string, unknown>
+  returnExpectation?: string
+  flow?: { index: number; total: number; stopped: boolean; completed: boolean; next_session_id: string | null }
 }
 export interface PersonRuntimePort {
+  createDefaultWorkspace?(profile: string, sessionId: string): string
   deliver(input: PersonResultDelivery): Promise<void>
+  deliverStage?(input: { user: AuthenticatedUser; context: import('../contracts/person-stage').PersonStageContext; sessionId: string; input: string }): Promise<void>
   chatAgent?(input: PersonChatAgentOptions): {
     sessionWorkspaceDirectory(sessionId: string): string
     requestBoundaryInterrupt(request: AgentRuntimeBoundaryInterruptRequest): AgentRuntimeBoundaryInterruptResult
@@ -44,7 +62,8 @@ export interface PersonRuntimePort {
   }> }>
   model(input: PersonModelCall): Promise<string>
   nativeModels(runtime: string): Promise<{ status: string; models: Array<{ id: string; name: string; isDefault?: boolean; reasoningEffort?: string; reasoningEfforts?: string[] }> }>
-  execute(input: { user: AuthenticatedUser; selection: PersonSelection; sessionId: string; workspace: string; prompt: string | import('../contracts/runs/session').ContentBlock[]; displayInput?: string; signal: AbortSignal; onEvent(event: string, payload: Record<string, unknown>): void }): Promise<{ ok: boolean; output?: string; error?: string }>
+  execute(input: { purpose?: 'development' | 'verification'; waitForTermination?: boolean; user: AuthenticatedUser; selection: PersonSelection; sessionId: string; workspace: string; taskTimeoutMinutes: number; prompt: string | import('../contracts/runs/session').ContentBlock[]; displayInput?: string; signal: AbortSignal; onEvent(event: string, payload: Record<string, unknown>): void }): Promise<{ ok: boolean; output?: string; error?: string; interrupted?: boolean; stop_reason?: string }>
+  interruptForInsertion?(sessionId: string, expectedRunId: string, expectedRunMarker?: string): Promise<{ status: string; phase?: string }>
   answer(sessionId: string, id: string, response: string, approval: boolean): Promise<boolean>
   stop(sessionId: string): Promise<void>
 }
