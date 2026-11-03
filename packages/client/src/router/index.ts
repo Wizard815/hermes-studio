@@ -98,11 +98,8 @@ const router = createRouter({
       name: 'hermes.models',
       component: () => import('@/views/hermes/ChatView.vue'),
     },
-    {
-      path: '/hermes/api-relay',
-      name: 'hermes.apiRelay',
-      component: () => import('@/views/hermes/ApiRelayView.vue'),
-    },
+    // API Relay was removed from this fork; keep old links working.
+    { path: '/hermes/api-relay', redirect: { name: 'hermes.chat' } },
     {
       path: '/hermes/upstream',
       name: 'hermes.upstream',

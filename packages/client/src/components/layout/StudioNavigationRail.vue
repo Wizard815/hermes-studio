@@ -7,7 +7,6 @@ import { NTooltip } from 'naive-ui'
 import { isStoredSuperAdmin } from '@/api/client'
 import RouteLinkItem from '@/components/common/RouteLinkItem.vue'
 import PageSidebarFooter from './PageSidebarFooter.vue'
-import RelayCampaignBadge from '@/components/hermes/RelayCampaignBadge.vue'
 import { useMobileNavigation } from '@/composables/usePageSidebar'
 
 const route = useRoute()
@@ -30,13 +29,12 @@ const activeKey = computed(() => {
   if (['hermes.chat', 'hermes.session', 'hermes.globalAgent', 'hermes.globalAgentSession'].includes(name)) return 'chat'
   if (name.startsWith('hermes.groupChat')) return 'group'
   if (name.startsWith('hermes.history')) return 'history'
-  if (name === 'hermes.apiRelay') return 'apiRelay'
   if (name === 'hermes.upstream') return 'upstream'
   return entries.value.find(entry => entry.route === name)?.key || 'settings'
 })
 const mobileNavigation = useMobileNavigation()
 function handleNavigate(key: string) {
-  if (mobileNavigation && ['person', 'connections', 'agents', 'models', 'usage', 'apiRelay', 'upstream'].includes(key)) {
+  if (mobileNavigation && ['person', 'connections', 'agents', 'models', 'usage', 'upstream'].includes(key)) {
     mobileNavigation.open.value = false
   }
 }
@@ -54,15 +52,6 @@ function handleNavigate(key: string) {
           </RouteLinkItem>
         </template>
         {{ t(entry.label) }}
-      </NTooltip>
-      <NTooltip placement="right" trigger="hover">
-        <template #trigger>
-          <RouteLinkItem class="studio-navigation-rail__item studio-navigation-rail__item--relay" :to="{ name: 'hermes.apiRelay' }" :active="activeKey === 'apiRelay'" :aria-label="t('sidebar.apiRelay')" :aria-description="t('apiRelay.campaignLabel')" @click="handleNavigate('apiRelay')">
-            <img class="api-relay-logo" :src="deploymentUrl('/relay-logo.png')" width="24" height="24" alt="" aria-hidden="true" />
-            <RelayCampaignBadge compact />
-          </RouteLinkItem>
-        </template>
-        {{ t('sidebar.apiRelay') }} · {{ t('apiRelay.campaignLabel') }}
       </NTooltip>
       <NTooltip placement="right" trigger="hover">
         <template #trigger>
@@ -116,7 +105,6 @@ function handleNavigate(key: string) {
   scrollbar-width: none;
 }
 .studio-navigation-rail__bottom { display: flex; flex-direction: column; gap: calc(8px * var(--spacing-scale, 1)); padding-top: 12px; }
-.api-relay-logo { border-radius: var(--radius-component, 4px); }
 .studio-navigation-rail__item--relay {
   position: relative;
   :deep(.relay-campaign-badge) {
