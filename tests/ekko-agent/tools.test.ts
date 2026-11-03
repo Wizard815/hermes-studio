@@ -354,6 +354,21 @@ describe('ekko-agent tools', () => {
     expect(result.data).toMatchObject({ truncated: false, limit: MIN_READ_FILE_BYTES, requestedLimit: 100 })
   })
 
+  it('refuses to keep re-reading bytes that were already returned', async () => {
+    const reader = new ReadFileTool()
+    await writeFile(path.join(workspaceRoot, 'again.txt'), 'x'.repeat(13_000))
+    const context = { workspaceRoot, sessionId: 'overlap-session' }
+
+    const first = await reader.execute({ path: 'again.txt', offset: 9_800, limit: 100 }, context)
+    expect(first.content).toContain('reached the end of the file at byte 13000')
+    await reader.execute({ path: 'again.txt', offset: 9_900, limit: 100 }, context)
+    await reader.execute({ path: 'again.txt', offset: 10_000, limit: 100 }, context)
+    await expect(reader.execute({ path: 'again.txt', offset: 10_100, limit: 100 }, context))
+      .rejects.toMatchObject({ code: 'REDUNDANT_READ' })
+    // Reading past what was returned is still allowed.
+    await expect(reader.execute({ path: 'again.txt', offset: 13_000 }, context)).resolves.toMatchObject({ ok: true })
+  })
+
   it('reads files outside workspaceRoot while keeping writes isolated', async () => {
     const reader = new ReadFileTool()
     const writer = new WriteFileTool()

@@ -50,6 +50,10 @@ export class ReadFileTool implements AgentTool<ReadFileInput> {
     const offset = nonNegativeInteger(input.offset, 'offset', 0)
     const requestedLimit = positiveInteger(input.limit, 'limit', DEFAULT_READ_FILE_MAX_BYTES, 4)
     const limit = Math.min(Math.max(requestedLimit, MIN_READ_FILE_BYTES), DEFAULT_READ_FILE_MAX_BYTES)
+    const overlap = noteOverlappingRead(context.sessionId, filePath, offset)
+    if (overlap) {
+      throw new AgentToolError(overlap, 'REDUNDANT_READ')
+    }
     const file = await open(filePath, 'r')
 
     try {
@@ -73,10 +77,13 @@ export class ReadFileTool implements AgentTool<ReadFileInput> {
         ? `${chunk}${chunk && !chunk.endsWith('\n') ? '\n' : ''}\n[read_file truncated: returned bytes ${offset}-${nextOffset - 1} of ${fileInfo.size}; to read the rest, call again with offset=${nextOffset} limit=${Math.min(fileInfo.size - nextOffset, DEFAULT_READ_FILE_MAX_BYTES)}]`
         : chunk
 
+      recordReadEnd(context.sessionId, filePath, offset, nextOffset)
       markFileRead(context.sessionId, filePath)
       return {
         ok: true,
-        content,
+        content: !truncated && offset > 0 && bytesRead > 0 && requestedLimit < MIN_READ_FILE_BYTES
+          ? `${content}${content.endsWith('\n') ? '' : '\n'}\n[read_file: reached the end of the file at byte ${fileInfo.size}; there is nothing more to read]`
+          : content,
         data: {
           path: filePath,
           bytes: returnedBytes,
@@ -282,6 +289,41 @@ function positiveInteger(value: number | undefined, name: string, fallback: numb
     throw new AgentToolError(`${name} must be an integer greater than or equal to ${minimum}.`, 'INVALID_TOOL_INPUT')
   }
   return value
+}
+
+// A model that pages with a fixed small step keeps re-reading bytes it already holds.
+// Remember where each file read ended and refuse the third consecutive overlapping read.
+const MAX_OVERLAPPING_READS = 2
+const readEnds = new Map<string, { start: number; end: number; overlaps: number }>()
+
+function readKey(sessionId: string | undefined, filePath: string): string {
+  return `${sessionId ?? ''}\0${filePath}`
+}
+
+function noteOverlappingRead(sessionId: string | undefined, filePath: string, offset: number): string | null {
+  const previous = readEnds.get(readKey(sessionId, filePath))
+  if (!previous || offset >= previous.end || offset < previous.start) return null
+  if (previous.overlaps + 1 <= MAX_OVERLAPPING_READS) return null
+  return `You already received bytes ${previous.start}-${previous.end - 1} of this file in earlier read_file calls; `
+    + `offset ${offset} falls inside them. Stop paging with a small step. Use the content you already have, `
+    + `or read from offset=${previous.end} if the file continues.`
+}
+
+function recordReadEnd(sessionId: string | undefined, filePath: string, offset: number, end: number): void {
+  const key = readKey(sessionId, filePath)
+  const previous = readEnds.get(key)
+  const overlapping = previous !== undefined && offset >= previous.start && offset < previous.end
+  readEnds.delete(key)
+  readEnds.set(key, {
+    start: overlapping ? previous!.start : offset,
+    end: Math.max(end, overlapping ? previous!.end : end),
+    overlaps: overlapping ? previous!.overlaps + 1 : 0,
+  })
+  while (readEnds.size > 256) {
+    const oldest = readEnds.keys().next().value
+    if (oldest === undefined) break
+    readEnds.delete(oldest)
+  }
 }
 
 function decodedByteBoundary(buffer: Buffer, encoding: BufferEncoding, offset: number, hasMore: boolean): number {
