@@ -13,6 +13,8 @@ services:
     volumes:
       - ${HERMES_DATA_DIR:-./hermes_data}:/home/agent/.hermes
       - ${HERMES_DATA_DIR:-./hermes_data}/hermes-web-ui:/home/agent/.hermes-web-ui
+      # adb's key: phones and BlueStacks stay authorized after the container is recreated.
+      - ${HERMES_DATA_DIR:-./hermes_data}/android:/home/agent/.android
     environment:
       - PORT=${PORT:-6060}
       - HERMES_HOME=/home/agent/.hermes

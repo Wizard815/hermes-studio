@@ -6,6 +6,7 @@ ARG NODE_VERSION=24.22.1
 USER root
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    adb \
     ca-certificates \
     curl \
     ffmpeg \

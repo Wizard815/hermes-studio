@@ -1,4 +1,5 @@
 import { herdrMessages } from '../herdr-messages'
+import { androidMessages } from '../android-messages'
 import { personMessages } from '../person-messages'
 import { remoteDeviceMessages } from '../remote-device-messages'
 import { themePresetMessages } from '../theme-preset-locales'
@@ -8,6 +9,7 @@ import { socialMessagesZh } from '../social-messages'
 export default {
   person: personMessages['zh'],
   ...herdrMessages['zh'],
+  ...androidMessages['zh'],
   sessionTasks: {
       "title": "任务",
       "task": "任务",
