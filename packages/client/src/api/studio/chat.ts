@@ -418,8 +418,19 @@ function globalRunCompletedHandler(event: RunEvent): void {
   }
 
   // Auto-cleanup session handlers on completion (skip if more runs queued)
-  if ((event as any).queue_remaining > 0 || (event.background_pending || 0) > 0) return
+  if (moreRunsFollow(event)) return
   sessionEventHandlers.delete(sid)
+}
+
+/**
+ * A run ended but the session keeps going: more queued runs, background work,
+ * or the turn was stopped to send a queued message now (that message starts
+ * next even if the runtime did not count it in queue_remaining).
+ */
+function moreRunsFollow(event: RunEvent): boolean {
+  return (event as any).queue_remaining > 0
+    || (event.background_pending || 0) > 0
+    || (event as any).stop_reason === 'queue_insertion'
 }
 
 /**
@@ -435,7 +446,7 @@ function globalRunFailedHandler(event: RunEvent): void {
   }
 
   // Auto-cleanup session handlers on failure (skip if more runs queued)
-  if ((event as any).queue_remaining > 0 || (event.background_pending || 0) > 0) return
+  if (moreRunsFollow(event)) return
   sessionEventHandlers.delete(sid)
 }
 
@@ -1111,7 +1122,7 @@ export function startRunViaSocket(
     onRunCompleted: (evt: RunEvent) => {
       if (closed) return
       onEvent(evt)
-      if ((evt as any).queue_remaining > 0) return
+      if ((evt as any).queue_remaining > 0 || (evt as any).stop_reason === 'queue_insertion') return
       if ((evt.background_pending || 0) > 0) {
         onDone()
         return
@@ -1123,7 +1134,7 @@ export function startRunViaSocket(
     onRunFailed: (evt: RunEvent) => {
       if (closed) return
       onEvent(evt)
-      if ((evt as any).queue_remaining > 0) return
+      if ((evt as any).queue_remaining > 0 || (evt as any).stop_reason === 'queue_insertion') return
       if ((evt.background_pending || 0) > 0) {
         onDone()
         return
