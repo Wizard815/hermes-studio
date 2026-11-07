@@ -21,6 +21,7 @@ import {
   codexProxyRoutes,
   codingAgentRoutes,
 } from './coding-agents'
+import { herdrPluginRoutes, herdrRoutes } from '../modules/coding-agents/routes/herdr'
 
 // Studio and agent route modules composed into one HTTP application.
 import { uploadRoutes } from '../modules/studio/routes/upload'
@@ -101,6 +102,9 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(chatWebhookPublicRoutes.routes())
   app.use(browserPublicRoutes.routes())
 
+  // herdr plugin routes carry their own token and loopback check.
+  app.use(herdrPluginRoutes.routes())
+
   // --- Auth middleware: all routes below require authentication ---
   authMiddleware.forEach((middleware) => app.use(middleware))
 
@@ -112,6 +116,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(uploadRoutes.routes())
   app.use(appUploadRoutes.routes())
   app.use(updateRoutes.routes())           // Must be before proxy (proxy catch-all matches everything)
+  app.use(herdrRoutes.routes())           // Before codingAgentRoutes' /:id patterns
   app.use(codingAgentRoutes.routes())
   app.use(agentStatusRoutes.routes())
   app.use(themeRoutes.routes())

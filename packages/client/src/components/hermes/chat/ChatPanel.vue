@@ -64,6 +64,7 @@ import RealtimeVoiceStage from "./RealtimeVoiceStage.vue";
 import ConversationMonitorPane from "./ConversationMonitorPane.vue";
 import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
+import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import ListActionsMenu from "@/components/layout/ListActionsMenu.vue";
 import OutlinePanel from "./OutlinePanel.vue";
 import ChatToolsPanel from "./ChatToolsPanel.vue";
@@ -131,6 +132,15 @@ function updateSessionTasksVisibility(show: boolean) {
 const message = useMessage();
 const { t } = useI18n();
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
+// Coding-agent chats herdr can host (Claude Code, Codex, OpenCode, ...).
+const HERDR_ELIGIBLE_AGENTS = new Set(['claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot'])
+const herdrEligible = computed(() => {
+  const session = chatStore.activeSession
+  if (!session) return false
+  if (sessionStates.herdrLink(session.id)) return true
+  const agent = session.codingAgentId || (session.agent === 'claude' ? 'claude-code' : session.agent)
+  return !!agent && HERDR_ELIGIBLE_AGENTS.has(agent)
+})
 
 const showOutline = ref(false);
 const ACTIVE_SESSION_MENU_ID = "active-session-actions-menu";
@@ -2674,6 +2684,8 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
             :pinned="true"
             can-delete
             :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
+              :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
+              :herdr-linked="!!sessionStates.herdrLink(s.id)"
             :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
             :selectable="isBatchMode"
             :selected="isSessionSelected(s)"
@@ -2728,6 +2740,8 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               :pinned="Boolean(s.isPinned)"
               can-delete
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
+              :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
+              :herdr-linked="!!sessionStates.herdrLink(s.id)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -2832,6 +2846,8 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               :pinned="false"
               can-delete
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
+              :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
+              :herdr-linked="!!sessionStates.herdrLink(s.id)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -3153,6 +3169,10 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               </svg>
             </template>
           </NButton>
+          <HerdrOpenButton
+            v-if="isSuperAdmin && !showNewChatPage && chatStore.activeSessionId && herdrEligible"
+            :session-id="chatStore.activeSessionId"
+          />
           <!-- chat/live mode toggle hidden -->
           <template v-if="currentMode === 'chat' && !showNewChatPage">
             <HeaderToolPanelToggle v-if="isSuperAdmin" :expanded="showToolPanel" controls="chat-tool-panel"

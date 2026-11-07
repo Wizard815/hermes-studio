@@ -197,6 +197,12 @@ const router = createRouter({
       meta: { requiresSuperAdmin: true },
     },
     {
+      path: '/herdr',
+      name: 'herdr',
+      component: () => import('@/views/hermes/HerdrView.vue'),
+      meta: { requiresSuperAdmin: true },
+    },
+    {
       path: '/hermes/connections',
       name: 'hermes.connections',
       component: () => import('@/views/hermes/ChatView.vue'),

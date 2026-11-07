@@ -1,0 +1,867 @@
+/** herdr integration and shared agent status strings, one entry per locale. */
+export const herdrMessages = {
+  "en": {
+    "agentStatus": {
+      "working": "Working",
+      "blocked": "Blocked — needs your answer",
+      "done": "Done — not read yet",
+      "idle": "Idle",
+      "unknown": "Unknown"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "off": "Off",
+      "backToStudio": "Back to Studio",
+      "openInHerdr": "Open in herdr",
+      "openLive": "Show live pane in herdr",
+      "openChat": "Open chat in Studio",
+      "chat": "Chat",
+      "noAgents": "No agents are running in herdr yet.",
+      "selectAgent": "Select an agent to watch it live.",
+      "takeControl": "Take control",
+      "releaseControl": "Release control",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "Agents",
+        "settings": "Settings"
+      },
+      "terminal": {
+        "connecting": "Connecting…",
+        "closed": "Stream closed",
+        "reconnect": "Reconnect"
+      },
+      "launch": {
+        "button": "New agent",
+        "title": "Start an agent in herdr",
+        "agent": "Agent",
+        "provider": "Provider",
+        "model": "Model",
+        "agentDefault": "Agent's own configuration",
+        "workspace": "Folder",
+        "workspacePlaceholder": "Default workspace",
+        "name": "Name",
+        "hint": "Studio MCP servers, skills and the chosen provider are passed to the agent. The chat appears in Studio once it starts.",
+        "start": "Start"
+      },
+      "settings": {
+        "title": "herdr integration",
+        "description": "Run coding agents in herdr panes and keep them in sync with Studio chats.",
+        "binary": "Binary",
+        "version": "Version",
+        "server": "Server",
+        "running": "running",
+        "stopped": "stopped",
+        "notFound": "not found",
+        "enabled": "Enable herdr",
+        "autoImport": "Create chats for agents started in herdr",
+        "mirror": "Mirror agent transcripts into chats",
+        "binaryPath": "herdr binary path",
+        "binaryPathPlaceholder": "Search PATH",
+        "session": "herdr session",
+        "profile": "Studio profile for new chats",
+        "startServer": "Start herdr server",
+        "installIntegrations": "Install herdr integrations",
+        "integrationsInstalled": "herdr integrations installed",
+        "integrationsPartial": "Some integrations failed: {failed}",
+        "integrationsHint": "Integrations let herdr report each agent's session id, which is how Studio links panes to chats and resumes them.",
+        "installPlugin": "Install Studio plugin",
+        "pluginInstalled": "Studio plugin installed in herdr",
+        "pluginHint": "Adds \"Open in Studio\", \"Studio chats\" and \"Start agent with Studio\" to herdr's action menu. Bind a key in herdr's config, e.g. prefix+s → studio.hermes.chats."
+      }
+    }
+  },
+  "zh": {
+    "agentStatus": {
+      "working": "运行中",
+      "blocked": "已阻塞 — 需要你的回答",
+      "done": "已完成 — 未读",
+      "idle": "空闲",
+      "unknown": "未知"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "已连接",
+      "disconnected": "未连接",
+      "off": "已关闭",
+      "backToStudio": "返回 Studio",
+      "openInHerdr": "在 herdr 中打开",
+      "openLive": "在 herdr 中查看实时窗格",
+      "openChat": "在 Studio 中打开对话",
+      "chat": "对话",
+      "noAgents": "herdr 中还没有运行的智能体。",
+      "selectAgent": "选择一个智能体以实时查看。",
+      "takeControl": "接管控制",
+      "releaseControl": "释放控制",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "智能体",
+        "settings": "设置"
+      },
+      "terminal": {
+        "connecting": "连接中…",
+        "closed": "流已关闭",
+        "reconnect": "重新连接"
+      },
+      "launch": {
+        "button": "新建智能体",
+        "title": "在 herdr 中启动智能体",
+        "agent": "智能体",
+        "provider": "提供商",
+        "model": "模型",
+        "agentDefault": "智能体自身配置",
+        "workspace": "文件夹",
+        "workspacePlaceholder": "默认工作区",
+        "name": "名称",
+        "hint": "Studio 的 MCP 服务、技能和所选提供商会传给智能体。启动后对话会出现在 Studio 中。",
+        "start": "启动"
+      },
+      "settings": {
+        "title": "herdr 集成",
+        "description": "在 herdr 窗格中运行编码智能体，并与 Studio 对话保持同步。",
+        "binary": "程序",
+        "version": "版本",
+        "server": "服务",
+        "running": "运行中",
+        "stopped": "已停止",
+        "notFound": "未找到",
+        "enabled": "启用 herdr",
+        "autoImport": "为在 herdr 中启动的智能体创建对话",
+        "mirror": "将智能体记录同步到对话",
+        "binaryPath": "herdr 程序路径",
+        "binaryPathPlaceholder": "从 PATH 查找",
+        "session": "herdr 会话",
+        "profile": "新对话使用的 Studio 配置",
+        "startServer": "启动 herdr 服务",
+        "installIntegrations": "安装 herdr 集成",
+        "integrationsInstalled": "已安装 herdr 集成",
+        "integrationsPartial": "部分集成安装失败：{failed}",
+        "integrationsHint": "集成让 herdr 报告每个智能体的会话 ID，Studio 据此把窗格关联到对话并恢复它们。",
+        "installPlugin": "安装 Studio 插件",
+        "pluginInstalled": "已在 herdr 中安装 Studio 插件",
+        "pluginHint": "在 herdr 的操作菜单中加入“在 Studio 中打开”“Studio 对话”和“用 Studio 启动智能体”。可在 herdr 配置中绑定按键，例如 prefix+s → studio.hermes.chats。"
+      }
+    }
+  },
+  "zh-TW": {
+    "agentStatus": {
+      "working": "執行中",
+      "blocked": "已阻塞 — 需要你的回覆",
+      "done": "已完成 — 未讀",
+      "idle": "閒置",
+      "unknown": "未知"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "已連線",
+      "disconnected": "未連線",
+      "off": "已關閉",
+      "backToStudio": "返回 Studio",
+      "openInHerdr": "在 herdr 中開啟",
+      "openLive": "在 herdr 中查看即時窗格",
+      "openChat": "在 Studio 中開啟對話",
+      "chat": "對話",
+      "noAgents": "herdr 中還沒有執行中的代理。",
+      "selectAgent": "選擇一個代理以即時查看。",
+      "takeControl": "接管控制",
+      "releaseControl": "釋放控制",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "代理",
+        "settings": "設定"
+      },
+      "terminal": {
+        "connecting": "連線中…",
+        "closed": "串流已關閉",
+        "reconnect": "重新連線"
+      },
+      "launch": {
+        "button": "新增代理",
+        "title": "在 herdr 中啟動代理",
+        "agent": "代理",
+        "provider": "供應商",
+        "model": "模型",
+        "agentDefault": "代理自身設定",
+        "workspace": "資料夾",
+        "workspacePlaceholder": "預設工作區",
+        "name": "名稱",
+        "hint": "Studio 的 MCP 服務、技能與所選供應商會傳給代理。啟動後對話會出現在 Studio 中。",
+        "start": "啟動"
+      },
+      "settings": {
+        "title": "herdr 整合",
+        "description": "在 herdr 窗格中執行程式碼代理，並與 Studio 對話保持同步。",
+        "binary": "程式",
+        "version": "版本",
+        "server": "服務",
+        "running": "執行中",
+        "stopped": "已停止",
+        "notFound": "找不到",
+        "enabled": "啟用 herdr",
+        "autoImport": "為在 herdr 中啟動的代理建立對話",
+        "mirror": "將代理紀錄同步到對話",
+        "binaryPath": "herdr 程式路徑",
+        "binaryPathPlaceholder": "從 PATH 尋找",
+        "session": "herdr 工作階段",
+        "profile": "新對話使用的 Studio 設定檔",
+        "startServer": "啟動 herdr 服務",
+        "installIntegrations": "安裝 herdr 整合",
+        "integrationsInstalled": "已安裝 herdr 整合",
+        "integrationsPartial": "部分整合安裝失敗：{failed}",
+        "integrationsHint": "整合讓 herdr 回報每個代理的工作階段 ID，Studio 藉此把窗格連結到對話並恢復它們。",
+        "installPlugin": "安裝 Studio 外掛",
+        "pluginInstalled": "已在 herdr 中安裝 Studio 外掛",
+        "pluginHint": "在 herdr 的操作選單加入「在 Studio 中開啟」「Studio 對話」與「用 Studio 啟動代理」。可在 herdr 設定中綁定按鍵，例如 prefix+s → studio.hermes.chats。"
+      }
+    }
+  },
+  "ja": {
+    "agentStatus": {
+      "working": "作業中",
+      "blocked": "ブロック中 — 回答が必要",
+      "done": "完了 — 未読",
+      "idle": "待機中",
+      "unknown": "不明"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "接続済み",
+      "disconnected": "未接続",
+      "off": "オフ",
+      "backToStudio": "Studio に戻る",
+      "openInHerdr": "herdr で開く",
+      "openLive": "herdr でライブペインを表示",
+      "openChat": "Studio でチャットを開く",
+      "chat": "チャット",
+      "noAgents": "herdr で実行中のエージェントはまだありません。",
+      "selectAgent": "エージェントを選ぶとライブで表示します。",
+      "takeControl": "操作を引き継ぐ",
+      "releaseControl": "操作を解放",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "エージェント",
+        "settings": "設定"
+      },
+      "terminal": {
+        "connecting": "接続中…",
+        "closed": "ストリームが終了しました",
+        "reconnect": "再接続"
+      },
+      "launch": {
+        "button": "新しいエージェント",
+        "title": "herdr でエージェントを起動",
+        "agent": "エージェント",
+        "provider": "プロバイダー",
+        "model": "モデル",
+        "agentDefault": "エージェント自身の設定",
+        "workspace": "フォルダー",
+        "workspacePlaceholder": "既定のワークスペース",
+        "name": "名前",
+        "hint": "Studio の MCP サーバー、スキル、選んだプロバイダーがエージェントに渡されます。起動するとチャットが Studio に表示されます。",
+        "start": "起動"
+      },
+      "settings": {
+        "title": "herdr 連携",
+        "description": "コーディングエージェントを herdr のペインで実行し、Studio のチャットと同期します。",
+        "binary": "バイナリ",
+        "version": "バージョン",
+        "server": "サーバー",
+        "running": "実行中",
+        "stopped": "停止",
+        "notFound": "見つかりません",
+        "enabled": "herdr を有効にする",
+        "autoImport": "herdr で起動したエージェントのチャットを作成",
+        "mirror": "エージェントの記録をチャットに反映",
+        "binaryPath": "herdr バイナリのパス",
+        "binaryPathPlaceholder": "PATH から検索",
+        "session": "herdr セッション",
+        "profile": "新しいチャットの Studio プロファイル",
+        "startServer": "herdr サーバーを起動",
+        "installIntegrations": "herdr 連携をインストール",
+        "integrationsInstalled": "herdr 連携をインストールしました",
+        "integrationsPartial": "一部の連携に失敗しました: {failed}",
+        "integrationsHint": "連携により herdr が各エージェントのセッション ID を報告し、Studio はそれを使ってペインとチャットを結び付け、再開します。",
+        "installPlugin": "Studio プラグインをインストール",
+        "pluginInstalled": "herdr に Studio プラグインをインストールしました",
+        "pluginHint": "herdr のアクションメニューに「Studio で開く」「Studio チャット」「Studio でエージェントを起動」を追加します。herdr の設定でキーを割り当てられます（例: prefix+s → studio.hermes.chats）。"
+      }
+    }
+  },
+  "ko": {
+    "agentStatus": {
+      "working": "작업 중",
+      "blocked": "차단됨 — 답변 필요",
+      "done": "완료 — 읽지 않음",
+      "idle": "대기",
+      "unknown": "알 수 없음"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "연결됨",
+      "disconnected": "연결 끊김",
+      "off": "꺼짐",
+      "backToStudio": "Studio로 돌아가기",
+      "openInHerdr": "herdr에서 열기",
+      "openLive": "herdr에서 실시간 창 보기",
+      "openChat": "Studio에서 채팅 열기",
+      "chat": "채팅",
+      "noAgents": "herdr에서 실행 중인 에이전트가 아직 없습니다.",
+      "selectAgent": "에이전트를 선택하면 실시간으로 볼 수 있습니다.",
+      "takeControl": "제어 가져오기",
+      "releaseControl": "제어 해제",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "에이전트",
+        "settings": "설정"
+      },
+      "terminal": {
+        "connecting": "연결 중…",
+        "closed": "스트림이 닫혔습니다",
+        "reconnect": "다시 연결"
+      },
+      "launch": {
+        "button": "새 에이전트",
+        "title": "herdr에서 에이전트 시작",
+        "agent": "에이전트",
+        "provider": "공급자",
+        "model": "모델",
+        "agentDefault": "에이전트 자체 설정",
+        "workspace": "폴더",
+        "workspacePlaceholder": "기본 작업 공간",
+        "name": "이름",
+        "hint": "Studio MCP 서버, 스킬, 선택한 공급자가 에이전트에 전달됩니다. 시작되면 채팅이 Studio에 나타납니다.",
+        "start": "시작"
+      },
+      "settings": {
+        "title": "herdr 연동",
+        "description": "코딩 에이전트를 herdr 창에서 실행하고 Studio 채팅과 동기화합니다.",
+        "binary": "바이너리",
+        "version": "버전",
+        "server": "서버",
+        "running": "실행 중",
+        "stopped": "중지됨",
+        "notFound": "찾을 수 없음",
+        "enabled": "herdr 사용",
+        "autoImport": "herdr에서 시작한 에이전트의 채팅 만들기",
+        "mirror": "에이전트 기록을 채팅에 반영",
+        "binaryPath": "herdr 바이너리 경로",
+        "binaryPathPlaceholder": "PATH에서 찾기",
+        "session": "herdr 세션",
+        "profile": "새 채팅의 Studio 프로필",
+        "startServer": "herdr 서버 시작",
+        "installIntegrations": "herdr 연동 설치",
+        "integrationsInstalled": "herdr 연동을 설치했습니다",
+        "integrationsPartial": "일부 연동 설치 실패: {failed}",
+        "integrationsHint": "연동을 설치하면 herdr가 각 에이전트의 세션 ID를 알려 주며, Studio는 이를 이용해 창과 채팅을 연결하고 재개합니다.",
+        "installPlugin": "Studio 플러그인 설치",
+        "pluginInstalled": "herdr에 Studio 플러그인을 설치했습니다",
+        "pluginHint": "herdr 작업 메뉴에 \"Studio에서 열기\", \"Studio 채팅\", \"Studio로 에이전트 시작\"을 추가합니다. herdr 설정에서 키를 지정할 수 있습니다(예: prefix+s → studio.hermes.chats)."
+      }
+    }
+  },
+  "de": {
+    "agentStatus": {
+      "working": "Arbeitet",
+      "blocked": "Blockiert — braucht deine Antwort",
+      "done": "Fertig — ungelesen",
+      "idle": "Bereit",
+      "unknown": "Unbekannt"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "Verbunden",
+      "disconnected": "Getrennt",
+      "off": "Aus",
+      "backToStudio": "Zurück zu Studio",
+      "openInHerdr": "In herdr öffnen",
+      "openLive": "Live-Bereich in herdr zeigen",
+      "openChat": "Chat in Studio öffnen",
+      "chat": "Chat",
+      "noAgents": "In herdr laufen noch keine Agenten.",
+      "selectAgent": "Wähle einen Agenten, um ihn live zu sehen.",
+      "takeControl": "Steuerung übernehmen",
+      "releaseControl": "Steuerung freigeben",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "Agenten",
+        "settings": "Einstellungen"
+      },
+      "terminal": {
+        "connecting": "Verbinde…",
+        "closed": "Stream beendet",
+        "reconnect": "Neu verbinden"
+      },
+      "launch": {
+        "button": "Neuer Agent",
+        "title": "Agent in herdr starten",
+        "agent": "Agent",
+        "provider": "Anbieter",
+        "model": "Modell",
+        "agentDefault": "Eigene Konfiguration des Agenten",
+        "workspace": "Ordner",
+        "workspacePlaceholder": "Standard-Arbeitsbereich",
+        "name": "Name",
+        "hint": "Studio-MCP-Server, Skills und der gewählte Anbieter werden an den Agenten übergeben. Der Chat erscheint in Studio, sobald er startet.",
+        "start": "Starten"
+      },
+      "settings": {
+        "title": "herdr-Integration",
+        "description": "Coding-Agenten in herdr-Bereichen ausführen und mit Studio-Chats synchron halten.",
+        "binary": "Programm",
+        "version": "Version",
+        "server": "Server",
+        "running": "läuft",
+        "stopped": "gestoppt",
+        "notFound": "nicht gefunden",
+        "enabled": "herdr aktivieren",
+        "autoImport": "Chats für in herdr gestartete Agenten anlegen",
+        "mirror": "Agenten-Verläufe in Chats spiegeln",
+        "binaryPath": "Pfad zum herdr-Programm",
+        "binaryPathPlaceholder": "PATH durchsuchen",
+        "session": "herdr-Sitzung",
+        "profile": "Studio-Profil für neue Chats",
+        "startServer": "herdr-Server starten",
+        "installIntegrations": "herdr-Integrationen installieren",
+        "integrationsInstalled": "herdr-Integrationen installiert",
+        "integrationsPartial": "Einige Integrationen sind fehlgeschlagen: {failed}",
+        "integrationsHint": "Mit Integrationen meldet herdr die Sitzungs-ID jedes Agenten. Damit verknüpft Studio Bereiche mit Chats und setzt sie fort.",
+        "installPlugin": "Studio-Plugin installieren",
+        "pluginInstalled": "Studio-Plugin in herdr installiert",
+        "pluginHint": "Fügt „In Studio öffnen“, „Studio-Chats“ und „Agent mit Studio starten“ zum Aktionsmenü von herdr hinzu. Eine Taste lässt sich in der herdr-Konfiguration belegen, z. B. prefix+s → studio.hermes.chats."
+      }
+    }
+  },
+  "es": {
+    "agentStatus": {
+      "working": "Trabajando",
+      "blocked": "Bloqueado — necesita tu respuesta",
+      "done": "Terminado — sin leer",
+      "idle": "Inactivo",
+      "unknown": "Desconocido"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "Conectado",
+      "disconnected": "Desconectado",
+      "off": "Apagado",
+      "backToStudio": "Volver a Studio",
+      "openInHerdr": "Abrir en herdr",
+      "openLive": "Ver panel en vivo en herdr",
+      "openChat": "Abrir chat en Studio",
+      "chat": "Chat",
+      "noAgents": "Todavía no hay agentes en herdr.",
+      "selectAgent": "Elige un agente para verlo en vivo.",
+      "takeControl": "Tomar el control",
+      "releaseControl": "Liberar el control",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "Agentes",
+        "settings": "Ajustes"
+      },
+      "terminal": {
+        "connecting": "Conectando…",
+        "closed": "Transmisión cerrada",
+        "reconnect": "Reconectar"
+      },
+      "launch": {
+        "button": "Nuevo agente",
+        "title": "Iniciar un agente en herdr",
+        "agent": "Agente",
+        "provider": "Proveedor",
+        "model": "Modelo",
+        "agentDefault": "Configuración propia del agente",
+        "workspace": "Carpeta",
+        "workspacePlaceholder": "Espacio de trabajo predeterminado",
+        "name": "Nombre",
+        "hint": "Los servidores MCP, las habilidades de Studio y el proveedor elegido se pasan al agente. El chat aparece en Studio cuando arranca.",
+        "start": "Iniciar"
+      },
+      "settings": {
+        "title": "Integración con herdr",
+        "description": "Ejecuta agentes de código en paneles de herdr y mantenlos sincronizados con los chats de Studio.",
+        "binary": "Binario",
+        "version": "Versión",
+        "server": "Servidor",
+        "running": "en marcha",
+        "stopped": "detenido",
+        "notFound": "no encontrado",
+        "enabled": "Activar herdr",
+        "autoImport": "Crear chats para agentes iniciados en herdr",
+        "mirror": "Reflejar las transcripciones en los chats",
+        "binaryPath": "Ruta del binario de herdr",
+        "binaryPathPlaceholder": "Buscar en PATH",
+        "session": "Sesión de herdr",
+        "profile": "Perfil de Studio para chats nuevos",
+        "startServer": "Iniciar servidor de herdr",
+        "installIntegrations": "Instalar integraciones de herdr",
+        "integrationsInstalled": "Integraciones de herdr instaladas",
+        "integrationsPartial": "Algunas integraciones fallaron: {failed}",
+        "integrationsHint": "Las integraciones permiten que herdr informe el id de sesión de cada agente; Studio lo usa para vincular paneles con chats y reanudarlos.",
+        "installPlugin": "Instalar el plugin de Studio",
+        "pluginInstalled": "Plugin de Studio instalado en herdr",
+        "pluginHint": "Añade «Abrir en Studio», «Chats de Studio» e «Iniciar agente con Studio» al menú de acciones de herdr. Puedes asignar una tecla en la configuración de herdr, p. ej. prefix+s → studio.hermes.chats."
+      }
+    }
+  },
+  "fr": {
+    "agentStatus": {
+      "working": "En cours",
+      "blocked": "Bloqué — attend votre réponse",
+      "done": "Terminé — non lu",
+      "idle": "Inactif",
+      "unknown": "Inconnu"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "Connecté",
+      "disconnected": "Déconnecté",
+      "off": "Désactivé",
+      "backToStudio": "Retour à Studio",
+      "openInHerdr": "Ouvrir dans herdr",
+      "openLive": "Voir le volet en direct dans herdr",
+      "openChat": "Ouvrir la discussion dans Studio",
+      "chat": "Discussion",
+      "noAgents": "Aucun agent ne tourne encore dans herdr.",
+      "selectAgent": "Choisissez un agent pour le suivre en direct.",
+      "takeControl": "Prendre le contrôle",
+      "releaseControl": "Rendre le contrôle",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "Agents",
+        "settings": "Réglages"
+      },
+      "terminal": {
+        "connecting": "Connexion…",
+        "closed": "Flux fermé",
+        "reconnect": "Reconnecter"
+      },
+      "launch": {
+        "button": "Nouvel agent",
+        "title": "Lancer un agent dans herdr",
+        "agent": "Agent",
+        "provider": "Fournisseur",
+        "model": "Modèle",
+        "agentDefault": "Configuration propre à l’agent",
+        "workspace": "Dossier",
+        "workspacePlaceholder": "Espace de travail par défaut",
+        "name": "Nom",
+        "hint": "Les serveurs MCP, les compétences de Studio et le fournisseur choisi sont transmis à l’agent. La discussion apparaît dans Studio dès son démarrage.",
+        "start": "Lancer"
+      },
+      "settings": {
+        "title": "Intégration herdr",
+        "description": "Exécutez des agents de code dans des volets herdr, synchronisés avec les discussions Studio.",
+        "binary": "Exécutable",
+        "version": "Version",
+        "server": "Serveur",
+        "running": "en marche",
+        "stopped": "arrêté",
+        "notFound": "introuvable",
+        "enabled": "Activer herdr",
+        "autoImport": "Créer des discussions pour les agents lancés dans herdr",
+        "mirror": "Recopier les transcriptions dans les discussions",
+        "binaryPath": "Chemin de l’exécutable herdr",
+        "binaryPathPlaceholder": "Chercher dans PATH",
+        "session": "Session herdr",
+        "profile": "Profil Studio pour les nouvelles discussions",
+        "startServer": "Démarrer le serveur herdr",
+        "installIntegrations": "Installer les intégrations herdr",
+        "integrationsInstalled": "Intégrations herdr installées",
+        "integrationsPartial": "Certaines intégrations ont échoué : {failed}",
+        "integrationsHint": "Les intégrations permettent à herdr de signaler l’identifiant de session de chaque agent ; Studio s’en sert pour relier les volets aux discussions et les reprendre.",
+        "installPlugin": "Installer le plugin Studio",
+        "pluginInstalled": "Plugin Studio installé dans herdr",
+        "pluginHint": "Ajoute « Ouvrir dans Studio », « Discussions Studio » et « Lancer un agent avec Studio » au menu d’actions de herdr. Associez une touche dans la configuration de herdr, par ex. prefix+s → studio.hermes.chats."
+      }
+    }
+  },
+  "pt": {
+    "agentStatus": {
+      "working": "Trabalhando",
+      "blocked": "Bloqueado — precisa da sua resposta",
+      "done": "Concluído — não lido",
+      "idle": "Ocioso",
+      "unknown": "Desconhecido"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "Conectado",
+      "disconnected": "Desconectado",
+      "off": "Desligado",
+      "backToStudio": "Voltar ao Studio",
+      "openInHerdr": "Abrir no herdr",
+      "openLive": "Ver painel ao vivo no herdr",
+      "openChat": "Abrir conversa no Studio",
+      "chat": "Conversa",
+      "noAgents": "Ainda não há agentes rodando no herdr.",
+      "selectAgent": "Escolha um agente para vê-lo ao vivo.",
+      "takeControl": "Assumir o controle",
+      "releaseControl": "Liberar o controle",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "Agentes",
+        "settings": "Configurações"
+      },
+      "terminal": {
+        "connecting": "Conectando…",
+        "closed": "Fluxo encerrado",
+        "reconnect": "Reconectar"
+      },
+      "launch": {
+        "button": "Novo agente",
+        "title": "Iniciar um agente no herdr",
+        "agent": "Agente",
+        "provider": "Provedor",
+        "model": "Modelo",
+        "agentDefault": "Configuração própria do agente",
+        "workspace": "Pasta",
+        "workspacePlaceholder": "Espaço de trabalho padrão",
+        "name": "Nome",
+        "hint": "Servidores MCP, habilidades do Studio e o provedor escolhido são passados ao agente. A conversa aparece no Studio quando ele inicia.",
+        "start": "Iniciar"
+      },
+      "settings": {
+        "title": "Integração com o herdr",
+        "description": "Execute agentes de código em painéis do herdr, sincronizados com as conversas do Studio.",
+        "binary": "Binário",
+        "version": "Versão",
+        "server": "Servidor",
+        "running": "em execução",
+        "stopped": "parado",
+        "notFound": "não encontrado",
+        "enabled": "Ativar herdr",
+        "autoImport": "Criar conversas para agentes iniciados no herdr",
+        "mirror": "Espelhar transcrições nas conversas",
+        "binaryPath": "Caminho do binário do herdr",
+        "binaryPathPlaceholder": "Procurar no PATH",
+        "session": "Sessão do herdr",
+        "profile": "Perfil do Studio para novas conversas",
+        "startServer": "Iniciar servidor do herdr",
+        "installIntegrations": "Instalar integrações do herdr",
+        "integrationsInstalled": "Integrações do herdr instaladas",
+        "integrationsPartial": "Algumas integrações falharam: {failed}",
+        "integrationsHint": "As integrações fazem o herdr informar o id de sessão de cada agente; o Studio usa isso para ligar painéis a conversas e retomá-las.",
+        "installPlugin": "Instalar plugin do Studio",
+        "pluginInstalled": "Plugin do Studio instalado no herdr",
+        "pluginHint": "Adiciona “Abrir no Studio”, “Conversas do Studio” e “Iniciar agente com o Studio” ao menu de ações do herdr. Associe uma tecla na configuração do herdr, por ex. prefix+s → studio.hermes.chats."
+      }
+    }
+  },
+  "ru": {
+    "agentStatus": {
+      "working": "Работает",
+      "blocked": "Заблокирован — нужен ваш ответ",
+      "done": "Готово — не прочитано",
+      "idle": "Ожидает",
+      "unknown": "Неизвестно"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "Подключено",
+      "disconnected": "Отключено",
+      "off": "Выключено",
+      "backToStudio": "Назад в Studio",
+      "openInHerdr": "Открыть в herdr",
+      "openLive": "Показать живую панель в herdr",
+      "openChat": "Открыть чат в Studio",
+      "chat": "Чат",
+      "noAgents": "В herdr пока нет запущенных агентов.",
+      "selectAgent": "Выберите агента, чтобы смотреть его вживую.",
+      "takeControl": "Взять управление",
+      "releaseControl": "Отпустить управление",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "Агенты",
+        "settings": "Настройки"
+      },
+      "terminal": {
+        "connecting": "Подключение…",
+        "closed": "Поток закрыт",
+        "reconnect": "Переподключить"
+      },
+      "launch": {
+        "button": "Новый агент",
+        "title": "Запустить агента в herdr",
+        "agent": "Агент",
+        "provider": "Провайдер",
+        "model": "Модель",
+        "agentDefault": "Собственная конфигурация агента",
+        "workspace": "Папка",
+        "workspacePlaceholder": "Рабочая папка по умолчанию",
+        "name": "Название",
+        "hint": "Агенту передаются MCP-серверы и навыки Studio и выбранный провайдер. Чат появится в Studio после запуска.",
+        "start": "Запустить"
+      },
+      "settings": {
+        "title": "Интеграция с herdr",
+        "description": "Запускайте агентов кода в панелях herdr и синхронизируйте их с чатами Studio.",
+        "binary": "Программа",
+        "version": "Версия",
+        "server": "Сервер",
+        "running": "работает",
+        "stopped": "остановлен",
+        "notFound": "не найден",
+        "enabled": "Включить herdr",
+        "autoImport": "Создавать чаты для агентов, запущенных в herdr",
+        "mirror": "Отражать журналы агентов в чатах",
+        "binaryPath": "Путь к программе herdr",
+        "binaryPathPlaceholder": "Искать в PATH",
+        "session": "Сессия herdr",
+        "profile": "Профиль Studio для новых чатов",
+        "startServer": "Запустить сервер herdr",
+        "installIntegrations": "Установить интеграции herdr",
+        "integrationsInstalled": "Интеграции herdr установлены",
+        "integrationsPartial": "Не удалось установить: {failed}",
+        "integrationsHint": "Интеграции позволяют herdr сообщать идентификатор сессии каждого агента — по нему Studio связывает панели с чатами и возобновляет их.",
+        "installPlugin": "Установить плагин Studio",
+        "pluginInstalled": "Плагин Studio установлен в herdr",
+        "pluginHint": "Добавляет в меню действий herdr пункты «Открыть в Studio», «Чаты Studio» и «Запустить агента через Studio». Клавишу можно назначить в конфигурации herdr, например prefix+s → studio.hermes.chats."
+      }
+    }
+  },
+  "tr": {
+    "agentStatus": {
+      "working": "Çalışıyor",
+      "blocked": "Engellendi — yanıtın gerekiyor",
+      "done": "Bitti — okunmadı",
+      "idle": "Boşta",
+      "unknown": "Bilinmiyor"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "Bağlı",
+      "disconnected": "Bağlantı yok",
+      "off": "Kapalı",
+      "backToStudio": "Studio’ya dön",
+      "openInHerdr": "herdr’da aç",
+      "openLive": "herdr’da canlı bölmeyi göster",
+      "openChat": "Sohbeti Studio’da aç",
+      "chat": "Sohbet",
+      "noAgents": "herdr’da henüz çalışan ajan yok.",
+      "selectAgent": "Canlı izlemek için bir ajan seç.",
+      "takeControl": "Kontrolü al",
+      "releaseControl": "Kontrolü bırak",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "Ajanlar",
+        "settings": "Ayarlar"
+      },
+      "terminal": {
+        "connecting": "Bağlanıyor…",
+        "closed": "Akış kapandı",
+        "reconnect": "Yeniden bağlan"
+      },
+      "launch": {
+        "button": "Yeni ajan",
+        "title": "herdr’da ajan başlat",
+        "agent": "Ajan",
+        "provider": "Sağlayıcı",
+        "model": "Model",
+        "agentDefault": "Ajanın kendi yapılandırması",
+        "workspace": "Klasör",
+        "workspacePlaceholder": "Varsayılan çalışma alanı",
+        "name": "Ad",
+        "hint": "Studio MCP sunucuları, yetenekler ve seçilen sağlayıcı ajana aktarılır. Ajan başlayınca sohbet Studio’da görünür.",
+        "start": "Başlat"
+      },
+      "settings": {
+        "title": "herdr entegrasyonu",
+        "description": "Kod ajanlarını herdr bölmelerinde çalıştır ve Studio sohbetleriyle eşitle.",
+        "binary": "Program",
+        "version": "Sürüm",
+        "server": "Sunucu",
+        "running": "çalışıyor",
+        "stopped": "durdu",
+        "notFound": "bulunamadı",
+        "enabled": "herdr’ı etkinleştir",
+        "autoImport": "herdr’da başlatılan ajanlar için sohbet oluştur",
+        "mirror": "Ajan kayıtlarını sohbetlere yansıt",
+        "binaryPath": "herdr program yolu",
+        "binaryPathPlaceholder": "PATH içinde ara",
+        "session": "herdr oturumu",
+        "profile": "Yeni sohbetler için Studio profili",
+        "startServer": "herdr sunucusunu başlat",
+        "installIntegrations": "herdr entegrasyonlarını kur",
+        "integrationsInstalled": "herdr entegrasyonları kuruldu",
+        "integrationsPartial": "Bazı entegrasyonlar başarısız oldu: {failed}",
+        "integrationsHint": "Entegrasyonlar herdr’ın her ajanın oturum kimliğini bildirmesini sağlar; Studio bununla bölmeleri sohbetlere bağlar ve devam ettirir.",
+        "installPlugin": "Studio eklentisini kur",
+        "pluginInstalled": "Studio eklentisi herdr’a kuruldu",
+        "pluginHint": "herdr eylem menüsüne “Studio’da aç”, “Studio sohbetleri” ve “Studio ile ajan başlat” ekler. herdr yapılandırmasında tuş atayabilirsin, örn. prefix+s → studio.hermes.chats."
+      }
+    }
+  },
+  "ar": {
+    "agentStatus": {
+      "working": "يعمل",
+      "blocked": "محظور — يحتاج إلى ردك",
+      "done": "انتهى — غير مقروء",
+      "idle": "خامل",
+      "unknown": "غير معروف"
+    },
+    "herdr": {
+      "nav": "herdr",
+      "connected": "متصل",
+      "disconnected": "غير متصل",
+      "off": "متوقف",
+      "backToStudio": "العودة إلى Studio",
+      "openInHerdr": "فتح في herdr",
+      "openLive": "عرض اللوحة المباشرة في herdr",
+      "openChat": "فتح المحادثة في Studio",
+      "chat": "محادثة",
+      "noAgents": "لا توجد وكلاء تعمل في herdr بعد.",
+      "selectAgent": "اختر وكيلًا لمشاهدته مباشرة.",
+      "takeControl": "تولي التحكم",
+      "releaseControl": "ترك التحكم",
+      "tabs": {
+        "ui": "herdr",
+        "agents": "الوكلاء",
+        "settings": "الإعدادات"
+      },
+      "terminal": {
+        "connecting": "جارٍ الاتصال…",
+        "closed": "أُغلق البث",
+        "reconnect": "إعادة الاتصال"
+      },
+      "launch": {
+        "button": "وكيل جديد",
+        "title": "تشغيل وكيل في herdr",
+        "agent": "الوكيل",
+        "provider": "المزوّد",
+        "model": "النموذج",
+        "agentDefault": "إعدادات الوكيل الخاصة",
+        "workspace": "المجلد",
+        "workspacePlaceholder": "مساحة العمل الافتراضية",
+        "name": "الاسم",
+        "hint": "تُمرَّر خوادم MCP ومهارات Studio والمزوّد المختار إلى الوكيل. تظهر المحادثة في Studio بعد بدء التشغيل.",
+        "start": "تشغيل"
+      },
+      "settings": {
+        "title": "تكامل herdr",
+        "description": "شغّل وكلاء البرمجة في لوحات herdr وأبقِها متزامنة مع محادثات Studio.",
+        "binary": "البرنامج",
+        "version": "الإصدار",
+        "server": "الخادم",
+        "running": "يعمل",
+        "stopped": "متوقف",
+        "notFound": "غير موجود",
+        "enabled": "تفعيل herdr",
+        "autoImport": "إنشاء محادثات للوكلاء المشغّلين في herdr",
+        "mirror": "نسخ سجلات الوكلاء إلى المحادثات",
+        "binaryPath": "مسار برنامج herdr",
+        "binaryPathPlaceholder": "البحث في PATH",
+        "session": "جلسة herdr",
+        "profile": "ملف Studio للمحادثات الجديدة",
+        "startServer": "تشغيل خادم herdr",
+        "installIntegrations": "تثبيت تكاملات herdr",
+        "integrationsInstalled": "تم تثبيت تكاملات herdr",
+        "integrationsPartial": "فشلت بعض التكاملات: {failed}",
+        "integrationsHint": "تتيح التكاملات لـ herdr الإبلاغ عن معرّف جلسة كل وكيل، ويستخدمه Studio لربط اللوحات بالمحادثات واستئنافها.",
+        "installPlugin": "تثبيت إضافة Studio",
+        "pluginInstalled": "تم تثبيت إضافة Studio في herdr",
+        "pluginHint": "تضيف «فتح في Studio» و«محادثات Studio» و«تشغيل وكيل عبر Studio» إلى قائمة إجراءات herdr. يمكنك ربط مفتاح في إعدادات herdr، مثل prefix+s → studio.hermes.chats."
+      }
+    }
+  }
+} as const

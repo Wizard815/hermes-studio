@@ -1,3 +1,4 @@
+import { herdrMessages } from '../herdr-messages'
 import { personMessages } from '../person-messages'
 import { remoteDeviceMessages } from '../remote-device-messages'
 import { themePresetMessages } from '../theme-preset-locales'
@@ -6,6 +7,7 @@ import { socialMessagesJa } from '../social-messages-locales'
 
 export default {
   person: personMessages['ja'],
+  ...herdrMessages['ja'],
   sessionTasks: {
       "title": "タスク",
       "task": "タスク",

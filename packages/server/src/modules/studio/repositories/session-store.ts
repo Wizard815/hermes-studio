@@ -12,6 +12,7 @@ import { SESSION_PREVIEW_SQL, sessionDisplayTitle } from './session-display'
 import { agentFamilyForRuntime, isAgentRuntime } from '../contracts/agents/runtime'
 import { BUILTIN_EKKO_AGENT_IDS, BUILTIN_HISTORY_SOURCES, isBuiltinEkkoAgent, normalizeSessionIdentity } from '../contracts/history-source'
 import { studioSessionAccount } from '../contracts/runs/usage'
+import { notifySessionListChanged } from '../public/session-status'
 
 // Re-export types for compatibility with sessions-db.ts consumers
 export interface HermesSessionRow {
@@ -292,6 +293,7 @@ export function createSession(data: {
     data.category_id ?? null,
     data.push_enabled === false || data.push_enabled === 0 ? 0 : 1,
   )
+  notifySessionListChanged({ type: 'created', sessionId: data.id })
   return getSession(data.id)!
 }
 
@@ -432,6 +434,15 @@ export function getSession(id: string): HermesSessionRow | null {
 }
 
 /** Bounded notification text; never materialize full chat history or tool output. */
+/** Chat linked to an agent's own session id (Claude session, Codex thread). */
+export function findSessionByNativeSessionId(nativeId: string): HermesSessionRow | null {
+  if (!isSqliteAvailable() || !nativeId) return null
+  const row = getDb()!.prepare(
+    `SELECT * FROM ${SESSIONS_TABLE} WHERE agent_native_session_id = ? ORDER BY last_active DESC LIMIT 1`,
+  ).get(nativeId) as Record<string, unknown> | undefined
+  return row ? mapSessionRows([row])[0] ?? null : null
+}
+
 export function getSessionNotificationPreview(id: string): { title: string; preview: string } | null {
   if (!isSqliteAvailable()) return null
   const row = getDb()!.prepare(`
@@ -528,6 +539,7 @@ export function deleteSession(id: string): boolean {
     db.prepare(`DELETE FROM ${MESSAGES_TABLE} WHERE session_id = ?`).run(id)
     const result = db.prepare(`DELETE FROM ${SESSIONS_TABLE} WHERE id = ?`).run(id)
     db.exec('COMMIT')
+    if (result.changes > 0) notifySessionListChanged({ type: 'deleted', sessionId: id })
     return result.changes > 0
   } catch (error) {
     db.exec('ROLLBACK')

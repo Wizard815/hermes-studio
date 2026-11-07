@@ -1,3 +1,4 @@
+import { herdrMessages } from '../herdr-messages'
 import { personMessages } from '../person-messages'
 import { remoteDeviceMessages } from '../remote-device-messages'
 import { themePresetMessages } from '../theme-preset-locales'
@@ -37,6 +38,7 @@ export default {
     campaignLabel: "Çifte 11",
   },
   person: personMessages['tr'],
+  ...herdrMessages['tr'],
   sessionTasks: {
       "title": "Görevler",
       "task": "Görev",

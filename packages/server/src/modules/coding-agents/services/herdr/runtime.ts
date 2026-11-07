@@ -1,0 +1,122 @@
+import { execFile, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { readFile, writeFile, mkdir, rename } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { delimiter, dirname, join } from 'node:path'
+
+export interface HerdrSettings {
+  /** Master switch. Off by default: nothing talks to herdr until enabled. */
+  enabled: boolean
+  /** Explicit herdr binary; empty means search PATH and common install dirs. */
+  binaryPath: string
+  /** Named herdr session; empty means herdr's default session. */
+  session: string
+  /** Create Studio chats for agents started directly in herdr. */
+  autoImport: boolean
+  /** Mirror agent transcripts into linked Studio chats. */
+  mirrorTranscripts: boolean
+  /** Studio profile used for chats created from herdr. */
+  profile: string
+}
+
+export const DEFAULT_HERDR_SETTINGS: HerdrSettings = {
+  enabled: false,
+  binaryPath: '',
+  session: '',
+  autoImport: true,
+  mirrorTranscripts: true,
+  profile: 'default',
+}
+
+const SESSION_NAME = /^[A-Za-z0-9_.-]{0,64}$/
+
+export function sanitizeHerdrSettings(input: Partial<HerdrSettings> | null | undefined, base = DEFAULT_HERDR_SETTINGS): HerdrSettings {
+  const next = { ...base }
+  if (!input || typeof input !== 'object') return next
+  if (typeof input.enabled === 'boolean') next.enabled = input.enabled
+  if (typeof input.autoImport === 'boolean') next.autoImport = input.autoImport
+  if (typeof input.mirrorTranscripts === 'boolean') next.mirrorTranscripts = input.mirrorTranscripts
+  if (typeof input.binaryPath === 'string') next.binaryPath = input.binaryPath.trim().slice(0, 1024)
+  if (typeof input.session === 'string') {
+    const session = input.session.trim()
+    if (!SESSION_NAME.test(session)) throw Object.assign(new Error('Invalid herdr session name'), { status: 400 })
+    next.session = session
+  }
+  if (typeof input.profile === 'string' && input.profile.trim()) next.profile = input.profile.trim().slice(0, 128)
+  return next
+}
+
+export class HerdrSettingsStore {
+  constructor(private readonly file: string) {}
+
+  async load(): Promise<HerdrSettings> {
+    try {
+      return sanitizeHerdrSettings(JSON.parse(await readFile(this.file, 'utf8')))
+    } catch {
+      return { ...DEFAULT_HERDR_SETTINGS }
+    }
+  }
+
+  async save(settings: HerdrSettings): Promise<void> {
+    await mkdir(dirname(this.file), { recursive: true })
+    const temp = `${this.file}.${process.pid}.tmp`
+    await writeFile(temp, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 })
+    await rename(temp, this.file)
+  }
+}
+
+const BINARY = process.platform === 'win32' ? 'herdr.exe' : 'herdr'
+
+/** Resolve the herdr binary without invoking a shell. */
+export function locateHerdrBinary(settings: Pick<HerdrSettings, 'binaryPath'>, env: NodeJS.ProcessEnv = process.env): string | null {
+  const explicit = settings.binaryPath || env.HERDR_BIN_PATH || ''
+  if (explicit) return existsSync(explicit) ? explicit : null
+  const home = homedir()
+  const candidates = [
+    ...String(env.PATH || '').split(delimiter).filter(Boolean).map(dir => join(dir, BINARY)),
+    join(home, '.local', 'bin', BINARY),
+    join(home, '.cargo', 'bin', BINARY),
+    '/opt/homebrew/bin/herdr',
+    '/usr/local/bin/herdr',
+  ]
+  return candidates.find(candidate => existsSync(candidate)) ?? null
+}
+
+export function herdrArgs(settings: Pick<HerdrSettings, 'session'>, args: string[]): string[] {
+  return settings.session ? ['--session', settings.session, ...args] : args
+}
+
+export interface HerdrServerStatus {
+  version: string
+  running: boolean
+  socket: string
+  session: string
+  compatible: boolean
+}
+
+export function runHerdr(binary: string, args: string[], timeoutMs = 8000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(binary, args, { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, env: process.env }, (error, stdout, stderr) => {
+      if (error) reject(Object.assign(new Error(String(stderr || error.message).trim() || 'herdr failed'), { stdout }))
+      else resolve(String(stdout))
+    })
+  })
+}
+
+export async function readHerdrServerStatus(binary: string, settings: Pick<HerdrSettings, 'session'>): Promise<HerdrServerStatus> {
+  const raw = JSON.parse(await runHerdr(binary, herdrArgs(settings, ['status', '--json'])))
+  const server = raw?.server ?? {}
+  return {
+    version: String(server.version || raw?.client?.version || ''),
+    running: server.running === true,
+    socket: String(server.socket || ''),
+    session: String(server.session || raw?.client?.session || settings.session || 'default'),
+    compatible: server.compatible !== false,
+  }
+}
+
+/** Start a detached headless herdr server. Panes outlive Studio. */
+export function startHerdrServer(binary: string, settings: Pick<HerdrSettings, 'session'>): void {
+  const child = spawn(binary, herdrArgs(settings, ['server']), { detached: true, stdio: 'ignore', env: process.env })
+  child.unref()
+}

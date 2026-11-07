@@ -303,12 +303,17 @@ packages/server/src/
         runs.ts
         claude-code-proxy.ts
         codex-proxy.ts
+        herdr.ts                   # herdr integration + plugin-token routes
       controllers/
         agents.ts
         runs.ts
         claude-code-proxy.ts
         codex-proxy.ts
+        herdr.ts
+      sockets/
+        herdr.ts                   # /herdr namespace: live state + terminal streams
       services/
+        herdr/                     # herdr socket client, bridge, settings, plugin (see docs/harness/herdr.md)
         registry/
         credentials/
         sessions/

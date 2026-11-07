@@ -4015,3 +4015,82 @@ export async function openCodingAgentNativeTerminal(id: string, input: CodingAge
     terminal,
   }
 }
+
+/** Stored `sessions.agent` value → coding-agent runtime id. */
+export function codingAgentIdForStoredAgent(agent: string | null | undefined): CodingAgentId | null {
+  const value = String(agent || '').trim()
+  if (!value) return null
+  if (value === 'claude' || value === 'claude_code' || value === 'claude-code') return 'claude-code'
+  return getCodingAgentDefinition(value) ? value as CodingAgentId : null
+}
+
+export function storedAgentIdForCodingAgent(id: string): string {
+  return persistedAgentId(id)
+}
+
+/** Agent-specific arguments that reopen an existing native session interactively. */
+export function nativeResumeArgs(id: string, nativeSessionId: string): { prefix: string[]; suffix: string[] } {
+  if (!nativeSessionId) return { prefix: [], suffix: [] }
+  if (id === 'claude-code') return { prefix: [], suffix: ['--resume', nativeSessionId] }
+  if (id === 'codex') return { prefix: ['resume', nativeSessionId], suffix: [] }
+  return { prefix: [], suffix: [] }
+}
+
+export interface CodingAgentInteractiveLaunch {
+  agentId: CodingAgentId
+  command: string
+  args: string[]
+  env: Record<string, string>
+  workspaceDir: string
+  provider: string
+  model: string
+}
+
+/**
+ * Prepare an interactive terminal launch (no RPC/print mode) with Studio's
+ * provider routing, MCP servers and system prompt. Used by herdr panes.
+ */
+export async function prepareCodingAgentInteractiveLaunch(
+  id: string,
+  input: CodingAgentLaunchInput & { resumeNativeSessionId?: string },
+): Promise<CodingAgentInteractiveLaunch> {
+  const { resumeNativeSessionId, ...launchInput } = input
+  // A chosen provider (e.g. a llama-swap endpoint) needs its stored URL and key,
+  // exactly as Studio's own runs resolve them; without it the agent would fall
+  // back to its vendor's default API.
+  const routed = launchInput.mode !== 'global' && launchInput.provider && !(launchInput.baseUrl && launchInput.apiKey)
+    ? await resolveStoredProviderLaunchInput({ ...launchInput, sessionId: launchInput.sessionId || '' }, null)
+    : launchInput
+  const launch = await prepareCodingAgentLaunch(id, { ...routed, piOutputMode: id === 'pi' ? 'interactive' : routed.piOutputMode })
+  const resume = nativeResumeArgs(launch.agentId, resumeNativeSessionId || '')
+  return {
+    agentId: launch.agentId,
+    command: launch.command,
+    args: [...resume.prefix, ...launch.args, ...resume.suffix],
+    env: launch.env,
+    workspaceDir: launch.workspaceDir,
+    provider: launch.provider,
+    model: launch.model,
+  }
+}
+
+/** Interactive launch for an existing Studio chat, reusing its stored provider and model. */
+export async function prepareCodingAgentSessionLaunch(sessionId: string, profile?: string): Promise<CodingAgentInteractiveLaunch> {
+  const session = getSession(sessionId)
+  const id = codingAgentIdForStoredAgent(session?.agent)
+  if (!session || !id) throw Object.assign(new Error('Chat is not a coding-agent chat'), { status: 400 })
+  const resolved = await resolveStoredProviderLaunchInput({
+    sessionId,
+    profile: profile || session.profile || 'default',
+    mode: session.agent_mode === 'global' ? 'global' : 'scoped',
+    workspace: session.workspace || undefined,
+    agentNativeSessionId: session.agent_native_session_id || undefined,
+    agentSessionId: session.agent_session_id || undefined,
+  }, session)
+  return prepareCodingAgentInteractiveLaunch(id, {
+    ...resolved,
+    // The pane resumes the native session; it must not also claim a new one.
+    agentNativeSessionId: undefined,
+    resumeNativeSessionId: session.agent_native_session_id || '',
+  })
+}
