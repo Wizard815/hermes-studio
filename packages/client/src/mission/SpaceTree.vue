@@ -2,20 +2,22 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
-import type { HerdrPaneView, HerdrWorkspace, SpaceFolder, SpaceFolderState } from '@/api/coding-agents/herdr'
-import { folderOf, rollupStatus } from './useMission'
+import type { HerdrPaneView, HerdrStatusValue, HerdrWorkspace } from '@/api/coding-agents/herdr'
+import { rollupStatus } from './useMission'
+import type { MissionFolder } from './useFolders'
 
 /**
- * The Spaces tree: herdr-space-folders' colored, foldable folders holding
- * herdr workspaces, with each workspace's agents as leaves, drawn like
- * Studio's file tree. Drag a space onto a folder to file it, onto a space to
- * join its folder, or onto the bottom zone to take it out.
+ * The Spaces tree: Studio's chat folders (same names and nesting as Studio's
+ * sidebar) with herdr-space-folders' colors, holding herdr workspaces, each
+ * with its agents as leaves. Drag a space onto a folder to file it (its chats
+ * move there in Studio too), onto a space to join its folder, a folder onto a
+ * folder to nest it, or either onto the bottom zone to take it out.
  */
 const props = defineProps<{
   workspaces: HerdrWorkspace[]
   panes: HerdrPaneView[]
-  folders: SpaceFolderState
-  home: string
+  folders: MissionFolder[]
+  placeOf: (spaceId: string) => string
   selectedSpace: string
   selectedPane: string
 }>()
@@ -23,9 +25,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   'select-space': [id: string]
   'select-pane': [id: string]
-  'new-space': [folder: SpaceFolder | null]
-  'edit-folder': [folder: SpaceFolder | null]
-  'update-folders': [state: SpaceFolderState]
+  'new-space': [folder: MissionFolder | null]
+  'new-folder': [parentId: string]
+  'edit-folder': [folder: MissionFolder]
+  'toggle-folder': [id: string]
+  'place-space': [spaceId: string, folderId: string]
+  'move-folder': [folderId: string, parentId: string]
 }>()
 
 const { t } = useI18n()
@@ -34,10 +39,10 @@ const expandedSpaces = ref(new Set<string>())
 const dragging = ref<{ kind: 'space' | 'folder'; id: string } | null>(null)
 const dropTarget = ref('')
 
-function spaceCwd(workspaceId: string): string {
-  const pane = props.panes.find(p => p.workspace_id === workspaceId)
-  return pane?.foreground_cwd || pane?.cwd || ''
-}
+type Row =
+  | { kind: 'folder'; key: string; depth: number; folder: MissionFolder; count: number; status: HerdrStatusValue }
+  | { kind: 'space'; key: string; depth: number; space: HerdrWorkspace }
+  | { kind: 'pane'; key: string; depth: number; pane: HerdrPaneView }
 
 function panesOf(workspaceId: string): HerdrPaneView[] {
   return props.panes.filter(p => p.workspace_id === workspaceId && p.agent)
@@ -47,35 +52,46 @@ function label(workspace: HerdrWorkspace): string {
   return workspace.label || workspace.workspace_id
 }
 
-const filtered = computed(() => {
+function paneName(pane: HerdrPaneView): string {
+  return pane.label || pane.terminal_title_stripped || pane.agent || pane.pane_id
+}
+
+const matches = computed(() => {
   const q = search.value.trim().toLowerCase()
-  if (!q) return props.workspaces
-  return props.workspaces.filter(w => label(w).toLowerCase().includes(q)
+  return new Set(props.workspaces.filter(w => !q || label(w).toLowerCase().includes(q)
     || panesOf(w.workspace_id).some(p => `${p.label || ''} ${p.terminal_title_stripped || ''} ${p.agent || ''}`.toLowerCase().includes(q)))
+    .map(w => w.workspace_id))
 })
 
-const placement = computed(() => {
-  const map = new Map<string, string>()
-  for (const w of props.workspaces) map.set(w.workspace_id, folderOf(props.folders, w.workspace_id, spaceCwd(w.workspace_id), props.home))
-  return map
+const placement = computed(() => new Map(props.workspaces.map(w => [w.workspace_id, props.placeOf(w.workspace_id)])))
+
+const rows = computed<Row[]>(() => {
+  const q = search.value.trim().toLowerCase()
+  const children = new Map<string, MissionFolder[]>()
+  for (const folder of props.folders) children.set(folder.parentId, [...(children.get(folder.parentId) || []), folder])
+  const spacesIn = (folderId: string) => props.workspaces.filter(w => placement.value.get(w.workspace_id) === folderId && matches.value.has(w.workspace_id))
+  const subtree = (folder: MissionFolder): HerdrWorkspace[] => [...spacesIn(folder.id), ...(children.get(folder.id) || []).flatMap(subtree)]
+  const out: Row[] = []
+  const pushSpace = (space: HerdrWorkspace, depth: number) => {
+    out.push({ kind: 'space', key: `s:${space.workspace_id}`, depth, space })
+    if (expandedSpaces.value.has(space.workspace_id)) {
+      for (const pane of panesOf(space.workspace_id)) out.push({ kind: 'pane', key: `p:${pane.pane_id}`, depth: depth + 1, pane })
+    }
+  }
+  const walk = (parentId: string, depth: number) => {
+    for (const folder of children.get(parentId) || []) {
+      const inside = subtree(folder)
+      if (q && !inside.length && !folder.name.toLowerCase().includes(q)) continue
+      out.push({ kind: 'folder', key: `f:${folder.id}`, depth, folder, count: inside.length, status: rollupStatus(inside.map(w => w.agent_status)) })
+      if (folder.folded) continue
+      walk(folder.id, depth + 1)
+      for (const space of spacesIn(folder.id)) pushSpace(space, depth + 1)
+    }
+  }
+  walk('', 0)
+  for (const space of spacesIn('')) pushSpace(space, 0)
+  return out
 })
-
-const groups = computed(() => props.folders.list.map(folder => {
-  const spaces = filtered.value.filter(w => placement.value.get(w.workspace_id) === folder.id)
-  return { folder, spaces, status: rollupStatus(spaces.map(w => w.agent_status)) }
-}))
-
-const loose = computed(() => filtered.value.filter(w => !placement.value.get(w.workspace_id)))
-
-function update(mutator: (state: SpaceFolderState) => void) {
-  const next: SpaceFolderState = { list: props.folders.list.map(f => ({ ...f })), of: { ...props.folders.of }, at: Date.now() }
-  mutator(next)
-  emit('update-folders', next)
-}
-
-function toggleFolder(folder: SpaceFolder) {
-  update(state => { const f = state.list.find(x => x.id === folder.id); if (f) f.folded = !f.folded })
-}
 
 function toggleSpace(id: string) {
   const next = new Set(expandedSpaces.value)
@@ -106,37 +122,38 @@ function onDragOver(event: DragEvent, target: string) {
   dropTarget.value = target
 }
 
-function dropOnFolder(folder: SpaceFolder) {
+/** A folder cannot go inside itself or its own subfolders. */
+function isWithin(folderId: string, ancestorId: string): boolean {
+  let current: string | undefined = folderId
+  for (let i = 0; current && i < 20; i += 1) {
+    if (current === ancestorId) return true
+    current = props.folders.find(f => f.id === current)?.parentId
+  }
+  return false
+}
+
+function dropOnFolder(folder: MissionFolder) {
   const drag = dragging.value
   if (!drag) return
-  if (drag.kind === 'space') update(state => { state.of[drag.id] = folder.id })
-  else if (drag.id !== folder.id) {
-    update(state => {
-      const from = state.list.findIndex(f => f.id === drag.id)
-      const [moved] = state.list.splice(from, 1)
-      const to = state.list.findIndex(f => f.id === folder.id)
-      state.list.splice(from <= to ? to + 1 : to, 0, moved)
-    })
-  }
+  if (drag.kind === 'space') emit('place-space', drag.id, folder.id)
+  else if (!isWithin(folder.id, drag.id)) emit('move-folder', drag.id, folder.id)
   onDragEnd()
 }
 
 function dropOnSpace(spaceId: string) {
   const drag = dragging.value
-  if (drag?.kind !== 'space' || drag.id === spaceId) return onDragEnd()
-  update(state => { state.of[drag.id] = placement.value.get(spaceId) || '' })
+  if (drag?.kind === 'space' && drag.id !== spaceId) emit('place-space', drag.id, placement.value.get(spaceId) || '')
   onDragEnd()
 }
 
 function dropOut() {
   const drag = dragging.value
-  if (drag?.kind === 'space') update(state => { state.of[drag.id] = '' })
+  if (drag?.kind === 'space') emit('place-space', drag.id, '')
+  else if (drag?.kind === 'folder') emit('move-folder', drag.id, '')
   onDragEnd()
 }
 
-function paneName(pane: HerdrPaneView): string {
-  return pane.label || pane.terminal_title_stripped || pane.agent || pane.pane_id
-}
+const indent = (depth: number) => ({ paddingLeft: `${8 + depth * 18}px` })
 </script>
 
 <template>
@@ -144,7 +161,7 @@ function paneName(pane: HerdrPaneView): string {
     <header class="space-tree-head">
       <span>{{ t('mission.spaces') }}</span>
       <span class="space-tree-spacer" />
-      <button type="button" class="space-tree-icon" :title="t('mission.newFolder')" data-testid="mission-new-folder" @click="emit('edit-folder', null)">
+      <button type="button" class="space-tree-icon" :title="t('mission.newFolder')" data-testid="mission-new-folder" @click="emit('new-folder', '')">
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 11v6M9 14h6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
       </button>
       <button type="button" class="space-tree-icon" :title="t('mission.newSpace')" @click="emit('new-space', null)">
@@ -154,109 +171,77 @@ function paneName(pane: HerdrPaneView): string {
     <input v-model="search" class="space-tree-search" data-theme-surface="input" :placeholder="t('mission.searchSpaces')" />
 
     <div class="space-tree-body" role="tree">
-      <template v-for="group in groups" :key="group.folder.id">
+      <template v-for="row in rows" :key="row.key">
         <div
+          v-if="row.kind === 'folder'"
           class="tree-row tree-folder"
-          :class="{ 'is-drop': dropTarget === `folder:${group.folder.id}` }"
+          :class="{ 'is-drop': dropTarget === `folder:${row.folder.id}` }"
+          :style="indent(row.depth)"
           role="treeitem"
-          :aria-expanded="!group.folder.folded"
+          :aria-level="row.depth + 1"
+          :aria-expanded="!row.folder.folded"
           draggable="true"
           data-testid="mission-folder-row"
-          @click="toggleFolder(group.folder)"
-          @dragstart="onDragStart($event, 'folder', group.folder.id)"
+          @click="emit('toggle-folder', row.folder.id)"
+          @dragstart="onDragStart($event, 'folder', row.folder.id)"
           @dragend="onDragEnd"
-          @dragover="onDragOver($event, `folder:${group.folder.id}`)"
-          @drop.prevent="dropOnFolder(group.folder)"
-          @contextmenu.prevent="emit('edit-folder', group.folder)"
+          @dragover="onDragOver($event, `folder:${row.folder.id}`)"
+          @drop.prevent="dropOnFolder(row.folder)"
+          @contextmenu.prevent="emit('edit-folder', row.folder)"
         >
-          <span class="tree-chevron" :class="{ open: !group.folder.folded }" aria-hidden="true">›</span>
-          <span class="folder-tile" :data-color="group.folder.color || 'none'" aria-hidden="true">
+          <span class="tree-chevron" :class="{ open: !row.folder.folded }" aria-hidden="true">›</span>
+          <span class="folder-tile" :data-color="row.folder.color || 'none'" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="12" height="12"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="currentColor" /></svg>
           </span>
-          <span class="tree-name">{{ group.folder.name }}</span>
-          <AgentStatusIcon v-if="group.folder.folded && ['blocked', 'done', 'working'].includes(group.status)" :status="group.status" live :size="11" />
-          <button type="button" class="tree-action" :title="t('mission.newSpaceHere')" @click.stop="emit('new-space', group.folder)">+</button>
-          <button type="button" class="tree-action" :title="t('mission.editFolder')" @click.stop="emit('edit-folder', group.folder)">⋯</button>
-          <span class="tree-count">{{ group.spaces.length }}</span>
+          <span class="tree-name">{{ row.folder.name }}</span>
+          <AgentStatusIcon v-if="row.folder.folded && ['blocked', 'done', 'working'].includes(row.status)" :status="row.status" live :size="11" />
+          <button type="button" class="tree-action" :title="t('mission.newSubfolder')" @click.stop="emit('new-folder', row.folder.id)">⊞</button>
+          <button type="button" class="tree-action" :title="t('mission.newSpaceHere')" @click.stop="emit('new-space', row.folder)">+</button>
+          <button type="button" class="tree-action" :title="t('mission.editFolder')" @click.stop="emit('edit-folder', row.folder)">⋯</button>
+          <span class="tree-count">{{ row.count }}</span>
         </div>
-        <template v-if="!group.folder.folded">
-          <template v-for="space in group.spaces" :key="space.workspace_id">
-            <div
-              class="tree-row tree-space indent-1"
-              :class="{ active: space.workspace_id === selectedSpace, 'is-drop': dropTarget === `space:${space.workspace_id}` }"
-              role="treeitem"
-              draggable="true"
-              data-testid="mission-space-row"
-              @click="selectSpace(space.workspace_id)"
-              @dragstart="onDragStart($event, 'space', space.workspace_id)"
-              @dragend="onDragEnd"
-              @dragover="onDragOver($event, `space:${space.workspace_id}`)"
-              @drop.prevent="dropOnSpace(space.workspace_id)"
-            >
-              <span class="tree-chevron" :class="{ open: expandedSpaces.has(space.workspace_id) }" aria-hidden="true" @click.stop="toggleSpace(space.workspace_id)">›</span>
-              <AgentStatusIcon :status="space.agent_status || 'unknown'" :live="!!space.agent_status && space.agent_status !== 'unknown'" :size="11" />
-              <span class="tree-name">{{ label(space) }}</span>
-            </div>
-            <template v-if="expandedSpaces.has(space.workspace_id)">
-              <div
-                v-for="pane in panesOf(space.workspace_id)"
-                :key="pane.pane_id"
-                class="tree-row tree-pane indent-2"
-                :class="{ active: pane.pane_id === selectedPane }"
-                role="treeitem"
-                data-testid="mission-pane-row"
-                @click="emit('select-pane', pane.pane_id)"
-              >
-                <AgentStatusIcon :status="pane.agent_status || 'unknown'" live :size="11" />
-                <span class="tree-name">{{ paneName(pane) }}</span>
-                <span class="tree-meta">{{ pane.agent }}</span>
-              </div>
-            </template>
-          </template>
-        </template>
-      </template>
-
-      <template v-for="space in loose" :key="space.workspace_id">
         <div
+          v-else-if="row.kind === 'space'"
           class="tree-row tree-space"
-          :class="{ active: space.workspace_id === selectedSpace, 'is-drop': dropTarget === `space:${space.workspace_id}` }"
+          :class="{ active: row.space.workspace_id === selectedSpace, 'is-drop': dropTarget === `space:${row.space.workspace_id}` }"
+          :style="indent(row.depth)"
           role="treeitem"
+          :aria-level="row.depth + 1"
           draggable="true"
           data-testid="mission-space-row"
-          @click="selectSpace(space.workspace_id)"
-          @dragstart="onDragStart($event, 'space', space.workspace_id)"
+          @click="selectSpace(row.space.workspace_id)"
+          @dragstart="onDragStart($event, 'space', row.space.workspace_id)"
           @dragend="onDragEnd"
-          @dragover="onDragOver($event, `space:${space.workspace_id}`)"
-          @drop.prevent="dropOnSpace(space.workspace_id)"
+          @dragover="onDragOver($event, `space:${row.space.workspace_id}`)"
+          @drop.prevent="dropOnSpace(row.space.workspace_id)"
         >
-          <span class="tree-chevron" :class="{ open: expandedSpaces.has(space.workspace_id) }" aria-hidden="true" @click.stop="toggleSpace(space.workspace_id)">›</span>
-          <AgentStatusIcon :status="space.agent_status || 'unknown'" :live="!!space.agent_status && space.agent_status !== 'unknown'" :size="11" />
-          <span class="tree-name">{{ label(space) }}</span>
+          <span class="tree-chevron" :class="{ open: expandedSpaces.has(row.space.workspace_id) }" aria-hidden="true" @click.stop="toggleSpace(row.space.workspace_id)">›</span>
+          <AgentStatusIcon :status="row.space.agent_status || 'unknown'" :live="!!row.space.agent_status && row.space.agent_status !== 'unknown'" :size="11" />
+          <span class="tree-name">{{ label(row.space) }}</span>
         </div>
-        <template v-if="expandedSpaces.has(space.workspace_id)">
-          <div
-            v-for="pane in panesOf(space.workspace_id)"
-            :key="pane.pane_id"
-            class="tree-row tree-pane indent-1"
-            :class="{ active: pane.pane_id === selectedPane }"
-            role="treeitem"
-            data-testid="mission-pane-row"
-            @click="emit('select-pane', pane.pane_id)"
-          >
-            <AgentStatusIcon :status="pane.agent_status || 'unknown'" live :size="11" />
-            <span class="tree-name">{{ paneName(pane) }}</span>
-            <span class="tree-meta">{{ pane.agent }}</span>
-          </div>
-        </template>
+        <div
+          v-else
+          class="tree-row tree-pane"
+          :class="{ active: row.pane.pane_id === selectedPane }"
+          :style="indent(row.depth)"
+          role="treeitem"
+          :aria-level="row.depth + 1"
+          data-testid="mission-pane-row"
+          @click="emit('select-pane', row.pane.pane_id)"
+        >
+          <AgentStatusIcon :status="row.pane.agent_status || 'unknown'" live :size="11" />
+          <span class="tree-name">{{ paneName(row.pane) }}</span>
+          <span class="tree-meta">{{ row.pane.agent }}</span>
+        </div>
       </template>
 
       <div
-        v-if="dragging?.kind === 'space'"
+        v-if="dragging"
         class="tree-dropout"
         :class="{ 'is-drop': dropTarget === 'out' }"
         @dragover="onDragOver($event, 'out')"
         @drop.prevent="dropOut"
-      >{{ t('mission.dropOut') }}</div>
+      >{{ dragging.kind === 'folder' ? t('mission.dropFolderOut') : t('mission.dropOut') }}</div>
       <p v-if="!workspaces.length" class="tree-empty">{{ t('mission.noSpaces') }}</p>
     </div>
   </section>
@@ -352,13 +337,6 @@ function paneName(pane: HerdrPaneView): string {
     outline-offset: -1px;
   }
 
-  &.indent-1 {
-    padding-left: 26px;
-  }
-
-  &.indent-2 {
-    padding-left: 44px;
-  }
 
   .tree-action {
     width: 20px;

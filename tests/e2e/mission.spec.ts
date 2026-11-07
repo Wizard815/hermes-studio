@@ -13,7 +13,7 @@ const STATUS = {
     ],
     panes: [
       { pane_id: 'w1:p1', workspace_id: 'w1', agent: 'claude', agent_status: 'blocked', label: 'auth refactor', cwd: '/home/me/code/client-acme/api', studioAgent: 'claude-code', studioSessionId: 'herdr-aaa' },
-      { pane_id: 'w2:p1', workspace_id: 'w2', agent: 'codex', agent_status: 'done', label: 'docs', cwd: '/home/me/code/site', studioAgent: 'codex', studioSessionId: null },
+      { pane_id: 'w2:p1', workspace_id: 'w2', agent: 'claude', agent_status: 'done', label: 'docs', cwd: '/home/me/code/site', studioAgent: 'claude-code', studioSessionId: 'herdr-ccc' },
     ],
   },
   integrations: ['claude', 'codex'],
@@ -22,7 +22,9 @@ const STATUS = {
 async function openMission(page: Page) {
   const posts: Array<{ path: string; body: any }> = []
   const errors: string[] = []
+  // A folder from before Mission shared Studio's folders: it becomes Studio folder "Clients".
   let folders: any = { list: [{ id: 'fclient', name: 'Clients', color: 'teal', folded: false, start: '', rules: 'client-*' }], of: {}, at: 1 }
+  const categories: any[] = [{ id: 5, name: 'Docs', parent_id: null, created_at: 1, updated_at: 1 }, { id: 6, name: 'site', parent_id: 5, created_at: 1, updated_at: 1 }]
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(() => { localStorage.setItem('hermes_locale', 'en'); localStorage.setItem('hermes_api_key', 'test-key') })
   await page.routeWebSocket('**/socket.io/**', () => {})
@@ -35,9 +37,18 @@ async function openMission(page: Page) {
       if (request.method() === 'PUT') folders = request.postDataJSON()
       return route.fulfill({ json: folders })
     }
+    if (path === '/api/studio/session-categories') {
+      if (request.method() === 'POST') {
+        const body = request.postDataJSON()
+        const category = { id: 10 + categories.length, name: body.name, parent_id: body.parentId ?? body.parent_id ?? null, created_at: 2, updated_at: 2 }
+        categories.push(category)
+        return route.fulfill({ json: { category } })
+      }
+      return route.fulfill({ json: { categories } })
+    }
     if (path === '/api/coding-agents') return route.fulfill({ json: { tools: [{ id: 'claude-code', name: 'Claude Code', installed: true }, { id: 'codex', name: 'Codex', installed: true }] } })
     if (path === '/api/coding-agents/herdr/agents') return route.fulfill({ json: { link: { paneId: 'w3:p2', workspaceId: 'w3', status: 'unknown' } } })
-    if (path === '/api/studio/sessions') return route.fulfill({ json: { sessions: [{ id: 'herdr-aaa', title: 'auth refactor', source: 'coding_agent', agent: 'claude-code', messageCount: 4 }] } })
+    if (path === '/api/studio/sessions') return route.fulfill({ json: { sessions: [{ id: 'herdr-aaa', title: 'auth refactor', source: 'coding_agent', agent: 'claude-code', messageCount: 4, category_id: null }, { id: 'herdr-ccc', title: 'docs', source: 'coding_agent', agent: 'claude-code', category_id: 6 }] } })
     if (path === '/api/studio/orb') return route.fulfill({ json: { connected: true, version: '0.1.0', error: '', settings: { url: 'http://orb', hasToken: true, fromEnv: false } } })
     if (path === '/api/studio/orb/tools/orb_list_tasks') return route.fulfill({ json: { result: [
       { title: 'Fix flaky login test', list: 'api', due: '', done: false, priority: 'high' },
@@ -52,10 +63,16 @@ async function openMission(page: Page) {
   return { posts, errors }
 }
 
-test('Mission groups herdr spaces into folders by rule', async ({ page }) => {
-  const { errors } = await openMission(page)
-  const folder = page.getByTestId('mission-folder-row').filter({ hasText: 'Clients' })
-  await expect(folder.locator('.tree-count')).toHaveText('1')
+test('Mission folders are Studio chat folders, and spaces follow their chats', async ({ page }) => {
+  const { errors, posts } = await openMission(page)
+  // The old Mission folder became a Studio folder, keeping its rule.
+  await expect.poll(() => posts.find(p => p.path === '/api/studio/session-categories')?.body).toMatchObject({ name: 'Clients' })
+  const clients = page.getByTestId('mission-folder-row').filter({ hasText: 'Clients' })
+  await expect(clients.locator('.tree-count')).toHaveText('1')
+  // Studio's nesting (Docs › site), and the space whose chat is filed in "site" sits there.
+  const rows = page.locator('[data-testid="mission-folder-row"], [data-testid="mission-space-row"]')
+  await expect(rows).toHaveText([/Clients/, /api/, /Docs/, /site/, /site/])
+  await expect(page.getByTestId('mission-folder-row').filter({ hasText: 'Docs' }).locator('.tree-count')).toHaveText('1')
   await expect(page.getByTestId('mission-space-row')).toHaveCount(2)
   await expect(page.getByTestId('mission-agents')).toContainText('auth refactor')
   expect(errors).toEqual([])

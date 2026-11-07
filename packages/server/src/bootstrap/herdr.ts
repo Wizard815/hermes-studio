@@ -10,6 +10,7 @@ import {
   getSession,
   updateSession,
   updateSessionStats,
+  listSessionCategories,
   type HermesSessionRow,
 } from '../modules/studio/public/sessions'
 import { notifySessionListChanged, onSessionListChanged, setSessionHerdrLink } from '../modules/studio/public/session-status'
@@ -26,7 +27,7 @@ import { listProfileModelGroups } from '../modules/hermes/controllers/models'
 import { listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
 import { herdrKindForStudioAgent } from '../modules/coding-agents/services/herdr/protocol'
 import { locateTranscript } from '../modules/coding-agents/services/herdr/transcript'
-import type { HerdrBridgeDeps, HerdrSessionRef } from '../modules/coding-agents/services/herdr/bridge'
+import type { HerdrBridgeDeps, HerdrSessionRef, HerdrWorkRef } from '../modules/coding-agents/services/herdr/bridge'
 import { setupHerdrSocket } from '../modules/coding-agents/sockets/herdr'
 import { configureOrbClient, getOrbClient } from '../modules/studio/services/orb/client'
 import { writeModelRunProfileToken } from '../modules/studio/services/chat-run/model-run-prompt'
@@ -65,6 +66,7 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
         workspace: input.workspace || undefined,
         provider: input.provider || 'global',
         model: input.model || '',
+        category_id: input.categoryId ?? null,
       })
     },
     updateNativeSessionId: (id, nativeId) => updateSession(id, { agent_native_session_id: nativeId }),
@@ -93,7 +95,8 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     herdrKindFor: agentId => herdrKindForStudioAgent(agentId),
     agentLabel: agentId => AGENT_LABELS[agentId] || getCodingAgentDefinition(agentId)?.name || agentId,
     log: (level, message, data) => logger[level](data || {}, message),
-    agentStartedWorking: data => markOrbStarted(data.orb),
+    workStatusChanged: (data, _paneId, status, agent) => reportOrbAgentStatus(data.orb, status, agent),
+    folderForWork,
     // Agents in herdr act for the Studio admin using herdr (herdr routes are
     // super-admin only), or the first active super admin after a restart.
     grantAgentAccess: async profile => {
@@ -103,21 +106,33 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
   }
 }
 
-/** An agent launched for an Orb task or project is now working: show it in progress in Orb. */
-async function markOrbStarted(ref: { task?: { title: string; list: string }; project?: string } | undefined) {
+/** The agent working on an Orb task or project changed state: show it in Orb, the way herdr does. */
+async function reportOrbAgentStatus(ref: HerdrWorkRef['orb'], status: string, agent: string | null) {
   if (!ref) return
   const orb = getOrbClient()
   if (!(await orb.publicSettings()).url) return
-  if (ref.task) {
-    await orb.tool('orb_start_task', { title: ref.task.title, ...(ref.task.list ? { list: ref.task.list } : {}) })
-    return
-  }
-  if (ref.project) {
-    const projects = await orb.tool('orb_list_projects') as Array<{ name: string; status: string }>
-    const project = projects.find(item => item.name.toLowerCase() === ref.project!.toLowerCase())
-    // Active already, or shipped (finished): leave it where it is.
-    if (project && project.status !== 'active' && project.status !== 'shipped') await orb.tool('orb_move_project', { name: project.name, status: 'active' })
-  }
+  await orb.tool('orb_set_agent_status', {
+    ...(ref.task ? { task: { title: ref.task.title, ...(ref.task.list ? { list: ref.task.list } : {}) } } : { project: ref.project }),
+    status,
+    ...(agent ? { agent } : {}),
+  })
+}
+
+/**
+ * Studio's chat folder for a piece of work: the folder named like the Orb
+ * project (or the task's list, which is its project), shallowest first, with
+ * the start directory set for it in Mission.
+ */
+async function folderForWork(ref: HerdrWorkRef): Promise<{ categoryId: number | null; workspace: string } | null> {
+  const name = (ref.orb?.project || ref.orb?.task?.list || '').trim().toLowerCase()
+  if (!name) return null
+  const categories = listSessionCategories()
+  const depth = (id: number | null): number => { let d = 0; let cur = categories.find(c => c.id === id); while (cur && d < 10) { d += 1; cur = categories.find(c => c.id === cur!.parent_id) } return d }
+  const match = categories.filter(category => category.name.trim().toLowerCase() === name).sort((a, b) => depth(a.id) - depth(b.id))[0]
+  if (!match) return null
+  const folders = await herdrManager.folders().load()
+  const meta = folders.list.find(folder => folder.id === `c${match.id}`)
+  return { categoryId: match.id, workspace: meta?.start || '' }
 }
 
 let stopListChanges: (() => void) | null = null

@@ -53,6 +53,7 @@ export interface HerdrBridgeDeps {
     profile: string
     provider?: string
     model?: string
+    categoryId?: number | null
   }): void
   updateNativeSessionId(id: string, nativeId: string): void
   appendMessages(sessionId: string, messages: TranscriptMessage[]): void
@@ -65,8 +66,14 @@ export interface HerdrBridgeDeps {
   /** Studio agent display name, used for titles. */
   agentLabel(agentId: string): string
   log?: (level: 'info' | 'warn', message: string, data?: Record<string, unknown>) => void
-  /** Called once when an agent launched with `onWorking` data first starts working. */
-  agentStartedWorking?: (data: HerdrWorkRef, paneId: string) => void | Promise<void>
+  /**
+   * The agent launched for a piece of work (`onWorking`) changed state: from its
+   * first `working` on, every herdr status change, then `gone` when its pane
+   * closes. Calls for one pane arrive in order.
+   */
+  workStatusChanged?: (data: HerdrWorkRef, paneId: string, status: HerdrAgentStatus | 'gone', agent: string | null) => void | Promise<void>
+  /** Where work belongs: a Studio chat folder (and its start directory) matching the project. */
+  folderForWork?: (data: HerdrWorkRef) => Promise<{ categoryId: number | null; workspace: string } | null>
   /**
    * Give agents in herdr a fresh short-lived Studio login for a profile, so
    * their Studio MCP tools (sessions, Orb, workflows) are authorized like a
@@ -79,6 +86,10 @@ export interface HerdrBridgeDeps {
 export interface HerdrWorkRef {
   /** When it was launched (set by the bridge). */
   at?: number
+  /** Set once the agent first worked; later changes are reported from then on. */
+  started?: boolean
+  /** Last status reported. */
+  last?: string
   orb?: { task?: { title: string; list: string }; project?: string }
 }
 
@@ -101,12 +112,14 @@ interface PersistedState {
   offsets: Record<string, { path: string; offset: number }>
   /** Native session ids whose chat was deleted in Studio: never re-import them. */
   dismissed: string[]
-  /** Launches waiting for their agent to start working, by pane id. */
+  /** Agents launched for a piece of work, by pane id, until their pane closes. */
   working?: Record<string, HerdrWorkRef>
 }
 
 interface PendingLaunch {
   sessionId?: string
+  /** Studio chat folder for the chat this launch creates. */
+  categoryId?: number | null
   agentId: string
   provider?: string
   model?: string
@@ -319,7 +332,14 @@ export class HerdrBridge {
     if (this.persisted.working) {
       // A snapshot taken just before a new pane appeared must not drop it.
       const gone = Object.entries(this.persisted.working).filter(([paneId, ref]) => !livePaneIds.has(paneId) && Date.now() - (ref.at || 0) > 30000).map(([paneId]) => paneId)
-      if (gone.length) { for (const paneId of gone) delete this.persisted.working[paneId]; void this.savePersisted() }
+      if (gone.length) {
+        for (const paneId of gone) {
+          const ref = this.persisted.working[paneId]
+          delete this.persisted.working[paneId]
+          if (ref.started) this.reportWork(ref, paneId, 'gone', null)
+        }
+        void this.savePersisted()
+      }
     }
 
     for (const pane of snapshot.panes) {
@@ -330,7 +350,7 @@ export class HerdrBridge {
       let sessionId: string | null = null
 
       if (nativeId && (status === 'working' || status === 'blocked')) this.active.add(nativeId)
-      if (status === 'working' && this.persisted.working?.[pane.pane_id]) this.fireWorking(pane.pane_id)
+      if (this.persisted.working?.[pane.pane_id]) this.trackWork(pane.pane_id, status, pane.agent || null)
       if (status === 'working' && pane.agent) void this.refreshAgentAccess(false)
 
       if (pending?.sessionId) {
@@ -396,6 +416,7 @@ export class HerdrBridge {
       profile: this.settings.profile || 'default',
       provider: pending?.provider,
       model: pending?.model,
+      categoryId: pending?.categoryId ?? null,
     })
     // Herdr-born chats import their whole history.
     if (path) this.persisted.offsets[id] = { path, offset: 0 }
@@ -557,9 +578,13 @@ export class HerdrBridge {
    */
   async launchAgent(agentId: string, input: { provider?: string; model?: string; workspace?: string; title?: string; prompt?: string; onWorking?: HerdrWorkRef }): Promise<HerdrLinkInfo> {
     await this.refreshAgentAccess(true)
-    const launch = await this.deps.prepareAgentLaunch(agentId, { provider: input.provider, model: input.model, workspace: input.workspace, profile: this.settings.profile || 'default' })
+    // Project work starts in the project's folder (its start directory) and files its chat there.
+    const folder = input.onWorking ? await this.deps.folderForWork?.(input.onWorking).catch(() => null) ?? null : null
+    const workspace = folder?.workspace || input.workspace
+    const launch = await this.deps.prepareAgentLaunch(agentId, { provider: input.provider, model: input.model, workspace, profile: this.settings.profile || 'default' })
     const title = input.title?.trim() || this.deps.agentLabel(launch.agentId)
     const link = await this.openLaunch(launch, title, {
+      categoryId: folder?.categoryId ?? null,
       agentId: launch.agentId,
       provider: launch.provider,
       model: launch.model,
@@ -586,15 +611,27 @@ export class HerdrBridge {
     }
   }
 
-  /** The agent started on its work: tell the owner once, then forget it. */
-  private fireWorking(paneId: string) {
-    const data = this.persisted.working?.[paneId]
-    if (!data) return
-    delete this.persisted.working![paneId]
+  /** Follow the agent on a piece of work: from its first `working`, report every change. */
+  private trackWork(paneId: string, status: HerdrAgentStatus, agent: string | null) {
+    const ref = this.persisted.working?.[paneId]
+    if (!ref || status === 'unknown') return
+    if (!ref.started && status !== 'working') return
+    if (ref.last === status) return
+    ref.started = true
+    ref.last = status
     void this.savePersisted()
-    void Promise.resolve()
-      .then(() => this.deps.agentStartedWorking?.(data, paneId))
-      .catch(error => this.log('warn', '[herdr] could not report that the agent started working', { paneId, error: String(error) }))
+    this.reportWork(ref, paneId, status, agent)
+  }
+
+  private workReports = new Map<string, Promise<void>>()
+
+  private reportWork(ref: HerdrWorkRef, paneId: string, status: HerdrAgentStatus | 'gone', agent: string | null) {
+    const previous = this.workReports.get(paneId) || Promise.resolve()
+    const next = previous
+      .then(() => this.deps.workStatusChanged?.(ref, paneId, status, agent))
+      .catch(error => this.log('warn', '[herdr] could not report the agent status for its work', { paneId, status, error: String(error) }))
+    this.workReports.set(paneId, next)
+    void next.then(() => { if (this.workReports.get(paneId) === next) this.workReports.delete(paneId) })
   }
 
   /** Wait until the agent in a pane is ready for input, then send the prompt once. */

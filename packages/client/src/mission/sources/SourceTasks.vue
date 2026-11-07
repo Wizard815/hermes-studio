@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { callOrbTool, type OrbTask } from '@/api/studio/orb'
 import type { HerdrPaneView } from '@/api/coding-agents/herdr'
 import LaunchButtons from '../LaunchButtons.vue'
+import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 
 /**
  * Pondering Orb tasks (its plans are CalDAV to-dos), grouped by list. Each
@@ -95,7 +96,8 @@ onMounted(load)
         <article v-for="task in group.items" :key="`${group.list}:${task.title}`" class="source-card" data-theme-surface="card" data-testid="mission-task">
           <span class="source-card-title" :class="{ 'is-done': task.done }">{{ task.title }}</span>
           <div class="source-card-meta">
-            <span v-if="task.inProgress && !task.done" class="source-chip is-good">◐ {{ t('mission.inProgress') }}</span>
+            <span v-if="task.agentStatus && !task.done" class="source-chip source-chip-agent"><AgentStatusIcon :status="task.agentStatus" live :size="11" /> {{ t(`agentStatus.${task.agentStatus}`) }}</span>
+            <span v-else-if="task.inProgress && !task.done" class="source-chip is-good">{{ t('mission.inProgress') }}</span>
             <span v-if="task.due" class="source-chip">{{ task.due }}</span>
             <span v-if="task.priority && task.priority !== 'none'" class="source-chip" :class="PRIORITY_CLASS[task.priority]">{{ task.priority }}</span>
           </div>

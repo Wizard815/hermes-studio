@@ -265,27 +265,49 @@ describe('herdr bridge', () => {
     expect(herdr.requests.filter(r => r.method === 'agent.prompt').map(r => r.params)).toEqual([{ target: 'w9:p2', text: 'Task: fix it' }])
   })
 
-  it('reports once when an agent launched for a piece of work starts working', async () => {
+  it('follows the agent on a piece of work from its first working until its pane closes', async () => {
     const { deps } = makeDeps(dir)
-    const started: Array<{ data: unknown; paneId: string }> = []
-    deps.agentStartedWorking = (data, paneId) => { started.push({ data, paneId }) }
+    const seen: string[] = []
+    deps.workStatusChanged = (data, paneId, status, agent) => { seen.push(`${paneId}:${status}:${agent}:${data.orb?.task?.title}`) }
     await startBridge(deps)
     const onWorking = { orb: { task: { title: 'Fix flaky login test', list: 'api' } } }
     await bridge!.launchAgent('claude-code', { title: 'Fix flaky login test', onWorking })
     const pane = herdr.panes.find(p => p.pane_id === 'w9:p2')
-    Object.assign(pane, { agent: 'claude', agent_status: 'idle' })
-    herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2', agent_status: 'idle' })
-    await new Promise(resolve => setTimeout(resolve, 200))
-    expect(started).toEqual([])
-    Object.assign(pane, { agent_status: 'working' })
-    herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2', agent_status: 'working' })
-    await until(() => started.length === 1)
-    expect(started[0]).toMatchObject({ paneId: 'w9:p2', data: { orb: onWorking.orb } })
-    // Idle and working again later is the same work: no second report.
-    Object.assign(pane, { agent_status: 'idle' }); herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2' })
-    Object.assign(pane, { agent_status: 'working' }); herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2' })
-    await new Promise(resolve => setTimeout(resolve, 200))
-    expect(started).toHaveLength(1)
+    const set = async (status: string) => {
+      Object.assign(pane, { agent: 'claude', agent_status: status })
+      herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2', agent_status: status })
+      await new Promise(resolve => setTimeout(resolve, 120))
+    }
+    // Ready before the task is typed: not reported yet.
+    await set('idle')
+    expect(seen).toEqual([])
+    await set('working')
+    await set('working')
+    await set('blocked')
+    await set('done')
+    await until(() => seen.length === 3)
+    expect(seen).toEqual(['w9:p2:working:claude:Fix flaky login test', 'w9:p2:blocked:claude:Fix flaky login test', 'w9:p2:done:claude:Fix flaky login test'])
+  })
+
+  it('starts project work in the matching Studio folder and files its chat there', async () => {
+    const { deps, sessions } = makeDeps(dir)
+    const prepared: Array<string | undefined> = []
+    const prepare = deps.prepareAgentLaunch
+    deps.prepareAgentLaunch = async (agentId, input) => { prepared.push(input.workspace); return prepare(agentId, input) }
+    const created: Array<number | null | undefined> = []
+    const create = deps.createSession
+    deps.createSession = input => { created.push(input.categoryId); create(input) }
+    deps.folderForWork = async data => (data.orb?.project === 'site' ? { categoryId: 7, workspace: join(dir, 'site') } : null)
+    await startBridge(deps)
+    await bridge!.launchAgent('claude-code', { title: 'site', workspace: '/somewhere/else', onWorking: { orb: { project: 'site' } } })
+    expect(prepared).toEqual([join(dir, 'site')])
+    // The agent reports its session: the imported chat goes in folder 7.
+    const nativeId = '91919191-2222-3333-4444-555555555555'
+    Object.assign(herdr.panes.find(p => p.pane_id === 'w9:p2'), { agent: 'claude', agent_status: 'working', agent_session: { kind: 'id', value: nativeId, source: 'herdr:claude' } })
+    herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2' })
+    await until(() => created.length === 1)
+    expect(created).toEqual([7])
+    expect(sessions.size).toBe(1)
   })
 
   it('gives agents a Studio login on launch and refreshes it while they work', async () => {

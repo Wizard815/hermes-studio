@@ -9,14 +9,12 @@ import { useAppStore } from '@/stores/hermes/app'
 import { clearApiKey } from '@/api/client'
 import {
   createHerdrWorkspace,
-  fetchSpaceFolders,
   focusHerdrPane,
   launchHerdrAgent,
-  saveSpaceFolders,
   type HerdrPaneView,
   type SpaceFolder,
-  type SpaceFolderState,
 } from '@/api/coding-agents/herdr'
+import { useStudioFolders, type MissionFolder } from './useFolders'
 import SpaceTree from './SpaceTree.vue'
 import FolderEditor from './FolderEditor.vue'
 import SourceChats from './sources/SourceChats.vue'
@@ -47,14 +45,15 @@ const panelOpen = ref(false)
 const selectedSpace = ref('')
 const selectedPane = ref('')
 const control = ref(false)
-const folders = ref<SpaceFolderState>({ list: [], of: {}, at: 0 })
 const editorOpen = ref(false)
-const editing = ref<SpaceFolder | null>(null)
+const editing = ref<MissionFolder | null>(null)
+/** Parent of a folder being created ('' for the top). */
+const newFolderParent = ref('')
 const spaceDialog = ref(false)
 const spaceForm = ref({ cwd: '', label: '', folder: '' })
 const agentDialog = ref(false)
 const agentForm = ref({ agentId: '', provider: '', model: '', title: '', prompt: '' })
-let saveTimer = 0
+let refreshTimer = 0
 
 watch(view, value => { try { localStorage.setItem('herdr_mission_view', value) } catch { /* ignore */ } })
 watch(source, value => { try { localStorage.setItem('herdr_mission_source', value) } catch { /* ignore */ } })
@@ -72,6 +71,16 @@ const spaceCwd = computed(() => {
   return pane?.foreground_cwd || pane?.cwd || ''
 })
 const studioHome = studioUrl('/hermes/chat')
+const studioFolders = useStudioFolders(message => toast.error(message))
+
+function cwdOf(spaceId: string): string {
+  const pane = panes.value.find(p => p.workspace_id === spaceId && p.agent) || panes.value.find(p => p.workspace_id === spaceId)
+  return pane?.foreground_cwd || pane?.cwd || ''
+}
+
+function placeOf(spaceId: string): string {
+  return studioFolders.folderOfSpace(spaceId, panes.value, cwdOf(spaceId), herdr.status?.home || '')
+}
 
 const providerOptions = computed(() => {
   const profile = herdr.status?.settings.profile || 'default'
@@ -114,33 +123,27 @@ function paneName(pane: HerdrPaneView): string {
   return pane.label || pane.terminal_title_stripped || pane.agent || pane.pane_id
 }
 
-function updateFolders(next: SpaceFolderState) {
-  folders.value = next
-  if (saveTimer) window.clearTimeout(saveTimer)
-  saveTimer = window.setTimeout(async () => {
-    saveTimer = 0
-    try { folders.value = await saveSpaceFolders(folders.value) } catch (err: any) { toast.error(err?.message || String(err)) }
-  }, 250)
-}
-
-function editFolder(folder: SpaceFolder | null) {
+function editFolder(folder: MissionFolder) {
   editing.value = folder
   editorOpen.value = true
 }
 
-function saveFolder(folder: SpaceFolder) {
-  const list = folders.value.list.some(f => f.id === folder.id)
-    ? folders.value.list.map(f => (f.id === folder.id ? folder : f))
-    : [...folders.value.list, folder]
-  updateFolders({ ...folders.value, list })
+function newFolder(parentId: string) {
+  editing.value = null
+  newFolderParent.value = parentId
+  editorOpen.value = true
+}
+
+async function saveFolder(folder: SpaceFolder) {
+  if (editing.value) await studioFolders.updateFolder(folder)
+  else await studioFolders.createFolder(folder, newFolderParent.value)
 }
 
 function removeFolder(folder: SpaceFolder) {
-  const of = Object.fromEntries(Object.entries(folders.value.of).filter(([, id]) => id !== folder.id))
-  updateFolders({ list: folders.value.list.filter(f => f.id !== folder.id), of, at: Date.now() })
+  void studioFolders.removeFolder(folder.id)
 }
 
-function newSpace(folder: SpaceFolder | null) {
+function newSpace(folder: MissionFolder | null) {
   spaceForm.value = { cwd: (folder?.start || '').replace(/^~(?=\/|$)/, herdr.status?.home || '~'), label: '', folder: folder?.id || '' }
   spaceDialog.value = true
 }
@@ -150,7 +153,7 @@ async function createSpace() {
     const created = await createHerdrWorkspace({ cwd: spaceForm.value.cwd.trim() || undefined, label: spaceForm.value.label.trim() || undefined })
     if (created.workspaceId) {
       // New spaces made from a folder go in it, as in herdr-space-folders.
-      if (spaceForm.value.folder) updateFolders({ ...folders.value, of: { ...folders.value.of, [created.workspaceId]: spaceForm.value.folder } })
+      if (spaceForm.value.folder) void studioFolders.placeSpace(created.workspaceId, spaceForm.value.folder, panes.value)
       selectedSpace.value = created.workspaceId
       selectedPane.value = created.paneId
     }
@@ -197,9 +200,14 @@ onMounted(async () => {
   herdr.acquire()
   await herdr.refresh()
   if (requested) selectPane(requested)
-  try { folders.value = await fetchSpaceFolders() } catch { /* empty tree */ }
+  await studioFolders.load()
+  // Folder and chat changes made in Studio's sidebar show up here.
+  refreshTimer = window.setInterval(() => { void studioFolders.refresh() }, 15000)
 })
-onBeforeUnmount(() => herdr.release())
+onBeforeUnmount(() => {
+  herdr.release()
+  if (refreshTimer) window.clearInterval(refreshTimer)
+})
 </script>
 
 <template>
@@ -234,15 +242,18 @@ onBeforeUnmount(() => herdr.release())
           class="mission-rail-tree"
           :workspaces="workspaces"
           :panes="panes"
-          :folders="folders"
-          :home="herdr.status?.home || ''"
+          :folders="studioFolders.folders.value"
+          :place-of="placeOf"
           :selected-space="selectedSpace"
           :selected-pane="selectedPane"
           @select-space="selectSpace"
           @select-pane="selectPane"
           @new-space="newSpace"
+          @new-folder="newFolder"
           @edit-folder="editFolder"
-          @update-folders="updateFolders"
+          @toggle-folder="studioFolders.toggleFolded"
+          @place-space="(spaceId, folderId) => studioFolders.placeSpace(spaceId, folderId, panes)"
+          @move-folder="studioFolders.moveFolder"
         />
         <section class="mission-agents" data-testid="mission-agents">
           <header class="mission-agents-head">{{ t('mission.agents') }} <span>{{ agents.length }}</span></header>

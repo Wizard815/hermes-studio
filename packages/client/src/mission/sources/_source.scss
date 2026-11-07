@@ -82,6 +82,12 @@
   font-size: 11px;
   color: $text-secondary;
 
+  &.source-chip-agent {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
   &.is-warn {
     color: $warning;
     border-color: $warning;

@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { callOrbTool, type OrbProject } from '@/api/studio/orb'
 import type { HerdrPaneView } from '@/api/coding-agents/herdr'
 import LaunchButtons from '../LaunchButtons.vue'
+import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 
 /** Pondering Orb's project board: one column per status, a card per project. */
 const props = defineProps<{ panes: HerdrPaneView[]; workspace: string }>()
@@ -66,6 +67,7 @@ onMounted(load)
         <h4>{{ t(`mission.status.${column.status}`) }} <span>{{ column.items.length }}</span></h4>
         <article v-for="project in column.items" :key="project.name" class="source-card" data-theme-surface="card" data-testid="mission-project">
           <span class="source-card-title">{{ project.name }}</span>
+          <span v-if="project.agentStatus" class="source-chip source-chip-agent"><AgentStatusIcon :status="project.agentStatus" live :size="11" /> {{ t(`agentStatus.${project.agentStatus}`) }}</span>
           <span v-if="project.next" class="source-card-meta">{{ project.next }}</span>
           <div class="source-card-meta">
             <span class="source-chip">{{ t('mission.openTasks', { n: project.openTasks ?? 0 }) }}</span>
