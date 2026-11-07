@@ -66,25 +66,44 @@ tasks and plans, projects, ideas, upkeep, and Control).
   no extra route; the terminal stream uses Studio's Socket.IO. Studio also
   listens on `HERDR_MISSION_PORT` (default 5180, `0` turns it off) and serves
   Mission at `/` there, with its own sign-in.
-- **Folders.** Stored by Studio in `HERMES_WEB_UI_HOME/herdr/space-folders.json`
-  (`services/herdr/folders.ts`, `GET/PUT /api/coding-agents/herdr/folders`).
-  Rules are comma-separated: paths (`~/code/client`) match as prefixes, names
-  (`client-*`) match at any depth, the deepest match wins; dragging a space
-  into a folder pins it there.
+- **Folders are Studio's chat folders, 1:1** (`mission/useFolders.ts`). The
+  tree is Studio's session categories (same names and nesting; changes in
+  either show in the other). Mission keeps only extras per folder (color, start
+  directory, collect rules, folded) in `HERMES_WEB_UI_HOME/herdr/space-folders.json`,
+  keyed `c<category id>` (`services/herdr/folders.ts`,
+  `GET/PUT /api/coding-agents/herdr/folders`). A space sits in the folder of a
+  chat running in it, else where it was dropped, else the folder whose start
+  directory or rules match its directory most deeply (paths match as prefixes,
+  names like `client-*` at any depth). Dropping a space on a folder also files
+  its chats there in Studio; dropping a folder on a folder nests it. Folders
+  from before this were turned into Studio folders of the same name.
 - **Start from a card.** Each task, project or idea card has a button per
   installed agent. Studio opens a herdr space for it and types the card as the
   agent's first prompt once herdr reports the agent idle
   (`HerdrBridge.launchAgent` → `promptWhenReady`). The card remembers its pane,
   so a second click goes to that agent instead of sending the task again.
-- **In progress.** A launch can name the Orb task or project it is for
-  (`orb` in `POST /api/coding-agents/herdr/agents`). The first time herdr
-  reports that agent working, Studio marks the task in progress in Orb
-  (`orb_start_task`, CalDAV `STATUS:IN-PROCESS`) or moves the project to
-  active (`HerdrBridgeDeps.agentStartedWorking`, wired in `bootstrap/herdr.ts`).
-  Pending entries are kept in the bridge state file, so a Studio restart does
-  not lose them.
+- **Orb follows the agent.** A launch can name the Orb task or project it is
+  for (`orb` in `POST /api/coding-agents/herdr/agents`). From the agent's first
+  `working`, every herdr status change is sent to Orb (`orb_set_agent_status`:
+  working, blocked, done, idle, then gone when the pane closes), shown in Orb
+  and Mission with herdr's glyphs and colors. The first working marks the task
+  in progress (CalDAV `STATUS:IN-PROCESS`) or moves the project to active; gone
+  puts an unfinished task back to open (`HerdrBridgeDeps.workStatusChanged`,
+  wired in `bootstrap/herdr.ts`). Entries live in the bridge state file, so a
+  Studio restart does not lose them.
+- **Project folders.** Work for an Orb project (or a task whose list is the
+  project) starts in the start directory of the Studio folder with the
+  project's name, and its chat is filed in that folder
+  (`HerdrBridgeDeps.folderForWork`).
 - **Studio ↔ Mission.** "Open in herdr" and the herdr nav item open Mission
   (`utils/mission-url.ts`); Mission's "Back to Studio" returns.
+- **herdr in the chat center.** The chat header's Chat | herdr switch swaps
+  only the center column (`components/coding-agents/herdr/HerdrCenter.vue` in
+  `ChatPanel.vue`): the chat's live agent pane with the other agents of its
+  herdr space as tabs, Take control, and "Open in herdr" for a chat not running
+  there. Sidebar, header and tool panel stay. Both centers stay mounted once
+  opened (`v-show`) and the terminal stays connected, so swapping is instant;
+  the choice is remembered (`studio_chat_center`).
 
 ## Pondering Orb
 
@@ -146,7 +165,9 @@ Rules that keep it safe:
 - Unit: `tests/server/herdr-folders.test.ts`, `tests/server/orb-client.test.ts`,
   `tests/server/herdr-public-url.test.ts`
   (fake Orb).
-- Browser: `tests/e2e/herdr-view.spec.ts`, `tests/e2e/mission.spec.ts` (mocked API).
+- Unit: `tests/client/mission-folders.test.ts` (tree and space placement).
+- Browser: `tests/e2e/herdr-view.spec.ts`, `tests/e2e/mission.spec.ts`,
+  `tests/e2e/herdr-center.spec.ts` (mocked API).
 - Live: build herdr (`cargo build --release`, needs Zig 0.16), run Studio with an
   isolated `HERMES_WEB_UI_HOME` and `CLAUDE_CONFIG_DIR`, enable herdr with a named
   session, and drive agents with herdr's CLI (`pane run`, `send-text`). Keep the

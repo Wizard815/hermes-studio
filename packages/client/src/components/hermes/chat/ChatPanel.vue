@@ -65,6 +65,7 @@ import ConversationMonitorPane from "./ConversationMonitorPane.vue";
 import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
+import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
 import ListActionsMenu from "@/components/layout/ListActionsMenu.vue";
 import OutlinePanel from "./OutlinePanel.vue";
 import ChatToolsPanel from "./ChatToolsPanel.vue";
@@ -141,6 +142,17 @@ const herdrEligible = computed(() => {
   const agent = session.codingAgentId || (session.agent === 'claude' ? 'claude-code' : session.agent)
   return !!agent && HERDR_ELIGIBLE_AGENTS.has(agent)
 })
+
+// The center column swaps between the chat and its herdr agent; the sidebar,
+// header and tool panel stay. Both stay mounted once opened, so swapping is instant.
+type ChatCenter = 'chat' | 'herdr'
+const centerMode = ref<ChatCenter>((() => { try { return localStorage.getItem('studio_chat_center') === 'herdr' ? 'herdr' : 'chat' } catch { return 'chat' } })())
+watch(centerMode, value => { try { localStorage.setItem('studio_chat_center', value) } catch { /* private mode */ } })
+const herdrCenterAvailable = computed(() => !props.standalone && isSuperAdmin.value && !!chatStore.activeSessionId && herdrEligible.value)
+const herdrCenterMounted = ref(false)
+const showHerdrCenter = computed(() => centerMode.value === 'herdr' && herdrCenterAvailable.value && !showNewChatPage.value)
+// Lazy: showHerdrCenter reads state declared further down, so it is first read from the template.
+watch(showHerdrCenter, value => { if (value) herdrCenterMounted.value = true })
 
 const showOutline = ref(false);
 const ACTIVE_SESSION_MENU_ID = "active-session-actions-menu";
@@ -3169,6 +3181,25 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               </svg>
             </template>
           </NButton>
+          <div
+            v-if="herdrCenterAvailable && !showNewChatPage"
+            class="header-center-switch"
+            role="radiogroup"
+            :aria-label="t('herdr.centerSwitch')"
+            :title="t('herdr.centerSwitch')"
+            data-testid="chat-center-switch"
+          >
+            <button
+              v-for="mode in (['chat', 'herdr'] as const)"
+              :key="mode"
+              type="button"
+              role="radio"
+              :aria-checked="centerMode === mode"
+              :class="{ active: centerMode === mode }"
+              :data-testid="`chat-center-${mode}`"
+              @click="centerMode = mode"
+            >{{ mode === 'chat' ? t('herdr.centerChat') : t('herdr.centerHerdr') }}</button>
+          </div>
           <HerdrOpenButton
             v-if="isSuperAdmin && !showNewChatPage && chatStore.activeSessionId && herdrEligible"
             :session-id="chatStore.activeSessionId"
@@ -3317,13 +3348,21 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
                 </button>
             </NewChatPage>
             <template v-else>
+            <HerdrCenter
+              v-if="(herdrCenterMounted || showHerdrCenter) && herdrCenterAvailable && chatStore.activeSessionId"
+              v-show="showHerdrCenter"
+              :session-id="chatStore.activeSessionId"
+              :active="showHerdrCenter"
+            />
             <MessageList
+              v-show="!showHerdrCenter"
               ref="messageListRef"
               :selection-actions-target="messageSelectionActionsTarget"
               :approval-portal-to-body="showRealtimeVoice"
               scroll-scope="chat"
             />
             <ChatInput
+              v-show="!showHerdrCenter"
               ref="chatInputRef"
               :model-label="activeSessionModelLabel"
               :model-disabled="activeSessionUsesGlobalCodingAgentConfig"
@@ -3832,6 +3871,28 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
   flex-direction: column;
   min-width: 0;
   background-color: var(--theme-content-bg, $bg-main-surface);
+}
+
+.header-center-switch {
+  display: inline-flex;
+  padding: 2px;
+  border: var(--border-width, 1px) solid $border-light;
+  border-radius: 999px;
+
+  button {
+    padding: 2px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: $text-secondary;
+    font-size: 12px;
+    cursor: pointer;
+
+    &.active {
+      color: $text-primary;
+      background: rgba(var(--accent-primary-rgb), 0.12);
+    }
+  }
 }
 
 .chat-header {
