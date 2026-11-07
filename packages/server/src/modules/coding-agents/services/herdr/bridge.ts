@@ -523,16 +523,56 @@ export class HerdrBridge {
     })
   }
 
-  /** Start a new agent in herdr with Studio's provider routing, MCP and prompt. */
-  async launchAgent(agentId: string, input: { provider?: string; model?: string; workspace?: string; title?: string }): Promise<HerdrLinkInfo> {
-    const launch = await this.deps.prepareAgentLaunch(agentId, { ...input, profile: this.settings.profile || 'default' })
+  /**
+   * Start a new agent in herdr with Studio's provider routing, MCP and prompt.
+   * With `prompt`, the task is typed into the agent once it is ready, which is
+   * how a plan from Pondering Orb (or any card) becomes a running agent.
+   */
+  async launchAgent(agentId: string, input: { provider?: string; model?: string; workspace?: string; title?: string; prompt?: string }): Promise<HerdrLinkInfo> {
+    const launch = await this.deps.prepareAgentLaunch(agentId, { provider: input.provider, model: input.model, workspace: input.workspace, profile: this.settings.profile || 'default' })
     const title = input.title?.trim() || this.deps.agentLabel(launch.agentId)
-    return this.openLaunch(launch, title, {
+    const link = await this.openLaunch(launch, title, {
       agentId: launch.agentId,
       provider: launch.provider,
       model: launch.model,
       title,
     })
+    const prompt = String(input.prompt || '').trim()
+    if (prompt) void this.promptWhenReady(link.paneId, prompt)
+    return link
+  }
+
+  /** Wait until the agent in a pane is ready for input, then send the prompt once. */
+  async promptWhenReady(paneId: string, text: string, timeoutMs = 90000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline && !this.stopped) {
+      const pane = this.panes.find(entry => entry.pane_id === paneId)
+      if (!pane && Date.now() > deadline - timeoutMs + 15000) break
+      if (pane?.agent && (pane.agent_status === 'idle' || pane.agent_status === 'done')) {
+        try {
+          await this.requireClient().request('agent.prompt', { target: paneId, text }, 15000)
+          return true
+        } catch (error) {
+          this.log('warn', '[herdr] could not send the initial prompt', { paneId, error: String(error) })
+          return false
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 500))
+      this.scheduleRefresh(0)
+    }
+    this.log('warn', '[herdr] agent was not ready for its initial prompt', { paneId })
+    return false
+  }
+
+  /** New empty space (herdr workspace) with a shell, optionally in a folder. */
+  async createWorkspace(input: { cwd?: string; label?: string }): Promise<{ workspaceId: string; paneId: string }> {
+    const created = await this.requireClient().request<any>('workspace.create', {
+      ...(input.cwd ? { cwd: input.cwd } : {}),
+      ...(input.label ? { label: input.label.slice(0, 48) } : {}),
+      focus: true,
+    })
+    this.scheduleRefresh(0)
+    return { workspaceId: String(created?.workspace?.workspace_id || ''), paneId: String(created?.root_pane?.pane_id || '') }
   }
 
   async focusPane(paneId: string): Promise<void> {

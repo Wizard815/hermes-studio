@@ -47,6 +47,50 @@ stay separate apps; this integration links them.
   Studio's herdr settings or inside herdr: Studio chats → `s`, or the
   "Studio settings" plugin action.
 
+## Mission view
+
+`/mission/` is a second web page (`packages/client/mission.html`,
+`packages/client/src/mission/`) for running herdr from a browser: a space tree
+with folders on the left (the herdr-space-folders layout), agents and live
+terminals in the middle, and work sources on top (Studio chats, Pondering Orb
+tasks and plans, projects, ideas, upkeep, and Control).
+
+- **One port for the tunnel.** Mission is served by Studio's own server at
+  `<studio>/mission/`, so a Cloudflare tunnel to Studio's port serves it with
+  no extra route; the terminal stream uses Studio's Socket.IO. Studio also
+  listens on `HERDR_MISSION_PORT` (default 5180, `0` turns it off) and serves
+  Mission at `/` there, with its own sign-in.
+- **Folders.** Stored by Studio in `HERMES_WEB_UI_HOME/herdr/space-folders.json`
+  (`services/herdr/folders.ts`, `GET/PUT /api/coding-agents/herdr/folders`).
+  Rules are comma-separated: paths (`~/code/client`) match as prefixes, names
+  (`client-*`) match at any depth, the deepest match wins; dragging a space
+  into a folder pins it there.
+- **Start from a card.** Each task, project or idea card has a button per
+  installed agent. Studio opens a herdr space for it and types the card as the
+  agent's first prompt once herdr reports the agent idle
+  (`HerdrBridge.launchAgent` → `promptWhenReady`). The card remembers its pane,
+  so a second click goes to that agent instead of sending the task again.
+- **Studio ↔ Mission.** "Open in herdr" and the herdr nav item open Mission
+  (`utils/mission-url.ts`); Mission's "Back to Studio" returns.
+
+## Pondering Orb
+
+Studio connects to a Pondering Orb (`services/orb/client.ts`) with its URL and
+an API token from Orb's `ORB_API_TOKENS`, set in Mission → Control or with
+`ORB_URL` and `ORB_TOKEN`. The token is stored 0600 in
+`HERMES_WEB_UI_HOME/orb/settings.json` and never returned to browsers.
+
+- `GET /api/studio/orb` (status), `PUT /api/studio/orb/settings`: super admin.
+- `GET /api/studio/orb/data/:kind`, `POST /api/studio/orb/tools/:name`: admin;
+  only the kinds in `ORB_DATA_PATHS` and the tools in `ORB_TOOLS` pass.
+- Agents read and update Orb through Studio's MCP `use` toolset:
+  `ekko_studio_use_orb_read` (tasks, projects, logs, chores, ideas, upkeep,
+  uptime, system) and `ekko_studio_use_orb_update` (add/complete tasks, add
+  logs, move projects, task priority, chores).
+- The other way, Orb's Agents tab lists herdr agents through Studio and sends a
+  task or project to a new agent (`POST /api/coding-agents/herdr/agents` with a
+  prompt).
+
 ## Code map
 
 | Area | Path |
@@ -59,6 +103,9 @@ stay separate apps; this integration links them.
 | Routes / socket | `routes/herdr.ts`, `controllers/herdr.ts`, `sockets/herdr.ts` |
 | Studio wiring | `bootstrap/herdr.ts`, `studio/public/session-status.ts` |
 | UI | `views/hermes/HerdrView.vue`, `components/coding-agents/herdr/*` |
+| Mission page | `packages/client/mission.html`, `packages/client/src/mission/*`, `bootstrap/http.ts` |
+| Space folders | `services/herdr/folders.ts` |
+| Pondering Orb | `modules/studio/services/orb/client.ts`, `studio/routes/orb.ts`, `studio/controllers/orb.ts` |
 
 Rules that keep it safe:
 
@@ -79,7 +126,9 @@ Rules that keep it safe:
 - Unit: `tests/server/herdr-*.test.ts` (fake herdr socket server, installer
   with a fake manifest, key choice against `fixtures/herdr-default-config.toml`),
   `tests/server/session-state-sync.test.ts`, `tests/client/agent-status.test.ts`.
-- Browser: `tests/e2e/herdr-view.spec.ts` (mocked API).
+- Unit: `tests/server/herdr-folders.test.ts`, `tests/server/orb-client.test.ts`
+  (fake Orb).
+- Browser: `tests/e2e/herdr-view.spec.ts`, `tests/e2e/mission.spec.ts` (mocked API).
 - Live: build herdr (`cargo build --release`, needs Zig 0.16), run Studio with an
   isolated `HERMES_WEB_UI_HOME` and `CLAUDE_CONFIG_DIR`, enable herdr with a named
   session, and drive agents with herdr's CLI (`pane run`, `send-text`). Keep the

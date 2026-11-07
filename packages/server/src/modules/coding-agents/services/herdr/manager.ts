@@ -4,6 +4,8 @@ import { findPluginScript, installHerdrPlugin, pluginTokenMatches, readOrCreateP
 import { installHerdrRelease } from './install'
 import { installStudioKeybinding, type KeybindResult } from './keybind'
 import { herdrKindForStudioAgent } from './protocol'
+import { SpaceFolderStore } from './folders'
+import { homedir } from 'node:os'
 import {
   DEFAULT_HERDR_SETTINGS,
   HerdrSettingsStore,
@@ -47,6 +49,8 @@ export interface HerdrStatus {
   server: HerdrServerStatus | null
   error: string
   bridge: HerdrBridgeState | null
+  /** Home folder on the herdr machine, for `~` in folder rules. */
+  home: string
 }
 
 /** Herdr agent kinds with a session-reporting integration. */
@@ -76,6 +80,13 @@ export class HerdrManager {
     this.stateFile = paths.stateFile
     this.settingsDir = dirname(paths.settingsFile)
     this.pluginDeps = pluginDeps ?? null
+  }
+
+  private folderStore: SpaceFolderStore | null = null
+
+  folders(): SpaceFolderStore {
+    if (!this.folderStore) this.folderStore = new SpaceFolderStore(join(this.settingsDir, 'space-folders.json'))
+    return this.folderStore
   }
 
   getPluginDeps(): HerdrPluginDeps {
@@ -290,6 +301,7 @@ export class HerdrManager {
       server,
       error: error || this.bridge?.getState().error || this.serverError || '',
       bridge: this.bridge?.getState() ?? null,
+      home: homedir(),
     }
   }
 

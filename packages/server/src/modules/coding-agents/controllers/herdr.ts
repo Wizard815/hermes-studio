@@ -62,7 +62,7 @@ export async function sessionLink(ctx: Context) {
 
 export async function launchAgent(ctx: Context) {
   try {
-    const body = (ctx.request.body || {}) as { agentId?: unknown; provider?: unknown; model?: unknown; workspace?: unknown; title?: unknown }
+    const body = (ctx.request.body || {}) as { agentId?: unknown; provider?: unknown; model?: unknown; workspace?: unknown; title?: unknown; prompt?: unknown }
     const agentId = String(body.agentId || '')
     if (!herdrKindForStudioAgent(agentId)) throw Object.assign(new Error('This agent cannot run in herdr'), { status: 400 })
     ctx.body = {
@@ -71,6 +71,7 @@ export async function launchAgent(ctx: Context) {
         model: body.model ? String(body.model) : undefined,
         workspace: body.workspace ? String(body.workspace) : undefined,
         title: body.title ? String(body.title) : undefined,
+        prompt: body.prompt ? String(body.prompt).slice(0, 20000) : undefined,
       }),
     }
   } catch (error) { fail(ctx, error, 'Failed to launch agent in herdr') }
@@ -182,4 +183,21 @@ export async function updatePluginSettings(ctx: Context) {
     const settings = await herdrManager.updateSettings(patch)
     ctx.body = { profile: settings.profile, autoImport: settings.autoImport }
   } catch (error) { fail(ctx, error, 'Failed to save settings') }
+}
+
+export async function getFolders(ctx: Context) {
+  try { ctx.body = await herdrManager.folders().load() } catch (error) { fail(ctx, error, 'Failed to read space folders') }
+}
+
+export async function saveFolders(ctx: Context) {
+  try { ctx.body = await herdrManager.folders().save(ctx.request.body || {}) } catch (error) { fail(ctx, error, 'Failed to save space folders') }
+}
+
+export async function createWorkspace(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { cwd?: unknown; label?: unknown }
+    const cwd = typeof body.cwd === 'string' ? body.cwd.trim() : ''
+    if (cwd && !cwd.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(cwd)) throw Object.assign(new Error('Folder must be an absolute path'), { status: 400 })
+    ctx.body = await herdrManager.requireBridge().createWorkspace({ cwd: cwd || undefined, label: typeof body.label === 'string' ? body.label.trim() : undefined })
+  } catch (error) { fail(ctx, error, 'Failed to create space') }
 }

@@ -57,6 +57,7 @@ export interface HerdrStatus {
   error: string
   bridge: HerdrBridgeState | null
   integrations: string[]
+  home: string
 }
 
 export interface HerdrLink { paneId: string; workspaceId: string; status: HerdrStatusValue }
@@ -100,7 +101,7 @@ export const promptHerdrSession = (sessionId: string, text: string) =>
 export const closeHerdrSessionPane = (sessionId: string) =>
   request<{ closed: boolean }>(`${base}/sessions/${encodeURIComponent(sessionId)}/pane`, { method: 'DELETE' })
 
-export const launchHerdrAgent = (input: { agentId: string; provider?: string; model?: string; workspace?: string; title?: string }) =>
+export const launchHerdrAgent = (input: { agentId: string; provider?: string; model?: string; workspace?: string; title?: string; prompt?: string }) =>
   request<{ link: HerdrLink }>(`${base}/agents`, { method: 'POST', body: JSON.stringify(input) })
 
 export const focusHerdrPane = (paneId: string) =>
@@ -118,3 +119,26 @@ export function connectHerdrSocket(): Socket {
     reconnectionDelayMax: 5000,
   })
 }
+
+export interface SpaceFolder {
+  id: string
+  name: string
+  color: string
+  folded: boolean
+  start: string
+  rules: string
+}
+
+export interface SpaceFolderState {
+  list: SpaceFolder[]
+  of: Record<string, string>
+  at: number
+}
+
+export const fetchSpaceFolders = () => request<SpaceFolderState>(`${base}/folders`)
+
+export const saveSpaceFolders = (state: SpaceFolderState) =>
+  request<SpaceFolderState>(`${base}/folders`, { method: 'PUT', body: JSON.stringify(state) })
+
+export const createHerdrWorkspace = (input: { cwd?: string; label?: string }) =>
+  request<{ workspaceId: string; paneId: string }>(`${base}/workspaces`, { method: 'POST', body: JSON.stringify(input) })

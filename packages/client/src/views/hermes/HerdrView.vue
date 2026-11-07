@@ -10,6 +10,7 @@ import { fetchCodingAgentsStatus, type CodingAgentToolStatus } from '@/api/codin
 import { focusHerdrPane, launchHerdrAgent, type HerdrPaneView, type HerdrStatusValue } from '@/api/coding-agents/herdr'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { useAppStore } from '@/stores/hermes/app'
+import { missionUrl } from '@/utils/mission-url'
 
 type Tab = 'herdr' | 'agents' | 'settings'
 
@@ -69,7 +70,7 @@ watch(agentPanes, list => {
 }, { immediate: true })
 
 watch(tab, value => {
-  void router.replace({ query: { ...route.query, tab: value === 'herdr' ? undefined : value } })
+  void router.replace({ query: { ...route.query, tab: value } })
 })
 watch(selectedPaneId, () => { control.value = false })
 
@@ -125,6 +126,8 @@ onMounted(async () => {
   herdr.acquire()
   await herdr.refresh()
   if (!ready.value) tab.value = 'settings'
+  // Going to herdr from Studio opens the Mission view unless a tab was asked for.
+  else if (!route.query.tab) window.location.assign(missionUrl(typeof route.query.pane === 'string' ? { pane: route.query.pane } : {}))
 })
 onBeforeUnmount(() => herdr.release())
 </script>

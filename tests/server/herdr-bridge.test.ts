@@ -140,7 +140,7 @@ describe('herdr bridge', () => {
   afterEach(async () => {
     bridge?.stop()
     await herdr.close()
-    await rm(dir, { recursive: true, force: true })
+    await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
   })
 
   function startBridge(deps: HerdrBridgeDeps, settings = DEFAULT_HERDR_SETTINGS) {
@@ -248,6 +248,28 @@ describe('herdr bridge', () => {
     await bridge!.openSession('chat-d')
     expect(herdr.requests.filter(r => r.method === 'layout.apply')).toHaveLength(1)
     expect(herdr.requests.some(r => r.method === 'pane.focus' && r.params.pane_id === 'w9:p2')).toBe(true)
+  })
+
+  it('starts an agent and sends its first prompt once it is ready', async () => {
+    const { deps } = makeDeps(dir)
+    await startBridge(deps)
+    const link = await bridge!.launchAgent('claude-code', { title: 'Fix flaky login test', prompt: 'Task: fix it', workspace: dir })
+    expect(link.paneId).toBe('w9:p2')
+    expect(herdr.requests.find(r => r.method === 'workspace.create')!.params.label).toBe('Fix flaky login test')
+    // Not ready yet: no prompt is typed into a starting agent.
+    await new Promise(resolve => setTimeout(resolve, 700))
+    expect(herdr.requests.some(r => r.method === 'agent.prompt')).toBe(false)
+    Object.assign(herdr.panes.find(p => p.pane_id === 'w9:p2'), { agent: 'claude', agent_status: 'idle' })
+    herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2', agent_status: 'idle' })
+    await until(() => herdr.requests.some(r => r.method === 'agent.prompt'), 5000)
+    expect(herdr.requests.filter(r => r.method === 'agent.prompt').map(r => r.params)).toEqual([{ target: 'w9:p2', text: 'Task: fix it' }])
+  })
+
+  it('creates an empty space in a folder', async () => {
+    const { deps } = makeDeps(dir)
+    await startBridge(deps)
+    expect(await bridge!.createWorkspace({ cwd: dir, label: 'scratch' })).toEqual({ workspaceId: 'w9', paneId: 'w9:p1' })
+    expect(herdr.requests.find(r => r.method === 'workspace.create')!.params).toMatchObject({ cwd: dir, label: 'scratch', focus: true })
   })
 
   it('handles many chats created and removed quickly without duplicates', async () => {

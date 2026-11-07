@@ -4065,7 +4065,9 @@ export async function prepareCodingAgentInteractiveLaunch(
   const resume = nativeResumeArgs(launch.agentId, resumeNativeSessionId || '')
   return {
     agentId: launch.agentId,
-    command: launch.command,
+    // herdr starts panes through a login shell with its own PATH; give it the
+    // exact binary Studio would run (including Studio-managed installs).
+    command: await resolveInteractiveCommand(launch.command),
     args: [...resume.prefix, ...launch.args, ...resume.suffix],
     env: launch.env,
     workspaceDir: launch.workspaceDir,
@@ -4093,4 +4095,16 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
     agentNativeSessionId: undefined,
     resumeNativeSessionId: session.agent_native_session_id || '',
   })
+}
+
+/** Absolute path of a bare command on Studio's command PATH, or the command unchanged. */
+async function resolveInteractiveCommand(command: string): Promise<string> {
+  if (!command || /[\\/]/.test(command)) return command
+  if (process.platform === 'win32') return resolveCommandForExecution(command, await commandEnv())
+  const searchPath = String((await commandEnv()).PATH || process.env.PATH || '')
+  for (const dir of searchPath.split(delimiter).filter(Boolean)) {
+    const candidate = join(dir, command)
+    if (existsSync(candidate)) return candidate
+  }
+  return command
 }
