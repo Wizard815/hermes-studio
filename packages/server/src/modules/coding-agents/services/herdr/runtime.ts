@@ -5,8 +5,12 @@ import { homedir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 
 export interface HerdrSettings {
-  /** Master switch. Off by default: nothing talks to herdr until enabled. */
+  /** Master switch. Turned on automatically the first time Studio finds herdr. */
   enabled: boolean
+  /** Start a background herdr server when Studio starts (agents outlive Studio). */
+  autoStart: boolean
+  /** herdr version whose one-time setup (integrations, plugin, keybinding) has run. */
+  setupVersion: string
   /** Explicit herdr binary; empty means search PATH and common install dirs. */
   binaryPath: string
   /** Named herdr session; empty means herdr's default session. */
@@ -21,6 +25,8 @@ export interface HerdrSettings {
 
 export const DEFAULT_HERDR_SETTINGS: HerdrSettings = {
   enabled: false,
+  autoStart: true,
+  setupVersion: '',
   binaryPath: '',
   session: '',
   autoImport: true,
@@ -36,6 +42,8 @@ export function sanitizeHerdrSettings(input: Partial<HerdrSettings> | null | und
   if (typeof input.enabled === 'boolean') next.enabled = input.enabled
   if (typeof input.autoImport === 'boolean') next.autoImport = input.autoImport
   if (typeof input.mirrorTranscripts === 'boolean') next.mirrorTranscripts = input.mirrorTranscripts
+  if (typeof input.autoStart === 'boolean') next.autoStart = input.autoStart
+  if (typeof input.setupVersion === 'string') next.setupVersion = input.setupVersion.slice(0, 32)
   if (typeof input.binaryPath === 'string') next.binaryPath = input.binaryPath.trim().slice(0, 1024)
   if (typeof input.session === 'string') {
     const session = input.session.trim()
@@ -48,6 +56,10 @@ export function sanitizeHerdrSettings(input: Partial<HerdrSettings> | null | und
 
 export class HerdrSettingsStore {
   constructor(private readonly file: string) {}
+
+  exists(): boolean {
+    return existsSync(this.file)
+  }
 
   async load(): Promise<HerdrSettings> {
     try {
@@ -68,11 +80,13 @@ export class HerdrSettingsStore {
 const BINARY = process.platform === 'win32' ? 'herdr.exe' : 'herdr'
 
 /** Resolve the herdr binary without invoking a shell. */
-export function locateHerdrBinary(settings: Pick<HerdrSettings, 'binaryPath'>, env: NodeJS.ProcessEnv = process.env): string | null {
+export function locateHerdrBinary(settings: Pick<HerdrSettings, 'binaryPath'>, env: NodeJS.ProcessEnv = process.env, managedDir = ''): string | null {
   const explicit = settings.binaryPath || env.HERDR_BIN_PATH || ''
   if (explicit) return existsSync(explicit) ? explicit : null
   const home = homedir()
   const candidates = [
+    // A copy Studio installed wins over PATH so Studio controls its version.
+    ...(managedDir ? [join(managedDir, BINARY)] : []),
     ...String(env.PATH || '').split(delimiter).filter(Boolean).map(dir => join(dir, BINARY)),
     join(home, '.local', 'bin', BINARY),
     join(home, '.cargo', 'bin', BINARY),
@@ -115,8 +129,27 @@ export async function readHerdrServerStatus(binary: string, settings: Pick<Herdr
   }
 }
 
-/** Start a detached headless herdr server. Panes outlive Studio. */
-export function startHerdrServer(binary: string, settings: Pick<HerdrSettings, 'session'>): void {
-  const child = spawn(binary, herdrArgs(settings, ['server']), { detached: true, stdio: 'ignore', env: process.env })
+/**
+ * Start a detached headless herdr server; panes outlive Studio. If it exits
+ * during the first seconds, `onEarlyExit` receives its error output so the
+ * failure is shown instead of a bare "not running".
+ */
+export function startHerdrServer(binary: string, settings: Pick<HerdrSettings, 'session'>, onEarlyExit?: (message: string) => void): void {
+  const child = spawn(binary, herdrArgs(settings, ['server']), { detached: true, stdio: ['ignore', 'ignore', 'pipe'], env: process.env })
+  let stderr = ''
+  child.stderr?.setEncoding('utf8')
+  child.stderr?.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-2000) })
+  const watch = setTimeout(() => {
+    // Healthy: stop listening so Studio holds no handle on the server.
+    child.stderr?.destroy()
+    child.removeAllListeners('exit')
+    child.unref()
+  }, 5000)
+  watch.unref()
+  child.once('exit', code => {
+    clearTimeout(watch)
+    if (code !== 0 || stderr.trim()) onEarlyExit?.(stderr.trim() || `herdr server exited with code ${code}`)
+  })
+  child.once('error', error => onEarlyExit?.(error.message))
   child.unref()
 }

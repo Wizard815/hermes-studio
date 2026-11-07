@@ -23,6 +23,7 @@ import {
 } from '../modules/coding-agents/services'
 import { herdrManager, type HerdrPluginDeps } from '../modules/coding-agents/services/herdr/manager'
 import { listProfileModelGroups } from '../modules/hermes/controllers/models'
+import { listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
 import { herdrKindForStudioAgent } from '../modules/coding-agents/services/herdr/protocol'
 import { locateTranscript } from '../modules/coding-agents/services/herdr/transcript'
 import type { HerdrBridgeDeps, HerdrSessionRef } from '../modules/coding-agents/services/herdr/bridge'
@@ -107,6 +108,7 @@ export function herdrPluginDeps(baseUrl: string): HerdrPluginDeps {
       .filter(tool => tool.installed)
       .map(tool => ({ id: tool.id, name: tool.name })),
     listProviders: profile => listProfileModelGroups(profile),
+    listProfiles: () => { try { const names = listProfileNamesFromDisk(); return names.length ? names : ['default'] } catch { return ['default'] } },
     studioUrl: () => baseUrl,
     browserUrl: () => process.env.HERMES_WEB_UI_PUBLIC_URL || baseUrl,
     nodePath: process.env.HERMES_AGENT_NODE?.trim() || process.execPath,

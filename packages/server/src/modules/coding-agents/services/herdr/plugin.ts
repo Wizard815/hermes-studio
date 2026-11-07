@@ -53,6 +53,12 @@ title = "Start agent with Studio"
 contexts = ["global", "workspace", "pane"]
 command = ${openPane('launch')}
 
+[[actions]]
+id = "settings"
+title = "Studio settings"
+contexts = ["global", "workspace", "pane"]
+command = ${openPane('settings')}
+
 [[panes]]
 id = "chats"
 title = "Studio chats"
@@ -68,6 +74,14 @@ placement = "popup"
 width = "70%"
 height = "70%"
 command = ${command('launch')}
+
+[[panes]]
+id = "settings"
+title = "Studio settings"
+placement = "popup"
+width = "60%"
+height = "60%"
+command = ${command('settings')}
 `
 }
 

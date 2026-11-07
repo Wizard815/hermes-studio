@@ -60,7 +60,7 @@ export const herdrMessages = {
         "binaryPath": "herdr binary path",
         "binaryPathPlaceholder": "Search PATH",
         "session": "herdr session",
-        "profile": "Studio profile for new chats",
+        "profile": "Studio profile for chats from herdr",
         "startServer": "Start herdr server",
         "installIntegrations": "Install herdr integrations",
         "integrationsInstalled": "herdr integrations installed",
@@ -68,7 +68,16 @@ export const herdrMessages = {
         "integrationsHint": "Integrations let herdr report each agent's session id, which is how Studio links panes to chats and resumes them.",
         "installPlugin": "Install Studio plugin",
         "pluginInstalled": "Studio plugin installed in herdr",
-        "pluginHint": "Adds \"Open in Studio\", \"Studio chats\" and \"Start agent with Studio\" to herdr's action menu. Bind a key in herdr's config, e.g. prefix+s → studio.hermes.chats."
+        "pluginHint": "Adds \"Open in Studio\", \"Studio chats\" and \"Start agent with Studio\" to herdr's action menu. Bind a key in herdr's config, e.g. prefix+s → studio.hermes.chats.",
+        "installPrompt": "herdr isn't installed yet. Studio can download it (checksum-verified) and set everything up.",
+        "installHerdr": "Install herdr",
+        "runSetup": "Set up herdr",
+        "setupFor": "Set up for herdr {version}",
+        "setupNeeded": "Setup has not run yet",
+        "setupDone": "herdr is set up",
+        "setupDoneKey": "herdr is set up. Open Studio chats in herdr with {key}",
+        "setupPartial": "Setup finished with problems: {details}",
+        "autoStart": "Start herdr when Studio starts"
       }
     }
   },
@@ -140,7 +149,16 @@ export const herdrMessages = {
         "integrationsHint": "集成让 herdr 报告每个智能体的会话 ID，Studio 据此把窗格关联到对话并恢复它们。",
         "installPlugin": "安装 Studio 插件",
         "pluginInstalled": "已在 herdr 中安装 Studio 插件",
-        "pluginHint": "在 herdr 的操作菜单中加入“在 Studio 中打开”“Studio 对话”和“用 Studio 启动智能体”。可在 herdr 配置中绑定按键，例如 prefix+s → studio.hermes.chats。"
+        "pluginHint": "在 herdr 的操作菜单中加入“在 Studio 中打开”“Studio 对话”和“用 Studio 启动智能体”。可在 herdr 配置中绑定按键，例如 prefix+s → studio.hermes.chats。",
+        "installPrompt": "尚未安装 herdr。Studio 可以下载它（校验完整性）并完成全部设置。",
+        "installHerdr": "安装 herdr",
+        "runSetup": "设置 herdr",
+        "setupFor": "已为 herdr {version} 完成设置",
+        "setupNeeded": "尚未运行设置",
+        "setupDone": "herdr 已设置完成",
+        "setupDoneKey": "herdr 已设置完成。在 herdr 中按 {key} 打开 Studio 对话",
+        "setupPartial": "设置完成但有问题：{details}",
+        "autoStart": "Studio 启动时启动 herdr"
       }
     }
   },
@@ -212,7 +230,16 @@ export const herdrMessages = {
         "integrationsHint": "整合讓 herdr 回報每個代理的工作階段 ID，Studio 藉此把窗格連結到對話並恢復它們。",
         "installPlugin": "安裝 Studio 外掛",
         "pluginInstalled": "已在 herdr 中安裝 Studio 外掛",
-        "pluginHint": "在 herdr 的操作選單加入「在 Studio 中開啟」「Studio 對話」與「用 Studio 啟動代理」。可在 herdr 設定中綁定按鍵，例如 prefix+s → studio.hermes.chats。"
+        "pluginHint": "在 herdr 的操作選單加入「在 Studio 中開啟」「Studio 對話」與「用 Studio 啟動代理」。可在 herdr 設定中綁定按鍵，例如 prefix+s → studio.hermes.chats。",
+        "installPrompt": "尚未安裝 herdr。Studio 可以下載它（驗證完整性）並完成所有設定。",
+        "installHerdr": "安裝 herdr",
+        "runSetup": "設定 herdr",
+        "setupFor": "已為 herdr {version} 完成設定",
+        "setupNeeded": "尚未執行設定",
+        "setupDone": "herdr 已設定完成",
+        "setupDoneKey": "herdr 已設定完成。在 herdr 中按 {key} 開啟 Studio 對話",
+        "setupPartial": "設定完成但有問題：{details}",
+        "autoStart": "Studio 啟動時啟動 herdr"
       }
     }
   },
@@ -284,7 +311,16 @@ export const herdrMessages = {
         "integrationsHint": "連携により herdr が各エージェントのセッション ID を報告し、Studio はそれを使ってペインとチャットを結び付け、再開します。",
         "installPlugin": "Studio プラグインをインストール",
         "pluginInstalled": "herdr に Studio プラグインをインストールしました",
-        "pluginHint": "herdr のアクションメニューに「Studio で開く」「Studio チャット」「Studio でエージェントを起動」を追加します。herdr の設定でキーを割り当てられます（例: prefix+s → studio.hermes.chats）。"
+        "pluginHint": "herdr のアクションメニューに「Studio で開く」「Studio チャット」「Studio でエージェントを起動」を追加します。herdr の設定でキーを割り当てられます（例: prefix+s → studio.hermes.chats）。",
+        "installPrompt": "herdr はまだインストールされていません。Studio がダウンロード（チェックサム検証付き）してすべて設定できます。",
+        "installHerdr": "herdr をインストール",
+        "runSetup": "herdr をセットアップ",
+        "setupFor": "herdr {version} 用にセットアップ済み",
+        "setupNeeded": "セットアップはまだ実行されていません",
+        "setupDone": "herdr のセットアップが完了しました",
+        "setupDoneKey": "herdr のセットアップが完了しました。herdr で {key} を押すと Studio チャットを開けます",
+        "setupPartial": "セットアップは問題ありで完了しました: {details}",
+        "autoStart": "Studio 起動時に herdr を起動"
       }
     }
   },
@@ -356,7 +392,16 @@ export const herdrMessages = {
         "integrationsHint": "연동을 설치하면 herdr가 각 에이전트의 세션 ID를 알려 주며, Studio는 이를 이용해 창과 채팅을 연결하고 재개합니다.",
         "installPlugin": "Studio 플러그인 설치",
         "pluginInstalled": "herdr에 Studio 플러그인을 설치했습니다",
-        "pluginHint": "herdr 작업 메뉴에 \"Studio에서 열기\", \"Studio 채팅\", \"Studio로 에이전트 시작\"을 추가합니다. herdr 설정에서 키를 지정할 수 있습니다(예: prefix+s → studio.hermes.chats)."
+        "pluginHint": "herdr 작업 메뉴에 \"Studio에서 열기\", \"Studio 채팅\", \"Studio로 에이전트 시작\"을 추가합니다. herdr 설정에서 키를 지정할 수 있습니다(예: prefix+s → studio.hermes.chats).",
+        "installPrompt": "herdr가 아직 설치되지 않았습니다. Studio가 내려받아(체크섬 확인) 모두 설정할 수 있습니다.",
+        "installHerdr": "herdr 설치",
+        "runSetup": "herdr 설정",
+        "setupFor": "herdr {version}용 설정 완료",
+        "setupNeeded": "아직 설정을 실행하지 않았습니다",
+        "setupDone": "herdr 설정이 완료되었습니다",
+        "setupDoneKey": "herdr 설정이 완료되었습니다. herdr에서 {key}를 누르면 Studio 채팅이 열립니다",
+        "setupPartial": "설정이 일부 문제와 함께 끝났습니다: {details}",
+        "autoStart": "Studio 시작 시 herdr 시작"
       }
     }
   },
@@ -428,7 +473,16 @@ export const herdrMessages = {
         "integrationsHint": "Mit Integrationen meldet herdr die Sitzungs-ID jedes Agenten. Damit verknüpft Studio Bereiche mit Chats und setzt sie fort.",
         "installPlugin": "Studio-Plugin installieren",
         "pluginInstalled": "Studio-Plugin in herdr installiert",
-        "pluginHint": "Fügt „In Studio öffnen“, „Studio-Chats“ und „Agent mit Studio starten“ zum Aktionsmenü von herdr hinzu. Eine Taste lässt sich in der herdr-Konfiguration belegen, z. B. prefix+s → studio.hermes.chats."
+        "pluginHint": "Fügt „In Studio öffnen“, „Studio-Chats“ und „Agent mit Studio starten“ zum Aktionsmenü von herdr hinzu. Eine Taste lässt sich in der herdr-Konfiguration belegen, z. B. prefix+s → studio.hermes.chats.",
+        "installPrompt": "herdr ist noch nicht installiert. Studio kann es herunterladen (Prüfsumme geprüft) und alles einrichten.",
+        "installHerdr": "herdr installieren",
+        "runSetup": "herdr einrichten",
+        "setupFor": "Eingerichtet für herdr {version}",
+        "setupNeeded": "Die Einrichtung wurde noch nicht ausgeführt",
+        "setupDone": "herdr ist eingerichtet",
+        "setupDoneKey": "herdr ist eingerichtet. Studio-Chats öffnest du in herdr mit {key}",
+        "setupPartial": "Einrichtung mit Problemen beendet: {details}",
+        "autoStart": "herdr beim Start von Studio starten"
       }
     }
   },
@@ -500,7 +554,16 @@ export const herdrMessages = {
         "integrationsHint": "Las integraciones permiten que herdr informe el id de sesión de cada agente; Studio lo usa para vincular paneles con chats y reanudarlos.",
         "installPlugin": "Instalar el plugin de Studio",
         "pluginInstalled": "Plugin de Studio instalado en herdr",
-        "pluginHint": "Añade «Abrir en Studio», «Chats de Studio» e «Iniciar agente con Studio» al menú de acciones de herdr. Puedes asignar una tecla en la configuración de herdr, p. ej. prefix+s → studio.hermes.chats."
+        "pluginHint": "Añade «Abrir en Studio», «Chats de Studio» e «Iniciar agente con Studio» al menú de acciones de herdr. Puedes asignar una tecla en la configuración de herdr, p. ej. prefix+s → studio.hermes.chats.",
+        "installPrompt": "herdr aún no está instalado. Studio puede descargarlo (con suma de verificación) y configurarlo todo.",
+        "installHerdr": "Instalar herdr",
+        "runSetup": "Configurar herdr",
+        "setupFor": "Configurado para herdr {version}",
+        "setupNeeded": "La configuración aún no se ha ejecutado",
+        "setupDone": "herdr está configurado",
+        "setupDoneKey": "herdr está configurado. Abre los chats de Studio en herdr con {key}",
+        "setupPartial": "La configuración terminó con problemas: {details}",
+        "autoStart": "Iniciar herdr al arrancar Studio"
       }
     }
   },
@@ -572,7 +635,16 @@ export const herdrMessages = {
         "integrationsHint": "Les intégrations permettent à herdr de signaler l’identifiant de session de chaque agent ; Studio s’en sert pour relier les volets aux discussions et les reprendre.",
         "installPlugin": "Installer le plugin Studio",
         "pluginInstalled": "Plugin Studio installé dans herdr",
-        "pluginHint": "Ajoute « Ouvrir dans Studio », « Discussions Studio » et « Lancer un agent avec Studio » au menu d’actions de herdr. Associez une touche dans la configuration de herdr, par ex. prefix+s → studio.hermes.chats."
+        "pluginHint": "Ajoute « Ouvrir dans Studio », « Discussions Studio » et « Lancer un agent avec Studio » au menu d’actions de herdr. Associez une touche dans la configuration de herdr, par ex. prefix+s → studio.hermes.chats.",
+        "installPrompt": "herdr n’est pas encore installé. Studio peut le télécharger (somme de contrôle vérifiée) et tout configurer.",
+        "installHerdr": "Installer herdr",
+        "runSetup": "Configurer herdr",
+        "setupFor": "Configuré pour herdr {version}",
+        "setupNeeded": "La configuration n’a pas encore été lancée",
+        "setupDone": "herdr est configuré",
+        "setupDoneKey": "herdr est configuré. Ouvrez les discussions Studio dans herdr avec {key}",
+        "setupPartial": "Configuration terminée avec des problèmes : {details}",
+        "autoStart": "Démarrer herdr au lancement de Studio"
       }
     }
   },
@@ -644,7 +716,16 @@ export const herdrMessages = {
         "integrationsHint": "As integrações fazem o herdr informar o id de sessão de cada agente; o Studio usa isso para ligar painéis a conversas e retomá-las.",
         "installPlugin": "Instalar plugin do Studio",
         "pluginInstalled": "Plugin do Studio instalado no herdr",
-        "pluginHint": "Adiciona “Abrir no Studio”, “Conversas do Studio” e “Iniciar agente com o Studio” ao menu de ações do herdr. Associe uma tecla na configuração do herdr, por ex. prefix+s → studio.hermes.chats."
+        "pluginHint": "Adiciona “Abrir no Studio”, “Conversas do Studio” e “Iniciar agente com o Studio” ao menu de ações do herdr. Associe uma tecla na configuração do herdr, por ex. prefix+s → studio.hermes.chats.",
+        "installPrompt": "O herdr ainda não está instalado. O Studio pode baixá-lo (com checksum verificado) e configurar tudo.",
+        "installHerdr": "Instalar herdr",
+        "runSetup": "Configurar herdr",
+        "setupFor": "Configurado para o herdr {version}",
+        "setupNeeded": "A configuração ainda não foi executada",
+        "setupDone": "O herdr está configurado",
+        "setupDoneKey": "O herdr está configurado. Abra as conversas do Studio no herdr com {key}",
+        "setupPartial": "A configuração terminou com problemas: {details}",
+        "autoStart": "Iniciar o herdr quando o Studio iniciar"
       }
     }
   },
@@ -716,7 +797,16 @@ export const herdrMessages = {
         "integrationsHint": "Интеграции позволяют herdr сообщать идентификатор сессии каждого агента — по нему Studio связывает панели с чатами и возобновляет их.",
         "installPlugin": "Установить плагин Studio",
         "pluginInstalled": "Плагин Studio установлен в herdr",
-        "pluginHint": "Добавляет в меню действий herdr пункты «Открыть в Studio», «Чаты Studio» и «Запустить агента через Studio». Клавишу можно назначить в конфигурации herdr, например prefix+s → studio.hermes.chats."
+        "pluginHint": "Добавляет в меню действий herdr пункты «Открыть в Studio», «Чаты Studio» и «Запустить агента через Studio». Клавишу можно назначить в конфигурации herdr, например prefix+s → studio.hermes.chats.",
+        "installPrompt": "herdr ещё не установлен. Studio может скачать его (с проверкой контрольной суммы) и всё настроить.",
+        "installHerdr": "Установить herdr",
+        "runSetup": "Настроить herdr",
+        "setupFor": "Настроено для herdr {version}",
+        "setupNeeded": "Настройка ещё не выполнялась",
+        "setupDone": "herdr настроен",
+        "setupDoneKey": "herdr настроен. Открыть чаты Studio в herdr: {key}",
+        "setupPartial": "Настройка завершена с проблемами: {details}",
+        "autoStart": "Запускать herdr вместе со Studio"
       }
     }
   },
@@ -788,7 +878,16 @@ export const herdrMessages = {
         "integrationsHint": "Entegrasyonlar herdr’ın her ajanın oturum kimliğini bildirmesini sağlar; Studio bununla bölmeleri sohbetlere bağlar ve devam ettirir.",
         "installPlugin": "Studio eklentisini kur",
         "pluginInstalled": "Studio eklentisi herdr’a kuruldu",
-        "pluginHint": "herdr eylem menüsüne “Studio’da aç”, “Studio sohbetleri” ve “Studio ile ajan başlat” ekler. herdr yapılandırmasında tuş atayabilirsin, örn. prefix+s → studio.hermes.chats."
+        "pluginHint": "herdr eylem menüsüne “Studio’da aç”, “Studio sohbetleri” ve “Studio ile ajan başlat” ekler. herdr yapılandırmasında tuş atayabilirsin, örn. prefix+s → studio.hermes.chats.",
+        "installPrompt": "herdr henüz kurulu değil. Studio onu indirip (sağlama toplamı doğrulanarak) her şeyi ayarlayabilir.",
+        "installHerdr": "herdr’ı kur",
+        "runSetup": "herdr’ı ayarla",
+        "setupFor": "herdr {version} için ayarlandı",
+        "setupNeeded": "Kurulum henüz çalıştırılmadı",
+        "setupDone": "herdr ayarlandı",
+        "setupDoneKey": "herdr ayarlandı. herdr’da Studio sohbetlerini {key} ile aç",
+        "setupPartial": "Kurulum sorunlarla bitti: {details}",
+        "autoStart": "Studio başlarken herdr’ı başlat"
       }
     }
   },
@@ -860,7 +959,16 @@ export const herdrMessages = {
         "integrationsHint": "تتيح التكاملات لـ herdr الإبلاغ عن معرّف جلسة كل وكيل، ويستخدمه Studio لربط اللوحات بالمحادثات واستئنافها.",
         "installPlugin": "تثبيت إضافة Studio",
         "pluginInstalled": "تم تثبيت إضافة Studio في herdr",
-        "pluginHint": "تضيف «فتح في Studio» و«محادثات Studio» و«تشغيل وكيل عبر Studio» إلى قائمة إجراءات herdr. يمكنك ربط مفتاح في إعدادات herdr، مثل prefix+s → studio.hermes.chats."
+        "pluginHint": "تضيف «فتح في Studio» و«محادثات Studio» و«تشغيل وكيل عبر Studio» إلى قائمة إجراءات herdr. يمكنك ربط مفتاح في إعدادات herdr، مثل prefix+s → studio.hermes.chats.",
+        "installPrompt": "لم يُثبَّت herdr بعد. يمكن لـ Studio تنزيله (مع التحقق من المجموع الاختباري) وإعداد كل شيء.",
+        "installHerdr": "تثبيت herdr",
+        "runSetup": "إعداد herdr",
+        "setupFor": "تم الإعداد لإصدار herdr {version}",
+        "setupNeeded": "لم يُشغَّل الإعداد بعد",
+        "setupDone": "تم إعداد herdr",
+        "setupDoneKey": "تم إعداد herdr. افتح محادثات Studio في herdr باستخدام {key}",
+        "setupPartial": "انتهى الإعداد مع مشكلات: {details}",
+        "autoStart": "تشغيل herdr عند بدء Studio"
       }
     }
   }

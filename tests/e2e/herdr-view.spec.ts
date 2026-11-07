@@ -7,10 +7,12 @@ const PANES = [
   { pane_id: 'w2:p1', workspace_id: 'w2', agent: 'claude', agent_status: 'done', label: 'docs', studioAgent: 'claude-code', studioSessionId: 'herdr-ccc', nativeSessionId: 'ccc' },
 ]
 
-async function openFixture(page: Page, options: { enabled: boolean }) {
+async function openFixture(page: Page, options: { enabled: boolean; installed?: boolean }) {
   const requests: Array<{ method: string; path: string; body: any }> = []
   const errors: string[] = []
   let enabled = options.enabled
+  let installed = options.installed ?? true
+  let profile = 'default'
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(() => { localStorage.setItem('hermes_locale', 'en'); (window as any).__APP_VERSION__ = 'test' })
   await page.routeWebSocket('**/socket.io/**', () => {})
@@ -20,12 +22,18 @@ async function openFixture(page: Page, options: { enabled: boolean }) {
     if (request.method() !== 'GET') requests.push({ method: request.method(), path: url.pathname, body: request.postDataJSON() })
     if (url.pathname === '/api/coding-agents/herdr/settings') {
       enabled = request.postDataJSON().enabled ?? enabled
-      return route.fulfill({ json: { settings: { enabled, binaryPath: '', session: '', autoImport: true, mirrorTranscripts: true, profile: 'default' } } })
+      profile = request.postDataJSON().profile ?? profile
+      return route.fulfill({ json: { settings: { enabled, autoStart: true, setupVersion: '', binaryPath: '', session: '', autoImport: true, mirrorTranscripts: true, profile } } })
+    }
+    if (url.pathname === '/api/coding-agents/herdr/profiles') return route.fulfill({ json: { profiles: ['default', 'work'] } })
+    if (url.pathname === '/api/coding-agents/herdr/install') {
+      installed = true; enabled = true
+      return route.fulfill({ json: { version: '0.9.5', binary: '/fixture/herdr', integrations: [{ kind: 'claude', ok: true, message: 'ok' }], plugin: { linked: true, message: 'linked' }, keybinding: { key: 'prefix+shift+s', added: true } } })
     }
     if (url.pathname === '/api/coding-agents/herdr') {
       return route.fulfill({ json: {
-        settings: { enabled, binaryPath: '', session: '', autoImport: true, mirrorTranscripts: true, profile: 'default' },
-        installed: true, binary: '/usr/local/bin/herdr', version: '0.9.5',
+        settings: { enabled, autoStart: true, setupVersion: installed && enabled ? '0.9.5' : '', binaryPath: '', session: '', autoImport: true, mirrorTranscripts: true, profile },
+        installed, binary: installed ? '/usr/local/bin/herdr' : '', version: installed ? '0.9.5' : '',
         server: { version: '0.9.5', running: true, socket: '/tmp/herdr.sock', session: 'default', compatible: true },
         error: '',
         bridge: enabled ? { connected: true, error: '', version: '0.9.5', focusedPaneId: 'w1:p1', workspaces: [{ workspace_id: 'w1', label: 'api', agent_status: 'blocked' }, { workspace_id: 'w2', label: 'site', agent_status: 'done' }], panes: PANES } : null,
@@ -89,5 +97,17 @@ test('starting an agent only offers agents herdr can host', async ({ page }) => 
   await expect.poll(() => requests.find(r => r.path === '/api/coding-agents/herdr/agents')?.body).toEqual({ agentId: 'codex' })
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
   expect(overflow).toBe(false)
+  expect(errors).toEqual([])
+})
+
+test('installing herdr from Studio and choosing the profile for herdr chats', async ({ page }) => {
+  const { requests, errors } = await openFixture(page, { enabled: false, installed: false })
+  await page.goto('/__herdr_view__')
+  await page.getByTestId('herdr-install').click()
+  await expect(page.getByText('herdr is set up. Open Studio chats in herdr with prefix+shift+s')).toBeVisible()
+  await expect(page.getByTestId('herdr-setup')).toBeVisible()
+  await page.getByTestId('herdr-profile').click()
+  await page.locator('.n-base-select-option', { hasText: 'work' }).click()
+  await expect.poll(() => requests.filter(r => r.path === '/api/coding-agents/herdr/settings').map(r => r.body)).toContainEqual({ profile: 'work' })
   expect(errors).toEqual([])
 })

@@ -6,6 +6,8 @@ export type HerdrStatusValue = 'working' | 'blocked' | 'done' | 'idle' | 'unknow
 
 export interface HerdrSettings {
   enabled: boolean
+  autoStart: boolean
+  setupVersion: string
   binaryPath: string
   session: string
   autoImport: boolean
@@ -75,6 +77,19 @@ export const installHerdrIntegrations = (kinds?: string[]) =>
 
 export const installHerdrStudioPlugin = () =>
   request<{ pluginDir: string; configDir: string; linked: boolean; message: string }>(`${base}/plugin-install`, { method: 'POST', body: '{}' })
+
+export interface HerdrSetupResult {
+  version: string
+  integrations: Array<{ kind: string; ok: boolean; message: string }>
+  plugin: { linked?: boolean; message?: string; error?: string }
+  keybinding: { key?: string | null; added?: boolean; message?: string; error?: string }
+}
+
+export const installHerdr = () => request<HerdrSetupResult & { binary: string }>(`${base}/install`, { method: 'POST', body: '{}' })
+
+export const setupHerdr = () => request<HerdrSetupResult>(`${base}/setup`, { method: 'POST', body: '{}' })
+
+export const fetchHerdrProfiles = () => request<{ profiles: string[] }>(`${base}/profiles`)
 
 export const openSessionInHerdr = (sessionId: string) =>
   request<{ link: HerdrLink }>(`${base}/sessions/${encodeURIComponent(sessionId)}/open`, { method: 'POST', body: '{}' })

@@ -5,6 +5,7 @@
 //   open-in-studio  action: open the focused pane's chat in Studio's web UI
 //   chats           popup:  list Studio coding-agent chats, open one as a herdr pane
 //   launch          popup:  start an agent with Studio's providers/models (e.g. llama-swap)
+//   settings        popup:  choose the Studio profile chats from herdr go to
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
@@ -101,7 +102,9 @@ async function chats() {
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   try {
     for (;;) {
-      const { chats: list } = await api(config, '/chats?limit=30')
+      // Fit the popup: header and footer take 6 rows.
+      const limit = Math.max(5, Math.min(30, (process.stdout.rows || 30) - 6))
+      const { chats: list } = await api(config, `/chats?limit=${limit}`)
       process.stdout.write('\x1b[2J\x1b[H')
       process.stdout.write('Studio chats   ◐ working  × blocked  ✓ done  ○ idle\n\n')
       if (!list.length) process.stdout.write('  No coding-agent chats yet.\n')
@@ -110,11 +113,12 @@ async function chats() {
         const title = String(chat.title || chat.id).slice(0, 48).padEnd(48)
         process.stdout.write(`${String(index + 1).padStart(3)}  ${ICONS[chat.status] || '·'} ${title} ${String(chat.agent).padEnd(12)}${live}\n`)
       })
-      process.stdout.write('\n  <n> open in herdr   o <n> link to Studio   l launch agent   r refresh   q quit\n')
+      process.stdout.write('\n  <n> open in herdr   o <n> link to Studio   l launch agent   s settings   r refresh   q quit\n')
       const answer = await ask(rl, '> ')
       if (!answer || answer === 'q') return
       if (answer === 'r') continue
       if (answer === 'l') { rl.close(); return launch() }
+      if (answer === 's') { rl.close(); return settings() }
       const browser = answer.startsWith('o ')
       const index = Number.parseInt(browser ? answer.slice(2) : answer, 10) - 1
       const chat = list[index]
@@ -183,10 +187,30 @@ async function launch() {
   }
 }
 
+async function settings() {
+  const config = loadConfig()
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const current = await api(config, '/settings')
+    process.stdout.write('\x1b[2J\x1b[H')
+    process.stdout.write('Studio settings for herdr  (q to close)\n')
+    process.stdout.write(`\nChats started in herdr go to the Studio profile: ${current.profile}\n`)
+    const profile = await choose(rl, 'Choose a profile:', current.profiles.map(name => ({ label: name === current.profile ? `${name}  (current)` : name, value: name })))
+    if (profile === null || profile === current.profile) return
+    const saved = await api(config, '/settings', { method: 'PUT', body: JSON.stringify({ profile }) })
+    notify('Studio profile for herdr chats', saved.profile)
+    await pause(rl, `\nNew chats from herdr will go to "${saved.profile}".`)
+  } catch (error) {
+    await pause(rl, `\nError: ${error.message}`)
+  } finally {
+    rl.close()
+  }
+}
+
 const command = process.argv[2]
-const run = command === 'open-in-studio' ? openInStudio : command === 'chats' ? chats : command === 'launch' ? launch : null
+const run = command === 'open-in-studio' ? openInStudio : command === 'chats' ? chats : command === 'launch' ? launch : command === 'settings' ? settings : null
 if (!run) {
-  process.stderr.write('usage: studio-herdr.mjs open-in-studio|chats|launch\n')
+  process.stderr.write('usage: studio-herdr.mjs open-in-studio|chats|launch|settings\n')
   process.exit(2)
 }
 run().catch(error => {

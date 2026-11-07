@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
-import { NButton, NInput, NSwitch, useMessage } from 'naive-ui'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { NButton, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { installHerdrIntegrations, installHerdrStudioPlugin } from '@/api/coding-agents/herdr'
+import { fetchHerdrProfiles, installHerdr, installHerdrIntegrations, installHerdrStudioPlugin, setupHerdr, type HerdrSetupResult } from '@/api/coding-agents/herdr'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 
 const { t } = useI18n()
@@ -12,7 +12,49 @@ const saving = ref(false)
 const installing = ref(false)
 const starting = ref(false)
 const installingPlugin = ref(false)
+const installingHerdr = ref(false)
+const settingUp = ref(false)
+const profiles = ref<string[]>(['default'])
 const form = reactive({ binaryPath: '', session: '', profile: 'default' })
+const profileOptions = computed(() => profiles.value.map(name => ({ label: name, value: name })))
+
+onMounted(async () => {
+  try { profiles.value = (await fetchHerdrProfiles()).profiles } catch { /* keep default */ }
+})
+
+function reportSetup(result: HerdrSetupResult) {
+  const failed = result.integrations.filter(item => !item.ok).map(item => item.kind)
+  const key = result.keybinding?.key
+  if (result.plugin?.error || result.keybinding?.error || failed.length) {
+    toast.warning(t('herdr.settings.setupPartial', { details: [result.plugin?.error, result.keybinding?.error, failed.join(', ')].filter(Boolean).join(' · ') }))
+  } else {
+    toast.success(key ? t('herdr.settings.setupDoneKey', { key }) : t('herdr.settings.setupDone'))
+  }
+}
+
+async function install() {
+  installingHerdr.value = true
+  try {
+    reportSetup(await installHerdr())
+    await herdr.refresh()
+  } catch (err: any) {
+    toast.error(err?.message || String(err))
+  } finally {
+    installingHerdr.value = false
+  }
+}
+
+async function runSetup() {
+  settingUp.value = true
+  try {
+    reportSetup(await setupHerdr())
+    await herdr.refresh()
+  } catch (err: any) {
+    toast.error(err?.message || String(err))
+  } finally {
+    settingUp.value = false
+  }
+}
 
 watch(() => herdr.status?.settings, settings => {
   if (!settings) return
@@ -81,6 +123,15 @@ async function startServer() {
       <span>{{ t('herdr.settings.server') }}: <code>{{ serverRunning ? t('herdr.settings.running') : t('herdr.settings.stopped') }}</code></span>
     </div>
 
+    <div v-if="!herdr.status?.installed" class="herdr-settings-install">
+      <p>{{ t('herdr.settings.installPrompt') }}</p>
+      <NButton type="primary" :loading="installingHerdr" data-testid="herdr-install" @click="install">{{ t('herdr.settings.installHerdr') }}</NButton>
+    </div>
+    <div v-else class="herdr-settings-actions">
+      <NButton size="small" type="primary" :loading="settingUp" data-testid="herdr-setup" @click="runSetup">{{ t('herdr.settings.runSetup') }}</NButton>
+      <span class="herdr-settings-hint">{{ settings?.setupVersion ? t('herdr.settings.setupFor', { version: settings.setupVersion }) : t('herdr.settings.setupNeeded') }}</span>
+    </div>
+
     <label class="herdr-settings-row">
       <span>{{ t('herdr.settings.enabled') }}</span>
       <NSwitch
@@ -90,6 +141,14 @@ async function startServer() {
         data-testid="herdr-enable"
         @update:value="value => save({ enabled: value })"
       />
+    </label>
+    <label class="herdr-settings-row">
+      <span>{{ t('herdr.settings.autoStart') }}</span>
+      <NSwitch :value="settings?.autoStart !== false" @update:value="value => save({ autoStart: value })" />
+    </label>
+    <label class="herdr-settings-row">
+      <span>{{ t('herdr.settings.profile') }}</span>
+      <NSelect class="herdr-settings-profile" size="small" :value="settings?.profile || 'default'" :options="profileOptions" data-testid="herdr-profile" @update:value="value => save({ profile: value })" />
     </label>
     <label class="herdr-settings-row">
       <span>{{ t('herdr.settings.autoImport') }}</span>
@@ -109,14 +168,10 @@ async function startServer() {
         <span>{{ t('herdr.settings.session') }}</span>
         <NInput v-model:value="form.session" placeholder="default" size="small" />
       </label>
-      <label>
-        <span>{{ t('herdr.settings.profile') }}</span>
-        <NInput v-model:value="form.profile" placeholder="default" size="small" />
-      </label>
     </div>
 
     <div class="herdr-settings-actions">
-      <NButton size="small" type="primary" :loading="saving" @click="save({ ...form })">{{ t('common.save') }}</NButton>
+      <NButton size="small" type="primary" :loading="saving" @click="save({ binaryPath: form.binaryPath, session: form.session })">{{ t('common.save') }}</NButton>
       <NButton size="small" :loading="starting" :disabled="!herdr.status?.installed || serverRunning" @click="startServer">
         {{ t('herdr.settings.startServer') }}
       </NButton>
@@ -193,6 +248,24 @@ async function startServer() {
     font-size: 12px;
     color: $text-secondary;
   }
+}
+
+.herdr-settings-install {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+
+  p {
+    margin: 0;
+    flex: 1 1 240px;
+    font-size: 13px;
+    color: $text-secondary;
+  }
+}
+
+.herdr-settings-profile {
+  width: min(220px, 50%);
 }
 
 .herdr-settings-actions {

@@ -142,3 +142,44 @@ export async function pluginOpen(ctx: Context) {
     ctx.body = { link: await herdrManager.requireBridge().openSession(String(body.sessionId || '')) }
   } catch (error) { fail(ctx, error, 'Failed to open chat in herdr') }
 }
+
+export async function installHerdr(ctx: Context) {
+  try {
+    ctx.body = await herdrManager.installHerdr()
+  } catch (error) { fail(ctx, error, 'Failed to install herdr') }
+}
+
+export async function setupHerdr(ctx: Context) {
+  try {
+    ctx.body = await herdrManager.setup()
+  } catch (error) { fail(ctx, error, 'Failed to set up herdr') }
+}
+
+export async function profiles(ctx: Context) {
+  try {
+    ctx.body = { profiles: herdrManager.getPluginDeps().listProfiles() }
+  } catch (error) { fail(ctx, error, 'Failed to list profiles') }
+}
+
+/** herdr-side settings: which Studio profile herdr chats belong to. */
+export async function pluginSettings(ctx: Context) {
+  try {
+    const settings = herdrManager.getSettings()
+    ctx.body = { profile: settings.profile, autoImport: settings.autoImport, profiles: herdrManager.getPluginDeps().listProfiles() }
+  } catch (error) { fail(ctx, error, 'Failed to read settings') }
+}
+
+export async function updatePluginSettings(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { profile?: unknown; autoImport?: unknown }
+    const patch: { profile?: string; autoImport?: boolean } = {}
+    if (body.profile !== undefined) {
+      const profile = String(body.profile)
+      if (!herdrManager.getPluginDeps().listProfiles().includes(profile)) throw Object.assign(new Error(`Profile "${profile}" does not exist`), { status: 400 })
+      patch.profile = profile
+    }
+    if (typeof body.autoImport === 'boolean') patch.autoImport = body.autoImport
+    const settings = await herdrManager.updateSettings(patch)
+    ctx.body = { profile: settings.profile, autoImport: settings.autoImport }
+  } catch (error) { fail(ctx, error, 'Failed to save settings') }
+}

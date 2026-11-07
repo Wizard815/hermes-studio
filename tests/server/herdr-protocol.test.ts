@@ -101,7 +101,7 @@ describe('herdr plugin', () => {
   it('declares the Studio actions and popups with argv commands', () => {
     const manifest = renderPluginManifest('/usr/bin/node', '/opt/studio/bin/herdr-plugin/studio-herdr.mjs', '/usr/local/bin/herdr')
     expect(manifest).toContain('id = "studio.hermes"')
-    for (const id of ['open-in-studio', 'chats', 'launch']) expect(manifest).toContain(`id = "${id}"`)
+    for (const id of ['open-in-studio', 'chats', 'launch', 'settings']) expect(manifest).toContain(`id = "${id}"`)
     expect(manifest).toContain('["/usr/bin/node", "/opt/studio/bin/herdr-plugin/studio-herdr.mjs", "chats"]')
     expect(pluginCommand('/Applications/Ekko Studio.app/Contents/MacOS/Ekko Studio', '/s.mjs', 'chats')[1]).toBe(process.platform === 'win32' ? '/s.mjs' : 'ELECTRON_RUN_AS_NODE=1')
   })
