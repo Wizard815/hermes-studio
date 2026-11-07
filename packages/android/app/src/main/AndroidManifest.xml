@@ -3,6 +3,14 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Install APKs built in Studio (the person confirms each one in Android's installer). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Run commands in Termux; Termux also requires allow-external-apps = true. -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <queries>
+        <package android:name="com.termux" />
+    </queries>
 
     <application
         android:allowBackup="false"

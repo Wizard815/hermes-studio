@@ -203,6 +203,12 @@ const router = createRouter({
       meta: { requiresSuperAdmin: true },
     },
     {
+      path: '/android',
+      name: 'android',
+      component: () => import('@/views/hermes/AndroidDevicesView.vue'),
+      meta: { requiresSuperAdmin: true },
+    },
+    {
       path: '/hermes/connections',
       name: 'hermes.connections',
       component: () => import('@/views/hermes/ChatView.vue'),

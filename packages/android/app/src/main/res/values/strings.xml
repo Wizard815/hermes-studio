@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">Studio</string>
+    <string name="run">Run</string>
+    <string name="install">Install</string>
+    <string name="termux_confirm_title">Run in Termux?</string>
+    <string name="termux_confirm_body">Studio wants to run this in %1$s:\n\n%2$s</string>
+    <string name="termux_missing">Termux is not installed on this phone.</string>
+    <string name="termux_permission_denied">Studio is not allowed to run commands in Termux.</string>
+    <string name="termux_cancelled">Cancelled on the phone.</string>
+    <string name="termux_failed">Termux did not start the command. Check allow-external-apps in ~/.termux/termux.properties.</string>
+    <string name="apk_confirm_title">Install app?</string>
+    <string name="apk_confirm_body">Install %1$s from your Studio server on this phone?</string>
+    <string name="apk_downloading">Downloading %1$s…</string>
+    <string name="apk_installed">App installed</string>
+    <string name="apk_install_failed">The app could not be installed.</string>
+    <string name="apk_allow_installs">Allow Studio to install apps, then download the APK again.</string>
+    <string name="download_unsupported">No app on this phone can open that download.</string>
 </resources>
