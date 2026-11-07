@@ -51,6 +51,8 @@ export interface HerdrStatus {
   bridge: HerdrBridgeState | null
   /** Home folder on the herdr machine, for `~` in folder rules. */
   home: string
+  /** Where browsers reach Studio: HERMES_WEB_UI_PUBLIC_URL, else the last browser address (a public https one first). */
+  publicUrl: string
 }
 
 /** Herdr agent kinds with a session-reporting integration. */
@@ -302,7 +304,36 @@ export class HerdrManager {
       error: error || this.bridge?.getState().error || this.serverError || '',
       bridge: this.bridge?.getState() ?? null,
       home: homedir(),
+      publicUrl: this.publicUrl(),
     }
+  }
+
+  private user: { id: number; username: string; role: string } | null = null
+
+  /** The Studio admin using herdr; agents in herdr act for them. */
+  noteUser(user: unknown): void {
+    const value = user as { id?: unknown; username?: unknown; role?: unknown } | null
+    if (value && typeof value.id === 'number' && typeof value.username === 'string' && typeof value.role === 'string') {
+      this.user = { id: value.id, username: value.username, role: value.role }
+    }
+  }
+
+  actingUser(): { id: number; username: string; role: string } | null {
+    return this.user
+  }
+
+  private browserOrigins = { public: '', any: '' }
+
+  noteBrowserOrigin(origin: string): void {
+    if (!origin) return
+    this.browserOrigins.any = origin
+    const host = new URL(origin).hostname
+    const local = host === 'localhost' || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || host.startsWith('[') || !host.includes('.')
+    if (origin.startsWith('https://') && !local) this.browserOrigins.public = origin
+  }
+
+  publicUrl(): string {
+    return (process.env.HERMES_WEB_UI_PUBLIC_URL || '').replace(/\/+$/, '') || this.browserOrigins.public || this.browserOrigins.any
   }
 
   async startServer(): Promise<HerdrStatus> {

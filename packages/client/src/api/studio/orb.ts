@@ -7,7 +7,9 @@ export interface OrbStatus {
   settings: { url: string; hasToken: boolean; fromEnv: boolean }
 }
 
-export interface OrbTask { title: string; list: string; due: string; done: boolean; priority: string }
+export interface OrbTask { title: string; list: string; due: string; done: boolean; inProgress?: boolean; priority: string }
+/** The Orb task or project an agent works on; Studio marks it in progress once the agent starts working. */
+export interface OrbWorkRef { task?: { title: string; list: string }; project?: string }
 export interface OrbProject { name: string; status: string; next?: string; archived?: boolean; openTasks?: number; [key: string]: unknown }
 export interface OrbChore { name: string; daysLeft?: number; [key: string]: unknown }
 

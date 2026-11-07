@@ -1,3 +1,4 @@
+import type { OrbWorkRef } from '../studio/orb'
 import { io, type Socket } from 'socket.io-client'
 import { getApiKey, getBaseUrlValue, request } from '../client'
 import { socketEndpoint } from '@/utils/deployment-url'
@@ -101,7 +102,7 @@ export const promptHerdrSession = (sessionId: string, text: string) =>
 export const closeHerdrSessionPane = (sessionId: string) =>
   request<{ closed: boolean }>(`${base}/sessions/${encodeURIComponent(sessionId)}/pane`, { method: 'DELETE' })
 
-export const launchHerdrAgent = (input: { agentId: string; provider?: string; model?: string; workspace?: string; title?: string; prompt?: string }) =>
+export const launchHerdrAgent = (input: { agentId: string; provider?: string; model?: string; workspace?: string; title?: string; prompt?: string; orb?: OrbWorkRef }) =>
   request<{ link: HerdrLink }>(`${base}/agents`, { method: 'POST', body: JSON.stringify(input) })
 
 export const focusHerdrPane = (paneId: string) =>

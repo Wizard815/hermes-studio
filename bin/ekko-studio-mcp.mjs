@@ -1392,11 +1392,11 @@ const tools = [
   {
     name: 'ekko_studio_use_orb_update',
     toolset: 'use',
-    description: 'Change the Pondering Orb dashboard when the user asks: add_task (title, list, due YYYY-MM-DD, priority), complete_task (title, list), add_log (text, project), move_project (name, status: next, active, blocked, paused, shipped), set_task_priority (title, priority) or chore_done (name).',
+    description: 'Change the Pondering Orb dashboard when the user asks: add_task (title, list, due YYYY-MM-DD, priority), start_task (title, list: mark it in progress), complete_task (title, list), add_log (text, project), move_project (name, status: next, active, blocked, paused, shipped), set_task_priority (title, priority) or chore_done (name).',
     inputSchema: inputSchema({
         action: {
           type: 'string',
-          enum: ['add_task', 'complete_task', 'add_log', 'move_project', 'set_task_priority', 'chore_done'],
+          enum: ['add_task', 'start_task', 'complete_task', 'add_log', 'move_project', 'set_task_priority', 'chore_done'],
           description: 'What to change.',
         },
         arguments: {
@@ -2186,6 +2186,7 @@ async function callToolInner(name, args = {}, signal) {
     case 'ekko_studio_use_orb_update': {
       const tool = {
         add_task: 'orb_add_task',
+        start_task: 'orb_start_task',
         complete_task: 'orb_complete_task',
         add_log: 'orb_add_log',
         move_project: 'orb_move_project',

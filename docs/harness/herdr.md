@@ -20,6 +20,12 @@ stay separate apps; this integration links them.
 - **Swap.** Studio → herdr: nav rail "herdr" (full herdr UI over a PTY) and the
   chat header button. herdr → Studio: the generated plugin `studio.hermes`
   ("Open in Studio", "Studio chats", "Start agent with Studio").
+- **Studio tools in herdr agents.** Studio's MCP servers read a short-lived
+  per-profile login (`profiles/<profile>/.model-run-token`, 1 hour), which
+  Studio runs write before starting an agent. The bridge writes it on every
+  herdr launch and refreshes it at most every 15 minutes while any herdr agent
+  works (`HerdrBridgeDeps.grantAgentAccess`), for the admin using herdr or,
+  after a restart, the first active super admin.
 - **Models and MCP.** Launches from Studio or the plugin use
   `prepareCodingAgentInteractiveLaunch`, i.e. the same provider routing
   (including custom OpenAI-compatible providers such as llama-swap), MCP
@@ -70,6 +76,13 @@ tasks and plans, projects, ideas, upkeep, and Control).
   agent's first prompt once herdr reports the agent idle
   (`HerdrBridge.launchAgent` → `promptWhenReady`). The card remembers its pane,
   so a second click goes to that agent instead of sending the task again.
+- **In progress.** A launch can name the Orb task or project it is for
+  (`orb` in `POST /api/coding-agents/herdr/agents`). The first time herdr
+  reports that agent working, Studio marks the task in progress in Orb
+  (`orb_start_task`, CalDAV `STATUS:IN-PROCESS`) or moves the project to
+  active (`HerdrBridgeDeps.agentStartedWorking`, wired in `bootstrap/herdr.ts`).
+  Pending entries are kept in the bridge state file, so a Studio restart does
+  not lose them.
 - **Studio ↔ Mission.** "Open in herdr" and the herdr nav item open Mission
   (`utils/mission-url.ts`); Mission's "Back to Studio" returns.
 
@@ -89,7 +102,11 @@ an API token from Orb's `ORB_API_TOKENS`, set in Mission → Control or with
   logs, move projects, task priority, chores).
 - The other way, Orb's Agents tab lists herdr agents through Studio and sends a
   task or project to a new agent (`POST /api/coding-agents/herdr/agents` with a
-  prompt).
+  prompt and `orb`).
+- Links from Orb into Studio use `publicUrl` from `GET /api/coding-agents/herdr`:
+  `HERMES_WEB_UI_PUBLIC_URL`, else the last public https address a browser
+  used to reach Studio (its tunnel), else the last browser address. Only
+  browser requests (with `Sec-Fetch-Mode`) are counted.
 
 ## Code map
 
@@ -126,7 +143,8 @@ Rules that keep it safe:
 - Unit: `tests/server/herdr-*.test.ts` (fake herdr socket server, installer
   with a fake manifest, key choice against `fixtures/herdr-default-config.toml`),
   `tests/server/session-state-sync.test.ts`, `tests/client/agent-status.test.ts`.
-- Unit: `tests/server/herdr-folders.test.ts`, `tests/server/orb-client.test.ts`
+- Unit: `tests/server/herdr-folders.test.ts`, `tests/server/orb-client.test.ts`,
+  `tests/server/herdr-public-url.test.ts`
   (fake Orb).
 - Browser: `tests/e2e/herdr-view.spec.ts`, `tests/e2e/mission.spec.ts` (mocked API).
 - Live: build herdr (`cargo build --release`, needs Zig 0.16), run Studio with an

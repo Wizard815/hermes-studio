@@ -1,5 +1,6 @@
 import { computed, reactive, ref } from 'vue'
 import { fetchCodingAgentsStatus, type CodingAgentToolStatus } from '@/api/coding-agents'
+import type { OrbWorkRef } from '@/api/studio/orb'
 import {
   focusHerdrPane,
   launchHerdrAgent,
@@ -101,6 +102,7 @@ export async function launchForCard(input: {
   title: string
   prompt: string
   workspace?: string
+  orb?: OrbWorkRef
   panes: HerdrPaneView[]
 }): Promise<{ paneId: string; reused: boolean }> {
   const existing = launches[`${input.key}:${input.agentId}`]
@@ -108,7 +110,7 @@ export async function launchForCard(input: {
     await focusHerdrPane(existing).catch(() => undefined)
     return { paneId: existing, reused: true }
   }
-  const { link } = await launchHerdrAgent({ agentId: input.agentId, title: input.title, prompt: input.prompt, workspace: input.workspace })
+  const { link } = await launchHerdrAgent({ agentId: input.agentId, title: input.title, prompt: input.prompt, workspace: input.workspace, orb: input.orb })
   launches[`${input.key}:${input.agentId}`] = link.paneId
   try { localStorage.setItem(LAUNCHES_KEY, JSON.stringify(launches)) } catch { /* private mode */ }
   return { paneId: link.paneId, reused: false }

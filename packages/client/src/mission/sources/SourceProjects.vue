@@ -73,6 +73,7 @@ onMounted(load)
           <div class="source-card-actions">
             <LaunchButtons
               :card-key="`project:${project.name}`"
+              :orb="{ project: project.name }"
               :title="project.name"
               :prompt="promptFor(project)"
               :workspace="props.workspace || undefined"

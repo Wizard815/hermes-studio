@@ -265,6 +265,43 @@ describe('herdr bridge', () => {
     expect(herdr.requests.filter(r => r.method === 'agent.prompt').map(r => r.params)).toEqual([{ target: 'w9:p2', text: 'Task: fix it' }])
   })
 
+  it('reports once when an agent launched for a piece of work starts working', async () => {
+    const { deps } = makeDeps(dir)
+    const started: Array<{ data: unknown; paneId: string }> = []
+    deps.agentStartedWorking = (data, paneId) => { started.push({ data, paneId }) }
+    await startBridge(deps)
+    const onWorking = { orb: { task: { title: 'Fix flaky login test', list: 'api' } } }
+    await bridge!.launchAgent('claude-code', { title: 'Fix flaky login test', onWorking })
+    const pane = herdr.panes.find(p => p.pane_id === 'w9:p2')
+    Object.assign(pane, { agent: 'claude', agent_status: 'idle' })
+    herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2', agent_status: 'idle' })
+    await new Promise(resolve => setTimeout(resolve, 200))
+    expect(started).toEqual([])
+    Object.assign(pane, { agent_status: 'working' })
+    herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2', agent_status: 'working' })
+    await until(() => started.length === 1)
+    expect(started[0]).toMatchObject({ paneId: 'w9:p2', data: { orb: onWorking.orb } })
+    // Idle and working again later is the same work: no second report.
+    Object.assign(pane, { agent_status: 'idle' }); herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2' })
+    Object.assign(pane, { agent_status: 'working' }); herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2' })
+    await new Promise(resolve => setTimeout(resolve, 200))
+    expect(started).toHaveLength(1)
+  })
+
+  it('gives agents a Studio login on launch and refreshes it while they work', async () => {
+    const { deps } = makeDeps(dir)
+    const grants: string[] = []
+    deps.grantAgentAccess = async profile => { grants.push(profile) }
+    await startBridge(deps)
+    await bridge!.launchAgent('claude-code', { title: 'x' })
+    expect(grants).toEqual(['default'])
+    // Working right after launch does not rewrite it (refresh at most every 15 minutes).
+    Object.assign(herdr.panes.find(p => p.pane_id === 'w9:p2'), { agent: 'claude', agent_status: 'working' })
+    herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2' })
+    await new Promise(resolve => setTimeout(resolve, 200))
+    expect(grants).toEqual(['default'])
+  })
+
   it('creates an empty space in a folder', async () => {
     const { deps } = makeDeps(dir)
     await startBridge(deps)

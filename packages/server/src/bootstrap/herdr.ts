@@ -28,7 +28,10 @@ import { herdrKindForStudioAgent } from '../modules/coding-agents/services/herdr
 import { locateTranscript } from '../modules/coding-agents/services/herdr/transcript'
 import type { HerdrBridgeDeps, HerdrSessionRef } from '../modules/coding-agents/services/herdr/bridge'
 import { setupHerdrSocket } from '../modules/coding-agents/sockets/herdr'
-import { configureOrbClient } from '../modules/studio/services/orb/client'
+import { configureOrbClient, getOrbClient } from '../modules/studio/services/orb/client'
+import { writeModelRunProfileToken } from '../modules/studio/services/chat-run/model-run-prompt'
+import { listUsers } from '../modules/studio/public/users'
+import type { AuthenticatedUser } from '../modules/studio/public/auth'
 
 function toRef(row: HermesSessionRow | null): HerdrSessionRef | null {
   if (!row) return null
@@ -90,6 +93,30 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     herdrKindFor: agentId => herdrKindForStudioAgent(agentId),
     agentLabel: agentId => AGENT_LABELS[agentId] || getCodingAgentDefinition(agentId)?.name || agentId,
     log: (level, message, data) => logger[level](data || {}, message),
+    agentStartedWorking: data => markOrbStarted(data.orb),
+    // Agents in herdr act for the Studio admin using herdr (herdr routes are
+    // super-admin only), or the first active super admin after a restart.
+    grantAgentAccess: async profile => {
+      const user = herdrManager.actingUser() ?? listUsers().find(item => item.role === 'super_admin' && item.status === 'active') ?? null
+      if (user) await writeModelRunProfileToken({ id: user.id, username: user.username, role: user.role as AuthenticatedUser['role'] }, profile)
+    },
+  }
+}
+
+/** An agent launched for an Orb task or project is now working: show it in progress in Orb. */
+async function markOrbStarted(ref: { task?: { title: string; list: string }; project?: string } | undefined) {
+  if (!ref) return
+  const orb = getOrbClient()
+  if (!(await orb.publicSettings()).url) return
+  if (ref.task) {
+    await orb.tool('orb_start_task', { title: ref.task.title, ...(ref.task.list ? { list: ref.task.list } : {}) })
+    return
+  }
+  if (ref.project) {
+    const projects = await orb.tool('orb_list_projects') as Array<{ name: string; status: string }>
+    const project = projects.find(item => item.name.toLowerCase() === ref.project!.toLowerCase())
+    // Active already, or shipped (finished): leave it where it is.
+    if (project && project.status !== 'active' && project.status !== 'shipped') await orb.tool('orb_move_project', { name: project.name, status: 'active' })
   }
 }
 

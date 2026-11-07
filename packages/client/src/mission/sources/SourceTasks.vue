@@ -95,6 +95,7 @@ onMounted(load)
         <article v-for="task in group.items" :key="`${group.list}:${task.title}`" class="source-card" data-theme-surface="card" data-testid="mission-task">
           <span class="source-card-title" :class="{ 'is-done': task.done }">{{ task.title }}</span>
           <div class="source-card-meta">
+            <span v-if="task.inProgress && !task.done" class="source-chip is-good">◐ {{ t('mission.inProgress') }}</span>
             <span v-if="task.due" class="source-chip">{{ task.due }}</span>
             <span v-if="task.priority && task.priority !== 'none'" class="source-chip" :class="PRIORITY_CLASS[task.priority]">{{ task.priority }}</span>
           </div>
@@ -103,6 +104,7 @@ onMounted(load)
               :card-key="`task:${task.list}:${task.title}`"
               :title="task.title"
               :prompt="promptFor(task)"
+              :orb="{ task: { title: task.title, list: task.list } }"
               :workspace="props.workspace || undefined"
               :panes="props.panes"
               @launched="pane => emit('select-pane', pane)"

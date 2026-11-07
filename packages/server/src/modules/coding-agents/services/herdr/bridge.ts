@@ -65,6 +65,21 @@ export interface HerdrBridgeDeps {
   /** Studio agent display name, used for titles. */
   agentLabel(agentId: string): string
   log?: (level: 'info' | 'warn', message: string, data?: Record<string, unknown>) => void
+  /** Called once when an agent launched with `onWorking` data first starts working. */
+  agentStartedWorking?: (data: HerdrWorkRef, paneId: string) => void | Promise<void>
+  /**
+   * Give agents in herdr a fresh short-lived Studio login for a profile, so
+   * their Studio MCP tools (sessions, Orb, workflows) are authorized like a
+   * Studio run's. Called on launch and while agents work.
+   */
+  grantAgentAccess?: (profile: string) => Promise<void>
+}
+
+/** What a launched agent is for (e.g. a Pondering Orb task or project). */
+export interface HerdrWorkRef {
+  /** When it was launched (set by the bridge). */
+  at?: number
+  orb?: { task?: { title: string; list: string }; project?: string }
 }
 
 export interface HerdrPaneView extends HerdrPane {
@@ -86,6 +101,8 @@ interface PersistedState {
   offsets: Record<string, { path: string; offset: number }>
   /** Native session ids whose chat was deleted in Studio: never re-import them. */
   dismissed: string[]
+  /** Launches waiting for their agent to start working, by pane id. */
+  working?: Record<string, HerdrWorkRef>
 }
 
 interface PendingLaunch {
@@ -116,6 +133,7 @@ export class HerdrBridge {
   private links = new Map<string, HerdrLinkInfo>()
   /** Panes Studio opened itself: pane id → launch details. */
   private pending = new Map<string, PendingLaunch>()
+  private accessAt = new Map<string, number>()
   /** Native ids that have shown activity; they become chats even before a transcript exists. */
   private active = new Set<string>()
   private persisted: PersistedState = { offsets: {}, dismissed: [] }
@@ -298,6 +316,11 @@ export class HerdrBridge {
     const views: HerdrPaneView[] = []
     const livePaneIds = new Set(snapshot.panes.map(pane => pane.pane_id))
     for (const paneId of this.pending.keys()) if (!livePaneIds.has(paneId)) this.pending.delete(paneId)
+    if (this.persisted.working) {
+      // A snapshot taken just before a new pane appeared must not drop it.
+      const gone = Object.entries(this.persisted.working).filter(([paneId, ref]) => !livePaneIds.has(paneId) && Date.now() - (ref.at || 0) > 30000).map(([paneId]) => paneId)
+      if (gone.length) { for (const paneId of gone) delete this.persisted.working[paneId]; void this.savePersisted() }
+    }
 
     for (const pane of snapshot.panes) {
       const pending = this.pending.get(pane.pane_id)
@@ -307,6 +330,8 @@ export class HerdrBridge {
       let sessionId: string | null = null
 
       if (nativeId && (status === 'working' || status === 'blocked')) this.active.add(nativeId)
+      if (status === 'working' && this.persisted.working?.[pane.pane_id]) this.fireWorking(pane.pane_id)
+      if (status === 'working' && pane.agent) void this.refreshAgentAccess(false)
 
       if (pending?.sessionId) {
         sessionId = pending.sessionId
@@ -421,6 +446,7 @@ export class HerdrBridge {
       const raw = JSON.parse(await readFile(this.stateFile, 'utf8'))
       if (raw && typeof raw.offsets === 'object') this.persisted.offsets = raw.offsets
       if (Array.isArray(raw?.dismissed)) this.persisted.dismissed = raw.dismissed.filter((id: unknown) => typeof id === 'string').slice(-500)
+      if (raw?.working && typeof raw.working === 'object') this.persisted.working = raw.working
     } catch { /* fresh state */ }
   }
 
@@ -513,6 +539,7 @@ export class HerdrBridge {
     }
     const row = this.deps.getSession(sessionId)
     if (!row) throw Object.assign(new Error('Chat not found'), { status: 404 })
+    await this.refreshAgentAccess(true)
     const launch = await this.deps.prepareSessionLaunch(sessionId)
     return this.openLaunch(launch, row.title || this.deps.agentLabel(launch.agentId), {
       sessionId,
@@ -528,7 +555,8 @@ export class HerdrBridge {
    * With `prompt`, the task is typed into the agent once it is ready, which is
    * how a plan from Pondering Orb (or any card) becomes a running agent.
    */
-  async launchAgent(agentId: string, input: { provider?: string; model?: string; workspace?: string; title?: string; prompt?: string }): Promise<HerdrLinkInfo> {
+  async launchAgent(agentId: string, input: { provider?: string; model?: string; workspace?: string; title?: string; prompt?: string; onWorking?: HerdrWorkRef }): Promise<HerdrLinkInfo> {
+    await this.refreshAgentAccess(true)
     const launch = await this.deps.prepareAgentLaunch(agentId, { provider: input.provider, model: input.model, workspace: input.workspace, profile: this.settings.profile || 'default' })
     const title = input.title?.trim() || this.deps.agentLabel(launch.agentId)
     const link = await this.openLaunch(launch, title, {
@@ -537,9 +565,36 @@ export class HerdrBridge {
       model: launch.model,
       title,
     })
+    if (input.onWorking) {
+      this.persisted.working = { ...this.persisted.working, [link.paneId]: { ...input.onWorking, at: Date.now() } }
+      void this.savePersisted()
+    }
     const prompt = String(input.prompt || '').trim()
     if (prompt) void this.promptWhenReady(link.paneId, prompt)
     return link
+  }
+
+  /** The login lasts an hour; refresh it at most every 15 minutes while agents work. */
+  private async refreshAgentAccess(force: boolean): Promise<void> {
+    if (!this.deps.grantAgentAccess) return
+    const profile = this.settings.profile || 'default'
+    if (!force && Date.now() - (this.accessAt.get(profile) || 0) < 15 * 60 * 1000) return
+    this.accessAt.set(profile, Date.now())
+    try { await this.deps.grantAgentAccess(profile) } catch (error) {
+      this.accessAt.delete(profile)
+      this.log('warn', '[herdr] could not give agents a Studio login', { profile, error: String(error) })
+    }
+  }
+
+  /** The agent started on its work: tell the owner once, then forget it. */
+  private fireWorking(paneId: string) {
+    const data = this.persisted.working?.[paneId]
+    if (!data) return
+    delete this.persisted.working![paneId]
+    void this.savePersisted()
+    void Promise.resolve()
+      .then(() => this.deps.agentStartedWorking?.(data, paneId))
+      .catch(error => this.log('warn', '[herdr] could not report that the agent started working', { paneId, error: String(error) }))
   }
 
   /** Wait until the agent in a pane is ready for input, then send the prompt once. */

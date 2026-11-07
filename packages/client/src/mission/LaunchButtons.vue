@@ -4,6 +4,7 @@ import { NTooltip, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { chatSessionAgentAvatar } from '@/utils/chat-agent-avatar'
 import type { HerdrPaneView } from '@/api/coding-agents/herdr'
+import type { OrbWorkRef } from '@/api/studio/orb'
 import { launchForCard, useLaunchTools } from './useMission'
 
 /** One button per installed agent: start it on this card, or go to the one already on it. */
@@ -12,6 +13,8 @@ const props = defineProps<{
   title: string
   prompt: string
   workspace?: string
+  /** The Orb task or project, marked in progress once the agent starts working. */
+  orb?: OrbWorkRef
   panes: HerdrPaneView[]
 }>()
 const emit = defineEmits<{ launched: [paneId: string] }>()
@@ -29,7 +32,7 @@ async function start(agentId: string) {
   const name = tools.value.find(tool => tool.id === agentId)?.name || agentId
   const pending = toast.loading(t('mission.agentStarting', { agent: name }), { duration: 0 })
   try {
-    const result = await launchForCard({ key: props.cardKey, agentId, title: props.title, prompt: props.prompt, workspace: props.workspace, panes: props.panes })
+    const result = await launchForCard({ key: props.cardKey, agentId, title: props.title, prompt: props.prompt, workspace: props.workspace, orb: props.orb, panes: props.panes })
     emit('launched', result.paneId)
     if (!result.reused) toast.success(t('mission.agentStarted'))
   } catch (err: any) {

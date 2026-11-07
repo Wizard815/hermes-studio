@@ -2,6 +2,7 @@ import type { Context } from 'koa'
 import { herdrManager, HERDR_INTEGRATIONS } from '../services/herdr/manager'
 import { herdrKindForStudioAgent } from '../services/herdr/protocol'
 import { HERDR_PLUGIN_TOKEN_HEADER } from '../services/herdr/plugin'
+import type { HerdrWorkRef } from '../services/herdr/bridge'
 
 function fail(ctx: Context, error: unknown, fallback: string) {
   const err = error as { status?: number; message?: string; code?: string }
@@ -9,8 +10,24 @@ function fail(ctx: Context, error: unknown, fallback: string) {
   ctx.body = { error: err?.message || fallback, ...(err?.code ? { code: err.code } : {}) }
 }
 
+/**
+ * The address a browser used to reach Studio (its tunnel or LAN address), so
+ * apps that link into Studio, like Pondering Orb, need no extra setup. Only
+ * browser requests count (they carry Sec-Fetch headers); Orb's own server
+ * calls Studio on an internal address.
+ */
+function browserOrigin(ctx: Context): string {
+  if (!ctx.get('sec-fetch-mode')) return ''
+  const host = (ctx.get('x-forwarded-host') || ctx.get('host')).split(',')[0].trim()
+  const proto = (ctx.get('x-forwarded-proto') || ctx.protocol || 'http').split(',')[0].trim()
+  if (!/^[A-Za-z0-9.-]+(:\d+)?$|^\[[0-9a-fA-F:]+\](:\d+)?$/.test(host) || !/^https?$/.test(proto)) return ''
+  return `${proto}://${host}`
+}
+
 export async function status(ctx: Context) {
   try {
+    herdrManager.noteBrowserOrigin(browserOrigin(ctx))
+    herdrManager.noteUser(ctx.state.user)
     ctx.body = { ...(await herdrManager.status()), integrations: HERDR_INTEGRATIONS }
   } catch (error) { fail(ctx, error, 'Failed to read herdr status') }
 }
@@ -38,6 +55,7 @@ export async function installIntegrations(ctx: Context) {
 
 export async function openSession(ctx: Context) {
   try {
+    herdrManager.noteUser(ctx.state.user)
     ctx.body = { link: await herdrManager.requireBridge().openSession(String(ctx.params.sessionId || '')) }
   } catch (error) { fail(ctx, error, 'Failed to open chat in herdr') }
 }
@@ -60,11 +78,20 @@ export async function sessionLink(ctx: Context) {
   ctx.body = { link }
 }
 
+/** The Pondering Orb task or project an agent is for, marked in progress once it works. */
+function orbRef(input: any): HerdrWorkRef | undefined {
+  const text = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max)
+  if (input?.task?.title) return { orb: { task: { title: text(input.task.title, 300), list: text(input.task.list, 120) } } }
+  if (input?.project) return { orb: { project: text(input.project, 120) } }
+  return undefined
+}
+
 export async function launchAgent(ctx: Context) {
   try {
-    const body = (ctx.request.body || {}) as { agentId?: unknown; provider?: unknown; model?: unknown; workspace?: unknown; title?: unknown; prompt?: unknown }
+    const body = (ctx.request.body || {}) as { agentId?: unknown; provider?: unknown; model?: unknown; workspace?: unknown; title?: unknown; prompt?: unknown; orb?: any }
     const agentId = String(body.agentId || '')
     if (!herdrKindForStudioAgent(agentId)) throw Object.assign(new Error('This agent cannot run in herdr'), { status: 400 })
+    herdrManager.noteUser(ctx.state.user)
     ctx.body = {
       link: await herdrManager.requireBridge().launchAgent(agentId, {
         provider: body.provider ? String(body.provider) : undefined,
@@ -72,6 +99,7 @@ export async function launchAgent(ctx: Context) {
         workspace: body.workspace ? String(body.workspace) : undefined,
         title: body.title ? String(body.title) : undefined,
         prompt: body.prompt ? String(body.prompt).slice(0, 20000) : undefined,
+        onWorking: orbRef(body.orb),
       }),
     }
   } catch (error) { fail(ctx, error, 'Failed to launch agent in herdr') }
