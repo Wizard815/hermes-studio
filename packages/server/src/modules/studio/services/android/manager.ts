@@ -7,15 +7,20 @@ import {
   type AndroidToolPaths,
 } from './adb'
 import { parseAvds, parseDevices, parseScreenSize, type AndroidAvd, type AndroidDevice } from './devices'
+import { detectBlueStacks, tcpOpen, type BlueStacksInstance } from './bluestacks'
 import { FrameHub } from './frames'
 import { gestureArgs, orientedSize, type AndroidGesture, type ScreenSize } from './input'
 
 export interface AndroidSettings extends AndroidToolPaths {
   /** Width the live screen is sent at; the panel scales it to fit. */
   streamWidth: number
+  /** Network devices (phones, BlueStacks on another PC, emulator containers) reconnected whenever they are reachable. */
+  autoConnect: string[]
+  /** Find BlueStacks on this machine from its own config and connect to running instances. */
+  detectBlueStacks: boolean
 }
 
-export const DEFAULT_ANDROID_SETTINGS: AndroidSettings = { adbPath: '', sdkPath: '', streamWidth: 540 }
+export const DEFAULT_ANDROID_SETTINGS: AndroidSettings = { adbPath: '', sdkPath: '', streamWidth: 540, autoConnect: [], detectBlueStacks: true }
 
 export interface AndroidStatus {
   adb: string | null
@@ -24,6 +29,7 @@ export interface AndroidStatus {
   settings: AndroidSettings
   devices: AndroidDevice[]
   avds: AndroidAvd[]
+  bluestacks: BlueStacksInstance[]
   error?: string
 }
 
@@ -31,6 +37,8 @@ const AVD_NAME = /^[A-Za-z0-9._-]{1,100}$/
 const PACKAGE_NAME = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/
 const SIZE_TTL_MS = 30_000
 const EMULATOR_BOOT_CHECK_MS = 6_000
+const RECONNECT_INTERVAL_MS = 10_000
+const MAX_AUTO_CONNECT = 20
 
 const httpError = (status: number, message: string) => Object.assign(new Error(message), { status })
 
@@ -40,7 +48,27 @@ export function normalizeSettings(input: Partial<AndroidSettings> | null | undef
     adbPath: typeof input?.adbPath === 'string' ? input.adbPath.trim() : '',
     sdkPath: typeof input?.sdkPath === 'string' ? input.sdkPath.trim() : '',
     streamWidth: Number.isFinite(width) ? Math.min(1440, Math.max(240, width)) : DEFAULT_ANDROID_SETTINGS.streamWidth,
+    autoConnect: [...new Set((Array.isArray(input?.autoConnect) ? input.autoConnect : []).flatMap(value => {
+      try { return [parseEndpoint(String(value))] } catch { return [] }
+    }))].slice(0, MAX_AUTO_CONNECT),
+    detectBlueStacks: input?.detectBlueStacks !== false,
   }
+}
+
+/** host and port of a `host:port` endpoint (IPv6 in brackets). */
+function splitEndpoint(endpoint: string): { host: string; port: number } {
+  const at = endpoint.lastIndexOf(':')
+  return { host: endpoint.slice(0, at).replace(/^\[|\]$/g, ''), port: Number(endpoint.slice(at + 1)) }
+}
+
+/** adb's own local-emulator scan lists a BlueStacks on port N as emulator-(N-1). */
+export function labelBlueStacks(devices: AndroidDevice[], instances: BlueStacksInstance[]): AndroidDevice[] {
+  return devices.map(device => {
+    const instance = instances.find(i => i.port != null && (
+      device.serial === `127.0.0.1:${i.port}` || device.serial === `localhost:${i.port}`
+      || (device.serial === `emulator-${i.port - 1}` && !device.avd)))
+    return instance ? { ...device, label: instance.name, bluestacks: true } : device
+  })
 }
 
 type Compressor = (png: Buffer, width: number) => Promise<{ data: Buffer; mime: 'image/png' | 'image/jpeg'; width: number; height: number }>
@@ -63,9 +91,12 @@ export class AndroidDeviceManager {
   private sizes = new Map<string, { size: ScreenSize; at: number }>()
   private queues = new Map<string, Promise<unknown>>()
   private logger: (message: string) => void = () => {}
+  private lastReconnect = 0
+  private detect: () => Promise<BlueStacksInstance[]> = () => detectBlueStacks()
   readonly frames: FrameHub
 
-  constructor(compress: Compressor = compressWithSharp) {
+  constructor(compress: Compressor = compressWithSharp, detect?: () => Promise<BlueStacksInstance[]>) {
+    if (detect) this.detect = detect
     this.frames = new FrameHub({
       screencap: serial => this.adb(['-s', serial, 'exec-out', 'screencap', '-p'], 10_000).then(result => result.stdout),
       compress,
@@ -111,11 +142,13 @@ export class AndroidDeviceManager {
   async status(): Promise<AndroidStatus> {
     const adb = resolveAdb(this.settings)
     const emulator = resolveEmulator(this.settings)
-    const base = { adb, emulator, settings: this.getSettings(), adbVersion: null, devices: [], avds: [] }
+    const bluestacks = this.settings.detectBlueStacks ? await this.detect().catch(() => []) : []
+    const base = { adb, emulator, settings: this.getSettings(), adbVersion: null, devices: [], avds: [], bluestacks }
     if (!adb) return { ...base, avds: await this.listAvds(emulator, []) }
     try {
       const version = (await run(adb, ['version'], { timeoutMs: 10_000 })).stdout.toString('utf8')
-      const devices = await this.listDevices()
+      await this.reconnect(bluestacks)
+      const devices = labelBlueStacks(await this.listDevices(), bluestacks)
       return {
         ...base,
         adbVersion: /version\s+([\d.]+)/i.exec(version)?.[1] ?? null,
@@ -125,6 +158,28 @@ export class AndroidDeviceManager {
     } catch (error) {
       return { ...base, error: (error as Error).message }
     }
+  }
+
+  /**
+   * Brings back remembered network devices and running BlueStacks instances.
+   * Only endpoints that accept a TCP connection get an `adb connect`, so an
+   * offline phone costs a short probe, not adb's long connect timeout.
+   */
+  private async reconnect(bluestacks: BlueStacksInstance[]): Promise<void> {
+    if (Date.now() - this.lastReconnect < RECONNECT_INTERVAL_MS) return
+    this.lastReconnect = Date.now()
+    const present = new Set(parseDevices((await this.adb(['devices'], 10_000)).stdout.toString('utf8'))
+      .filter(device => device.state === 'device').map(device => device.serial))
+    const targets = new Set(this.settings.autoConnect)
+    for (const instance of bluestacks) {
+      // adb already lists a local BlueStacks as emulator-(port-1); a second connection would duplicate it.
+      if (instance.running && instance.port && !present.has(`emulator-${instance.port - 1}`)) targets.add(`127.0.0.1:${instance.port}`)
+    }
+    await Promise.all([...targets].filter(target => !present.has(target)).map(async target => {
+      const { host, port } = splitEndpoint(target)
+      if (!await tcpOpen(host, port)) return
+      try { await this.adb(['connect', target], 10_000) } catch (error) { this.logger(`[android] reconnect ${target}: ${(error as Error).message}`) }
+    }))
   }
 
   async listDevices(): Promise<AndroidDevice[]> {
@@ -183,15 +238,22 @@ export class AndroidDeviceManager {
   }
 
   /** `adb connect` for wireless debugging, BlueStacks, or an emulator container. */
-  async connect(endpoint: string) {
+  async connect(endpoint: string, remember = true) {
     const target = parseEndpoint(endpoint, 5555)
     const out = (await this.adb(['connect', target], 20_000)).stdout.toString('utf8').trim()
     if (/cannot|failed|unable|refused/i.test(out)) throw httpError(502, out)
+    if (remember && !this.settings.autoConnect.includes(target)) {
+      await this.updateSettings({ autoConnect: [...this.settings.autoConnect, target] })
+    }
     return { serial: target, message: out }
   }
 
+  /** Disconnects and forgets a network device, so it is not reconnected automatically. */
   async disconnect(serial: string) {
     await this.adb(['disconnect', assertSerial(serial)])
+    if (this.settings.autoConnect.includes(serial)) {
+      await this.updateSettings({ autoConnect: this.settings.autoConnect.filter(endpoint => endpoint !== serial) })
+    }
   }
 
   /** Android 11+ wireless debugging: the pairing address and 6-digit code from the phone. */

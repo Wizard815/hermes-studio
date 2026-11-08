@@ -70,7 +70,12 @@ server Studio starts it with software rendering.
 In BlueStacks: Settings → Advanced → turn on **Android Debug Bridge (ADB)**. It
 shows an address such as `127.0.0.1:5555`.
 
-- **Studio desktop app on the same PC:** connect to that address as shown.
+- **Studio desktop app on the same PC:** nothing to type. Studio reads
+  BlueStacks' own `bluestacks.conf` (Windows `%ProgramData%\BlueStacks_nxt`,
+  macOS `/Users/Shared/Library/Application Support/BlueStacks`), shows each
+  instance under **BlueStacks on this PC**, and connects to the running ones.
+  They appear in the device list under their BlueStacks name. Turn this off with
+  **Find BlueStacks on this PC automatically**.
 - **Studio on Unraid:** BlueStacks only listens on the PC itself. On Windows,
   forward a port to it from an administrator terminal, then connect Studio to
   `<PC address>:15555`:
@@ -82,6 +87,16 @@ shows an address such as `127.0.0.1:5555`.
 
   Only do this on a trusted network: anyone who can reach that port controls
   BlueStacks.
+
+## Remembered devices
+
+Every device you connect over the network (a phone, BlueStacks on another PC,
+an emulator container) is remembered in `<Studio state dir>/android/settings.json`
+(`autoConnect`). Whenever the Android page refreshes, Studio checks which of
+them answer and reconnects those, so a BlueStacks you start later, or a phone
+that comes home, shows up on its own. **Disconnect** or **Forget** removes one.
+A phone on wireless debugging gets a new port each time debugging restarts, so
+connect it again then.
 
 ## Installing what you build
 

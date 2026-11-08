@@ -7,7 +7,9 @@ import { deviceKind, parseAvds, parseDevices, parseScreenSize } from '../../pack
 import { discoverGrpc, GrpcMessageReader, imageBytes, varint } from '../../packages/server/src/modules/studio/services/android/emulator-grpc'
 import { FrameHub, pngSize, type AndroidFrame } from '../../packages/server/src/modules/studio/services/android/frames'
 import { gestureArgs, orientedSize, quoteInputText } from '../../packages/server/src/modules/studio/services/android/input'
-import { AndroidDeviceManager } from '../../packages/server/src/modules/studio/services/android/manager'
+import { AndroidDeviceManager, labelBlueStacks } from '../../packages/server/src/modules/studio/services/android/manager'
+import { parseBlueStacksConfig, type BlueStacksInstance } from '../../packages/server/src/modules/studio/services/android/bluestacks'
+import { createServer, type Server } from 'node:net'
 
 /** A 1x1 PNG header with the given size; FrameHub and pngSize only read IHDR. */
 function png(width: number, height: number, salt = 0): Buffer {
@@ -151,7 +153,10 @@ describe('AndroidDeviceManager with a fake adb', () => {
   let log = ''
   let manager: AndroidDeviceManager
 
+  let blueStacks: BlueStacksInstance[] = []
+
   beforeEach(async () => {
+    blueStacks = []
     dir = await mkdtemp(join(tmpdir(), 'android-manager-'))
     log = join(dir, 'adb.log')
     const adb = join(dir, 'adb')
@@ -164,12 +169,13 @@ case "$*" in
   "connect 10.0.0.9:5555") echo "failed to connect to '10.0.0.9:5555': Connection refused" ;;
   *"wm size") echo "Physical size: 1080x2400" ;;
   *" install "*) echo "Performing Streamed Install"; echo "Success" ;;
+  "connect 127.0.0.1:"*) echo "connected to $2" ;;
   "pair 10.0.0.9:37000 123456") echo "error: protocol fault (couldn't read status message): Success" ;;
   "pair 192.168.1.20:37000 123456") echo "Successfully paired to 192.168.1.20:37000 [guid=adb-X]" ;;
 esac
 `)
     await chmod(adb, 0o755)
-    manager = new AndroidDeviceManager(async data => ({ data, mime: 'image/png', width: 1, height: 1 }))
+    manager = new AndroidDeviceManager(async data => ({ data, mime: 'image/png', width: 1, height: 1 }), async () => blueStacks)
     await manager.configure(join(dir, 'state', 'settings.json'), () => {})
     await manager.updateSettings({ adbPath: adb })
   })
@@ -207,5 +213,86 @@ esac
     await expect(manager.updateSettings({ adbPath: join(dir, 'nope') })).rejects.toThrow(/not found/)
     await expect(manager.gesture('bad serial;', { type: 'key', key: 'home' })).rejects.toThrow(/serial/)
     await expect(manager.disconnect('-a')).rejects.toThrow(/serial/)
+  })
+})
+
+describe('BlueStacks', () => {
+  it('reads instances, ports and the ADB switch from bluestacks.conf', () => {
+    const conf = [
+      'bst.enable_adb_access="1"',
+      'bst.instance.Pie64.display_name="BlueStacks App Player"',
+      'bst.instance.Pie64.status.adb_port="5555"',
+      'bst.instance.Pie64_1.display_name="Testing"',
+      'bst.instance.Pie64_1.status.adb_port="5565"',
+      'bst.instance.Pie64_1.enable_adb_access="0"',
+    ].join('\r\n')
+    expect(parseBlueStacksConfig(conf)).toEqual([
+      { id: 'Pie64', name: 'BlueStacks App Player', port: 5555, adbEnabled: true },
+      { id: 'Pie64_1', name: 'Testing', port: 5565, adbEnabled: false },
+    ])
+  })
+
+  it('names the device adb found for an instance, whichever way adb lists it', () => {
+    const instances = [{ id: 'Pie64', name: 'BlueStacks App Player', port: 5555, adbEnabled: true, running: true }]
+    const devices = parseDevices('emulator-5554 device model:SM_S908E\n127.0.0.1:5565 device\nemulator-5556 device\n')
+    devices[2].avd = 'Pixel_8'
+    const labelled = labelBlueStacks(devices, [...instances, { id: 'b', name: 'Second', port: 5565, adbEnabled: true, running: true }])
+    expect(labelled.map(d => d.label ?? null)).toEqual(['BlueStacks App Player', 'Second', null])
+  })
+})
+
+describe.runIf(process.platform !== 'win32')('remembered devices and BlueStacks reconnect', () => {
+  let dir = ''
+  let server: Server
+  let port = 0
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'android-reconnect-'))
+    server = createServer(socket => socket.destroy())
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    port = (server.address() as { port: number }).port
+  })
+
+  afterEach(async () => {
+    await new Promise(resolve => server.close(resolve))
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  async function managerWith(instances: BlueStacksInstance[]) {
+    const log = join(dir, 'adb.log')
+    const adb = join(dir, 'adb')
+    await writeFile(adb, `#!/bin/sh\nprintf '%s\\n' "$*" >> "${log}"\ncase "$1" in connect) echo "connected to $2" ;; esac\n`)
+    await chmod(adb, 0o755)
+    const manager = new AndroidDeviceManager(async data => ({ data, mime: 'image/png', width: 1, height: 1 }), async () => instances)
+    await manager.configure(join(dir, 'settings.json'), () => {})
+    await manager.updateSettings({ adbPath: adb })
+    return { manager, calls: async () => (await readFile(log, 'utf8')).trim().split('\n') }
+  }
+
+  it('connects to a running BlueStacks instance without being asked', async () => {
+    const { manager, calls } = await managerWith([{ id: 'Pie64', name: 'BlueStacks', port, adbEnabled: true, running: true }])
+    const status = await manager.status()
+    expect(status.bluestacks).toHaveLength(1)
+    expect(await calls()).toContain(`connect 127.0.0.1:${port}`)
+    manager.shutdown()
+  })
+
+  it('remembers a connected device, reconnects it when reachable and forgets it on disconnect', async () => {
+    const { manager, calls } = await managerWith([])
+    await manager.connect(`127.0.0.1:${port}`)
+    expect(manager.getSettings().autoConnect).toEqual([`127.0.0.1:${port}`])
+    await manager.status()
+    expect((await calls()).filter(c => c === `connect 127.0.0.1:${port}`)).toHaveLength(2)
+    await manager.disconnect(`127.0.0.1:${port}`)
+    expect(manager.getSettings().autoConnect).toEqual([])
+    manager.shutdown()
+  })
+
+  it('skips an unreachable remembered device instead of waiting on adb', async () => {
+    const { manager, calls } = await managerWith([])
+    await manager.updateSettings({ autoConnect: ['127.0.0.1:1'] })
+    await manager.status()
+    expect(await calls()).not.toContain('connect 127.0.0.1:1')
+    manager.shutdown()
   })
 })
