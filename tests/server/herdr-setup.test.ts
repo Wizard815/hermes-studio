@@ -94,3 +94,12 @@ describe('Studio keybinding in herdr', () => {
     expect(herdrConfigPath({ APPDATA: 'C:/Users/a/AppData/Roaming', HOME: '/h' }, 'win32')).toBe(join('C:/Users/a/AppData/Roaming', 'herdr', 'config.toml'))
   })
 })
+
+describe('herdr keys for Studio buttons', () => {
+  it('uses herdr defaults and the user\'s [keys] overrides', async () => {
+    const { herdrKeys } = await import('../../packages/server/src/modules/coding-agents/services/herdr/keybind')
+    expect(herdrKeys('')).toEqual({ prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?' })
+    const user = '[ui]\nsettings = "nope"\n\n[keys]\nprefix = "ctrl+a"  # screen habits\ngoto = "prefix+/"\n# settings = "prefix+x"\n\n[[keys.command]]\nkey = "prefix+shift+s"\n'
+    expect(herdrKeys(user)).toEqual({ prefix: 'ctrl+a', search: 'prefix+/', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?' })
+  })
+})

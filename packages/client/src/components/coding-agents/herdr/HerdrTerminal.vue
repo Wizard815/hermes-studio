@@ -149,7 +149,13 @@ onBeforeUnmount(() => {
   term = null
 })
 
-defineExpose({ reopen: open, focus: () => term?.focus() })
+/** Type into the terminal as the user would (buttons that press herdr keys). */
+function send(data: string) {
+  if (!readOnly.value && state.value === 'open') socket?.emit('terminal.input', { streamId, data })
+  term?.focus()
+}
+
+defineExpose({ reopen: open, focus: () => term?.focus(), send })
 </script>
 
 <template>

@@ -23,6 +23,7 @@ async function openCenter(page: Page, session: string) {
       return route.fulfill({ json: {
         settings: { enabled: true, autoStart: true, setupVersion: '0.9.5', binaryPath: '', session: '', autoImport: true, mirrorTranscripts: true, profile: 'default' },
         installed: true, binary: '/usr/local/bin/herdr', version: '0.9.5', error: '', home: '/home/me', publicUrl: '',
+        keys: { prefix: 'ctrl+a', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'cmd+?' },
         server: { version: '0.9.5', running: true, socket: '/tmp/herdr.sock', session: 'default', compatible: true },
         bridge: { connected: true, error: '', version: '0.9.5', focusedPaneId: 'w1:p1', workspaces: [{ workspace_id: 'w1', label: 'api' }, { workspace_id: 'w2', label: 'site' }, { workspace_id: 'w3', label: 'new' }], panes },
         integrations: ['claude', 'codex'],
@@ -40,26 +41,29 @@ async function openCenter(page: Page, session: string) {
   return { posts, errors }
 }
 
-test('shows the chat\'s live agent with the other agents in its herdr space as tabs', async ({ page }) => {
-  const { errors } = await openCenter(page, 'herdr-aaa')
-  const tabs = page.getByTestId('herdr-center-tab')
-  await expect(tabs).toHaveCount(2)
-  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true')
-  await expect(tabs.nth(0)).toContainText('auth refactor')
+test('herdr\'s own UI opens on the chat\'s agent, with one-tap herdr keys', async ({ page }) => {
+  const { posts, errors } = await openCenter(page, 'herdr-aaa')
+  await expect(page.getByTestId('herdr-center-agent')).toContainText('auth refactor')
+  // herdr shows the focused pane, so the chat's agent is focused first.
+  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/panes/w1%3Ap1/focus')
   await expect(page.locator('.herdr-terminal')).toBeVisible()
-  await tabs.nth(1).click()
-  await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true')
-  await page.getByTestId('herdr-center-control').click()
-  await expect(page.getByTestId('herdr-center-control')).toHaveText('Release control')
+  await expect(page.getByTestId('herdr-center-key-search')).toHaveText('Search')
+  await expect(page.getByTestId('herdr-center-key-workspaces')).toBeVisible()
+  await expect(page.getByTestId('herdr-center-key-settings')).toHaveText('herdr settings')
+  // A key the terminal cannot send (cmd+?) has no button.
+  await expect(page.getByTestId('herdr-center-key-help')).toHaveCount(0)
+  await page.getByTestId('herdr-center-key-settings').hover()
+  await expect(page.getByText('ctrl+a then s')).toBeVisible()
   expect(errors).toEqual([])
 })
 
 test('a chat not running in herdr can be opened there without leaving the page', async ({ page }) => {
   const { posts, errors } = await openCenter(page, 'chat-new')
+  await expect(page.locator('.herdr-terminal')).toBeVisible()
   await page.getByTestId('herdr-center-open').click()
   await expect.poll(() => posts).toContain('/api/coding-agents/herdr/sessions/chat-new/open')
-  await expect(page.getByTestId('herdr-center-tab')).toHaveCount(1)
-  await expect(page.getByTestId('herdr-center-tab')).toContainText('fresh')
+  await expect(page.getByTestId('herdr-center-agent')).toContainText('fresh')
+  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/panes/w3%3Ap1/focus')
   expect(page.url()).toContain('__herdr_center__')
   expect(errors).toEqual([])
 })

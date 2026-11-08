@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path'
 import { HerdrBridge, type HerdrBridgeDeps, type HerdrBridgeState } from './bridge'
 import { findPluginScript, installHerdrPlugin, pluginTokenMatches, readOrCreatePluginToken, type PluginInstallResult } from './plugin'
 import { installHerdrRelease } from './install'
-import { installStudioKeybinding, type KeybindResult } from './keybind'
+import { installStudioKeybinding, readHerdrKeys, type HerdrKeys, type KeybindResult } from './keybind'
 import { herdrKindForStudioAgent } from './protocol'
 import { SpaceFolderStore } from './folders'
 import { homedir } from 'node:os'
@@ -51,6 +51,8 @@ export interface HerdrStatus {
   bridge: HerdrBridgeState | null
   /** Home folder on the herdr machine, for `~` in folder rules. */
   home: string
+  /** herdr keys for Studio's herdr buttons (search, workspaces, settings, help). */
+  keys: HerdrKeys
   /** Where browsers reach Studio: HERMES_WEB_UI_PUBLIC_URL, else the last browser address (a public https one first). */
   publicUrl: string
 }
@@ -304,6 +306,7 @@ export class HerdrManager {
       error: error || this.bridge?.getState().error || this.serverError || '',
       bridge: this.bridge?.getState() ?? null,
       home: homedir(),
+      keys: await readHerdrKeys(),
       publicUrl: this.publicUrl(),
     }
   }

@@ -1,56 +1,66 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NButton, useMessage } from 'naive-ui'
+import { NButton, NTooltip, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import HerdrTerminal from './HerdrTerminal.vue'
 import { useHerdrStore } from '@/stores/hermes/herdr'
-import { openSessionInHerdr, type HerdrPaneView } from '@/api/coding-agents/herdr'
+import { focusHerdrPane, openSessionInHerdr, type HerdrPaneView } from '@/api/coding-agents/herdr'
 import { missionUrl } from '@/utils/mission-url'
+import { herdrKeyBytes } from '@/utils/herdr-keys'
 
 /**
- * herdr in the chat page's center column: the chat's live agent pane, with
- * the other agents in its herdr space as tabs. Studio's sidebar, header and
- * tool panel stay; ChatPanel keeps this and the chat mounted together and
- * only shows one, so swapping is instant and nothing restarts.
+ * herdr in the chat page's center column: herdr's own full UI (its key bar,
+ * search, pickers and settings), opened on this chat's agent. Studio's
+ * sidebar, header and tool panel stay; ChatPanel keeps this and the chat
+ * mounted together and only shows one, so swapping is instant.
  */
 const props = defineProps<{ sessionId: string; active: boolean }>()
 
 const { t } = useI18n()
 const toast = useMessage()
 const herdr = useHerdrStore()
-const selected = ref('')
-const control = ref(false)
 const opening = ref(false)
-/** Connect the terminal the first time the herdr center is shown, then keep it. */
-const shown = ref(props.active)
-watch(() => props.active, value => { if (value) shown.value = true })
+const terminal = ref<InstanceType<typeof HerdrTerminal> | null>(null)
+/** The herdr client starts the first time this is shown, then stays connected. */
+const started = ref(false)
 
 const panes = computed<HerdrPaneView[]>(() => herdr.bridge?.panes || [])
 const linked = computed(() => panes.value.find(pane => pane.studioSessionId === props.sessionId) ?? null)
-/** Agents in the same herdr space as this chat's agent. */
-const tabs = computed(() => {
-  const space = linked.value?.workspace_id
-  return space ? panes.value.filter(pane => pane.workspace_id === space && pane.agent) : []
-})
-const current = computed(() => panes.value.find(pane => pane.pane_id === selected.value) ?? linked.value)
 
-watch(() => [props.sessionId, linked.value?.pane_id] as const, ([, paneId]) => {
-  selected.value = paneId || ''
-  control.value = false
-}, { immediate: true })
-watch(selected, () => { control.value = false })
+const KEY_DEFAULTS = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?' }
+const keys = computed(() => ({ ...KEY_DEFAULTS, ...(herdr.status?.keys || {}) }))
+/** One-tap herdr keys: handy on a phone, where the prefix key is awkward. */
+const keyButtons = computed(() => (['search', 'workspaces', 'settings', 'help'] as const)
+  .map(name => ({ name, combo: keys.value[name], bytes: herdrKeyBytes(keys.value[name], keys.value.prefix) }))
+  .filter(button => button.bytes != null))
 
-function paneName(pane: HerdrPaneView): string {
-  return pane.label || pane.terminal_title_stripped || pane.agent || pane.pane_id
+function press(bytes: string | null) {
+  if (bytes) terminal.value?.send(bytes)
 }
+
+/** herdr shows the focused pane: focus this chat's agent before and when switching chats. */
+async function focusChat() {
+  const pane = linked.value
+  if (pane) await focusHerdrPane(pane.pane_id).catch(() => undefined)
+}
+
+watch(() => props.active, async value => {
+  if (!value || started.value) return
+  await focusChat()
+  started.value = true
+}, { immediate: true })
+watch(() => [props.sessionId, linked.value?.pane_id] as const, () => {
+  if (started.value) void focusChat()
+})
 
 async function openHere() {
   opening.value = true
   try {
     const { link } = await openSessionInHerdr(props.sessionId)
     await herdr.refresh()
-    selected.value = link.paneId
+    await focusHerdrPane(link.paneId).catch(() => undefined)
+    terminal.value?.focus()
   } catch (err: any) {
     toast.error(err?.message || String(err))
   } finally {
@@ -67,47 +77,28 @@ onBeforeUnmount(() => herdr.release())
 
 <template>
   <section class="herdr-center" data-testid="herdr-center">
-    <template v-if="!herdr.enabled">
-      <p class="herdr-center-empty">{{ t('herdr.centerOff') }}</p>
-    </template>
-    <template v-else-if="current">
+    <p v-if="!herdr.enabled" class="herdr-center-empty">{{ t('herdr.centerOff') }}</p>
+    <template v-else>
       <header class="herdr-center-bar">
-        <nav class="herdr-center-tabs" role="tablist">
-          <button
-            v-for="pane in (tabs.length ? tabs : [current])"
-            :key="pane.pane_id"
-            type="button"
-            role="tab"
-            class="herdr-center-tab"
-            :class="{ active: pane.pane_id === current.pane_id }"
-            :aria-selected="pane.pane_id === current.pane_id"
-            data-testid="herdr-center-tab"
-            @click="selected = pane.pane_id"
-          >
-            <AgentStatusIcon :status="pane.agent_status || 'unknown'" live :size="11" />
-            <span>{{ paneName(pane) }}</span>
-            <small>{{ pane.agent }}</small>
-          </button>
-        </nav>
-        <NButton size="small" quaternary data-testid="herdr-center-control" @click="control = !control">
-          {{ control ? t('herdr.releaseControl') : t('herdr.takeControl') }}
-        </NButton>
-        <a class="herdr-center-link" :href="missionUrl({ pane: current.pane_id })">{{ t('herdr.centerMission') }}</a>
+        <span v-if="linked" class="herdr-center-agent" data-testid="herdr-center-agent">
+          <AgentStatusIcon :status="linked.agent_status || 'unknown'" live :size="11" />
+          <span>{{ linked.label || linked.agent }}</span>
+          <small>{{ linked.pane_id }}</small>
+        </span>
+        <NButton v-else size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.centerOpenChat') }}</NButton>
+        <span class="herdr-center-spacer" />
+        <NTooltip v-for="button in keyButtons" :key="button.name" trigger="hover">
+          <template #trigger>
+            <button type="button" class="herdr-center-key" :data-testid="`herdr-center-key-${button.name}`" @click="press(button.bytes)">
+              {{ t(`herdr.key.${button.name}`) }}
+            </button>
+          </template>
+          {{ button.combo.replace(/^prefix\+/i, `${keys.prefix} then `) }}
+        </NTooltip>
+        <a class="herdr-center-link" :href="missionUrl(linked ? { pane: linked.pane_id } : {})">{{ t('herdr.centerMission') }}</a>
       </header>
-      <!-- Stays connected once shown, so swapping back is instant. -->
-      <HerdrTerminal
-        v-if="shown"
-        :key="`${current.pane_id}:${control}`"
-        class="herdr-center-terminal"
-        :mode="control ? 'control' : 'observe'"
-        :target="current.pane_id"
-        :takeover="control"
-      />
+      <HerdrTerminal v-if="started" ref="terminal" class="herdr-center-terminal" mode="client" />
     </template>
-    <div v-else class="herdr-center-empty">
-      <p>{{ t('herdr.centerNotLive') }}</p>
-      <NButton size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.openInHerdr') }}</NButton>
-    </div>
   </section>
 </template>
 
@@ -124,33 +115,20 @@ onBeforeUnmount(() => herdr.release())
 
 .herdr-center-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 6px 10px;
   border-bottom: var(--border-width, 1px) solid $border-light;
 }
 
-.herdr-center-tabs {
-  display: flex;
-  flex: 1 1 auto;
-  gap: 4px;
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.herdr-center-tab {
+.herdr-center-agent {
   display: inline-flex;
-  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-  max-width: 240px;
-  padding: 4px 10px;
-  border: var(--border-width, 1px) solid $border-light;
-  border-radius: 999px;
-  background: transparent;
-  color: $text-secondary;
+  min-width: 0;
   font-size: 12px;
-  cursor: pointer;
+  color: $text-primary;
 
   span {
     overflow: hidden;
@@ -161,16 +139,28 @@ onBeforeUnmount(() => herdr.release())
   small {
     color: $text-muted;
   }
+}
 
-  &.active {
+.herdr-center-spacer {
+  flex: 1 1 auto;
+}
+
+.herdr-center-key {
+  padding: 3px 10px;
+  border: var(--border-width, 1px) solid $border-light;
+  border-radius: 999px;
+  background: transparent;
+  color: $text-secondary;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
     color: $text-primary;
     border-color: $accent-primary;
-    background: rgba(var(--accent-primary-rgb), 0.12);
   }
 }
 
 .herdr-center-link {
-  flex: 0 0 auto;
   font-size: 12px;
   color: $text-secondary;
 }
@@ -183,16 +173,10 @@ onBeforeUnmount(() => herdr.release())
 .herdr-center-empty {
   display: flex;
   flex: 1 1 auto;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
   margin: 0;
   color: $text-muted;
   font-size: 13px;
-
-  p {
-    margin: 0;
-  }
 }
 </style>

@@ -59,6 +59,9 @@ export interface HerdrStatus {
   bridge: HerdrBridgeState | null
   integrations: string[]
   home: string
+  /** herdr keys (the user's or herdr's defaults) for Studio's herdr buttons. */
+  keys?: { prefix: string; search: string; workspaces: string; settings: string; help: string }
+  publicUrl?: string
 }
 
 export interface HerdrLink { paneId: string; workspaceId: string; status: HerdrStatusValue }

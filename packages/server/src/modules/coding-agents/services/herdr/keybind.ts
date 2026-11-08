@@ -93,6 +93,40 @@ export interface KeybindResult {
   message: string
 }
 
+/** herdr keys the Studio UI offers as buttons (herdr's defaults unless the user changed them). */
+export interface HerdrKeys {
+  prefix: string
+  /** goto: jump to a workspace, tab or agent by name */
+  search: string
+  workspaces: string
+  settings: string
+  help: string
+}
+
+const DEFAULT_HERDR_KEYS: HerdrKeys = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?' }
+const KEY_NAMES: Record<keyof HerdrKeys, string> = { prefix: 'prefix', search: 'goto', workspaces: 'workspace_picker', settings: 'settings', help: 'help' }
+
+export function herdrKeys(userConfig: string): HerdrKeys {
+  const keys = { ...DEFAULT_HERDR_KEYS }
+  let section = ''
+  for (const raw of userConfig.split(/\r?\n/)) {
+    const line = raw.replace(/\s+#.*$/, '').trim()
+    const header = line.match(/^\[+([^\]]+)\]+$/)
+    if (header) { section = header[1].trim(); continue }
+    if (section !== 'keys') continue
+    const match = line.match(/^([A-Za-z_]+)\s*=\s*"([^"]*)"/)
+    if (!match) continue
+    const field = (Object.keys(KEY_NAMES) as Array<keyof HerdrKeys>).find(name => KEY_NAMES[name] === match[1])
+    if (field) keys[field] = match[2].trim()
+  }
+  return keys
+}
+
+export async function readHerdrKeys(env: NodeJS.ProcessEnv = process.env): Promise<HerdrKeys> {
+  const path = herdrConfigPath(env)
+  try { return herdrKeys(existsSync(path) ? await readFile(path, 'utf8') : '') } catch { return { ...DEFAULT_HERDR_KEYS } }
+}
+
 /**
  * Bind the Studio chat picker to the first free key. The user's config is
  * backed up and restored if herdr rejects the edited file.

@@ -99,11 +99,16 @@ tasks and plans, projects, ideas, upkeep, and Control).
   (`utils/mission-url.ts`); Mission's "Back to Studio" returns.
 - **herdr in the chat center.** The chat header's Chat | herdr switch swaps
   only the center column (`components/coding-agents/herdr/HerdrCenter.vue` in
-  `ChatPanel.vue`): the chat's live agent pane with the other agents of its
-  herdr space as tabs, Take control, and "Open in herdr" for a chat not running
-  there. Sidebar, header and tool panel stay. Both centers stay mounted once
-  opened (`v-show`) and the terminal stays connected, so swapping is instant;
-  the choice is remembered (`studio_chat_center`).
+  `ChatPanel.vue`) to herdr's own full UI (a `client` terminal stream), opened
+  on the chat's agent: Studio focuses the chat's pane first and again when you
+  switch chats. herdr's sidebar, key bar, pickers and settings all work. The
+  bar above it has one-tap Search (goto), Workspaces (navigate mode, with
+  herdr's key bar), herdr settings and Keys buttons that press the user's herdr
+  keys (`readHerdrKeys` reads `[keys]` from herdr's config, herdr defaults
+  otherwise; `utils/herdr-keys.ts` turns them into terminal bytes), and "Open
+  this chat in herdr" for a chat not running there. Sidebar, header and tool
+  panel stay; both centers stay mounted once opened and herdr stays connected,
+  so swapping is instant; the choice is remembered (`studio_chat_center`).
 
 ## Pondering Orb
 
@@ -165,7 +170,8 @@ Rules that keep it safe:
 - Unit: `tests/server/herdr-folders.test.ts`, `tests/server/orb-client.test.ts`,
   `tests/server/herdr-public-url.test.ts`
   (fake Orb).
-- Unit: `tests/client/mission-folders.test.ts` (tree and space placement).
+- Unit: `tests/client/mission-folders.test.ts` (tree and space placement),
+  `tests/client/herdr-keys.test.ts` (key buttons).
 - Browser: `tests/e2e/herdr-view.spec.ts`, `tests/e2e/mission.spec.ts`,
   `tests/e2e/herdr-center.spec.ts` (mocked API).
 - Live: build herdr (`cargo build --release`, needs Zig 0.16), run Studio with an

@@ -22,6 +22,13 @@ export const herdrMessages = {
       "selectAgent": "Select an agent to watch it live.",
       "takeControl": "Take control",
       "releaseControl": "Release control",
+      "centerOpenChat": "Open this chat in herdr",
+      "key": {
+        "search": "Search",
+        "workspaces": "Workspaces",
+        "settings": "herdr settings",
+        "help": "Keys"
+      },
       "centerChat": "Chat",
       "centerHerdr": "herdr",
       "centerSwitch": "Show the chat or its herdr agent here",
@@ -218,6 +225,13 @@ export const herdrMessages = {
       "selectAgent": "选择一个智能体以实时查看。",
       "takeControl": "接管控制",
       "releaseControl": "释放控制",
+      "centerOpenChat": "在 herdr 中打开此聊天",
+      "key": {
+        "search": "搜索",
+        "workspaces": "工作区",
+        "settings": "herdr 设置",
+        "help": "快捷键"
+      },
       "centerChat": "聊天",
       "centerHerdr": "herdr",
       "centerSwitch": "在此显示聊天或其 herdr 代理",
@@ -414,6 +428,13 @@ export const herdrMessages = {
       "selectAgent": "選擇一個代理以即時查看。",
       "takeControl": "接管控制",
       "releaseControl": "釋放控制",
+      "centerOpenChat": "在 herdr 中開啟此聊天",
+      "key": {
+        "search": "搜尋",
+        "workspaces": "工作區",
+        "settings": "herdr 設定",
+        "help": "快速鍵"
+      },
       "centerChat": "聊天",
       "centerHerdr": "herdr",
       "centerSwitch": "在此顯示聊天或其 herdr 代理",
@@ -610,6 +631,13 @@ export const herdrMessages = {
       "selectAgent": "エージェントを選ぶとライブで表示します。",
       "takeControl": "操作を引き継ぐ",
       "releaseControl": "操作を解放",
+      "centerOpenChat": "このチャットを herdr で開く",
+      "key": {
+        "search": "検索",
+        "workspaces": "ワークスペース",
+        "settings": "herdr の設定",
+        "help": "キー"
+      },
       "centerChat": "チャット",
       "centerHerdr": "herdr",
       "centerSwitch": "ここにチャットか herdr のエージェントを表示",
@@ -806,6 +834,13 @@ export const herdrMessages = {
       "selectAgent": "에이전트를 선택하면 실시간으로 볼 수 있습니다.",
       "takeControl": "제어 가져오기",
       "releaseControl": "제어 해제",
+      "centerOpenChat": "이 채팅을 herdr에서 열기",
+      "key": {
+        "search": "검색",
+        "workspaces": "워크스페이스",
+        "settings": "herdr 설정",
+        "help": "단축키"
+      },
       "centerChat": "채팅",
       "centerHerdr": "herdr",
       "centerSwitch": "여기에 채팅 또는 herdr 에이전트 표시",
@@ -1002,6 +1037,13 @@ export const herdrMessages = {
       "selectAgent": "Wähle einen Agenten, um ihn live zu sehen.",
       "takeControl": "Steuerung übernehmen",
       "releaseControl": "Steuerung freigeben",
+      "centerOpenChat": "Diesen Chat in herdr öffnen",
+      "key": {
+        "search": "Suchen",
+        "workspaces": "Arbeitsbereiche",
+        "settings": "herdr-Einstellungen",
+        "help": "Tasten"
+      },
       "centerChat": "Chat",
       "centerHerdr": "herdr",
       "centerSwitch": "Hier den Chat oder seinen herdr-Agenten zeigen",
@@ -1198,6 +1240,13 @@ export const herdrMessages = {
       "selectAgent": "Elige un agente para verlo en vivo.",
       "takeControl": "Tomar el control",
       "releaseControl": "Liberar el control",
+      "centerOpenChat": "Abrir este chat en herdr",
+      "key": {
+        "search": "Buscar",
+        "workspaces": "Espacios",
+        "settings": "Ajustes de herdr",
+        "help": "Teclas"
+      },
       "centerChat": "Chat",
       "centerHerdr": "herdr",
       "centerSwitch": "Mostrar aquí el chat o su agente de herdr",
@@ -1394,6 +1443,13 @@ export const herdrMessages = {
       "selectAgent": "Choisissez un agent pour le suivre en direct.",
       "takeControl": "Prendre le contrôle",
       "releaseControl": "Rendre le contrôle",
+      "centerOpenChat": "Ouvrir ce chat dans herdr",
+      "key": {
+        "search": "Rechercher",
+        "workspaces": "Espaces",
+        "settings": "Réglages herdr",
+        "help": "Raccourcis"
+      },
       "centerChat": "Chat",
       "centerHerdr": "herdr",
       "centerSwitch": "Afficher ici le chat ou son agent herdr",
@@ -1590,6 +1646,13 @@ export const herdrMessages = {
       "selectAgent": "Escolha um agente para vê-lo ao vivo.",
       "takeControl": "Assumir o controle",
       "releaseControl": "Liberar o controle",
+      "centerOpenChat": "Abrir este chat no herdr",
+      "key": {
+        "search": "Buscar",
+        "workspaces": "Espaços",
+        "settings": "Configurações do herdr",
+        "help": "Atalhos"
+      },
       "centerChat": "Chat",
       "centerHerdr": "herdr",
       "centerSwitch": "Mostrar aqui o chat ou o agente do herdr",
@@ -1786,6 +1849,13 @@ export const herdrMessages = {
       "selectAgent": "Выберите агента, чтобы смотреть его вживую.",
       "takeControl": "Взять управление",
       "releaseControl": "Отпустить управление",
+      "centerOpenChat": "Открыть этот чат в herdr",
+      "key": {
+        "search": "Поиск",
+        "workspaces": "Пространства",
+        "settings": "Настройки herdr",
+        "help": "Клавиши"
+      },
       "centerChat": "Чат",
       "centerHerdr": "herdr",
       "centerSwitch": "Показать здесь чат или его агента herdr",
@@ -1982,6 +2052,13 @@ export const herdrMessages = {
       "selectAgent": "Canlı izlemek için bir ajan seç.",
       "takeControl": "Kontrolü al",
       "releaseControl": "Kontrolü bırak",
+      "centerOpenChat": "Bu sohbeti herdr'da aç",
+      "key": {
+        "search": "Ara",
+        "workspaces": "Çalışma alanları",
+        "settings": "herdr ayarları",
+        "help": "Tuşlar"
+      },
       "centerChat": "Sohbet",
       "centerHerdr": "herdr",
       "centerSwitch": "Burada sohbeti veya herdr ajanını göster",
@@ -2178,6 +2255,13 @@ export const herdrMessages = {
       "selectAgent": "اختر وكيلًا لمشاهدته مباشرة.",
       "takeControl": "تولي التحكم",
       "releaseControl": "ترك التحكم",
+      "centerOpenChat": "افتح هذه الدردشة في herdr",
+      "key": {
+        "search": "بحث",
+        "workspaces": "مساحات العمل",
+        "settings": "إعدادات herdr",
+        "help": "المفاتيح"
+      },
       "centerChat": "الدردشة",
       "centerHerdr": "herdr",
       "centerSwitch": "اعرض هنا الدردشة أو وكيلها في herdr",
