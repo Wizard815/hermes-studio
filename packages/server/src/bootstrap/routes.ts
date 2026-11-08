@@ -81,6 +81,7 @@ import { legacyAppApiCompatibility } from '../modules/studio/middleware/legacy-a
 import { browserRoutes } from '../modules/studio/routes/browser'
 import { browserPublicRoutes } from '../modules/studio/routes/browser-public'
 import { androidDeviceRoutes } from '../modules/studio/routes/android-devices'
+import { systemRoutes } from '../modules/studio/routes/system'
 
 /**
  * Register all routes on the Koa app.
@@ -120,6 +121,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(updateRoutes.routes())           // Must be before proxy (proxy catch-all matches everything)
   app.use(herdrRoutes.routes())           // Before codingAgentRoutes' /:id patterns
   app.use(androidDeviceRoutes.routes())
+  app.use(systemRoutes.routes())
   app.use(codingAgentRoutes.routes())
   app.use(agentStatusRoutes.routes())
   app.use(themeRoutes.routes())

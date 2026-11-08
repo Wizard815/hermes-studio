@@ -15,6 +15,8 @@ services:
       - ${HERMES_DATA_DIR:-./hermes_data}/hermes-web-ui:/home/agent/.hermes-web-ui
       # adb's key: phones and BlueStacks stay authorized after the container is recreated.
       - ${HERMES_DATA_DIR:-./hermes_data}/android:/home/agent/.android
+      # System page → Docker: manage the host's containers. This gives Studio full control of Docker.
+      # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PORT=${PORT:-6060}
       - HERMES_HOME=/home/agent/.hermes
@@ -39,6 +41,8 @@ services:
       - NPM_CONFIG_PREFIX=/home/agent/.hermes-web-ui/coding-agent/npm
       - PATH=/home/agent/.hermes-web-ui/coding-agent/npm/bin:/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       - HERMES_ALLOW_ROOT_GATEWAY=1
+    # System page: see the host's processes instead of only the container's.
+    # pid: host
     restart: unless-stopped
     stdin_open: true
     tty: true

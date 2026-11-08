@@ -23,6 +23,8 @@ const entries = computed(() => [
   ...(canManageAgents.value ? [{ key: 'herdr', route: 'herdr', label: 'herdr.nav', path: 'M3 4h18v16H3zM12 4v16M3 12h9M7 8l2 2-2 2' }] : []),
   // Phone icon: emulators, phones and BlueStacks over adb.
   ...(canManageAgents.value ? [{ key: 'android', route: 'android', label: 'android.nav', path: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2M11 18h2' }] : []),
+  // Pulse icon: processes, resources and Docker on this machine.
+  ...(canManageAgents.value ? [{ key: 'system', route: 'system', label: 'system.nav', path: 'M22 12h-4l-3 9L9 3l-3 9H2' }] : []),
   ...(canManageAgents.value ? [{ key: 'agents', route: 'hermes.agentManager', label: 'sidebar.agentManager', path: 'M12 8V4H8M7 8h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3M2 14h2M20 14h2M9 13v2M15 13v2' }] : []),
   { key: 'models', route: 'hermes.models', label: 'sidebar.models', path: 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1' },
   { key: 'usage', route: 'hermes.usage', label: 'sidebar.usage', path: 'M3 12h4v9H3zM10 7h4v14h-4zM17 3h4v18h-4z' },
@@ -38,7 +40,7 @@ const activeKey = computed(() => {
 })
 const mobileNavigation = useMobileNavigation()
 function handleNavigate(key: string) {
-  if (mobileNavigation && ['person', 'connections', 'herdr', 'android', 'agents', 'models', 'usage', 'upstream'].includes(key)) {
+  if (mobileNavigation && ['person', 'connections', 'herdr', 'android', 'system', 'agents', 'models', 'usage', 'upstream'].includes(key)) {
     mobileNavigation.open.value = false
   }
 }
