@@ -12,6 +12,9 @@ export interface AndroidDevice {
   product: string
   /** The AVD name for a running emulator, when known. */
   avd?: string
+  /** A friendlier name, e.g. the BlueStacks instance name. */
+  label?: string
+  bluestacks?: boolean
 }
 
 export interface AndroidAvd {

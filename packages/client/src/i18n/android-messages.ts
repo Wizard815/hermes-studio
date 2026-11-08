@@ -40,7 +40,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "Emulator",
         "usb": "USB",
-        "network": "Network"
+        "network": "Network",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "Live emulator stream",
@@ -54,7 +55,16 @@ export const androidMessages = {
         "volumeUp": "Vol +",
         "power": "Power",
         "rotate": "Rotate"
-      }
+      },
+      "bluestacks": "BlueStacks on this PC",
+      "bluestacksRunning": "Running · port {port}",
+      "bluestacksStopped": "Not running",
+      "bluestacksAdbOff": "Turn on ADB in BlueStacks: Settings → Advanced → Android Debug Bridge.",
+      "settingsTitle": "Connection settings",
+      "detectBluestacks": "Find BlueStacks on this PC automatically",
+      "remembered": "Reconnect automatically",
+      "rememberedHint": "Devices you connect are remembered and reconnect when they are reachable. Disconnect forgets one.",
+      "forget": "Forget"
     }
   },
   "zh": {
@@ -97,7 +107,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "模拟器",
         "usb": "USB",
-        "network": "网络"
+        "network": "网络",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "模拟器实时画面",
@@ -111,7 +122,16 @@ export const androidMessages = {
         "volumeUp": "音量 +",
         "power": "电源",
         "rotate": "旋转"
-      }
+      },
+      "bluestacks": "这台电脑上的 BlueStacks",
+      "bluestacksRunning": "运行中 · 端口 {port}",
+      "bluestacksStopped": "未运行",
+      "bluestacksAdbOff": "请在 BlueStacks 中开启 ADB：设置 → 高级 → Android 调试桥。",
+      "settingsTitle": "连接设置",
+      "detectBluestacks": "自动查找这台电脑上的 BlueStacks",
+      "remembered": "自动重新连接",
+      "rememberedHint": "你连接过的设备会被记住，在可访问时自动重新连接。断开连接会忘记该设备。",
+      "forget": "忘记"
     }
   },
   "zh-TW": {
@@ -154,7 +174,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "模擬器",
         "usb": "USB",
-        "network": "網路"
+        "network": "網路",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "模擬器即時畫面",
@@ -168,7 +189,16 @@ export const androidMessages = {
         "volumeUp": "音量 +",
         "power": "電源",
         "rotate": "旋轉"
-      }
+      },
+      "bluestacks": "這台電腦上的 BlueStacks",
+      "bluestacksRunning": "執行中 · 連接埠 {port}",
+      "bluestacksStopped": "未執行",
+      "bluestacksAdbOff": "請在 BlueStacks 中開啟 ADB：設定 → 進階 → Android 偵錯橋。",
+      "settingsTitle": "連線設定",
+      "detectBluestacks": "自動尋找這台電腦上的 BlueStacks",
+      "remembered": "自動重新連線",
+      "rememberedHint": "你連線過的裝置會被記住，可連線時自動重新連線。中斷連線會忘記該裝置。",
+      "forget": "忘記"
     }
   },
   "ja": {
@@ -211,7 +241,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "エミュレーター",
         "usb": "USB",
-        "network": "ネットワーク"
+        "network": "ネットワーク",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "エミュレーターのライブ映像",
@@ -225,7 +256,16 @@ export const androidMessages = {
         "volumeUp": "音量 +",
         "power": "電源",
         "rotate": "回転"
-      }
+      },
+      "bluestacks": "この PC の BlueStacks",
+      "bluestacksRunning": "実行中 · ポート {port}",
+      "bluestacksStopped": "停止中",
+      "bluestacksAdbOff": "BlueStacks で ADB をオンにしてください：設定 → 高度な設定 → Android デバッグブリッジ。",
+      "settingsTitle": "接続設定",
+      "detectBluestacks": "この PC の BlueStacks を自動で見つける",
+      "remembered": "自動で再接続",
+      "rememberedHint": "接続したデバイスは記憶され、接続できるときに自動で再接続します。切断すると記憶から外れます。",
+      "forget": "削除"
     }
   },
   "ko": {
@@ -268,7 +308,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "에뮬레이터",
         "usb": "USB",
-        "network": "네트워크"
+        "network": "네트워크",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "에뮬레이터 실시간 화면",
@@ -282,7 +323,16 @@ export const androidMessages = {
         "volumeUp": "볼륨 +",
         "power": "전원",
         "rotate": "회전"
-      }
+      },
+      "bluestacks": "이 PC의 BlueStacks",
+      "bluestacksRunning": "실행 중 · 포트 {port}",
+      "bluestacksStopped": "실행 안 함",
+      "bluestacksAdbOff": "BlueStacks에서 ADB를 켜세요: 설정 → 고급 → Android 디버그 브리지.",
+      "settingsTitle": "연결 설정",
+      "detectBluestacks": "이 PC의 BlueStacks 자동 찾기",
+      "remembered": "자동으로 다시 연결",
+      "rememberedHint": "연결한 기기는 기억되며 연결할 수 있을 때 자동으로 다시 연결됩니다. 연결 해제하면 기억에서 지워집니다.",
+      "forget": "지우기"
     }
   },
   "de": {
@@ -325,7 +375,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "Emulator",
         "usb": "USB",
-        "network": "Netzwerk"
+        "network": "Netzwerk",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "Live-Bild des Emulators",
@@ -339,7 +390,16 @@ export const androidMessages = {
         "volumeUp": "Lauter",
         "power": "Ein/Aus",
         "rotate": "Drehen"
-      }
+      },
+      "bluestacks": "BlueStacks auf diesem PC",
+      "bluestacksRunning": "Läuft · Port {port}",
+      "bluestacksStopped": "Läuft nicht",
+      "bluestacksAdbOff": "Schalte ADB in BlueStacks ein: Einstellungen → Erweitert → Android Debug Bridge.",
+      "settingsTitle": "Verbindungseinstellungen",
+      "detectBluestacks": "BlueStacks auf diesem PC automatisch finden",
+      "remembered": "Automatisch neu verbinden",
+      "rememberedHint": "Verbundene Geräte werden gemerkt und neu verbunden, sobald sie erreichbar sind. Trennen vergisst ein Gerät.",
+      "forget": "Vergessen"
     }
   },
   "es": {
@@ -382,7 +442,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "Emulador",
         "usb": "USB",
-        "network": "Red"
+        "network": "Red",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "Imagen en vivo del emulador",
@@ -396,7 +457,16 @@ export const androidMessages = {
         "volumeUp": "Vol +",
         "power": "Encendido",
         "rotate": "Girar"
-      }
+      },
+      "bluestacks": "BlueStacks en este PC",
+      "bluestacksRunning": "En ejecución · puerto {port}",
+      "bluestacksStopped": "No está en ejecución",
+      "bluestacksAdbOff": "Activa ADB en BlueStacks: Configuración → Avanzado → Android Debug Bridge.",
+      "settingsTitle": "Ajustes de conexión",
+      "detectBluestacks": "Buscar BlueStacks en este PC automáticamente",
+      "remembered": "Reconectar automáticamente",
+      "rememberedHint": "Los dispositivos que conectas se recuerdan y se reconectan cuando están accesibles. Desconectar olvida uno.",
+      "forget": "Olvidar"
     }
   },
   "fr": {
@@ -439,7 +509,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "Émulateur",
         "usb": "USB",
-        "network": "Réseau"
+        "network": "Réseau",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "Flux en direct de l’émulateur",
@@ -453,7 +524,16 @@ export const androidMessages = {
         "volumeUp": "Vol +",
         "power": "Marche",
         "rotate": "Pivoter"
-      }
+      },
+      "bluestacks": "BlueStacks sur ce PC",
+      "bluestacksRunning": "En cours · port {port}",
+      "bluestacksStopped": "Arrêté",
+      "bluestacksAdbOff": "Activez ADB dans BlueStacks : Paramètres → Avancés → Android Debug Bridge.",
+      "settingsTitle": "Paramètres de connexion",
+      "detectBluestacks": "Trouver BlueStacks sur ce PC automatiquement",
+      "remembered": "Reconnexion automatique",
+      "rememberedHint": "Les appareils connectés sont mémorisés et reconnectés dès qu’ils sont joignables. Déconnecter en oublie un.",
+      "forget": "Oublier"
     }
   },
   "pt": {
@@ -496,7 +576,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "Emulador",
         "usb": "USB",
-        "network": "Rede"
+        "network": "Rede",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "Imagem ao vivo do emulador",
@@ -510,7 +591,16 @@ export const androidMessages = {
         "volumeUp": "Vol +",
         "power": "Liga/desliga",
         "rotate": "Girar"
-      }
+      },
+      "bluestacks": "BlueStacks neste PC",
+      "bluestacksRunning": "Em execução · porta {port}",
+      "bluestacksStopped": "Parado",
+      "bluestacksAdbOff": "Ative o ADB no BlueStacks: Configurações → Avançado → Android Debug Bridge.",
+      "settingsTitle": "Configurações de conexão",
+      "detectBluestacks": "Encontrar o BlueStacks neste PC automaticamente",
+      "remembered": "Reconectar automaticamente",
+      "rememberedHint": "Os dispositivos conectados são lembrados e reconectados quando estiverem acessíveis. Desconectar esquece um.",
+      "forget": "Esquecer"
     }
   },
   "ru": {
@@ -553,7 +643,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "Эмулятор",
         "usb": "USB",
-        "network": "Сеть"
+        "network": "Сеть",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "Живая картинка эмулятора",
@@ -567,7 +658,16 @@ export const androidMessages = {
         "volumeUp": "Громк. +",
         "power": "Питание",
         "rotate": "Повернуть"
-      }
+      },
+      "bluestacks": "BlueStacks на этом ПК",
+      "bluestacksRunning": "Запущен · порт {port}",
+      "bluestacksStopped": "Не запущен",
+      "bluestacksAdbOff": "Включите ADB в BlueStacks: Настройки → Расширенные → Android Debug Bridge.",
+      "settingsTitle": "Настройки подключения",
+      "detectBluestacks": "Находить BlueStacks на этом ПК автоматически",
+      "remembered": "Переподключать автоматически",
+      "rememberedHint": "Подключённые устройства запоминаются и переподключаются, когда доступны. Отключение удаляет устройство из списка.",
+      "forget": "Забыть"
     }
   },
   "tr": {
@@ -610,7 +710,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "Emülatör",
         "usb": "USB",
-        "network": "Ağ"
+        "network": "Ağ",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "Canlı emülatör görüntüsü",
@@ -624,7 +725,16 @@ export const androidMessages = {
         "volumeUp": "Ses +",
         "power": "Güç",
         "rotate": "Döndür"
-      }
+      },
+      "bluestacks": "Bu bilgisayardaki BlueStacks",
+      "bluestacksRunning": "Çalışıyor · port {port}",
+      "bluestacksStopped": "Çalışmıyor",
+      "bluestacksAdbOff": "BlueStacks'te ADB'yi açın: Ayarlar → Gelişmiş → Android Debug Bridge.",
+      "settingsTitle": "Bağlantı ayarları",
+      "detectBluestacks": "Bu bilgisayardaki BlueStacks'i otomatik bul",
+      "remembered": "Otomatik yeniden bağlan",
+      "rememberedHint": "Bağladığınız cihazlar hatırlanır ve erişilebilir olduklarında yeniden bağlanır. Bağlantıyı kesmek cihazı unutur.",
+      "forget": "Unut"
     }
   },
   "ar": {
@@ -667,7 +777,8 @@ export const androidMessages = {
       "kind": {
         "emulator": "محاكي",
         "usb": "USB",
-        "network": "شبكة"
+        "network": "شبكة",
+        "bluestacks": "BlueStacks"
       },
       "source": {
         "emulator": "بث مباشر من المحاكي",
@@ -681,7 +792,16 @@ export const androidMessages = {
         "volumeUp": "الصوت +",
         "power": "التشغيل",
         "rotate": "تدوير"
-      }
+      },
+      "bluestacks": "BlueStacks على هذا الكمبيوتر",
+      "bluestacksRunning": "قيد التشغيل · المنفذ {port}",
+      "bluestacksStopped": "غير مشغّل",
+      "bluestacksAdbOff": "فعّل ADB في BlueStacks: الإعدادات ← متقدم ← Android Debug Bridge.",
+      "settingsTitle": "إعدادات الاتصال",
+      "detectBluestacks": "العثور على BlueStacks على هذا الكمبيوتر تلقائيًا",
+      "remembered": "إعادة الاتصال تلقائيًا",
+      "rememberedHint": "تُحفظ الأجهزة التي تتصل بها ويُعاد الاتصال بها عندما تكون متاحة. قطع الاتصال يحذف الجهاز.",
+      "forget": "نسيان"
     }
   }
 }

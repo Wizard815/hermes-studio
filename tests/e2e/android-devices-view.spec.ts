@@ -8,6 +8,7 @@ const DEVICES = [
   { serial: 'emulator-5554', state: 'device', kind: 'emulator', model: 'sdk gphone64 x86 64', product: 'sdk', avd: 'Pixel_8_API_35' },
   { serial: '192.168.1.20:5555', state: 'device', kind: 'network', model: 'Pixel 7', product: 'panther' },
   { serial: 'R5CT1234ABC', state: 'unauthorized', kind: 'usb', model: '', product: '' },
+  { serial: 'emulator-5564', state: 'device', kind: 'emulator', model: 'SM S908E', product: 'x', label: 'BlueStacks App Player', bluestacks: true },
 ]
 
 interface SocketLog { events: Array<{ name: string; data: any }> }
@@ -35,6 +36,7 @@ async function openFixture(page: Page) {
   const requests: Array<{ method: string; path: string; body: any }> = []
   const socket: SocketLog = { events: [] }
   const errors: string[] = []
+  let settings = { adbPath: '', sdkPath: '', streamWidth: 540, autoConnect: ['192.168.1.20:5555'], detectBlueStacks: true }
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(() => { localStorage.setItem('hermes_locale', 'en'); (window as any).__APP_VERSION__ = 'test' })
   await page.routeWebSocket('**/socket.io/**', ws => serveAndroidSocket(ws, socket))
@@ -42,10 +44,18 @@ async function openFixture(page: Page) {
     const request = route.request()
     const url = new URL(request.url())
     if (request.method() !== 'GET') requests.push({ method: request.method(), path: url.pathname, body: request.postDataJSON() })
+    if (url.pathname === '/api/studio/android/settings') {
+      settings = { ...settings, ...request.postDataJSON() }
+      return route.fulfill({ json: { settings } })
+    }
     if (url.pathname === '/api/studio/android') {
       return route.fulfill({ json: {
         adb: '/usr/bin/adb', adbVersion: '1.0.41', emulator: '/opt/android-sdk/emulator/emulator',
-        settings: { adbPath: '', sdkPath: '', streamWidth: 540 },
+        settings,
+        bluestacks: [
+          { id: 'Pie64', name: 'BlueStacks App Player', port: 5565, adbEnabled: true, running: true },
+          { id: 'Pie64_1', name: 'Testing', port: 5575, adbEnabled: false, running: false },
+        ],
         devices: DEVICES,
         avds: [{ name: 'Pixel_8_API_35', running: true, serial: 'emulator-5554' }, { name: 'Tablet_API_34', running: false }],
       } })
@@ -62,7 +72,7 @@ test('lists devices, streams the selected screen and sends taps and keys', async
   const { socket, errors } = await openFixture(page)
   await page.goto('/__android_view__')
   const list = page.getByTestId('android-devices')
-  await expect(list.locator('.android-device')).toHaveCount(3)
+  await expect(list.locator('.android-device')).toHaveCount(4)
   await expect(list.locator('.android-device').nth(2)).toBeDisabled()
 
   const screen = page.getByTestId('android-screen')
@@ -93,5 +103,21 @@ test('connects a network device such as BlueStacks and starts an emulator', asyn
   await expect.poll(() => requests.find(r => r.path === '/api/studio/android/connect')?.body).toEqual({ endpoint: '10.0.0.5' })
   await page.getByRole('button', { name: 'Start' }).click()
   await expect.poll(() => requests.some(r => r.path === '/api/studio/android/avds/Tablet_API_34/start')).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test('shows BlueStacks instances and manages remembered devices', async ({ page }) => {
+  const { requests, errors } = await openFixture(page)
+  await page.goto('/__android_view__')
+  await expect(page.getByTestId('android-devices')).toContainText('BlueStacks App Player')
+  const bluestacks = page.getByTestId('android-bluestacks')
+  await expect(bluestacks).toContainText('Running · port 5565')
+  await expect(bluestacks).toContainText('Not running')
+  await expect(bluestacks).toContainText('Turn on ADB in BlueStacks')
+  await page.getByTestId('android-detect-bluestacks').click()
+  await expect.poll(() => requests.find(r => r.path === '/api/studio/android/settings')?.body).toEqual({ detectBlueStacks: false })
+  await page.getByTestId('android-remembered').getByRole('button', { name: 'Forget' }).click()
+  await expect.poll(() => requests.filter(r => r.path === '/api/studio/android/settings').at(-1)?.body).toEqual({ autoConnect: [] })
+  await expect(page.getByTestId('android-remembered').locator('li')).toHaveCount(0)
   expect(errors).toEqual([])
 })

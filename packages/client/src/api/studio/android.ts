@@ -11,6 +11,8 @@ export interface AndroidDevice {
   model: string
   product: string
   avd?: string
+  label?: string
+  bluestacks?: boolean
 }
 
 export interface AndroidAvd {
@@ -23,6 +25,16 @@ export interface AndroidSettings {
   adbPath: string
   sdkPath: string
   streamWidth: number
+  autoConnect: string[]
+  detectBlueStacks: boolean
+}
+
+export interface BlueStacksInstance {
+  id: string
+  name: string
+  port: number | null
+  adbEnabled: boolean
+  running: boolean
 }
 
 export interface AndroidStatus {
@@ -32,6 +44,7 @@ export interface AndroidStatus {
   settings: AndroidSettings
   devices: AndroidDevice[]
   avds: AndroidAvd[]
+  bluestacks: BlueStacksInstance[]
   error?: string
 }
 

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NButton, NInput, NSpin, useMessage } from 'naive-ui'
+import { NButton, NInput, NSpin, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import type { Socket } from 'socket.io-client'
 import {
   connectAndroidDevice, connectAndroidSocket, disconnectAndroidDevice, fetchAndroidStatus, installAndroidApk,
-  launchAndroidApp, pairAndroidDevice, startAndroidAvd, stopAndroidEmulator, studioOwnBridge,
+  launchAndroidApp, pairAndroidDevice, saveAndroidSettings, startAndroidAvd, stopAndroidEmulator, studioOwnBridge,
   type AndroidDevice, type AndroidFrame, type AndroidStatus,
 } from '@/api/studio/android'
 import { keyboardInput, pointerGesture, type AndroidGesture, type AndroidKey } from '@/utils/android-input'
@@ -45,7 +45,11 @@ const ready = computed(() => devices.value.filter(device => device.state === 'de
 const current = computed(() => devices.value.find(device => device.serial === selected.value) ?? null)
 
 function deviceName(device: AndroidDevice) {
-  return device.avd || device.model || device.serial
+  return device.label || device.avd || device.model || device.serial
+}
+
+function deviceKind(device: AndroidDevice) {
+  return t(`android.kind.${device.bluestacks ? 'bluestacks' : device.kind}`)
 }
 
 function failure(error: unknown) {
@@ -91,6 +95,10 @@ const pair = () => act('pair', async () => {
 const startAvd = (name: string) => act(`avd:${name}`, () => startAndroidAvd(name), t('android.emulatorStarting'))
 const disconnect = (serial: string) => act(`dc:${serial}`, () => disconnectAndroidDevice(serial))
 const stopEmulator = (serial: string) => act(`stop:${serial}`, () => stopAndroidEmulator(serial))
+const setDetectBlueStacks = (value: boolean) => act('detect', () => saveAndroidSettings({ detectBlueStacks: value }))
+const forget = (endpoint: string) => act(`forget:${endpoint}`, () => saveAndroidSettings({
+  autoConnect: (status.value?.settings.autoConnect ?? []).filter(item => item !== endpoint),
+}))
 
 function setFrame(frame: AndroidFrame) {
   if (frame.serial !== watching) return
@@ -275,7 +283,7 @@ onBeforeUnmount(() => {
             >
               <span class="android-device-name">{{ deviceName(device) }}</span>
               <span class="android-device-meta">
-                {{ t(`android.kind.${device.kind}`) }} · {{ device.state === 'device' ? device.serial : device.state }}
+                {{ deviceKind(device) }} · {{ device.state === 'device' ? device.serial : device.state }}
               </span>
             </button>
             <NButton
@@ -285,7 +293,7 @@ onBeforeUnmount(() => {
               @click="disconnect(device.serial)"
             >{{ t('android.disconnect') }}</NButton>
             <NButton
-              v-else-if="device.kind === 'emulator' && device.state === 'device'"
+              v-else-if="device.avd && device.state === 'device'"
               size="tiny" quaternary
               :loading="busy === `stop:${device.serial}`"
               @click="stopEmulator(device.serial)"
@@ -306,6 +314,19 @@ onBeforeUnmount(() => {
         </ul>
       </section>
 
+      <section v-if="status?.bluestacks.length" class="android-card" data-theme-surface="card" data-testid="android-bluestacks">
+        <h3>{{ t('android.bluestacks') }}</h3>
+        <ul class="android-list">
+          <li v-for="instance in status.bluestacks" :key="instance.id">
+            <span class="android-device-name">{{ instance.name }}</span>
+            <span :class="instance.running ? 'android-running' : 'android-muted'">
+              {{ instance.running ? t('android.bluestacksRunning', { port: instance.port }) : t('android.bluestacksStopped') }}
+            </span>
+          </li>
+        </ul>
+        <p v-if="status.bluestacks.some(instance => !instance.adbEnabled)" class="android-notice">{{ t('android.bluestacksAdbOff') }}</p>
+      </section>
+
       <section class="android-card" data-theme-surface="card">
         <h3>{{ t('android.connectTitle') }}</h3>
         <p class="android-muted">{{ t('android.connectHint') }}</p>
@@ -320,6 +341,28 @@ onBeforeUnmount(() => {
           <NInput v-model:value="pairCode" size="small" :placeholder="t('android.pairCode')" maxlength="6" />
           <NButton size="small" attr-type="submit" :disabled="!pairEndpoint.trim() || pairCode.length !== 6" :loading="busy === 'pair'">{{ t('android.pair') }}</NButton>
         </form>
+      </section>
+
+      <section v-if="status" class="android-card" data-theme-surface="card" data-testid="android-settings">
+        <h3>{{ t('android.settingsTitle') }}</h3>
+        <label class="android-row">
+          <NSwitch
+            size="small"
+            :value="status.settings.detectBlueStacks"
+            :loading="busy === 'detect'"
+            data-testid="android-detect-bluestacks"
+            @update:value="setDetectBlueStacks"
+          />
+          <span>{{ t('android.detectBluestacks') }}</span>
+        </label>
+        <h3>{{ t('android.remembered') }}</h3>
+        <p class="android-muted">{{ t('android.rememberedHint') }}</p>
+        <ul class="android-list" data-testid="android-remembered">
+          <li v-for="endpoint in status.settings.autoConnect" :key="endpoint">
+            <span class="android-device-meta">{{ endpoint }}</span>
+            <NButton size="tiny" quaternary :loading="busy === `forget:${endpoint}`" @click="forget(endpoint)">{{ t('android.forget') }}</NButton>
+          </li>
+        </ul>
       </section>
 
       <section v-if="phone" class="android-card" data-theme-surface="card" data-testid="android-this-phone">
