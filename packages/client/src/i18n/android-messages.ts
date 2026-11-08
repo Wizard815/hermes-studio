@@ -64,7 +64,11 @@ export const androidMessages = {
       "detectBluestacks": "Find BlueStacks on this PC automatically",
       "remembered": "Reconnect automatically",
       "rememberedHint": "Devices you connect are remembered and reconnect when they are reachable. Disconnect forgets one.",
-      "forget": "Forget"
+      "forget": "Forget",
+      "adbServer": "Use devices from another computer",
+      "adbServerHint": "On the computer with BlueStacks, the emulator or USB phones, run: adb kill-server, then adb -a -P 5037 nodaemon server. Enter that computer's address here, or leave it empty to use this machine.",
+      "save": "Save",
+      "usingServer": "Devices from {server}"
     }
   },
   "zh": {
@@ -131,7 +135,11 @@ export const androidMessages = {
       "detectBluestacks": "自动查找这台电脑上的 BlueStacks",
       "remembered": "自动重新连接",
       "rememberedHint": "你连接过的设备会被记住，在可访问时自动重新连接。断开连接会忘记该设备。",
-      "forget": "忘记"
+      "forget": "忘记",
+      "adbServer": "使用另一台电脑上的设备",
+      "adbServerHint": "在装有 BlueStacks、模拟器或 USB 手机的电脑上运行：adb kill-server，然后 adb -a -P 5037 nodaemon server。在这里输入那台电脑的地址；留空则使用本机。",
+      "save": "保存",
+      "usingServer": "来自 {server} 的设备"
     }
   },
   "zh-TW": {
@@ -198,7 +206,11 @@ export const androidMessages = {
       "detectBluestacks": "自動尋找這台電腦上的 BlueStacks",
       "remembered": "自動重新連線",
       "rememberedHint": "你連線過的裝置會被記住，可連線時自動重新連線。中斷連線會忘記該裝置。",
-      "forget": "忘記"
+      "forget": "忘記",
+      "adbServer": "使用另一台電腦上的裝置",
+      "adbServerHint": "在裝有 BlueStacks、模擬器或 USB 手機的電腦上執行：adb kill-server，然後 adb -a -P 5037 nodaemon server。在這裡輸入那台電腦的位址；留空則使用本機。",
+      "save": "儲存",
+      "usingServer": "來自 {server} 的裝置"
     }
   },
   "ja": {
@@ -265,7 +277,11 @@ export const androidMessages = {
       "detectBluestacks": "この PC の BlueStacks を自動で見つける",
       "remembered": "自動で再接続",
       "rememberedHint": "接続したデバイスは記憶され、接続できるときに自動で再接続します。切断すると記憶から外れます。",
-      "forget": "削除"
+      "forget": "削除",
+      "adbServer": "別のコンピューターのデバイスを使う",
+      "adbServerHint": "BlueStacks、エミュレーター、USB 接続のスマートフォンがあるコンピューターで adb kill-server を実行し、次に adb -a -P 5037 nodaemon server を実行します。そのコンピューターのアドレスをここに入力します。空欄ならこのマシンを使います。",
+      "save": "保存",
+      "usingServer": "{server} のデバイス"
     }
   },
   "ko": {
@@ -332,7 +348,11 @@ export const androidMessages = {
       "detectBluestacks": "이 PC의 BlueStacks 자동 찾기",
       "remembered": "자동으로 다시 연결",
       "rememberedHint": "연결한 기기는 기억되며 연결할 수 있을 때 자동으로 다시 연결됩니다. 연결 해제하면 기억에서 지워집니다.",
-      "forget": "지우기"
+      "forget": "지우기",
+      "adbServer": "다른 컴퓨터의 기기 사용",
+      "adbServerHint": "BlueStacks, 에뮬레이터 또는 USB 휴대폰이 있는 컴퓨터에서 adb kill-server 후 adb -a -P 5037 nodaemon server를 실행하세요. 그 컴퓨터의 주소를 여기에 입력하고, 비워 두면 이 컴퓨터를 사용합니다.",
+      "save": "저장",
+      "usingServer": "{server}의 기기"
     }
   },
   "de": {
@@ -399,7 +419,11 @@ export const androidMessages = {
       "detectBluestacks": "BlueStacks auf diesem PC automatisch finden",
       "remembered": "Automatisch neu verbinden",
       "rememberedHint": "Verbundene Geräte werden gemerkt und neu verbunden, sobald sie erreichbar sind. Trennen vergisst ein Gerät.",
-      "forget": "Vergessen"
+      "forget": "Vergessen",
+      "adbServer": "Geräte eines anderen Computers verwenden",
+      "adbServerHint": "Auf dem Computer mit BlueStacks, Emulator oder USB-Telefonen ausführen: adb kill-server, dann adb -a -P 5037 nodaemon server. Gib hier die Adresse dieses Computers ein oder lass das Feld leer für diesen Rechner.",
+      "save": "Speichern",
+      "usingServer": "Geräte von {server}"
     }
   },
   "es": {
@@ -466,7 +490,11 @@ export const androidMessages = {
       "detectBluestacks": "Buscar BlueStacks en este PC automáticamente",
       "remembered": "Reconectar automáticamente",
       "rememberedHint": "Los dispositivos que conectas se recuerdan y se reconectan cuando están accesibles. Desconectar olvida uno.",
-      "forget": "Olvidar"
+      "forget": "Olvidar",
+      "adbServer": "Usar dispositivos de otro equipo",
+      "adbServerHint": "En el equipo con BlueStacks, el emulador o los teléfonos USB, ejecuta: adb kill-server y luego adb -a -P 5037 nodaemon server. Escribe aquí la dirección de ese equipo o déjalo vacío para usar este.",
+      "save": "Guardar",
+      "usingServer": "Dispositivos de {server}"
     }
   },
   "fr": {
@@ -533,7 +561,11 @@ export const androidMessages = {
       "detectBluestacks": "Trouver BlueStacks sur ce PC automatiquement",
       "remembered": "Reconnexion automatique",
       "rememberedHint": "Les appareils connectés sont mémorisés et reconnectés dès qu’ils sont joignables. Déconnecter en oublie un.",
-      "forget": "Oublier"
+      "forget": "Oublier",
+      "adbServer": "Utiliser les appareils d’un autre ordinateur",
+      "adbServerHint": "Sur l’ordinateur avec BlueStacks, l’émulateur ou les téléphones USB, lancez : adb kill-server, puis adb -a -P 5037 nodaemon server. Saisissez ici l’adresse de cet ordinateur, ou laissez vide pour utiliser cette machine.",
+      "save": "Enregistrer",
+      "usingServer": "Appareils de {server}"
     }
   },
   "pt": {
@@ -600,7 +632,11 @@ export const androidMessages = {
       "detectBluestacks": "Encontrar o BlueStacks neste PC automaticamente",
       "remembered": "Reconectar automaticamente",
       "rememberedHint": "Os dispositivos conectados são lembrados e reconectados quando estiverem acessíveis. Desconectar esquece um.",
-      "forget": "Esquecer"
+      "forget": "Esquecer",
+      "adbServer": "Usar dispositivos de outro computador",
+      "adbServerHint": "No computador com BlueStacks, emulador ou telefones USB, execute: adb kill-server e depois adb -a -P 5037 nodaemon server. Digite aqui o endereço desse computador ou deixe vazio para usar esta máquina.",
+      "save": "Salvar",
+      "usingServer": "Dispositivos de {server}"
     }
   },
   "ru": {
@@ -667,7 +703,11 @@ export const androidMessages = {
       "detectBluestacks": "Находить BlueStacks на этом ПК автоматически",
       "remembered": "Переподключать автоматически",
       "rememberedHint": "Подключённые устройства запоминаются и переподключаются, когда доступны. Отключение удаляет устройство из списка.",
-      "forget": "Забыть"
+      "forget": "Забыть",
+      "adbServer": "Использовать устройства другого компьютера",
+      "adbServerHint": "На компьютере с BlueStacks, эмулятором или USB-телефонами выполните: adb kill-server, затем adb -a -P 5037 nodaemon server. Введите здесь адрес этого компьютера или оставьте поле пустым, чтобы использовать эту машину.",
+      "save": "Сохранить",
+      "usingServer": "Устройства с {server}"
     }
   },
   "tr": {
@@ -734,7 +774,11 @@ export const androidMessages = {
       "detectBluestacks": "Bu bilgisayardaki BlueStacks'i otomatik bul",
       "remembered": "Otomatik yeniden bağlan",
       "rememberedHint": "Bağladığınız cihazlar hatırlanır ve erişilebilir olduklarında yeniden bağlanır. Bağlantıyı kesmek cihazı unutur.",
-      "forget": "Unut"
+      "forget": "Unut",
+      "adbServer": "Başka bir bilgisayarın cihazlarını kullan",
+      "adbServerHint": "BlueStacks, emülatör veya USB telefonların olduğu bilgisayarda şunu çalıştırın: adb kill-server, ardından adb -a -P 5037 nodaemon server. O bilgisayarın adresini buraya girin veya bu makineyi kullanmak için boş bırakın.",
+      "save": "Kaydet",
+      "usingServer": "{server} cihazları"
     }
   },
   "ar": {
@@ -801,7 +845,11 @@ export const androidMessages = {
       "detectBluestacks": "العثور على BlueStacks على هذا الكمبيوتر تلقائيًا",
       "remembered": "إعادة الاتصال تلقائيًا",
       "rememberedHint": "تُحفظ الأجهزة التي تتصل بها ويُعاد الاتصال بها عندما تكون متاحة. قطع الاتصال يحذف الجهاز.",
-      "forget": "نسيان"
+      "forget": "نسيان",
+      "adbServer": "استخدام أجهزة كمبيوتر آخر",
+      "adbServerHint": "على الكمبيوتر الذي يحوي BlueStacks أو المحاكي أو هواتف USB شغّل: adb kill-server ثم adb -a -P 5037 nodaemon server. أدخل عنوان ذلك الكمبيوتر هنا، أو اتركه فارغًا لاستخدام هذا الجهاز.",
+      "save": "حفظ",
+      "usingServer": "الأجهزة من {server}"
     }
   }
 }

@@ -36,7 +36,7 @@ async function openFixture(page: Page) {
   const requests: Array<{ method: string; path: string; body: any }> = []
   const socket: SocketLog = { events: [] }
   const errors: string[] = []
-  let settings = { adbPath: '', sdkPath: '', streamWidth: 540, autoConnect: ['192.168.1.20:5555'], detectBlueStacks: true }
+  let settings = { adbPath: '', sdkPath: '', streamWidth: 540, autoConnect: ['192.168.1.20:5555'], detectBlueStacks: true, adbServer: '' }
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(() => { localStorage.setItem('hermes_locale', 'en'); (window as any).__APP_VERSION__ = 'test' })
   await page.routeWebSocket('**/socket.io/**', ws => serveAndroidSocket(ws, socket))
@@ -119,5 +119,15 @@ test('shows BlueStacks instances and manages remembered devices', async ({ page 
   await page.getByTestId('android-remembered').getByRole('button', { name: 'Forget' }).click()
   await expect.poll(() => requests.filter(r => r.path === '/api/studio/android/settings').at(-1)?.body).toEqual({ autoConnect: [] })
   await expect(page.getByTestId('android-remembered').locator('li')).toHaveCount(0)
+  expect(errors).toEqual([])
+})
+
+test('uses devices from another computer through its adb server', async ({ page }) => {
+  const { requests, errors } = await openFixture(page)
+  await page.goto('/__android_view__')
+  await page.getByTestId('android-adb-server').locator('input').fill('192.168.1.30')
+  await page.getByTestId('android-settings').getByRole('button', { name: 'Save' }).click()
+  await expect.poll(() => requests.find(r => r.path === '/api/studio/android/settings')?.body).toEqual({ adbServer: '192.168.1.30' })
+  await expect(page.getByTestId('android-view')).toContainText('Devices from 192.168.1.30')
   expect(errors).toEqual([])
 })

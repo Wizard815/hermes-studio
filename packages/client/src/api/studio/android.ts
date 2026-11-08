@@ -27,6 +27,7 @@ export interface AndroidSettings {
   streamWidth: number
   autoConnect: string[]
   detectBlueStacks: boolean
+  adbServer: string
 }
 
 export interface BlueStacksInstance {

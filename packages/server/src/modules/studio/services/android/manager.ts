@@ -18,9 +18,15 @@ export interface AndroidSettings extends AndroidToolPaths {
   autoConnect: string[]
   /** Find BlueStacks on this machine from its own config and connect to running instances. */
   detectBlueStacks: boolean
+  /**
+   * host:port of an adb server on another machine (`adb -a -P 5037 nodaemon server`).
+   * Empty: adb runs here. Set: every device that machine sees (BlueStacks, its
+   * emulators, its USB phones) is used through it.
+   */
+  adbServer: string
 }
 
-export const DEFAULT_ANDROID_SETTINGS: AndroidSettings = { adbPath: '', sdkPath: '', streamWidth: 540, autoConnect: [], detectBlueStacks: true }
+export const DEFAULT_ANDROID_SETTINGS: AndroidSettings = { adbPath: '', sdkPath: '', streamWidth: 540, autoConnect: [], detectBlueStacks: true, adbServer: '' }
 
 export interface AndroidStatus {
   adb: string | null
@@ -52,7 +58,14 @@ export function normalizeSettings(input: Partial<AndroidSettings> | null | undef
       try { return [parseEndpoint(String(value))] } catch { return [] }
     }))].slice(0, MAX_AUTO_CONNECT),
     detectBlueStacks: input?.detectBlueStacks !== false,
+    adbServer: adbServerEndpoint(input?.adbServer),
   }
+}
+
+/** A remote adb server as host:port (default port 5037), or '' for local adb. */
+export function adbServerEndpoint(value: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : ''
+  return text ? parseEndpoint(text, 5037) : ''
 }
 
 /** host and port of a `host:port` endpoint (IPv6 in brackets). */
@@ -92,6 +105,7 @@ export class AndroidDeviceManager {
   private queues = new Map<string, Promise<unknown>>()
   private logger: (message: string) => void = () => {}
   private lastReconnect = 0
+  private avdNames = new Map<string, string | null>()
   private detect: () => Promise<BlueStacksInstance[]> = () => detectBlueStacks()
   readonly frames: FrameHub
 
@@ -101,6 +115,7 @@ export class AndroidDeviceManager {
       screencap: serial => this.adb(['-s', serial, 'exec-out', 'screencap', '-p'], 10_000).then(result => result.stdout),
       compress,
       streamWidth: () => this.settings.streamWidth,
+      localEmulators: () => !this.settings.adbServer,
       log: message => this.logger(message),
     })
   }
@@ -121,6 +136,13 @@ export class AndroidDeviceManager {
     const next = normalizeSettings({ ...this.settings, ...input })
     if (next.adbPath && !existsSync(next.adbPath)) throw httpError(400, `adb was not found at ${next.adbPath}`)
     if (next.sdkPath && !existsSync(next.sdkPath)) throw httpError(400, `No Android SDK at ${next.sdkPath}`)
+    if (next.adbServer !== this.settings.adbServer) {
+      // Another adb server means other devices behind the same serials.
+      this.avdNames.clear()
+      this.sizes.clear()
+      this.lastReconnect = 0
+      this.frames.close('The adb server changed')
+    }
     this.settings = next
     if (this.settingsFile) {
       await mkdir(dirname(this.settingsFile), { recursive: true })
@@ -135,14 +157,23 @@ export class AndroidDeviceManager {
     return adb
   }
 
+  /** Global options that point adb at the configured server. */
+  private serverArgs(): string[] {
+    if (!this.settings.adbServer) return []
+    const at = this.settings.adbServer.lastIndexOf(':')
+    return ['-H', this.settings.adbServer.slice(0, at).replace(/^\[|\]$/g, ''), '-P', this.settings.adbServer.slice(at + 1)]
+  }
+
   adb(args: string[], timeoutMs = 15_000) {
-    return run(this.adbBinary(), args, { timeoutMs })
+    return run(this.adbBinary(), [...this.serverArgs(), ...args], { timeoutMs })
   }
 
   async status(): Promise<AndroidStatus> {
     const adb = resolveAdb(this.settings)
-    const emulator = resolveEmulator(this.settings)
-    const bluestacks = this.settings.detectBlueStacks ? await this.detect().catch(() => []) : []
+    // With a remote adb server, this machine's emulators and BlueStacks are not the ones in use.
+    const remote = Boolean(this.settings.adbServer)
+    const emulator = remote ? null : resolveEmulator(this.settings)
+    const bluestacks = this.settings.detectBlueStacks && !remote ? await this.detect().catch(() => []) : []
     const base = { adb, emulator, settings: this.getSettings(), adbVersion: null, devices: [], avds: [], bluestacks }
     if (!adb) return { ...base, avds: await this.listAvds(emulator, []) }
     try {
@@ -175,20 +206,30 @@ export class AndroidDeviceManager {
       // adb already lists a local BlueStacks as emulator-(port-1); a second connection would duplicate it.
       if (instance.running && instance.port && !present.has(`emulator-${instance.port - 1}`)) targets.add(`127.0.0.1:${instance.port}`)
     }
+    const remote = Boolean(this.settings.adbServer)
     await Promise.all([...targets].filter(target => !present.has(target)).map(async target => {
       const { host, port } = splitEndpoint(target)
-      if (!await tcpOpen(host, port)) return
+      // A remote adb server reaches targets from its own network, which a probe from here cannot judge.
+      if (!remote && !await tcpOpen(host, port)) return
       try { await this.adb(['connect', target], 10_000) } catch (error) { this.logger(`[android] reconnect ${target}: ${(error as Error).message}`) }
     }))
   }
 
   async listDevices(): Promise<AndroidDevice[]> {
     const devices = parseDevices((await this.adb(['devices', '-l'], 20_000)).stdout.toString('utf8'))
+    const online = new Set(devices.filter(device => device.state === 'device').map(device => device.serial))
+    for (const serial of this.avdNames.keys()) if (!online.has(serial)) this.avdNames.delete(serial)
     await Promise.all(devices.filter(device => device.kind === 'emulator' && device.state === 'device').map(async device => {
-      try {
-        const out = (await this.adb(['-s', device.serial, 'emu', 'avd', 'name'], 5_000)).stdout.toString('utf8')
-        device.avd = out.split(/\r?\n/)[0]?.trim() || undefined
-      } catch { /* an emulator in another container has no console here */ }
+      // Asked once per connection: BlueStacks and remote emulators have no console and make adb wait.
+      if (!this.avdNames.has(device.serial)) {
+        let name: string | null = null
+        try {
+          const out = (await this.adb(['-s', device.serial, 'emu', 'avd', 'name'], 3_000)).stdout.toString('utf8')
+          name = out.split(/\r?\n/)[0]?.trim() || null
+        } catch { /* no emulator console reachable from here */ }
+        this.avdNames.set(device.serial, name)
+      }
+      device.avd = this.avdNames.get(device.serial) ?? undefined
     }))
     return devices
   }

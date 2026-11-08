@@ -23,6 +23,46 @@ The live stream uses the emulator's own gRPC screen stream; it is adapted from
 [herdr-sim](https://github.com/wobsoriano/herdr-sim) (MIT). Every other device
 uses `adb exec-out screencap`, shrunk to a JPEG before it is sent.
 
+## Connecting to an emulator anywhere
+
+Studio talks to every device through adb, and adb works over the network, so
+where the emulator runs does not matter. There are three ways in:
+
+1. **Same machine as the Studio server** (the desktop app's own computer):
+   nothing to do. adb finds local emulators and BlueStacks by itself, and
+   Studio reads BlueStacks' config to name and connect its instances.
+2. **A device that listens on the network** (a phone with wireless debugging,
+   an emulator container such as docker-android): **Connect over the network**
+   with its `host:port`. Studio remembers it and reconnects it automatically.
+3. **Everything on another computer** (BlueStacks, Android Studio emulators,
+   USB phones on your gaming PC): run an adb server there and point Studio at
+   it under **Connection settings → Use devices from another computer**:
+
+   ```bash
+   adb kill-server
+   adb -a -P 5037 nodaemon server
+   ```
+
+   Enter that computer's `address:5037`. Studio then sees exactly what that
+   computer's adb sees, including BlueStacks without enabling anything but
+   BlueStacks' own ADB switch. Keep the terminal open (or run it as a service),
+   allow port 5037 through that computer's firewall, use the same adb version
+   on both sides (Docker image and platform-tools are both recent), and only do
+   this on a trusted network: anyone who can reach port 5037 controls those
+   devices. With a remote adb server, the emulator's fast stream is not
+   reachable, so screens arrive as screenshots, and **Start** for emulators is
+   hidden: start them on that computer.
+
+### Which emulator to use
+
+For developing and testing your own apps, the **Android Studio emulator
+(AVD)** is the better choice: current Android versions with Google APIs, a
+real `adb shell`, snapshots, and on the Studio machine the fast live stream.
+**BlueStacks** works (it is a full Android with ADB) but runs an older Android
+build tuned for games and gets the slower screenshot view. On Unraid, an AVD in
+a container with `/dev/kvm` (for example docker-android) gives you an emulator
+that is always on.
+
 ## Unraid / Docker
 
 The image includes `adb`, and `docker-compose.yml` keeps adb's key in
@@ -76,8 +116,10 @@ shows an address such as `127.0.0.1:5555`.
   instance under **BlueStacks on this PC**, and connects to the running ones.
   They appear in the device list under their BlueStacks name. Turn this off with
   **Find BlueStacks on this PC automatically**.
-- **Studio on Unraid:** BlueStacks only listens on the PC itself. On Windows,
-  forward a port to it from an administrator terminal, then connect Studio to
+- **Studio on Unraid:** BlueStacks only accepts adb connections from the PC
+  itself. The simplest route is an adb server on the PC (see *Connecting to an
+  emulator anywhere*, option 3). Alternatively, forward a port to BlueStacks
+  from an administrator terminal on Windows, then connect Studio to
   `<PC address>:15555`:
 
   ```bat

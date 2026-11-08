@@ -30,6 +30,7 @@ const apkInput = ref<HTMLInputElement | null>(null)
 const screen = ref<HTMLImageElement | null>(null)
 const phone = studioOwnBridge()
 const termuxCommand = ref('')
+const adbServer = ref('')
 const termuxResult = ref('')
 
 let socket: Socket | null = null
@@ -39,6 +40,8 @@ let pendingText = ''
 let textTimer: ReturnType<typeof setTimeout> | null = null
 let wheelDy = 0
 let wheelTimer: ReturnType<typeof setTimeout> | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
+const POLL_MS = 10_000
 
 const devices = computed(() => status.value?.devices ?? [])
 const ready = computed(() => devices.value.filter(device => device.state === 'device'))
@@ -56,13 +59,14 @@ function failure(error: unknown) {
   toast.error((error as Error)?.message || String(error))
 }
 
-async function refresh() {
-  loading.value = true
+async function refresh(quiet = false) {
+  if (!quiet) loading.value = true
   try {
     status.value = await fetchAndroidStatus()
+    if (!quiet) adbServer.value = status.value.settings.adbServer
     if (!ready.value.some(device => device.serial === selected.value)) selected.value = ready.value[0]?.serial ?? ''
   } catch (error) {
-    failure(error)
+    if (!quiet) failure(error)
   } finally {
     loading.value = false
   }
@@ -95,6 +99,16 @@ const pair = () => act('pair', async () => {
 const startAvd = (name: string) => act(`avd:${name}`, () => startAndroidAvd(name), t('android.emulatorStarting'))
 const disconnect = (serial: string) => act(`dc:${serial}`, () => disconnectAndroidDevice(serial))
 const stopEmulator = (serial: string) => act(`stop:${serial}`, () => stopAndroidEmulator(serial))
+// While the page is open, keep the list current so remembered devices and BlueStacks reconnect on their own.
+function poll() {
+  if (document.visibilityState === 'visible' && !busy.value) void refresh(true)
+}
+
+const saveAdbServer = () => act('adbServer', async () => {
+  await saveAndroidSettings({ adbServer: adbServer.value.trim() })
+  selected.value = ''
+})
+
 const setDetectBlueStacks = (value: boolean) => act('detect', () => saveAndroidSettings({ detectBlueStacks: value }))
 const forget = (endpoint: string) => act(`forget:${endpoint}`, () => saveAndroidSettings({
   autoConnect: (status.value?.settings.autoConnect ?? []).filter(item => item !== endpoint),
@@ -247,10 +261,12 @@ onMounted(() => {
   socket.on('connect', () => { if (selected.value) watchScreen(selected.value) })
   window.addEventListener('studio-own:termux-result', onTermuxResult)
   void refresh()
+  pollTimer = setInterval(poll, POLL_MS)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('studio-own:termux-result', onTermuxResult)
+  if (pollTimer) clearInterval(pollTimer)
   if (textTimer) clearTimeout(textTimer)
   if (wheelTimer) clearTimeout(wheelTimer)
   socket?.disconnect()
@@ -265,10 +281,12 @@ onBeforeUnmount(() => {
       <section class="android-card" data-theme-surface="card">
         <header class="android-card-head">
           <h2>{{ t('android.title') }}</h2>
-          <NButton size="small" quaternary :loading="loading" @click="refresh">{{ t('android.refresh') }}</NButton>
+          <NButton size="small" quaternary :loading="loading" @click="refresh()">{{ t('android.refresh') }}</NButton>
         </header>
         <p v-if="status && !status.adb" class="android-notice" data-testid="android-no-adb">{{ t('android.noAdb') }}</p>
-        <p v-else-if="status?.adbVersion" class="android-muted">adb {{ status.adbVersion }}</p>
+        <p v-else-if="status?.adbVersion" class="android-muted">
+          adb {{ status.adbVersion }}<template v-if="status.settings.adbServer"> · {{ t('android.usingServer', { server: status.settings.adbServer }) }}</template>
+        </p>
         <p v-if="status?.error" class="android-error">{{ status.error }}</p>
         <NSpin v-if="loading && !status" size="small" />
         <p v-else-if="status?.adb && !devices.length" class="android-muted">{{ t('android.noDevices') }}</p>
@@ -355,6 +373,12 @@ onBeforeUnmount(() => {
           />
           <span>{{ t('android.detectBluestacks') }}</span>
         </label>
+        <h3>{{ t('android.adbServer') }}</h3>
+        <p class="android-muted">{{ t('android.adbServerHint') }}</p>
+        <form class="android-row" @submit.prevent="saveAdbServer">
+          <NInput v-model:value="adbServer" size="small" placeholder="192.168.1.30:5037" clearable data-testid="android-adb-server" />
+          <NButton size="small" attr-type="submit" :disabled="adbServer.trim() === status.settings.adbServer" :loading="busy === 'adbServer'">{{ t('android.save') }}</NButton>
+        </form>
         <h3>{{ t('android.remembered') }}</h3>
         <p class="android-muted">{{ t('android.rememberedHint') }}</p>
         <ul class="android-list" data-testid="android-remembered">

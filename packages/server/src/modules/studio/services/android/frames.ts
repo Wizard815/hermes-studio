@@ -20,6 +20,8 @@ export interface FrameHubDeps {
   /** Shrinks a screencap for the wire; returns the input when it cannot. */
   compress(png: Buffer, width: number): Promise<{ data: Buffer; mime: 'image/png' | 'image/jpeg'; width: number; height: number }>
   streamWidth(): number
+  /** False when adb runs on another machine: that emulator's gRPC stream is not reachable here. */
+  localEmulators?(): boolean
   log(message: string): void
 }
 
@@ -76,11 +78,15 @@ export class FrameHub {
     }
   }
 
-  close(): void {
+  /** Stops every feed; with a reason, viewers are told their screen ended. */
+  close(reason?: string): void {
     // Forget the feeds first: a stopping emulator stream must not fall back to screencap.
     const feeds = [...this.feeds.values()]
     this.feeds.clear()
-    for (const feed of feeds) feed.stop()
+    for (const feed of feeds) {
+      feed.stop()
+      if (reason) for (const listener of feed.endListeners) listener(reason)
+    }
   }
 
   private publish(serial: string, feed: Feed, frame: AndroidFrame) {
@@ -97,7 +103,8 @@ export class FrameHub {
 
   private start(serial: string, feed: Feed) {
     const consolePort = /^emulator-(\d+)$/.exec(serial)?.[1]
-    const endpoint = consolePort ? discoverGrpc(consolePort) : null
+    const local = this.deps.localEmulators?.() ?? true
+    const endpoint = consolePort && local ? discoverGrpc(consolePort) : null
     if (endpoint) {
       feed.source = 'emulator'
       const stream = streamEmulatorScreen(endpoint, this.deps.streamWidth(), png => {

@@ -296,3 +296,54 @@ describe.runIf(process.platform !== 'win32')('remembered devices and BlueStacks 
     manager.shutdown()
   })
 })
+
+describe.runIf(process.platform !== 'win32')('remote adb server and emulator names', () => {
+  let dir = ''
+  afterEach(async () => { await rm(dir, { recursive: true, force: true }) })
+
+  async function setup() {
+    dir = await mkdtemp(join(tmpdir(), 'android-remote-'))
+    const log = join(dir, 'adb.log')
+    const adb = join(dir, 'adb')
+    // emulator-5554 answers `emu avd name` (an AVD); emulator-5556 is BlueStacks and has no console.
+    await writeFile(adb, `#!/bin/sh
+printf '%s\\n' "$*" >> "${log}"
+case "$*" in
+  *"devices -l") printf 'List of devices attached\\nemulator-5554 device model:sdk\\nemulator-5556 device model:SM_S908E\\n' ;;
+  *"emulator-5554 emu avd name") printf 'Pixel_8\\nOK\\n' ;;
+  *"emulator-5556 emu avd name") echo "error: could not connect to TCP port 5557" >&2; exit 1 ;;
+esac
+`)
+    await chmod(adb, 0o755)
+    const manager = new AndroidDeviceManager(async data => ({ data, mime: 'image/png', width: 1, height: 1 }), async () => [])
+    await manager.configure(join(dir, 'settings.json'), () => {})
+    await manager.updateSettings({ adbPath: adb })
+    return { manager, calls: async () => (await readFile(log, 'utf8')).trim().split('\n') }
+  }
+
+  it('asks each emulator for its AVD name once per connection', async () => {
+    const { manager, calls } = await setup()
+    const first = await manager.listDevices()
+    await manager.listDevices()
+    expect(first.map(d => d.avd ?? null)).toEqual(['Pixel_8', null])
+    expect((await calls()).filter(c => c.endsWith('emu avd name'))).toHaveLength(2)
+    manager.shutdown()
+  })
+
+  it('sends every adb command to the configured server and hides this machine\'s emulators', async () => {
+    const { manager, calls } = await setup()
+    await expect(manager.updateSettings({ adbServer: 'gaming-pc;rm' })).rejects.toThrow(/host and port/)
+    await manager.updateSettings({ adbServer: 'gaming-pc' })
+    expect(manager.getSettings().adbServer).toBe('gaming-pc:5037')
+    const status = await manager.status()
+    expect(status.emulator).toBeNull()
+    expect(status.bluestacks).toEqual([])
+    expect(status.devices.map(d => d.serial)).toEqual(['emulator-5554', 'emulator-5556'])
+    const remote = (await calls()).filter(c => c.includes('devices -l'))
+    expect(remote.at(-1)).toBe('-H gaming-pc -P 5037 devices -l')
+    await manager.updateSettings({ adbServer: '' })
+    await manager.listDevices()
+    expect((await calls()).at(-1)?.startsWith('-H')).toBe(false)
+    manager.shutdown()
+  })
+})
