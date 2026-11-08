@@ -64,6 +64,8 @@ export interface HerdrStatus {
   publicUrl?: string
   /** herdr's collapsed-rail width (4 or 0) and phone-layout width, for Studio's embedded view. */
   view?: { rail: number; mobileWidth: number }
+  /** Whether herdr shows its first-run welcome screen (herdr's own `onboarding` option). */
+  welcome?: boolean
 }
 
 export interface HerdrLink { paneId: string; workspaceId: string; status: HerdrStatusValue }
@@ -74,6 +76,9 @@ export const fetchHerdrStatus = () => request<HerdrStatus>(base)
 
 export const saveHerdrSettings = (settings: Partial<HerdrSettings>) =>
   request<{ settings: HerdrSettings }>(`${base}/settings`, { method: 'PUT', body: JSON.stringify(settings) })
+
+export const setHerdrWelcome = (show: boolean) =>
+  request<{ welcome: boolean }>(`${base}/welcome`, { method: 'PUT', body: JSON.stringify({ show }) })
 
 export const startHerdrServer = () => request<HerdrStatus>(`${base}/server/start`, { method: 'POST', body: '{}' })
 

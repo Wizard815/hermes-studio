@@ -7,6 +7,7 @@ export const herdrRoutes = new Router()
 
 herdrRoutes.get('/api/coding-agents/herdr', requireSuperAdmin, ctrl.status)
 herdrRoutes.put('/api/coding-agents/herdr/settings', requireSuperAdmin, ctrl.updateSettings)
+herdrRoutes.put('/api/coding-agents/herdr/welcome', requireSuperAdmin, ctrl.updateWelcome)
 herdrRoutes.post('/api/coding-agents/herdr/server/start', requireSuperAdmin, ctrl.startServer)
 herdrRoutes.post('/api/coding-agents/herdr/integrations', requireSuperAdmin, ctrl.installIntegrations)
 herdrRoutes.post('/api/coding-agents/herdr/plugin-install', requireSuperAdmin, ctrl.installPlugin)

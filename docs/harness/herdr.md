@@ -125,6 +125,16 @@ tasks and plans, projects, ideas, upkeep, and Control).
   `cropLeft`), unless herdr's config uses `sidebar_collapsed_mode = "hidden"`
   or the view is at or under herdr's phone layout width (`readHerdrView`).
   Windows (named pipes) keeps the shared preferences.
+- **Opening chats in herdr mode.** A chat whose agent is not running in herdr
+  opens there by itself when shown in herdr mode (once per chat;
+  `HerdrCenter` keeps "Open this chat in herdr" for a retry).
+- **herdr's welcome screen.** Studio's setup sets herdr's top-level
+  `onboarding = false` when the config does not say either way (Studio has
+  already installed the agent integrations the welcome walks through). The
+  herdr settings tab has "Show herdr's welcome screen" (`PUT
+  /api/coding-agents/herdr/welcome`, `setHerdrWelcome` in `keybind.ts`, same
+  backup and `herdr config check` as the keybinding). It is herdr's own option,
+  so it applies to every herdr client.
 - **Chat mode of herdr chats.** A chat herdr starts is Studio-routed
   (`agent_mode` `scoped`) only when launched with a real provider; native
   launches report the provider as `global` and are stored `global`

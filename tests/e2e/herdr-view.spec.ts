@@ -13,6 +13,7 @@ async function openFixture(page: Page, options: { enabled: boolean; installed?: 
   let enabled = options.enabled
   let installed = options.installed ?? true
   let profile = 'default'
+  let welcome = false
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(() => { localStorage.setItem('hermes_locale', 'en'); (window as any).__APP_VERSION__ = 'test' })
   await page.routeWebSocket('**/socket.io/**', () => {})
@@ -24,6 +25,10 @@ async function openFixture(page: Page, options: { enabled: boolean; installed?: 
       enabled = request.postDataJSON().enabled ?? enabled
       profile = request.postDataJSON().profile ?? profile
       return route.fulfill({ json: { settings: { enabled, autoStart: true, setupVersion: '', binaryPath: '', session: '', autoImport: true, mirrorTranscripts: true, profile } } })
+    }
+    if (url.pathname === '/api/coding-agents/herdr/welcome') {
+      welcome = request.postDataJSON().show
+      return route.fulfill({ json: { welcome } })
     }
     if (url.pathname === '/api/coding-agents/herdr/profiles') return route.fulfill({ json: { profiles: ['default', 'work'] } })
     if (url.pathname === '/api/coding-agents/herdr/install') {
@@ -38,6 +43,7 @@ async function openFixture(page: Page, options: { enabled: boolean; installed?: 
         error: '',
         bridge: enabled ? { connected: true, error: '', version: '0.9.5', focusedPaneId: 'w1:p1', workspaces: [{ workspace_id: 'w1', label: 'api', agent_status: 'blocked' }, { workspace_id: 'w2', label: 'site', agent_status: 'done' }], panes: PANES } : null,
         integrations: ['claude', 'codex'],
+        welcome,
       } })
     }
     if (url.pathname === '/api/coding-agents') {
@@ -109,5 +115,11 @@ test('installing herdr from Studio and choosing the profile for herdr chats', as
   await page.getByTestId('herdr-profile').click()
   await page.locator('.n-base-select-option', { hasText: 'work' }).click()
   await expect.poll(() => requests.filter(r => r.path === '/api/coding-agents/herdr/settings').map(r => r.body)).toContainEqual({ profile: 'work' })
+  // herdr's welcome screen starts skipped after Studio's setup; the user can bring it back.
+  const welcome = page.getByTestId('herdr-welcome')
+  await expect(welcome).toHaveAttribute('aria-checked', 'false')
+  await welcome.click()
+  await expect.poll(() => requests.filter(r => r.path === '/api/coding-agents/herdr/welcome').map(r => r.body)).toEqual([{ show: true }])
+  await expect(welcome).toHaveAttribute('aria-checked', 'true')
   expect(errors).toEqual([])
 })

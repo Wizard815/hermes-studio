@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { fetchHerdrProfiles, installHerdr, installHerdrIntegrations, installHerdrStudioPlugin, setupHerdr, type HerdrSetupResult } from '@/api/coding-agents/herdr'
+import { fetchHerdrProfiles, installHerdr, installHerdrIntegrations, installHerdrStudioPlugin, setHerdrWelcome, setupHerdr, type HerdrSetupResult } from '@/api/coding-agents/herdr'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 
 const { t } = useI18n()
@@ -70,6 +70,19 @@ async function save(patch: Record<string, unknown>) {
   saving.value = true
   try {
     await herdr.updateSettings(patch)
+  } catch (err: any) {
+    toast.error(err?.message || String(err))
+  } finally {
+    saving.value = false
+  }
+}
+
+/** herdr's own welcome screen: a herdr config option, so it applies to every herdr client. */
+async function saveWelcome(show: boolean) {
+  saving.value = true
+  try {
+    await setHerdrWelcome(show)
+    await herdr.refresh()
   } catch (err: any) {
     toast.error(err?.message || String(err))
   } finally {
@@ -157,6 +170,10 @@ async function startServer() {
     <label class="herdr-settings-row">
       <span>{{ t('herdr.settings.mirror') }}</span>
       <NSwitch :value="settings?.mirrorTranscripts !== false" @update:value="value => save({ mirrorTranscripts: value })" />
+    </label>
+    <label v-if="herdr.status?.installed" class="herdr-settings-row">
+      <span>{{ t('herdr.settings.welcome') }}</span>
+      <NSwitch :value="herdr.status?.welcome !== false" :disabled="saving" data-testid="herdr-welcome" @update:value="saveWelcome" />
     </label>
 
     <div class="herdr-settings-grid">

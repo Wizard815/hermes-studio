@@ -70,6 +70,17 @@ async function openHere() {
   }
 }
 
+/**
+ * In herdr mode, a chat whose agent is not running in herdr opens there by
+ * itself (once per chat; the button stays for a retry if that fails).
+ */
+const autoOpened = new Set<string>()
+watch(() => [props.active, props.sessionId, herdr.enabled, herdr.bridge?.connected, !!linked.value] as const, ([active, sessionId, enabled, connected, isLinked]) => {
+  if (!active || !enabled || !connected || isLinked || opening.value || autoOpened.has(sessionId)) return
+  autoOpened.add(sessionId)
+  void openHere()
+}, { immediate: true })
+
 onMounted(() => {
   herdr.acquire()
   if (!herdr.status) void herdr.refresh()

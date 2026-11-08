@@ -111,3 +111,19 @@ describe('herdr layout facts for Studio\'s embedded view', () => {
     expect(herdrView('[ui]\nsidebar_collapsed_mode = "hidden"\nmobile_width_threshold = 80 # tablets\n[keys]\nmobile_width_threshold = 1\n')).toEqual({ rail: 0, mobileWidth: 80 })
   })
 })
+
+describe('herdr welcome screen option', () => {
+  it('reads and sets top-level onboarding without touching sections', async () => {
+    const { herdrWelcome, withHerdrWelcome } = await import('../../packages/server/src/modules/coding-agents/services/herdr/keybind')
+    expect(herdrWelcome('')).toBeNull()
+    expect(herdrWelcome('onboarding = false\n[keys]\n')).toBe(false)
+    // A key with the same name inside a section is not the top-level option.
+    expect(herdrWelcome('[ui]\nonboarding = false\n')).toBeNull()
+    const config = '# mine\n[keys]\nprefix = "ctrl+a"\n'
+    const skipped = withHerdrWelcome(config, false)
+    expect(skipped).toBe('onboarding = false\n# mine\n[keys]\nprefix = "ctrl+a"\n')
+    expect(herdrWelcome(skipped)).toBe(false)
+    expect(withHerdrWelcome(skipped, true)).toBe('onboarding = true\n# mine\n[keys]\nprefix = "ctrl+a"\n')
+    expect(withHerdrWelcome('﻿[keys]\n', false)).toBe('﻿onboarding = false\n[keys]\n')
+  })
+})

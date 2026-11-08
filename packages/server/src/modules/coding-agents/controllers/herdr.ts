@@ -39,6 +39,14 @@ export async function updateSettings(ctx: Context) {
   } catch (error) { fail(ctx, error, 'Failed to save herdr settings') }
 }
 
+export async function updateWelcome(ctx: Context) {
+  try {
+    const show = (ctx.request.body as { show?: unknown } | undefined)?.show
+    if (typeof show !== 'boolean') throw Object.assign(new Error('show must be true or false'), { status: 400 })
+    ctx.body = { welcome: await herdrManager.setWelcome(show) }
+  } catch (error) { fail(ctx, error, 'Failed to change herdr\'s welcome screen') }
+}
+
 export async function startServer(ctx: Context) {
   try {
     ctx.body = await herdrManager.startServer()

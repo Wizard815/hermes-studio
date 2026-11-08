@@ -63,13 +63,13 @@ test('herdr\'s own UI opens on the chat\'s agent, with one-tap herdr keys', asyn
   expect(errors).toEqual([])
 })
 
-test('a chat not running in herdr can be opened there without leaving the page', async ({ page }) => {
+test('in herdr mode a chat not running in herdr opens there by itself, once', async ({ page }) => {
   const { posts, errors } = await openCenter(page, 'chat-new')
   await expect(page.locator('.herdr-terminal')).toBeVisible()
-  await page.getByTestId('herdr-center-open').click()
   await expect.poll(() => posts).toContain('/api/coding-agents/herdr/sessions/chat-new/open')
   await expect(page.getByTestId('herdr-center-agent')).toContainText('fresh')
   await expect.poll(() => posts).toContain('/api/coding-agents/herdr/panes/w3%3Ap1/focus')
+  expect(posts.filter(path => path.endsWith('/sessions/chat-new/open'))).toHaveLength(1)
   expect(page.url()).toContain('__herdr_center__')
   expect(errors).toEqual([])
 })

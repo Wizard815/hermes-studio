@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path'
 import { HerdrBridge, type HerdrBridgeDeps, type HerdrBridgeState } from './bridge'
 import { findPluginScript, installHerdrPlugin, pluginTokenMatches, readOrCreatePluginToken, type PluginInstallResult } from './plugin'
 import { installHerdrRelease } from './install'
-import { installStudioKeybinding, readHerdrKeys, readHerdrView, type HerdrKeys, type HerdrView, type KeybindResult } from './keybind'
+import { installStudioKeybinding, readHerdrKeys, readHerdrView, readHerdrWelcome, setHerdrWelcome, type HerdrKeys, type HerdrView, type KeybindResult } from './keybind'
 import { herdrKindForStudioAgent } from './protocol'
 import { SpaceFolderStore } from './folders'
 import { homedir } from 'node:os'
@@ -55,6 +55,8 @@ export interface HerdrStatus {
   keys: HerdrKeys
   /** herdr layout facts for Studio's embedded view. */
   view: HerdrView
+  /** Whether herdr shows its first-run welcome screen (herdr's `onboarding`). */
+  welcome: boolean
   /** Where browsers reach Studio: HERMES_WEB_UI_PUBLIC_URL, else the last browser address (a public https one first). */
   publicUrl: string
 }
@@ -188,6 +190,9 @@ export class HerdrManager {
       const integrations = kinds.length ? await this.installIntegrations([...new Set(kinds)]) : []
       const plugin = await this.installPlugin().catch(error => ({ error: error instanceof Error ? error.message : String(error) }))
       const keybinding = await installStudioKeybinding(binary, this.settings).catch(error => ({ error: error instanceof Error ? error.message : String(error) }))
+      // Studio has just done what herdr's welcome walks you through (agent
+      // integrations), so it starts skipped; a choice already in herdr's config stays.
+      if (await readHerdrWelcome() === null) await setHerdrWelcome(binary, this.settings, false).catch(() => false)
       await this.updateSettings({ setupVersion: version || 'unknown' })
       return { version, integrations, plugin, keybinding }
     })()
@@ -241,6 +246,11 @@ export class HerdrManager {
     const binary = this.binary()
     if (!binary) throw Object.assign(new Error('herdr is not installed. Install it from https://herdr.dev or set its path in settings.'), { status: 404 })
     return binary
+  }
+
+  /** Show or skip herdr's welcome screen (a herdr config option, so it applies to every herdr client). */
+  async setWelcome(show: boolean): Promise<boolean> {
+    return setHerdrWelcome(this.requireBinary(), this.settings, show)
   }
 
   async updateSettings(input: Partial<HerdrSettings>): Promise<HerdrSettings> {
@@ -310,6 +320,7 @@ export class HerdrManager {
       home: homedir(),
       keys: await readHerdrKeys(),
       view: await readHerdrView(),
+      welcome: (await readHerdrWelcome()) !== false,
       publicUrl: this.publicUrl(),
     }
   }

@@ -190,3 +190,66 @@ export async function installStudioKeybinding(binary: string, settings: Pick<Her
   await runHerdr(binary, herdrArgs(settings, ['server', 'reload-config']), 15000).catch(() => '')
   return { key, path, added: true, message: 'bound' }
 }
+
+/**
+ * herdr's first-run welcome screen (top-level `onboarding`): true or false
+ * when the config says so, null when unset (herdr then shows it).
+ */
+export function herdrWelcome(userConfig: string): boolean | null {
+  for (const raw of userConfig.replace(/^﻿/, '').split(/\r?\n/)) {
+    const line = raw.replace(/\s+#.*$/, '').trim()
+    if (/^\[/.test(line)) break
+    const match = line.match(/^onboarding\s*=\s*(true|false)\b/)
+    if (match) return match[1] === 'true'
+  }
+  return null
+}
+
+/** Set top-level `onboarding`, keeping everything else in the file as it is. */
+export function withHerdrWelcome(userConfig: string, show: boolean): string {
+  const lines = userConfig.split('\n')
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].replace(/^﻿/, '').trim()
+    if (line.startsWith('[')) break
+    if (/^onboarding\s*=/.test(line)) {
+      lines[index] = `${index === 0 && lines[0].startsWith('﻿') ? '﻿' : ''}onboarding = ${show}`
+      return lines.join('\n')
+    }
+  }
+  // Top-level keys must come before the first [section].
+  const bom = userConfig.startsWith('﻿') ? '﻿' : ''
+  const rest = bom ? userConfig.slice(1) : userConfig
+  return `${bom}onboarding = ${show}\n${rest}`
+}
+
+export async function readHerdrWelcome(env: NodeJS.ProcessEnv = process.env): Promise<boolean | null> {
+  const path = herdrConfigPath(env)
+  try { return herdrWelcome(existsSync(path) ? await readFile(path, 'utf8') : '') } catch { return null }
+}
+
+/**
+ * Show or skip herdr's welcome screen. Same safety as the keybinding: the
+ * config is backed up and restored if herdr rejects the edited file.
+ */
+export async function setHerdrWelcome(binary: string, settings: Pick<HerdrSettings, 'session'>, show: boolean, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  const path = herdrConfigPath(env)
+  const hadConfig = existsSync(path)
+  const userConfig = hadConfig ? await readFile(path, 'utf8') : ''
+  if (herdrWelcome(userConfig) === show) return show
+  await mkdir(dirname(path), { recursive: true })
+  const backup = `${path}.studio-backup`
+  if (hadConfig) await copyFile(path, backup)
+  await writeFile(path, withHerdrWelcome(userConfig, show))
+  try {
+    const check = await runHerdr(binary, ['config', 'check'], 15000)
+    if (!/ok/i.test(check)) throw new Error(check.trim() || 'herdr rejected the config')
+  } catch (error) {
+    if (hadConfig) await copyFile(backup, path)
+    else await rm(path, { force: true })
+    throw Object.assign(new Error(`herdr rejected the change: ${error instanceof Error ? error.message : String(error)}`), { status: 422 })
+  } finally {
+    if (hadConfig) await rm(backup, { force: true })
+  }
+  await runHerdr(binary, herdrArgs(settings, ['server', 'reload-config']), 15000).catch(() => '')
+  return show
+}
