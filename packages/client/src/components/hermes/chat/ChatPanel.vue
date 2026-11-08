@@ -66,7 +66,6 @@ import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
-import HerdrSpacesPanel from "@/components/coding-agents/herdr/HerdrSpacesPanel.vue";
 import ListActionsMenu from "@/components/layout/ListActionsMenu.vue";
 import OutlinePanel from "./OutlinePanel.vue";
 import ChatToolsPanel from "./ChatToolsPanel.vue";
@@ -136,10 +135,15 @@ const { t } = useI18n();
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
 // Coding-agent chats herdr can host (Claude Code, Codex, OpenCode, ...).
 const HERDR_ELIGIBLE_AGENTS = new Set(['claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot'])
+// By id and the chat list too: while Studio switches chats the loaded chat lags
+// behind, and herdr mode must not flicker off (it would reconnect herdr).
 const herdrEligible = computed(() => {
-  const session = chatStore.activeSession
+  const id = chatStore.activeSessionId
+  if (!id) return false
+  if (sessionStates.herdrLink(id)) return true
+  const active = chatStore.activeSession
+  const session = active && active.id === id ? active : chatStore.sessions.find(item => item.id === id)
   if (!session) return false
-  if (sessionStates.herdrLink(session.id)) return true
   const agent = session.codingAgentId || (session.agent === 'claude' ? 'claude-code' : session.agent)
   return !!agent && HERDR_ELIGIBLE_AGENTS.has(agent)
 })
@@ -151,6 +155,9 @@ const centerMode = ref<ChatCenter>((() => { try { return localStorage.getItem('s
 watch(centerMode, value => { try { localStorage.setItem('studio_chat_center', value) } catch { /* private mode */ } })
 const herdrCenterAvailable = computed(() => !props.standalone && isSuperAdmin.value && !!chatStore.activeSessionId && herdrEligible.value)
 const herdrCenterMounted = ref(false)
+/** The chat the herdr center follows; kept while switching so the center stays mounted. */
+const herdrSessionId = ref('')
+watch(() => [chatStore.activeSessionId, herdrEligible.value] as const, ([id, eligible]) => { if (id && eligible) herdrSessionId.value = id }, { immediate: true })
 const showHerdrCenter = computed(() => centerMode.value === 'herdr' && herdrCenterAvailable.value && !showNewChatPage.value)
 // Lazy: showHerdrCenter reads state declared further down, so it is first read from the template.
 watch(showHerdrCenter, value => { if (value) herdrCenterMounted.value = true })
@@ -2627,8 +2634,9 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
 
 <template>
   <div class="chat-panel" :class="{ 'chat-panel--standalone': standalone }">
+    <!-- herdr mode: the chat list closes; the herdr center has its own spaces and agents. -->
     <SessionListSidebar
-      v-if="hasPageSidebar"
+      v-if="hasPageSidebar && !(showHerdrCenter && contentMode === 'chat')"
       :expanded="showSessions"
       :navigation="contentMode !== 'chat'"
     >
@@ -2674,13 +2682,6 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
         />
       </template>
       <template #default>
-        <!-- herdr mode: the chat list closes and herdr's spaces (Studio folders 1:1) take its place. -->
-        <HerdrSpacesPanel
-          v-if="showHerdrCenter && contentMode === 'chat'"
-          :active-session-id="chatStore.activeSessionId"
-          @open-chat="sessionId => handleSessionClick(sessionId)"
-        />
-        <template v-else>
         <div
           v-if="chatStore.isLoadingSessions && chatStore.sessions.length === 0"
           class="session-loading"
@@ -2881,7 +2882,6 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               @toggle-select="toggleSessionSelection(s)"
             />
           </div>
-        </template>
         </template>
       </template>
     </SessionListSidebar>
@@ -3158,7 +3158,7 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
       <header v-if="!standalone" class="chat-header">
         <div class="header-left">
           <HeaderSidebarToggle
-            v-if="currentMode === 'chat'"
+            v-if="currentMode === 'chat' && !showHerdrCenter"
             class="header-sidebar-toggle"
             :expanded="showSessions"
             @toggle="showSessions = !showSessions"
@@ -3358,10 +3358,11 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
             </NewChatPage>
             <template v-else>
             <HerdrCenter
-              v-if="(herdrCenterMounted || showHerdrCenter) && herdrCenterAvailable && chatStore.activeSessionId"
+              v-if="(herdrCenterMounted || showHerdrCenter) && herdrSessionId"
               v-show="showHerdrCenter"
-              :session-id="chatStore.activeSessionId"
+              :session-id="herdrSessionId"
               :active="showHerdrCenter"
+              @open-chat="sessionId => handleSessionClick(sessionId)"
             />
             <MessageList
               v-show="!showHerdrCenter"

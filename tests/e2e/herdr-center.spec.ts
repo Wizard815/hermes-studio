@@ -29,6 +29,9 @@ async function openCenter(page: Page, session: string) {
         integrations: ['claude', 'codex'],
       } })
     }
+    if (path === '/api/studio/session-categories') return route.fulfill({ json: { categories: [] } })
+    if (path === '/api/coding-agents/herdr/folders') return route.fulfill({ json: { list: [], of: {}, at: 1 } })
+    if (path === '/api/studio/sessions') return route.fulfill({ json: { sessions: [] } })
     if (path.endsWith('/open')) {
       panes = [...panes, { pane_id: 'w3:p1', workspace_id: 'w3', agent: 'claude', agent_status: 'idle', label: 'fresh', studioAgent: 'claude-code', studioSessionId: 'chat-new' }]
       return route.fulfill({ json: { link: { paneId: 'w3:p1', workspaceId: 'w3', status: 'idle' } } })
@@ -52,6 +55,9 @@ test('herdr\'s own UI opens on the chat\'s agent, with one-tap herdr keys', asyn
   await expect(page.getByTestId('herdr-center-key-settings')).toHaveText('herdr settings')
   // A key the terminal cannot send (cmd+?) has no button.
   await expect(page.getByTestId('herdr-center-key-help')).toHaveCount(0)
+  // Studio's spaces and agents stand in for herdr's sidebar, inside the center.
+  await expect(page.getByTestId('herdr-center-rail').getByTestId('mission-space-row')).toHaveCount(3)
+  await expect(page.getByTestId('herdr-spaces-agents')).toContainText('auth refactor')
   await page.getByTestId('herdr-center-key-settings').hover()
   await expect(page.getByText('ctrl+a then s')).toBeVisible()
   expect(errors).toEqual([])

@@ -8,6 +8,7 @@ import { useHerdrStore } from '@/stores/hermes/herdr'
 import { focusHerdrPane, openSessionInHerdr, type HerdrPaneView } from '@/api/coding-agents/herdr'
 import { missionUrl } from '@/utils/mission-url'
 import { herdrKeyBytes } from '@/utils/herdr-keys'
+import HerdrSpacesPanel from './HerdrSpacesPanel.vue'
 
 /**
  * herdr in the chat page's center column: herdr's own full UI (its key bar,
@@ -16,6 +17,7 @@ import { herdrKeyBytes } from '@/utils/herdr-keys'
  * mounted together and only shows one, so swapping is instant.
  */
 const props = defineProps<{ sessionId: string; active: boolean }>()
+const emit = defineEmits<{ 'open-chat': [sessionId: string] }>()
 
 const { t } = useI18n()
 const toast = useMessage()
@@ -31,7 +33,7 @@ const linked = computed(() => panes.value.find(pane => pane.studioSessionId === 
 const KEY_DEFAULTS = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?', sidebar: 'prefix+b' }
 const keys = computed(() => ({ ...KEY_DEFAULTS, ...(herdr.status?.keys || {}) }))
 /** One-tap herdr keys: handy on a phone, where the prefix key is awkward. */
-const keyButtons = computed(() => (['search', 'workspaces', 'settings', 'help', 'sidebar'] as const)
+const keyButtons = computed(() => (['search', 'workspaces', 'settings', 'help'] as const)
   .map(name => ({ name, combo: keys.value[name], bytes: herdrKeyBytes(keys.value[name], keys.value.prefix) }))
   .filter(button => button.bytes != null))
 
@@ -97,7 +99,20 @@ onBeforeUnmount(() => herdr.release())
         </NTooltip>
         <a class="herdr-center-link" :href="missionUrl(linked ? { pane: linked.pane_id } : {})">{{ t('herdr.centerMission') }}</a>
       </header>
-      <HerdrTerminal v-if="started" ref="terminal" class="herdr-center-terminal" mode="client" />
+      <div class="herdr-center-body">
+        <!-- Studio's spaces (its folders) and agents stand in for herdr's own sidebar, whose rail is cropped off. -->
+        <aside class="herdr-center-rail" data-testid="herdr-center-rail">
+          <HerdrSpacesPanel :active-session-id="sessionId" @open-chat="id => emit('open-chat', id)" />
+        </aside>
+        <HerdrTerminal
+          v-if="started"
+          ref="terminal"
+          class="herdr-center-terminal"
+          mode="client"
+          :crop-left="herdr.status?.view?.rail ?? 4"
+          :crop-above="herdr.status?.view?.mobileWidth ?? 64"
+        />
+      </div>
     </template>
   </section>
 </template>
@@ -165,9 +180,30 @@ onBeforeUnmount(() => herdr.release())
   color: $text-secondary;
 }
 
-.herdr-center-terminal {
+.herdr-center-body {
+  display: flex;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.herdr-center-rail {
+  display: flex;
+  flex: 0 0 260px;
+  flex-direction: column;
+  min-height: 0;
+  border-right: var(--border-width, 1px) solid $border-light;
+}
+
+.herdr-center-terminal {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (max-width: 760px) {
+  .herdr-center-rail {
+    display: none;
+  }
 }
 
 .herdr-center-empty {

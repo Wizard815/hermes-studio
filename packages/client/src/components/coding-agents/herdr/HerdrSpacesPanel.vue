@@ -6,6 +6,8 @@ import { useHerdrStore } from '@/stores/hermes/herdr'
 import SpaceTree from '@/mission/SpaceTree.vue'
 import FolderEditor from '@/mission/FolderEditor.vue'
 import { useStudioFolders, type MissionFolder } from '@/mission/useFolders'
+import { useI18n } from 'vue-i18n'
+import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 
 /**
  * The chat page's sidebar in herdr mode: Mission's Spaces tree (Studio's chat
@@ -17,6 +19,7 @@ const props = defineProps<{ activeSessionId: string | null }>()
 const emit = defineEmits<{ 'open-chat': [sessionId: string] }>()
 
 const toast = useMessage()
+const { t } = useI18n()
 const herdr = useHerdrStore()
 const folders = useStudioFolders(message => toast.error(message))
 const editorOpen = ref(false)
@@ -30,6 +33,16 @@ const panes = computed<HerdrPaneView[]>(() => herdr.bridge?.panes || [])
 const chatPane = computed(() => panes.value.find(pane => pane.studioSessionId && pane.studioSessionId === props.activeSessionId) ?? null)
 const selectedPane = computed(() => chatPane.value?.pane_id || herdr.bridge?.focusedPaneId || '')
 const selectedSpace = computed(() => pickedSpace.value || panes.value.find(pane => pane.pane_id === selectedPane.value)?.workspace_id || '')
+
+/** Agents most in need of you first, as in Mission and herdr. */
+const agents = computed(() => {
+  const rank: Record<string, number> = { blocked: 0, done: 1, working: 2, idle: 3, unknown: 4 }
+  return panes.value.filter(p => p.agent).sort((a, b) => (rank[a.agent_status || 'unknown'] ?? 4) - (rank[b.agent_status || 'unknown'] ?? 4))
+})
+
+function paneName(pane: HerdrPaneView): string {
+  return pane.label || pane.terminal_title_stripped || pane.agent || pane.pane_id
+}
 
 function cwdOf(spaceId: string): string {
   const pane = panes.value.find(p => p.workspace_id === spaceId && p.agent) || panes.value.find(p => p.workspace_id === spaceId)
@@ -112,11 +125,29 @@ onBeforeUnmount(() => {
       @place-space="(spaceId, folderId) => folders.placeSpace(spaceId, folderId, panes)"
       @move-folder="folders.moveFolder"
     />
+    <section class="herdr-spaces-agents" data-testid="herdr-spaces-agents">
+      <header class="herdr-spaces-agents-head">{{ t('mission.agents') }} <span>{{ agents.length }}</span></header>
+      <button
+        v-for="pane in agents"
+        :key="pane.pane_id"
+        type="button"
+        class="herdr-spaces-agent"
+        :class="{ active: pane.pane_id === selectedPane }"
+        @click="selectPane(pane.pane_id)"
+      >
+        <AgentStatusIcon :status="pane.agent_status || 'unknown'" live :size="12" />
+        <span class="herdr-spaces-agent-name">{{ paneName(pane) }}</span>
+        <span class="herdr-spaces-agent-kind">{{ pane.agent }}</span>
+      </button>
+      <p v-if="!agents.length" class="herdr-spaces-empty">{{ t('herdr.noAgents') }}</p>
+    </section>
     <FolderEditor v-model:show="editorOpen" :folder="editing" @save="saveFolder" @remove="folder => folders.removeFolder(folder.id)" />
   </div>
 </template>
 
 <style scoped lang="scss">
+@use '@/styles/variables' as *;
+
 .herdr-spaces-panel {
   display: flex;
   flex-direction: column;
@@ -126,6 +157,72 @@ onBeforeUnmount(() => {
 }
 
 .herdr-spaces-tree {
+  flex: 3 1 0;
+}
+
+.herdr-spaces-agents {
+  display: flex;
+  flex: 2 1 0;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: var(--border-width, 1px) solid $border-light;
+}
+
+.herdr-spaces-agents-head {
+  padding: 0 6px 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: $text-muted;
+
+  span {
+    margin-left: 4px;
+  }
+}
+
+.herdr-spaces-agent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-component, 6px);
+  background: transparent;
+  color: $text-primary;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(var(--accent-primary-rgb), 0.06);
+  }
+
+  &.active {
+    background: rgba(var(--accent-primary-rgb), 0.12);
+  }
+}
+
+.herdr-spaces-agent-name {
   flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.herdr-spaces-agent-kind,
+.herdr-spaces-empty {
+  font-size: 11px;
+  color: $text-muted;
+}
+
+.herdr-spaces-empty {
+  margin: 4px 8px;
 }
 </style>

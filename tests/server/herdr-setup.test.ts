@@ -103,3 +103,11 @@ describe('herdr keys for Studio buttons', () => {
     expect(herdrKeys(user)).toEqual({ prefix: 'ctrl+a', search: 'prefix+/', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?', sidebar: 'prefix+b' })
   })
 })
+
+describe('herdr layout facts for Studio\'s embedded view', () => {
+  it('reads the collapsed rail mode and the phone layout width', async () => {
+    const { herdrView } = await import('../../packages/server/src/modules/coding-agents/services/herdr/keybind')
+    expect(herdrView('')).toEqual({ rail: 4, mobileWidth: 64 })
+    expect(herdrView('[ui]\nsidebar_collapsed_mode = "hidden"\nmobile_width_threshold = 80 # tablets\n[keys]\nmobile_width_threshold = 1\n')).toEqual({ rail: 0, mobileWidth: 80 })
+  })
+})

@@ -109,16 +109,19 @@ tasks and plans, projects, ideas, upkeep, and Control).
   this chat in herdr" for a chat not running there. Sidebar, header and tool
   panel stay; both centers stay mounted once opened and herdr stays connected,
   so swapping is instant; the choice is remembered (`studio_chat_center`).
-- **herdr mode sidebar.** In herdr mode the chat list closes and Mission's
-  Spaces tree takes its place (`HerdrSpacesPanel.vue`: Studio's folders 1:1,
-  herdr spaces with their agents and chats). Picking an agent focuses it in the
-  herdr center and opens its Studio chat, so Chat mode lands on the same
-  conversation. herdr's own sidebar starts hidden in Studio only: the embedded
+- **herdr mode layout.** In herdr mode the chat list closes (the page sidebar
+  is not shown) and the herdr center is: a rail with Mission's Spaces tree
+  (Studio's folders 1:1) and Agents list (`HerdrSpacesPanel.vue`), then herdr's
+  own UI. Picking a space or agent focuses it in herdr and opens its Studio
+  chat; the center stays mounted while the chat switches, so herdr does not
+  reconnect. herdr's own sidebar starts hidden in Studio only: the embedded
   client connects through Studio's own links to herdr's sockets
   (`services/herdr/client-view.ts`, `HERDR_SOCKET_PATH`), and herdr keeps client
   preferences per socket path, so Studio gets its own preferences file (seeded
-  with `sidebar_collapsed`) while a terminal herdr keeps its sidebar. The
-  "herdr sidebar" button (`toggle_sidebar`) shows it again in Studio only.
+  with `sidebar_collapsed`) while a terminal herdr keeps its sidebar. herdr's
+  4-column collapsed rail is cropped off the left edge (`HerdrTerminal`
+  `cropLeft`), unless herdr's config uses `sidebar_collapsed_mode = "hidden"`
+  or the view is at or under herdr's phone layout width (`readHerdrView`).
   Windows (named pipes) keeps the shared preferences.
 
 ## Pondering Orb

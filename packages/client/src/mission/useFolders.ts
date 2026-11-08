@@ -121,7 +121,7 @@ export function useStudioFolders(onError: (message: string) => void) {
   async function loadChats() {
     try {
       const chats = await fetchSessions('coding_agent', 500)
-      chatFolders.value = new Map(chats.map(chat => [chat.id, chat.category_id ?? null]))
+      chatFolders.value = new Map((Array.isArray(chats) ? chats : []).map(chat => [chat.id, chat.category_id ?? null]))
     } catch { /* keep the last known */ }
   }
 
@@ -149,15 +149,15 @@ export function useStudioFolders(onError: (message: string) => void) {
   async function load() {
     try {
       const [loadedCategories, loadedMeta] = await Promise.all([fetchSessionCategories(), fetchSpaceFolders()])
-      categories.value = loadedCategories
-      meta.value = await migrateLegacy(loadedMeta)
+      categories.value = Array.isArray(loadedCategories) ? loadedCategories : []
+      meta.value = await migrateLegacy({ list: Array.isArray(loadedMeta?.list) ? loadedMeta.list : [], of: loadedMeta?.of || {}, at: loadedMeta?.at || 0 })
     } catch (error) { fail(error) }
     await loadChats()
   }
 
   /** Changes made in Studio's sidebar show up here. */
   async function refresh() {
-    try { categories.value = await fetchSessionCategories() } catch { /* keep */ }
+    try { const next = await fetchSessionCategories(); if (Array.isArray(next)) categories.value = next } catch { /* keep */ }
     await loadChats()
   }
 

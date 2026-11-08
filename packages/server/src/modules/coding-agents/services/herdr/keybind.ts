@@ -124,6 +124,35 @@ export function herdrKeys(userConfig: string): HerdrKeys {
   return keys
 }
 
+/** herdr's layout settings Studio needs to fit its own spaces panel next to herdr's UI. */
+export interface HerdrView {
+  /** Columns of herdr's collapsed sidebar rail: 4 ("compact", herdr's default) or 0 ("hidden"). */
+  rail: number
+  /** At or below this many columns herdr uses its one-column phone layout (no rail). */
+  mobileWidth: number
+}
+
+export function herdrView(userConfig: string): HerdrView {
+  const view: HerdrView = { rail: 4, mobileWidth: 64 }
+  let section = ''
+  for (const raw of userConfig.split(/\r?\n/)) {
+    const line = raw.replace(/\s+#.*$/, '').trim()
+    const header = line.match(/^\[+([^\]]+)\]+$/)
+    if (header) { section = header[1].trim(); continue }
+    if (section !== 'ui') continue
+    const mode = line.match(/^sidebar_collapsed_mode\s*=\s*"([^"]*)"/)
+    if (mode) view.rail = mode[1].trim() === 'hidden' ? 0 : 4
+    const width = line.match(/^mobile_width_threshold\s*=\s*(\d+)/)
+    if (width) view.mobileWidth = Number(width[1])
+  }
+  return view
+}
+
+export async function readHerdrView(env: NodeJS.ProcessEnv = process.env): Promise<HerdrView> {
+  const path = herdrConfigPath(env)
+  try { return herdrView(existsSync(path) ? await readFile(path, 'utf8') : '') } catch { return { rail: 4, mobileWidth: 64 } }
+}
+
 export async function readHerdrKeys(env: NodeJS.ProcessEnv = process.env): Promise<HerdrKeys> {
   const path = herdrConfigPath(env)
   try { return herdrKeys(existsSync(path) ? await readFile(path, 'utf8') : '') } catch { return { ...DEFAULT_HERDR_KEYS } }
