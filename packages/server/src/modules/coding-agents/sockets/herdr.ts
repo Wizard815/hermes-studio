@@ -4,7 +4,8 @@ import { authenticateUserToken } from '../../studio/public/auth'
 import { killOwnedProcessTree } from '../../studio/public/process-tree'
 import { logger } from '../../studio/public/logging'
 import { herdrManager } from '../services/herdr/manager'
-import { herdrArgs } from '../services/herdr/runtime'
+import { herdrArgs, readHerdrServerStatus } from '../services/herdr/runtime'
+import { studioClientView, type ClientViewLaunch } from '../services/herdr/client-view'
 import { NdjsonReader } from '../services/herdr/socket-client'
 
 /**
@@ -80,12 +81,24 @@ function paneStream(binary: string, mode: 'observe' | 'control', target: string,
   }
 }
 
-function clientStream(binary: string, cols: number, rows: number, onData: (bytes: string) => void, onClose: (reason: string) => void): Stream {
-  if (!pty) throw new Error('Terminal support (node-pty) is unavailable on this server')
+/** The embedded herdr UI with its own client preferences (herdr's sidebar hidden), else herdr as usual. */
+async function clientLaunch(binary: string): Promise<ClientViewLaunch> {
   const settings = herdrManager.getSettings()
-  const proc = pty.spawn(binary, herdrArgs(settings, []), {
+  try {
+    const status = await readHerdrServerStatus(binary, settings)
+    const view = status.running && status.socket ? studioClientView(status.socket) : null
+    if (view) return view
+  } catch (error) {
+    logger.warn({ error: String(error) }, '[herdr] embedded view uses shared client preferences')
+  }
+  return { args: herdrArgs(settings, []), env: {} }
+}
+
+function clientStream(binary: string, launch: ClientViewLaunch, cols: number, rows: number, onData: (bytes: string) => void, onClose: (reason: string) => void): Stream {
+  if (!pty) throw new Error('Terminal support (node-pty) is unavailable on this server')
+  const proc = pty.spawn(binary, launch.args, {
     name: 'xterm-256color', cols, rows, cwd: process.env.HOME || process.cwd(),
-    env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+    env: { ...process.env, ...launch.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
   })
   let closed = false
   proc.onData((data: string) => onData(Buffer.from(data, 'utf8').toString('base64')))
@@ -121,7 +134,7 @@ export function setupHerdrSocket(io: Server) {
     const streams = new Map<string, Stream>()
     socket.emit('herdr.state', herdrManager.getBridge()?.getState() ?? null)
 
-    socket.on('terminal.open', (data: any, ack?: (result: { ok: boolean; streamId?: string; error?: string }) => void) => {
+    socket.on('terminal.open', async (data: any, ack?: (result: { ok: boolean; streamId?: string; error?: string }) => void) => {
       const reply = typeof ack === 'function' ? ack : () => {}
       try {
         const mode: Mode = data?.mode === 'control' || data?.mode === 'client' ? data.mode : 'observe'
@@ -132,6 +145,7 @@ export function setupHerdrSocket(io: Server) {
         const binary = herdrManager.requireBinary()
         const cols = clampSize(data?.cols, 100, 500)
         const rows = clampSize(data?.rows, 30, 200)
+        const launch = mode === 'client' ? await clientLaunch(binary) : null
         streams.get(streamId)?.close()
         const onData = (bytes: string) => socket.emit('terminal.data', { streamId, bytes })
         const onClose = (reason: string) => {
@@ -141,7 +155,7 @@ export function setupHerdrSocket(io: Server) {
         }
         let stream: Stream
         if (mode === 'client') {
-          stream = clientStream(binary, cols, rows, onData, onClose)
+          stream = clientStream(binary, launch!, cols, rows, onData, onClose)
         } else {
           const target = String(data?.target || '')
           if (!TARGET.test(target)) throw new Error('Invalid pane target')

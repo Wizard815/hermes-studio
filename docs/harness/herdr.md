@@ -113,9 +113,13 @@ tasks and plans, projects, ideas, upkeep, and Control).
   Spaces tree takes its place (`HerdrSpacesPanel.vue`: Studio's folders 1:1,
   herdr spaces with their agents and chats). Picking an agent focuses it in the
   herdr center and opens its Studio chat, so Chat mode lands on the same
-  conversation. A "herdr sidebar" button presses herdr's `toggle_sidebar`; herdr
-  remembers that per session, so it also applies in a terminal attached to the
-  same herdr.
+  conversation. herdr's own sidebar starts hidden in Studio only: the embedded
+  client connects through Studio's own links to herdr's sockets
+  (`services/herdr/client-view.ts`, `HERDR_SOCKET_PATH`), and herdr keeps client
+  preferences per socket path, so Studio gets its own preferences file (seeded
+  with `sidebar_collapsed`) while a terminal herdr keeps its sidebar. The
+  "herdr sidebar" button (`toggle_sidebar`) shows it again in Studio only.
+  Windows (named pipes) keeps the shared preferences.
 
 ## Pondering Orb
 
@@ -177,7 +181,8 @@ Rules that keep it safe:
 - Unit: `tests/server/herdr-folders.test.ts`, `tests/server/orb-client.test.ts`,
   `tests/server/herdr-public-url.test.ts`
   (fake Orb).
-- Unit: `tests/client/mission-folders.test.ts` (tree and space placement),
+- Unit: `tests/server/herdr-client-view.test.ts` (Studio's own herdr client preferences),
+  `tests/client/mission-folders.test.ts` (tree and space placement),
   `tests/client/herdr-keys.test.ts` (key buttons).
 - Browser: `tests/e2e/herdr-view.spec.ts`, `tests/e2e/mission.spec.ts`,
   `tests/e2e/herdr-center.spec.ts`, `tests/e2e/herdr-spaces.spec.ts` (mocked API).
