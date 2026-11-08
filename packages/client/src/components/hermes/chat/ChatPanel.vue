@@ -66,6 +66,7 @@ import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
+import HerdrSpacesPanel from "@/components/coding-agents/herdr/HerdrSpacesPanel.vue";
 import ListActionsMenu from "@/components/layout/ListActionsMenu.vue";
 import OutlinePanel from "./OutlinePanel.vue";
 import ChatToolsPanel from "./ChatToolsPanel.vue";
@@ -2673,6 +2674,13 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
         />
       </template>
       <template #default>
+        <!-- herdr mode: the chat list closes and herdr's spaces (Studio folders 1:1) take its place. -->
+        <HerdrSpacesPanel
+          v-if="showHerdrCenter && contentMode === 'chat'"
+          :active-session-id="chatStore.activeSessionId"
+          @open-chat="sessionId => handleSessionClick(sessionId)"
+        />
+        <template v-else>
         <div
           v-if="chatStore.isLoadingSessions && chatStore.sessions.length === 0"
           class="session-loading"
@@ -2873,6 +2881,7 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               @toggle-select="toggleSessionSelection(s)"
             />
           </div>
+        </template>
         </template>
       </template>
     </SessionListSidebar>

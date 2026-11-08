@@ -28,10 +28,10 @@ const started = ref(false)
 const panes = computed<HerdrPaneView[]>(() => herdr.bridge?.panes || [])
 const linked = computed(() => panes.value.find(pane => pane.studioSessionId === props.sessionId) ?? null)
 
-const KEY_DEFAULTS = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?' }
+const KEY_DEFAULTS = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?', sidebar: 'prefix+b' }
 const keys = computed(() => ({ ...KEY_DEFAULTS, ...(herdr.status?.keys || {}) }))
 /** One-tap herdr keys: handy on a phone, where the prefix key is awkward. */
-const keyButtons = computed(() => (['search', 'workspaces', 'settings', 'help'] as const)
+const keyButtons = computed(() => (['search', 'workspaces', 'settings', 'help', 'sidebar'] as const)
   .map(name => ({ name, combo: keys.value[name], bytes: herdrKeyBytes(keys.value[name], keys.value.prefix) }))
   .filter(button => button.bytes != null))
 

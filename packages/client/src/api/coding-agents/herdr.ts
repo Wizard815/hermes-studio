@@ -60,7 +60,7 @@ export interface HerdrStatus {
   integrations: string[]
   home: string
   /** herdr keys (the user's or herdr's defaults) for Studio's herdr buttons. */
-  keys?: { prefix: string; search: string; workspaces: string; settings: string; help: string }
+  keys?: { prefix: string; search: string; workspaces: string; settings: string; help: string; sidebar?: string }
   publicUrl?: string
 }
 

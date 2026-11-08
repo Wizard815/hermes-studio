@@ -109,6 +109,13 @@ tasks and plans, projects, ideas, upkeep, and Control).
   this chat in herdr" for a chat not running there. Sidebar, header and tool
   panel stay; both centers stay mounted once opened and herdr stays connected,
   so swapping is instant; the choice is remembered (`studio_chat_center`).
+- **herdr mode sidebar.** In herdr mode the chat list closes and Mission's
+  Spaces tree takes its place (`HerdrSpacesPanel.vue`: Studio's folders 1:1,
+  herdr spaces with their agents and chats). Picking an agent focuses it in the
+  herdr center and opens its Studio chat, so Chat mode lands on the same
+  conversation. A "herdr sidebar" button presses herdr's `toggle_sidebar`; herdr
+  remembers that per session, so it also applies in a terminal attached to the
+  same herdr.
 
 ## Pondering Orb
 
@@ -173,7 +180,7 @@ Rules that keep it safe:
 - Unit: `tests/client/mission-folders.test.ts` (tree and space placement),
   `tests/client/herdr-keys.test.ts` (key buttons).
 - Browser: `tests/e2e/herdr-view.spec.ts`, `tests/e2e/mission.spec.ts`,
-  `tests/e2e/herdr-center.spec.ts` (mocked API).
+  `tests/e2e/herdr-center.spec.ts`, `tests/e2e/herdr-spaces.spec.ts` (mocked API).
 - Live: build herdr (`cargo build --release`, needs Zig 0.16), run Studio with an
   isolated `HERMES_WEB_UI_HOME` and `CLAUDE_CONFIG_DIR`, enable herdr with a named
   session, and drive agents with herdr's CLI (`pane run`, `send-text`). Keep the

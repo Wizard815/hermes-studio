@@ -27,7 +27,8 @@ export const herdrMessages = {
         "search": "Search",
         "workspaces": "Workspaces",
         "settings": "herdr settings",
-        "help": "Keys"
+        "help": "Keys",
+        "sidebar": "herdr sidebar"
       },
       "centerChat": "Chat",
       "centerHerdr": "herdr",
@@ -230,7 +231,8 @@ export const herdrMessages = {
         "search": "搜索",
         "workspaces": "工作区",
         "settings": "herdr 设置",
-        "help": "快捷键"
+        "help": "快捷键",
+        "sidebar": "herdr 侧栏"
       },
       "centerChat": "聊天",
       "centerHerdr": "herdr",
@@ -433,7 +435,8 @@ export const herdrMessages = {
         "search": "搜尋",
         "workspaces": "工作區",
         "settings": "herdr 設定",
-        "help": "快速鍵"
+        "help": "快速鍵",
+        "sidebar": "herdr 側欄"
       },
       "centerChat": "聊天",
       "centerHerdr": "herdr",
@@ -636,7 +639,8 @@ export const herdrMessages = {
         "search": "検索",
         "workspaces": "ワークスペース",
         "settings": "herdr の設定",
-        "help": "キー"
+        "help": "キー",
+        "sidebar": "herdr のサイドバー"
       },
       "centerChat": "チャット",
       "centerHerdr": "herdr",
@@ -839,7 +843,8 @@ export const herdrMessages = {
         "search": "검색",
         "workspaces": "워크스페이스",
         "settings": "herdr 설정",
-        "help": "단축키"
+        "help": "단축키",
+        "sidebar": "herdr 사이드바"
       },
       "centerChat": "채팅",
       "centerHerdr": "herdr",
@@ -1042,7 +1047,8 @@ export const herdrMessages = {
         "search": "Suchen",
         "workspaces": "Arbeitsbereiche",
         "settings": "herdr-Einstellungen",
-        "help": "Tasten"
+        "help": "Tasten",
+        "sidebar": "herdr-Seitenleiste"
       },
       "centerChat": "Chat",
       "centerHerdr": "herdr",
@@ -1245,7 +1251,8 @@ export const herdrMessages = {
         "search": "Buscar",
         "workspaces": "Espacios",
         "settings": "Ajustes de herdr",
-        "help": "Teclas"
+        "help": "Teclas",
+        "sidebar": "Barra lateral de herdr"
       },
       "centerChat": "Chat",
       "centerHerdr": "herdr",
@@ -1448,7 +1455,8 @@ export const herdrMessages = {
         "search": "Rechercher",
         "workspaces": "Espaces",
         "settings": "Réglages herdr",
-        "help": "Raccourcis"
+        "help": "Raccourcis",
+        "sidebar": "Barre latérale herdr"
       },
       "centerChat": "Chat",
       "centerHerdr": "herdr",
@@ -1651,7 +1659,8 @@ export const herdrMessages = {
         "search": "Buscar",
         "workspaces": "Espaços",
         "settings": "Configurações do herdr",
-        "help": "Atalhos"
+        "help": "Atalhos",
+        "sidebar": "Barra lateral do herdr"
       },
       "centerChat": "Chat",
       "centerHerdr": "herdr",
@@ -1854,7 +1863,8 @@ export const herdrMessages = {
         "search": "Поиск",
         "workspaces": "Пространства",
         "settings": "Настройки herdr",
-        "help": "Клавиши"
+        "help": "Клавиши",
+        "sidebar": "Боковая панель herdr"
       },
       "centerChat": "Чат",
       "centerHerdr": "herdr",
@@ -2057,7 +2067,8 @@ export const herdrMessages = {
         "search": "Ara",
         "workspaces": "Çalışma alanları",
         "settings": "herdr ayarları",
-        "help": "Tuşlar"
+        "help": "Tuşlar",
+        "sidebar": "herdr kenar çubuğu"
       },
       "centerChat": "Sohbet",
       "centerHerdr": "herdr",
@@ -2260,7 +2271,8 @@ export const herdrMessages = {
         "search": "بحث",
         "workspaces": "مساحات العمل",
         "settings": "إعدادات herdr",
-        "help": "المفاتيح"
+        "help": "المفاتيح",
+        "sidebar": "شريط herdr الجانبي"
       },
       "centerChat": "الدردشة",
       "centerHerdr": "herdr",

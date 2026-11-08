@@ -101,10 +101,12 @@ export interface HerdrKeys {
   workspaces: string
   settings: string
   help: string
+  /** herdr's own sidebar (spaces and agents) */
+  sidebar: string
 }
 
-const DEFAULT_HERDR_KEYS: HerdrKeys = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?' }
-const KEY_NAMES: Record<keyof HerdrKeys, string> = { prefix: 'prefix', search: 'goto', workspaces: 'workspace_picker', settings: 'settings', help: 'help' }
+const DEFAULT_HERDR_KEYS: HerdrKeys = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?', sidebar: 'prefix+b' }
+const KEY_NAMES: Record<keyof HerdrKeys, string> = { prefix: 'prefix', search: 'goto', workspaces: 'workspace_picker', settings: 'settings', help: 'help', sidebar: 'toggle_sidebar' }
 
 export function herdrKeys(userConfig: string): HerdrKeys {
   const keys = { ...DEFAULT_HERDR_KEYS }
