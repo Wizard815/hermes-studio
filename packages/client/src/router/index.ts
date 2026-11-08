@@ -209,6 +209,12 @@ const router = createRouter({
       meta: { requiresSuperAdmin: true },
     },
     {
+      path: '/system',
+      name: 'system',
+      component: () => import('@/views/hermes/SystemView.vue'),
+      meta: { requiresSuperAdmin: true },
+    },
+    {
       path: '/hermes/connections',
       name: 'hermes.connections',
       component: () => import('@/views/hermes/ChatView.vue'),
