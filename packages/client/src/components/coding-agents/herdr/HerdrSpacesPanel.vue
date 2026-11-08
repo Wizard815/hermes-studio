@@ -15,7 +15,7 @@ import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
  * chat list. Picking an agent shows it in the herdr center and opens its
  * Studio chat, so swapping back to Chat lands on the same conversation.
  */
-const props = defineProps<{ activeSessionId: string | null }>()
+const props = defineProps<{ activeSessionId: string | null; newChatKey?: string }>()
 const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'new-chat': [] }>()
 
 const toast = useMessage()
@@ -109,7 +109,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="herdr-spaces-panel" data-testid="herdr-spaces-panel">
     <!-- The chat list's New chat, which herdr mode hides with the list. -->
-    <button type="button" class="herdr-spaces-new-chat" data-testid="herdr-spaces-new-chat" @click="emit('new-chat')">
+    <button type="button" class="herdr-spaces-new-chat" data-testid="herdr-spaces-new-chat" :title="newChatKey ? newChatKey.replace(/^prefix\+/i, 'prefix then ') : undefined" @click="emit('new-chat')">
       <span aria-hidden="true">+</span> {{ t('chat.newChat') }}
     </button>
     <SpaceTree

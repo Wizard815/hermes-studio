@@ -59,11 +59,14 @@ export interface HerdrEvent {
   data?: Record<string, unknown>
 }
 
-/** Lifecycle events that can change what Studio shows. */
+/**
+ * Lifecycle events that can change what Studio shows. Focus events keep the
+ * focused pane current, so Studio's chat follows switches made inside herdr.
+ */
 export const HERDR_LIFECYCLE_EVENTS = [
-  'workspace.created', 'workspace.updated', 'workspace.renamed', 'workspace.closed',
-  'tab.created', 'tab.closed',
-  'pane.created', 'pane.closed', 'pane.updated', 'pane.exited', 'pane.moved', 'pane.agent_detected',
+  'workspace.created', 'workspace.updated', 'workspace.renamed', 'workspace.closed', 'workspace.focused',
+  'tab.created', 'tab.closed', 'tab.focused',
+  'pane.created', 'pane.closed', 'pane.updated', 'pane.exited', 'pane.moved', 'pane.agent_detected', 'pane.focused',
 ] as const
 
 /** Studio coding-agent runtime → herdr `agent start --kind` value. */

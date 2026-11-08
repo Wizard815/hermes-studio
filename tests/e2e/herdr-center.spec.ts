@@ -73,3 +73,26 @@ test('in herdr mode a chat not running in herdr opens there by itself, once', as
   expect(page.url()).toContain('__herdr_center__')
   expect(errors).toEqual([])
 })
+
+test('the chat follows herdr: switching agents inside herdr opens that agent\'s chat', async ({ page }) => {
+  const { posts, errors } = await openCenter(page, 'herdr-aaa')
+  await expect(page.getByTestId('herdr-center-agent')).toContainText('auth refactor')
+  // A focus report that disagrees with the focus Studio just asked for is stale.
+  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/panes/w1%3Ap1/focus')
+  await page.evaluate(() => { (window as any).herdrCenterFixture.store.status.bridge.focusedPaneId = 'w2:p1' })
+  await page.waitForTimeout(300)
+  expect(await page.evaluate(() => (window as any).herdrCenterFixture.opened)).toEqual([])
+  await page.evaluate(() => { (window as any).herdrCenterFixture.store.status.bridge.focusedPaneId = 'w1:p1' })
+  await page.waitForTimeout(2600)
+  // herdr focuses another agent (its search or picker): Studio opens that agent's chat.
+  await page.evaluate(() => { (window as any).herdrCenterFixture.store.status.bridge.focusedPaneId = 'w2:p1' })
+  await expect.poll(() => page.evaluate(() => (window as any).herdrCenterFixture.opened)).toEqual(['herdr-ccc'])
+  // A pane with no Studio chat (a plain shell) does not change the chat.
+  await page.evaluate(() => { (window as any).herdrCenterFixture.store.status.bridge.focusedPaneId = 'w1:p2' })
+  await page.waitForTimeout(300)
+  expect(await page.evaluate(() => (window as any).herdrCenterFixture.opened)).toEqual(['herdr-ccc'])
+  // New chat without a connected herdr view falls back to Studio's new chat page.
+  await page.getByTestId('herdr-spaces-new-chat').click()
+  await expect.poll(() => page.evaluate(() => (window as any).herdrCenterFixture.newChats)).toBe(1)
+  expect(errors).toEqual([])
+})

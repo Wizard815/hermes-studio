@@ -50,6 +50,12 @@ describe('herdr space folders', () => {
     expect(folderFor(state, 'loose', '/home/me/code/client', home)).toBe('')
   })
 
+  it('files a space by a folder\'s start directory too, as Mission does', () => {
+    const state = sanitizeFolders({ list: [{ id: 'c2', name: 'site', start: '~/code/site', rules: '' }], of: {} })
+    expect(folderFor(state, 'w1', '/home/me/code/site/web', home)).toBe('c2')
+    expect(folderFor(state, 'w2', '/home/me/code/api', home)).toBe('')
+  })
+
   describe('store', () => {
     let dir: string
     beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'herdr-folders-')) })

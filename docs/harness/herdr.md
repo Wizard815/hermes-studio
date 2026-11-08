@@ -125,6 +125,24 @@ tasks and plans, projects, ideas, upkeep, and Control).
   `cropLeft`), unless herdr's config uses `sidebar_collapsed_mode = "hidden"`
   or the view is at or under herdr's phone layout width (`readHerdrView`).
   Windows (named pipes) keeps the shared preferences.
+- **Chats made in herdr are Studio chats.** herdr's Studio chats picker and
+  "New Studio chat" are bound to free herdr keys at setup (`STUDIO_CHATS_BINDING`,
+  `STUDIO_NEW_CHAT_BINDING` in `keybind.ts`; herdr's own `prefix+c` stays a plain
+  shell tab, which becomes a chat once an agent in it gets its first message).
+  `HERDR_SETUP_REVISION` reruns setup once on existing installs when it gains a
+  step. Every chat herdr makes is filed in its space's Studio folder: the folder
+  of another chat in the same space, else Mission's placement or the folder whose
+  start directory or rules match (`categoryForSpace`, server `folderFor`). In
+  herdr mode, New chat opens herdr's New Studio chat picker in the view (Studio's
+  new chat page when that key is missing or the view is not connected).
+- **Studio follows herdr.** In herdr mode the open chat follows herdr's focused
+  pane (the bridge subscribes to herdr's focus events), so switching agents in
+  herdr (search, picker, a new chat) switches the Studio chat. Focus reports that
+  disagree with a focus Studio asked for in the last 2.5 seconds are stale and
+  ignored (`studioFocusRequest`), and the first report after loading is not a
+  switch. The plugin focuses through Studio (`POST /plugin/focus`, again after
+  its popup closes, since herdr gives focus back to the pane under a popup);
+  `herdr pane focus` only moves by direction.
 - **Opening chats in herdr mode.** A chat whose agent is not running in herdr
   opens there by itself when shown in herdr mode (once per chat;
   `HerdrCenter` keeps "Open this chat in herdr" for a retry).

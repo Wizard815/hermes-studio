@@ -6,12 +6,27 @@ import { herdrArgs, runHerdr, type HerdrSettings } from './runtime'
 
 /** Plugin action the Studio shortcut opens. */
 export const STUDIO_CHATS_ACTION = 'studio.hermes.chats'
+/** Plugin action that starts a new agent chat that is both a herdr pane and a Studio chat. */
+export const STUDIO_NEW_CHAT_ACTION = 'studio.hermes.launch'
 
 /**
  * Tried in order; the first one neither herdr's defaults nor the user's config
  * uses wins. `prefix+s` is herdr's own Settings, so it is never a candidate.
  */
 export const STUDIO_KEY_CANDIDATES = ['prefix+shift+s', 'prefix+alt+s', 'prefix+a', 'prefix+y', 'prefix+shift+a', 'prefix+f9'] as const
+/** For "New Studio chat"; herdr's own `prefix+c` stays its plain new tab. */
+export const STUDIO_NEW_CHAT_KEY_CANDIDATES = ['prefix+n', 'prefix+shift+c', 'prefix+alt+n', 'prefix+alt+c', 'prefix+f8'] as const
+
+/** A Studio plugin action bound to a herdr key. */
+export interface StudioBinding {
+  action: string
+  candidates: readonly string[]
+  description: string
+  comment: string
+}
+
+export const STUDIO_CHATS_BINDING: StudioBinding = { action: STUDIO_CHATS_ACTION, candidates: STUDIO_KEY_CANDIDATES, description: 'Studio chats', comment: 'open the Studio chat picker' }
+export const STUDIO_NEW_CHAT_BINDING: StudioBinding = { action: STUDIO_NEW_CHAT_ACTION, candidates: STUDIO_NEW_CHAT_KEY_CANDIDATES, description: 'New Studio chat', comment: 'start a new agent chat (a herdr pane and a Studio chat)' }
 
 /** Same resolution order as herdr: HERDR_CONFIG_PATH, XDG_CONFIG_HOME, APPDATA (Windows), ~/.config. */
 export function herdrConfigPath(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
@@ -56,33 +71,33 @@ export function boundKeys(text: string, includeComments: boolean): Set<string> {
   return keys
 }
 
-export function hasStudioBinding(userConfig: string): boolean {
-  return userConfig.includes(`"${STUDIO_CHATS_ACTION}"`)
+export function hasStudioBinding(userConfig: string, action = STUDIO_CHATS_ACTION): boolean {
+  return userConfig.includes(`"${action}"`)
 }
 
-export function existingStudioKey(userConfig: string): string | null {
+export function existingStudioKey(userConfig: string, action = STUDIO_CHATS_ACTION): string | null {
   const blocks = userConfig.split(/\[\[keys\.command\]\]/).slice(1)
   for (const block of blocks) {
-    if (!block.includes(`"${STUDIO_CHATS_ACTION}"`)) continue
+    if (!block.includes(`"${action}"`)) continue
     const key = block.match(/^\s*key\s*=\s*"([^"]+)"/m)
     if (key) return key[1]
   }
   return null
 }
 
-export function chooseStudioKey(defaultConfig: string, userConfig: string): string | null {
+export function chooseStudioKey(defaultConfig: string, userConfig: string, candidates: readonly string[] = STUDIO_KEY_CANDIDATES): string | null {
   const used = new Set([...boundKeys(defaultConfig, true), ...boundKeys(userConfig, false)])
-  return STUDIO_KEY_CANDIDATES.find(candidate => !used.has(normalizeKey(candidate))) ?? null
+  return candidates.find(candidate => !used.has(normalizeKey(candidate))) ?? null
 }
 
-export function renderStudioBinding(key: string): string {
+export function renderStudioBinding(key: string, binding: StudioBinding = STUDIO_CHATS_BINDING): string {
   return `
-# Added by Ekko Studio: open the Studio chat picker.
+# Added by Ekko Studio: ${binding.comment}.
 [[keys.command]]
 key = "${key}"
 type = "plugin_action"
-command = "${STUDIO_CHATS_ACTION}"
-description = "Studio chats"
+command = "${binding.action}"
+description = "${binding.description}"
 `
 }
 
@@ -103,10 +118,14 @@ export interface HerdrKeys {
   help: string
   /** herdr's own sidebar (spaces and agents) */
   sidebar: string
+  /** Studio's plugin keys, when bound: the chat picker and "New Studio chat". */
+  studioChats?: string
+  newChat?: string
 }
 
 const DEFAULT_HERDR_KEYS: HerdrKeys = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?', sidebar: 'prefix+b' }
-const KEY_NAMES: Record<keyof HerdrKeys, string> = { prefix: 'prefix', search: 'goto', workspaces: 'workspace_picker', settings: 'settings', help: 'help', sidebar: 'toggle_sidebar' }
+type HerdrKeyName = Exclude<keyof HerdrKeys, 'studioChats' | 'newChat'>
+const KEY_NAMES: Record<HerdrKeyName, string> = { prefix: 'prefix', search: 'goto', workspaces: 'workspace_picker', settings: 'settings', help: 'help', sidebar: 'toggle_sidebar' }
 
 export function herdrKeys(userConfig: string): HerdrKeys {
   const keys = { ...DEFAULT_HERDR_KEYS }
@@ -118,10 +137,12 @@ export function herdrKeys(userConfig: string): HerdrKeys {
     if (section !== 'keys') continue
     const match = line.match(/^([A-Za-z_]+)\s*=\s*"([^"]*)"/)
     if (!match) continue
-    const field = (Object.keys(KEY_NAMES) as Array<keyof HerdrKeys>).find(name => KEY_NAMES[name] === match[1])
+    const field = (Object.keys(KEY_NAMES) as HerdrKeyName[]).find(name => KEY_NAMES[name] === match[1])
     if (field) keys[field] = match[2].trim()
   }
-  return keys
+  const studioChats = existingStudioKey(userConfig, STUDIO_CHATS_ACTION)
+  const newChat = existingStudioKey(userConfig, STUDIO_NEW_CHAT_ACTION)
+  return { ...keys, ...(studioChats ? { studioChats } : {}), ...(newChat ? { newChat } : {}) }
 }
 
 /** herdr's layout settings Studio needs to fit its own spaces panel next to herdr's UI. */
@@ -162,13 +183,13 @@ export async function readHerdrKeys(env: NodeJS.ProcessEnv = process.env): Promi
  * Bind the Studio chat picker to the first free key. The user's config is
  * backed up and restored if herdr rejects the edited file.
  */
-export async function installStudioKeybinding(binary: string, settings: Pick<HerdrSettings, 'session'>, env: NodeJS.ProcessEnv = process.env): Promise<KeybindResult> {
+export async function installStudioKeybinding(binary: string, settings: Pick<HerdrSettings, 'session'>, env: NodeJS.ProcessEnv = process.env, binding: StudioBinding = STUDIO_CHATS_BINDING): Promise<KeybindResult> {
   const path = herdrConfigPath(env)
   const userConfig = existsSync(path) ? await readFile(path, 'utf8') : ''
-  const current = existingStudioKey(userConfig)
-  if (current || hasStudioBinding(userConfig)) return { key: current, path, added: false, message: 'already bound' }
+  const current = existingStudioKey(userConfig, binding.action)
+  if (current || hasStudioBinding(userConfig, binding.action)) return { key: current, path, added: false, message: 'already bound' }
   const defaultConfig = await runHerdr(binary, ['--default-config'], 15000)
-  const key = chooseStudioKey(defaultConfig, userConfig)
+  const key = chooseStudioKey(defaultConfig, userConfig, binding.candidates)
   if (!key) return { key: null, path, added: false, message: 'every candidate key is already used' }
 
   await mkdir(dirname(path), { recursive: true })
@@ -176,7 +197,7 @@ export async function installStudioKeybinding(binary: string, settings: Pick<Her
   const hadConfig = existsSync(path)
   if (hadConfig) await copyFile(path, backup)
   const separator = userConfig && !userConfig.endsWith('\n') ? '\n' : ''
-  await writeFile(path, `${userConfig}${separator}${renderStudioBinding(key)}`)
+  await writeFile(path, `${userConfig}${separator}${renderStudioBinding(key, binding)}`)
   try {
     const check = await runHerdr(binary, ['config', 'check'], 15000)
     if (!/ok/i.test(check)) throw new Error(check.trim() || 'herdr rejected the config')

@@ -22,6 +22,8 @@ export interface HerdrSessionRef {
   workspace: string | null
   agent_native_session_id: string
   message_count?: number
+  /** Studio chat folder (session category). */
+  category_id?: number | null
 }
 
 export interface HerdrInteractiveLaunch {
@@ -72,6 +74,11 @@ export interface HerdrBridgeDeps {
    * closes. Calls for one pane arrive in order.
    */
   workStatusChanged?: (data: HerdrWorkRef, paneId: string, status: HerdrAgentStatus | 'gone', agent: string | null) => void | Promise<void>
+  /**
+   * The Studio chat folder a herdr space is filed in (Mission's placement, or
+   * the folder whose start directory or rules match its directory).
+   */
+  categoryForSpace?: (spaceId: string, cwd: string) => Promise<number | null>
   /** Where work belongs: a Studio chat folder (and its start directory) matching the project. */
   folderForWork?: (data: HerdrWorkRef) => Promise<{ categoryId: number | null; workspace: string } | null>
   /**
@@ -407,22 +414,34 @@ export class HerdrBridge {
     const title = titleFromFirstMessage(preview)
       || pending?.title
       || `${this.deps.agentLabel(studioAgent)}${workspace?.label ? ` · ${workspace.label}` : ''}`
+    const cwd = pane.foreground_cwd || pane.cwd || ''
     this.deps.createSession({
       id,
       agent: studioAgent,
       nativeId,
       title,
-      workspace: pane.foreground_cwd || pane.cwd || null,
+      workspace: cwd || null,
       profile: this.settings.profile || 'default',
       provider: pending?.provider,
       model: pending?.model,
-      categoryId: pending?.categoryId ?? null,
+      // Chats made in herdr are Studio chats: they go in the space's Studio folder.
+      categoryId: pending?.categoryId ?? await this.categoryForPane(pane, cwd),
     })
     // Herdr-born chats import their whole history.
     if (path) this.persisted.offsets[id] = { path, offset: 0 }
     await this.savePersisted()
     this.log('info', '[herdr] imported agent session', { sessionId: id, agent: studioAgent, pane: pane.pane_id })
     return id
+  }
+
+  /** A chat already in the same space decides; else where the space is filed. */
+  private async categoryForPane(pane: HerdrPane, cwd: string): Promise<number | null> {
+    for (const view of this.panes) {
+      if (view.workspace_id !== pane.workspace_id || view.pane_id === pane.pane_id || !view.studioSessionId) continue
+      const category = this.deps.getSession(view.studioSessionId)?.category_id
+      if (category != null) return category
+    }
+    try { return (await this.deps.categoryForSpace?.(pane.workspace_id, cwd)) ?? null } catch { return null }
   }
 
   private async mirror(sessionId: string, pane: HerdrPane, studioAgent: string, nativeId: string): Promise<void> {

@@ -1,3 +1,5 @@
+import { homedir } from 'node:os'
+import { folderFor } from '../modules/coding-agents/services/herdr/folders'
 import { join } from 'node:path'
 import type { Server } from 'socket.io'
 import { getWebUiHome } from '../modules/studio/public/config'
@@ -43,6 +45,7 @@ function toRef(row: HermesSessionRow | null): HerdrSessionRef | null {
     workspace: row.workspace || null,
     agent_native_session_id: row.agent_native_session_id || '',
     message_count: row.message_count,
+    category_id: row.category_id ?? null,
   }
 }
 
@@ -112,6 +115,7 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     log: (level, message, data) => logger[level](data || {}, message),
     workStatusChanged: (data, _paneId, status, agent) => reportOrbAgentStatus(data.orb, status, agent),
     folderForWork,
+    categoryForSpace,
     // Agents in herdr act for the Studio admin using herdr (herdr routes are
     // super-admin only), or the first active super admin after a restart.
     grantAgentAccess: async profile => {
@@ -119,6 +123,15 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
       if (user) await writeModelRunProfileToken({ id: user.id, username: user.username, role: user.role as AuthenticatedUser['role'] }, profile)
     },
   }
+}
+
+/** The Studio chat folder Mission files a herdr space in (folders are `c<category id>`). */
+async function categoryForSpace(spaceId: string, cwd: string): Promise<number | null> {
+  const id = folderFor(await herdrManager.folders().load(), spaceId, cwd, homedir())
+  const match = /^c(\d+)$/.exec(id)
+  if (!match) return null
+  const categoryId = Number(match[1])
+  return listSessionCategories().some(category => category.id === categoryId) ? categoryId : null
 }
 
 /** The agent working on an Orb task or project changed state: show it in Orb, the way herdr does. */

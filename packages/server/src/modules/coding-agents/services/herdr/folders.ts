@@ -92,13 +92,16 @@ export function ruleDepth(rule: string, cwd: string, home: string): number {
   return index >= 0 ? index + 1 : -1
 }
 
-/** The folder a space belongs in: explicit placement first, then the deepest rule. */
+/**
+ * The folder a space belongs in: explicit placement first, then the deepest
+ * match of a folder's start directory or rules (as Mission files it).
+ */
 export function folderFor(state: SpaceFolderState, spaceId: string, cwd: string, home: string): string {
   if (Object.prototype.hasOwnProperty.call(state.of, spaceId)) return state.of[spaceId]
   let best = ''
   let bestDepth = 0
   for (const folder of state.list) {
-    for (const rule of folder.rules.split(',')) {
+    for (const rule of [folder.start || '', ...folder.rules.split(',')]) {
       const depth = ruleDepth(rule, cwd, home)
       if (depth > bestDepth) { best = folder.id; bestDepth = depth }
     }

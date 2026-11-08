@@ -169,6 +169,30 @@ describe('herdr bridge', () => {
     expect(messages.get(id)?.[2].content).toBe('Fixed and tested')
   })
 
+  it('files chats made in herdr in their space\'s Studio folder, or with the other chats in that space', async () => {
+    const first = '21111111-2222-3333-4444-555555555555'
+    await writeFile(join(dir, `${first}.jsonl`), claudeLine('user', 'Build the pricing page'))
+    herdr.panes = [{ pane_id: 'w1:p1', workspace_id: 'w1', agent: 'claude', agent_status: 'working', cwd: '/code/site', agent_session: { kind: 'id', value: first, source: 'herdr:claude' } }]
+    const { deps, sessions } = makeDeps(dir)
+    const created: Array<number | null | undefined> = []
+    const create = deps.createSession
+    deps.createSession = input => { created.push(input.categoryId); create({ ...input }); const row = sessions.get(input.id); if (row) row.category_id = input.categoryId }
+    const asked: string[] = []
+    deps.categoryForSpace = async (spaceId, cwd) => { asked.push(`${spaceId}:${cwd}`); return cwd.startsWith('/code/site') ? 4 : null }
+    await startBridge(deps)
+    expect(created).toEqual([4])
+    expect(asked).toEqual(['w1:/code/site'])
+
+    // A second agent opened in the same space (a + tab elsewhere) joins the first chat's folder.
+    const second = '31111111-2222-3333-4444-555555555555'
+    await writeFile(join(dir, `${second}.jsonl`), claudeLine('user', 'Now the FAQ'))
+    herdr.panes.push({ pane_id: 'w1:p2', workspace_id: 'w1', agent: 'claude', agent_status: 'working', cwd: '/tmp/elsewhere', agent_session: { kind: 'id', value: second, source: 'herdr:claude' } })
+    herdr.emit('pane_updated')
+    await until(() => created.length === 2)
+    expect(created).toEqual([4, 4])
+    expect(asked).toEqual(['w1:/code/site'])
+  })
+
   it('does not create chats for agents opened and closed without doing anything', async () => {
     herdr.panes = [{ pane_id: 'w1:p1', workspace_id: 'w1', agent: 'claude', agent_status: 'idle', agent_session: { kind: 'id', value: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' } }]
     const { deps, sessions } = makeDeps(dir)

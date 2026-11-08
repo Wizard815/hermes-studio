@@ -60,7 +60,7 @@ export interface HerdrStatus {
   integrations: string[]
   home: string
   /** herdr keys (the user's or herdr's defaults) for Studio's herdr buttons. */
-  keys?: { prefix: string; search: string; workspaces: string; settings: string; help: string; sidebar?: string }
+  keys?: { prefix: string; search: string; workspaces: string; settings: string; help: string; sidebar?: string; studioChats?: string; newChat?: string }
   publicUrl?: string
   /** herdr's collapsed-rail width (4 or 0) and phone-layout width, for Studio's embedded view. */
   view?: { rail: number; mobileWidth: number }
@@ -95,6 +95,7 @@ export interface HerdrSetupResult {
   integrations: Array<{ kind: string; ok: boolean; message: string }>
   plugin: { linked?: boolean; message?: string; error?: string }
   keybinding: { key?: string | null; added?: boolean; message?: string; error?: string }
+  newChatKeybinding?: { key?: string | null; added?: boolean; message?: string; error?: string }
 }
 
 export const installHerdr = () => request<HerdrSetupResult & { binary: string }>(`${base}/install`, { method: 'POST', body: '{}' })
@@ -115,8 +116,14 @@ export const closeHerdrSessionPane = (sessionId: string) =>
 export const launchHerdrAgent = (input: { agentId: string; provider?: string; model?: string; workspace?: string; title?: string; prompt?: string; orb?: OrbWorkRef }) =>
   request<{ link: HerdrLink }>(`${base}/agents`, { method: 'POST', body: JSON.stringify(input) })
 
-export const focusHerdrPane = (paneId: string) =>
-  request<{ ok: boolean }>(`${base}/panes/${encodeURIComponent(paneId)}/focus`, { method: 'POST', body: '{}' })
+/** The pane Studio last asked herdr to focus, and when (herdr's focus reports lag behind it). */
+export const studioFocusRequest = { paneId: '', at: 0 }
+
+export function focusHerdrPane(paneId: string) {
+  studioFocusRequest.paneId = paneId
+  studioFocusRequest.at = Date.now()
+  return request<{ ok: boolean }>(`${base}/panes/${encodeURIComponent(paneId)}/focus`, { method: 'POST', body: '{}' })
+}
 
 export function connectHerdrSocket(): Socket {
   const endpoint = socketEndpoint(getBaseUrlValue(), '/herdr')

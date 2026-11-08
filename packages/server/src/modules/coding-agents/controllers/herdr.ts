@@ -180,6 +180,22 @@ export async function pluginOpen(ctx: Context) {
   } catch (error) { fail(ctx, error, 'Failed to open chat in herdr') }
 }
 
+/**
+ * The plugin shows the chat it opened or started (herdr's CLI only moves focus
+ * by direction). The plugin runs in a popup, and herdr gives focus back to the
+ * pane under the popup when it closes, so focus again once it has closed.
+ */
+export async function pluginFocus(ctx: Context) {
+  try {
+    const paneId = String(((ctx.request.body || {}) as { paneId?: unknown }).paneId || '')
+    if (!/^[\w:.-]{1,64}$/.test(paneId)) throw Object.assign(new Error('Invalid pane id'), { status: 400 })
+    const bridge = herdrManager.requireBridge()
+    await bridge.focusPane(paneId)
+    for (const delay of [400, 1200]) setTimeout(() => { void bridge.focusPane(paneId).catch(() => undefined) }, delay).unref?.()
+    ctx.body = { ok: true }
+  } catch (error) { fail(ctx, error, 'Failed to focus the herdr pane') }
+}
+
 export async function installHerdr(ctx: Context) {
   try {
     ctx.body = await herdrManager.installHerdr()

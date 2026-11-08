@@ -97,6 +97,11 @@ async function pause(rl, message) {
   await ask(rl, 'Press Enter to close.')
 }
 
+/** Show a pane: Studio focuses it through herdr's API (the CLI's `pane focus` only moves by direction). */
+async function focusPane(config, paneId) {
+  try { await api(config, '/focus', { method: 'POST', body: JSON.stringify({ paneId }) }) } catch { /* the chat still opened */ }
+}
+
 async function chats() {
   const config = loadConfig()
   const rl = createInterface({ input: process.stdin, output: process.stdout })
@@ -130,7 +135,7 @@ async function chats() {
         return
       }
       const { link } = await api(config, '/open', { method: 'POST', body: JSON.stringify({ sessionId: chat.id }) })
-      herdr(['pane', 'focus', link.paneId])
+      await focusPane(config, link.paneId)
       return
     }
   } catch (error) {
@@ -179,7 +184,7 @@ async function launch() {
       method: 'POST',
       body: JSON.stringify({ agentId, provider: provider || undefined, model, workspace: workspace || undefined }),
     })
-    herdr(['pane', 'focus', link.paneId])
+    await focusPane(config, link.paneId)
   } catch (error) {
     await pause(rl, `\nError: ${error.message}`)
   } finally {

@@ -11,6 +11,8 @@ export interface HerdrSettings {
   autoStart: boolean
   /** herdr version whose one-time setup (integrations, plugin, keybinding) has run. */
   setupVersion: string
+  /** Studio's setup revision that ran (new setup steps run once on existing installs). */
+  setupRevision: number
   /** Explicit herdr binary; empty means search PATH and common install dirs. */
   binaryPath: string
   /** Named herdr session; empty means herdr's default session. */
@@ -27,6 +29,7 @@ export const DEFAULT_HERDR_SETTINGS: HerdrSettings = {
   enabled: false,
   autoStart: true,
   setupVersion: '',
+  setupRevision: 0,
   binaryPath: '',
   session: '',
   autoImport: true,
@@ -44,6 +47,7 @@ export function sanitizeHerdrSettings(input: Partial<HerdrSettings> | null | und
   if (typeof input.mirrorTranscripts === 'boolean') next.mirrorTranscripts = input.mirrorTranscripts
   if (typeof input.autoStart === 'boolean') next.autoStart = input.autoStart
   if (typeof input.setupVersion === 'string') next.setupVersion = input.setupVersion.slice(0, 32)
+  if (typeof input.setupRevision === 'number' && Number.isInteger(input.setupRevision) && input.setupRevision >= 0) next.setupRevision = input.setupRevision
   if (typeof input.binaryPath === 'string') next.binaryPath = input.binaryPath.trim().slice(0, 1024)
   if (typeof input.session === 'string') {
     const session = input.session.trim()

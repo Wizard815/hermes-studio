@@ -2,7 +2,7 @@ import { dirname, join } from 'node:path'
 import { HerdrBridge, type HerdrBridgeDeps, type HerdrBridgeState } from './bridge'
 import { findPluginScript, installHerdrPlugin, pluginTokenMatches, readOrCreatePluginToken, type PluginInstallResult } from './plugin'
 import { installHerdrRelease } from './install'
-import { installStudioKeybinding, readHerdrKeys, readHerdrView, readHerdrWelcome, setHerdrWelcome, type HerdrKeys, type HerdrView, type KeybindResult } from './keybind'
+import { installStudioKeybinding, STUDIO_NEW_CHAT_BINDING, readHerdrKeys, readHerdrView, readHerdrWelcome, setHerdrWelcome, type HerdrKeys, type HerdrView, type KeybindResult } from './keybind'
 import { herdrKindForStudioAgent } from './protocol'
 import { SpaceFolderStore } from './folders'
 import { homedir } from 'node:os'
@@ -39,7 +39,12 @@ export interface HerdrSetupResult {
   integrations: Array<{ kind: string; ok: boolean; message: string }>
   plugin: PluginInstallResult | { error: string }
   keybinding: KeybindResult | { error: string }
+  /** herdr key for "New Studio chat" (a new agent that is both a herdr pane and a Studio chat). */
+  newChatKeybinding: KeybindResult | { error: string }
 }
+
+/** Bump when setup gains a step existing installs should run once. 2: New Studio chat key, welcome screen. */
+export const HERDR_SETUP_REVISION = 2
 
 export interface HerdrStatus {
   settings: HerdrSettings
@@ -160,7 +165,7 @@ export class HerdrManager {
       const binary = this.binary()
       if (!binary) return
       const version = (await readHerdrServerStatus(binary, this.settings)).version || 'unknown'
-      if (this.settings.setupVersion === version) return
+      if (this.settings.setupVersion === version && (this.settings.setupRevision || 0) >= HERDR_SETUP_REVISION) return
       await this.setup()
     } catch {
       /* setup reports its own failures through status; startup must not fail */
@@ -190,11 +195,12 @@ export class HerdrManager {
       const integrations = kinds.length ? await this.installIntegrations([...new Set(kinds)]) : []
       const plugin = await this.installPlugin().catch(error => ({ error: error instanceof Error ? error.message : String(error) }))
       const keybinding = await installStudioKeybinding(binary, this.settings).catch(error => ({ error: error instanceof Error ? error.message : String(error) }))
+      const newChatKeybinding = await installStudioKeybinding(binary, this.settings, process.env, STUDIO_NEW_CHAT_BINDING).catch(error => ({ error: error instanceof Error ? error.message : String(error) }))
       // Studio has just done what herdr's welcome walks you through (agent
       // integrations), so it starts skipped; a choice already in herdr's config stays.
       if (await readHerdrWelcome() === null) await setHerdrWelcome(binary, this.settings, false).catch(() => false)
-      await this.updateSettings({ setupVersion: version || 'unknown' })
-      return { version, integrations, plugin, keybinding }
+      await this.updateSettings({ setupVersion: version || 'unknown', setupRevision: HERDR_SETUP_REVISION })
+      return { version, integrations, plugin, keybinding, newChatKeybinding }
     })()
     return this.setupRunning.finally(() => { this.setupRunning = null })
   }

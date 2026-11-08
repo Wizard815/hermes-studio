@@ -82,6 +82,17 @@ describe('Studio keybinding in herdr', () => {
     expect(chooseStudioKey(DEFAULT_CONFIG, '# [[keys.command]]\n# key = "prefix+shift+s"\n')).toBe('prefix+shift+s')
   })
 
+  it('binds New Studio chat to its own free key, leaving herdr\'s new tab alone', async () => {
+    const { STUDIO_NEW_CHAT_BINDING, STUDIO_NEW_CHAT_ACTION, herdrKeys } = await import('../../packages/server/src/modules/coding-agents/services/herdr/keybind')
+    const key = chooseStudioKey(DEFAULT_CONFIG, '', STUDIO_NEW_CHAT_BINDING.candidates)
+    expect(key).toBeTruthy()
+    expect(boundKeys(DEFAULT_CONFIG, true).has(normalizeKey(key!))).toBe(false)
+    const config = `${renderStudioBinding('prefix+shift+s')}${renderStudioBinding(key!, STUDIO_NEW_CHAT_BINDING)}`
+    expect(existingStudioKey(config)).toBe('prefix+shift+s')
+    expect(existingStudioKey(config, STUDIO_NEW_CHAT_ACTION)).toBe(key)
+    expect(herdrKeys(config)).toMatchObject({ studioChats: 'prefix+shift+s', newChat: key })
+  })
+
   it('recognizes its own binding so setup is idempotent', () => {
     const config = `[ui]\nsidebar = true\n${renderStudioBinding('prefix+shift+s')}`
     expect(existingStudioKey(config)).toBe('prefix+shift+s')

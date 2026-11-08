@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import HerdrTerminal from './HerdrTerminal.vue'
 import { useHerdrStore } from '@/stores/hermes/herdr'
-import { focusHerdrPane, openSessionInHerdr, type HerdrPaneView } from '@/api/coding-agents/herdr'
+import { focusHerdrPane, openSessionInHerdr, studioFocusRequest, type HerdrPaneView } from '@/api/coding-agents/herdr'
 import { missionUrl } from '@/utils/mission-url'
 import { herdrKeyBytes } from '@/utils/herdr-keys'
 import HerdrSpacesPanel from './HerdrSpacesPanel.vue'
@@ -41,6 +41,38 @@ function press(bytes: string | null) {
   if (bytes) terminal.value?.send(bytes)
 }
 
+/** herdr's "New Studio chat" key, when Studio's setup bound one. */
+const newChatKey = computed(() => herdr.status?.keys?.newChat || '')
+
+/**
+ * New chat stays in herdr: herdr's New Studio chat picker opens here and the
+ * agent it starts is a herdr pane and a Studio chat at once. Without that key,
+ * Studio's new chat page.
+ */
+function newChat() {
+  const bytes = newChatKey.value ? herdrKeyBytes(newChatKey.value, keys.value.prefix) : null
+  if (!bytes || !terminal.value?.send(bytes)) emit('new-chat')
+}
+
+/**
+ * The chat follows herdr: switching agents inside herdr (its search, picker
+ * or a new chat) opens that agent's Studio chat, so both show the same chat.
+ * herdr's focus reports lag behind Studio's own focus requests, so reports
+ * that disagree with a request Studio just made are stale and ignored, and
+ * the first report after loading is not a switch.
+ */
+const STALE_FOCUS_MS = 2500
+const focusedChat = computed(() => {
+  const pane = herdr.bridge?.focusedPaneId || ''
+  return { pane, chat: (pane && panes.value.find(item => item.pane_id === pane)?.studioSessionId) || '' }
+})
+watch(() => `${focusedChat.value.pane}|${focusedChat.value.chat}`, (_key, previous) => {
+  const { pane, chat } = focusedChat.value
+  if (!previous || previous.startsWith('|') || !props.active || !chat || chat === props.sessionId) return
+  if (Date.now() - studioFocusRequest.at < STALE_FOCUS_MS && pane !== studioFocusRequest.paneId) return
+  emit('open-chat', chat)
+})
+
 /** herdr shows the focused pane: focus this chat's agent before and when switching chats. */
 async function focusChat() {
   const pane = linked.value
@@ -52,7 +84,8 @@ watch(() => props.active, async value => {
   await focusChat()
   started.value = true
 }, { immediate: true })
-watch(() => [props.sessionId, linked.value?.pane_id] as const, () => {
+// A string key: only a different chat or pane refocuses (every herdr update makes new pane objects).
+watch(() => `${props.sessionId}|${linked.value?.pane_id || ''}`, () => {
   if (started.value) void focusChat()
 })
 
@@ -113,7 +146,7 @@ onBeforeUnmount(() => herdr.release())
       <div class="herdr-center-body">
         <!-- Studio's spaces (its folders) and agents stand in for herdr's own sidebar, whose rail is cropped off. -->
         <aside class="herdr-center-rail" data-testid="herdr-center-rail">
-          <HerdrSpacesPanel :active-session-id="sessionId" @open-chat="id => emit('open-chat', id)" @new-chat="emit('new-chat')" />
+          <HerdrSpacesPanel :active-session-id="sessionId" :new-chat-key="newChatKey" @open-chat="id => emit('open-chat', id)" @new-chat="newChat" />
         </aside>
         <HerdrTerminal
           v-if="started"

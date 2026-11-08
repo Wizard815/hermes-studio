@@ -173,10 +173,12 @@ onBeforeUnmount(() => {
   term = null
 })
 
-/** Type into the terminal as the user would (buttons that press herdr keys). */
-function send(data: string) {
-  if (!readOnly.value && state.value === 'open') socket?.emit('terminal.input', { streamId, data })
+/** Type into the terminal as the user would (buttons that press herdr keys). False when it is not connected. */
+function send(data: string): boolean {
+  const sent = !readOnly.value && state.value === 'open' && !!socket
+  if (sent) socket!.emit('terminal.input', { streamId, data })
   term?.focus()
+  return sent
 }
 
 defineExpose({ reopen: open, focus: () => term?.focus(), send })
