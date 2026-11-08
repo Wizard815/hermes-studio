@@ -16,7 +16,7 @@ import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
  * Studio chat, so swapping back to Chat lands on the same conversation.
  */
 const props = defineProps<{ activeSessionId: string | null }>()
-const emit = defineEmits<{ 'open-chat': [sessionId: string] }>()
+const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'new-chat': [] }>()
 
 const toast = useMessage()
 const { t } = useI18n()
@@ -108,6 +108,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="herdr-spaces-panel" data-testid="herdr-spaces-panel">
+    <!-- The chat list's New chat, which herdr mode hides with the list. -->
+    <button type="button" class="herdr-spaces-new-chat" data-testid="herdr-spaces-new-chat" @click="emit('new-chat')">
+      <span aria-hidden="true">+</span> {{ t('chat.newChat') }}
+    </button>
     <SpaceTree
       class="herdr-spaces-tree"
       :workspaces="workspaces"
@@ -154,6 +158,27 @@ onBeforeUnmount(() => {
   height: 100%;
   min-height: 0;
   padding: 6px 4px;
+}
+
+.herdr-spaces-new-chat {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  margin: 0 4px 6px;
+  padding: 0 10px;
+  border: var(--border-width, 1px) solid $border-light;
+  border-radius: var(--radius-component, 6px);
+  background: transparent;
+  color: $text-primary;
+  font-size: 13px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: $accent-primary;
+    background: rgba(var(--accent-primary-rgb), 0.06);
+  }
 }
 
 .herdr-spaces-tree {

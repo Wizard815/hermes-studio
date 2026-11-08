@@ -17,7 +17,7 @@ import HerdrSpacesPanel from './HerdrSpacesPanel.vue'
  * mounted together and only shows one, so swapping is instant.
  */
 const props = defineProps<{ sessionId: string; active: boolean }>()
-const emit = defineEmits<{ 'open-chat': [sessionId: string] }>()
+const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'new-chat': [] }>()
 
 const { t } = useI18n()
 const toast = useMessage()
@@ -102,7 +102,7 @@ onBeforeUnmount(() => herdr.release())
       <div class="herdr-center-body">
         <!-- Studio's spaces (its folders) and agents stand in for herdr's own sidebar, whose rail is cropped off. -->
         <aside class="herdr-center-rail" data-testid="herdr-center-rail">
-          <HerdrSpacesPanel :active-session-id="sessionId" @open-chat="id => emit('open-chat', id)" />
+          <HerdrSpacesPanel :active-session-id="sessionId" @open-chat="id => emit('open-chat', id)" @new-chat="emit('new-chat')" />
         </aside>
         <HerdrTerminal
           v-if="started"
@@ -200,7 +200,7 @@ onBeforeUnmount(() => herdr.release())
   min-height: 0;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .herdr-center-rail {
     display: none;
   }

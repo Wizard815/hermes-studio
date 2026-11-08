@@ -224,6 +224,8 @@ const showBatchDeleteConfirm = ref(false);
 const isBatchDeleting = ref(false);
 
 const { expanded: showSessions, isMobile } = usePageSidebarState(!props.standalone)
+/** herdr mode swaps the chat list for its spaces panel; phones have no room for that panel and keep the drawer. */
+const herdrOwnsSidebar = computed(() => showHerdrCenter.value && !isMobile.value)
 
 const hasPageSidebar = computed(
   () => !props.standalone && currentMode.value === "chat" && props.contentMode === "chat",
@@ -2634,9 +2636,9 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
 
 <template>
   <div class="chat-panel" :class="{ 'chat-panel--standalone': standalone }">
-    <!-- herdr mode: the chat list closes; the herdr center has its own spaces and agents. -->
+    <!-- herdr mode: the chat list closes; the herdr center has its own spaces and agents (phones keep the drawer). -->
     <SessionListSidebar
-      v-if="hasPageSidebar && !(showHerdrCenter && contentMode === 'chat')"
+      v-if="hasPageSidebar && !(herdrOwnsSidebar && contentMode === 'chat')"
       :expanded="showSessions"
       :navigation="contentMode !== 'chat'"
     >
@@ -3158,7 +3160,7 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
       <header v-if="!standalone" class="chat-header">
         <div class="header-left">
           <HeaderSidebarToggle
-            v-if="currentMode === 'chat' && !showHerdrCenter"
+            v-if="currentMode === 'chat' && !herdrOwnsSidebar"
             class="header-sidebar-toggle"
             :expanded="showSessions"
             @toggle="showSessions = !showSessions"
@@ -3363,6 +3365,7 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               :session-id="herdrSessionId"
               :active="showHerdrCenter"
               @open-chat="sessionId => handleSessionClick(sessionId)"
+              @new-chat="openNewChatPage()"
             />
             <MessageList
               v-show="!showHerdrCenter"

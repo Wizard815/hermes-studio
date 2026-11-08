@@ -143,3 +143,12 @@ export function normalizeSnapshot(raw: any): HerdrSnapshot {
       : [],
   }
 }
+
+/**
+ * A herdr chat runs with Studio's model routing only when it was launched with
+ * a real provider; native launches report the provider as 'global'.
+ */
+export function herdrChatMode(provider: string | null | undefined): 'scoped' | 'global' {
+  const value = String(provider || '').trim()
+  return value && value !== 'global' ? 'scoped' : 'global'
+}

@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile, appendFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  herdrChatMode,
   herdrKindForStudioAgent,
   nativeSessionIdOf,
   normalizeSnapshot,
@@ -14,6 +15,14 @@ import { sanitizeHerdrSettings, herdrArgs } from '../../packages/server/src/modu
 import { pluginCommand, pluginTokenMatches, readOrCreatePluginToken, renderPluginManifest } from '../../packages/server/src/modules/coding-agents/services/herdr/plugin'
 
 describe('herdr protocol helpers', () => {
+  it('stores a herdr chat as Studio-routed only when launched with a real provider', () => {
+    expect(herdrChatMode('openrouter')).toBe('scoped')
+    // Native launches report 'global': those chats must resume with the agent's own configuration.
+    expect(herdrChatMode('global')).toBe('global')
+    expect(herdrChatMode('')).toBe('global')
+    expect(herdrChatMode(undefined)).toBe('global')
+  })
+
   it('maps agent names in both directions', () => {
     expect(herdrKindForStudioAgent('claude-code')).toBe('claude')
     expect(herdrKindForStudioAgent('qoder')).toBe('qodercli')

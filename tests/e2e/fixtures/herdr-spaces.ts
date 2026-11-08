@@ -7,11 +7,11 @@ import '../../../packages/client/src/styles/global.scss'
 
 // The chat page's herdr-mode sidebar is real; the spec mocks the API and swallows sockets.
 const opened: string[] = []
-;(window as any).herdrSpacesFixture = { opened }
+;(window as any).herdrSpacesFixture = { opened, newChats: 0 }
 const app = createApp({
   render: () => h(NConfigProvider, {}, { default: () => h(NMessageProvider, {}, {
     default: () => h('aside', { style: { display: 'flex', flexDirection: 'column', height: '100vh', width: '300px' } }, [
-      h(HerdrSpacesPanel, { activeSessionId: 'herdr-aaa', onOpenChat: (id: string) => opened.push(id) }),
+      h(HerdrSpacesPanel, { activeSessionId: 'herdr-aaa', onOpenChat: (id: string) => opened.push(id), onNewChat: () => { (window as any).herdrSpacesFixture.newChats += 1 } }),
     ]),
   }) }),
 })

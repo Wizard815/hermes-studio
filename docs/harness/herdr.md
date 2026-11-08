@@ -112,8 +112,10 @@ tasks and plans, projects, ideas, upkeep, and Control).
 - **herdr mode layout.** In herdr mode the chat list closes (the page sidebar
   is not shown) and the herdr center is: a rail with Mission's Spaces tree
   (Studio's folders 1:1) and Agents list (`HerdrSpacesPanel.vue`), then herdr's
-  own UI. Picking a space or agent focuses it in herdr and opens its Studio
-  chat; the center stays mounted while the chat switches, so herdr does not
+  own UI. The rail starts with New chat (the chat list's, which herdr mode
+  hides). On phones (768px and under) there is no room for the rail, so the
+  chat list stays in the menu drawer. Picking a space or agent focuses it in
+  herdr and opens its Studio chat; the center stays mounted while the chat switches, so herdr does not
   reconnect. herdr's own sidebar starts hidden in Studio only: the embedded
   client connects through Studio's own links to herdr's sockets
   (`services/herdr/client-view.ts`, `HERDR_SOCKET_PATH`), and herdr keeps client
@@ -123,6 +125,12 @@ tasks and plans, projects, ideas, upkeep, and Control).
   `cropLeft`), unless herdr's config uses `sidebar_collapsed_mode = "hidden"`
   or the view is at or under herdr's phone layout width (`readHerdrView`).
   Windows (named pipes) keeps the shared preferences.
+- **Chat mode of herdr chats.** A chat herdr starts is Studio-routed
+  (`agent_mode` `scoped`) only when launched with a real provider; native
+  launches report the provider as `global` and are stored `global`
+  (`herdrChatMode`), so Studio can resume or reopen them after their pane
+  closes. Startup repairs older herdr chats stored `scoped` without a model
+  (`repairHerdrChatModes`).
 
 ## Pondering Orb
 

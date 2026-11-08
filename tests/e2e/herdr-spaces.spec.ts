@@ -41,5 +41,8 @@ test('herdr mode sidebar shows spaces in Studio\'s folders and opens the chat of
   await page.getByTestId('mission-space-row').filter({ hasText: 'Fix flaky login test' }).click()
   await expect.poll(() => posts).toContain('/api/coding-agents/herdr/panes/w2%3Ap1/focus')
   await expect.poll(() => page.evaluate(() => (window as any).herdrSpacesFixture.opened)).toEqual(['herdr-bbb'])
+  // The chat list's New chat, which herdr mode hides with the list.
+  await page.getByTestId('herdr-spaces-new-chat').click()
+  await expect.poll(() => page.evaluate(() => (window as any).herdrSpacesFixture.newChats)).toBe(1)
   expect(errors).toEqual([])
 })

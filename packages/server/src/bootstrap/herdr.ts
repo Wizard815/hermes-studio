@@ -25,7 +25,7 @@ import {
 import { herdrManager, type HerdrPluginDeps } from '../modules/coding-agents/services/herdr/manager'
 import { listProfileModelGroups } from '../modules/hermes/controllers/models'
 import { listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
-import { herdrKindForStudioAgent } from '../modules/coding-agents/services/herdr/protocol'
+import { herdrChatMode, herdrKindForStudioAgent } from '../modules/coding-agents/services/herdr/protocol'
 import { locateTranscript } from '../modules/coding-agents/services/herdr/transcript'
 import type { HerdrBridgeDeps, HerdrSessionRef, HerdrWorkRef } from '../modules/coding-agents/services/herdr/bridge'
 import { setupHerdrSocket } from '../modules/coding-agents/sockets/herdr'
@@ -48,6 +48,21 @@ function toRef(row: HermesSessionRow | null): HerdrSessionRef | null {
 
 const AGENT_LABELS: Record<string, string> = { hermes: 'Hermes Agent' }
 
+/**
+ * Chats that herdr started natively used to be stored as Studio-routed
+ * ('scoped') without a model, so Studio could not resume or reopen them.
+ */
+export function repairHerdrChatModes(): number {
+  let repaired = 0
+  for (const row of listSessions(undefined, 'coding_agent', 5000)) {
+    if (!row.id.startsWith('herdr-') || row.agent_mode !== 'scoped' || String(row.model || '').trim()) continue
+    if (herdrChatMode(row.provider) !== 'global') continue
+    updateSession(row.id, { agent_mode: 'global' })
+    repaired += 1
+  }
+  return repaired
+}
+
 export function herdrBridgeDeps(): HerdrBridgeDeps {
   return {
     findSessionByNativeId: nativeId => toRef(findSessionByNativeSessionId(nativeId)),
@@ -60,7 +75,7 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
         source: 'coding_agent',
         agent: storedAgentIdForCodingAgent(input.agent),
         // Agents started in herdr use their own native configuration unless Studio launched them.
-        agent_mode: input.provider ? 'scoped' : 'global',
+        agent_mode: herdrChatMode(input.provider),
         agent_native_session_id: input.nativeId,
         title: input.title,
         workspace: input.workspace || undefined,
@@ -173,6 +188,10 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
     stateFile: join(home, 'herdr', 'bridge-state.json'),
   }, herdrPluginDeps(baseUrl))
   const socket = setupHerdrSocket(io)
+  try {
+    const repaired = repairHerdrChatModes()
+    if (repaired) logger.info({ repaired }, '[herdr] chats started in herdr now resume with their agent\'s own configuration')
+  } catch (error) { logger.warn(error, '[herdr] could not check herdr chat modes') }
   stopListChanges = onSessionListChanged(change => {
     if (change.type === 'deleted') void herdrManager.getBridge()?.forgetSession(change.sessionId)
   })
