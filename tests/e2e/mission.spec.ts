@@ -19,9 +19,10 @@ const STATUS = {
   integrations: ['claude', 'codex'],
 }
 
-async function openMission(page: Page) {
+async function openMission(page: Page, options: { orbUrl?: string } = {}) {
   const posts: Array<{ path: string; body: any }> = []
   const errors: string[] = []
+  const orbCalls: string[] = []
   // A folder from before Mission shared Studio's folders: it becomes Studio folder "Clients".
   let folders: any = { list: [{ id: 'fclient', name: 'Clients', color: 'teal', folded: false, start: '', rules: 'client-*' }], of: {}, at: 1 }
   const categories: any[] = [{ id: 5, name: 'Docs', parent_id: null, created_at: 1, updated_at: 1 }, { id: 6, name: 'site', parent_id: 5, created_at: 1, updated_at: 1 }]
@@ -49,7 +50,14 @@ async function openMission(page: Page) {
     if (path === '/api/coding-agents') return route.fulfill({ json: { tools: [{ id: 'claude-code', name: 'Claude Code', installed: true }, { id: 'codex', name: 'Codex', installed: true }] } })
     if (path === '/api/coding-agents/herdr/agents') return route.fulfill({ json: { link: { paneId: 'w3:p2', workspaceId: 'w3', status: 'unknown' } } })
     if (path === '/api/studio/sessions') return route.fulfill({ json: { sessions: [{ id: 'herdr-aaa', title: 'auth refactor', source: 'coding_agent', agent: 'claude-code', messageCount: 4, category_id: null }, { id: 'herdr-ccc', title: 'docs', source: 'coding_agent', agent: 'claude-code', category_id: 6 }] } })
-    if (path === '/api/studio/orb') return route.fulfill({ json: { connected: true, version: '0.1.0', error: '', settings: { url: 'http://orb', hasToken: true, fromEnv: false } } })
+    if (path === '/api/studio/orb') {
+      const url = options.orbUrl ?? 'http://orb'
+      return route.fulfill({ json: { connected: !!url, version: url ? '0.1.0' : '', error: '', settings: { url, hasToken: !!url, fromEnv: false } } })
+    }
+    if (path.startsWith('/api/studio/orb/') && options.orbUrl === '') {
+      orbCalls.push(path)
+      return route.fulfill({ status: 409, json: { error: 'Pondering Orb is not connected.' } })
+    }
     if (path === '/api/studio/orb/tools/orb_list_tasks') return route.fulfill({ json: { result: [
       { title: 'Fix flaky login test', list: 'api', due: '', done: false, priority: 'high' },
       { title: 'Old thing', list: 'api', due: '', done: true, priority: '' },
@@ -60,7 +68,7 @@ async function openMission(page: Page) {
   })
   await page.goto('/mission.html')
   await expect(page.getByTestId('mission-app')).toBeVisible()
-  return { posts, errors }
+  return { posts, errors, orbCalls }
 }
 
 test('Mission folders are Studio chat folders, and spaces follow their chats', async ({ page }) => {
@@ -99,4 +107,24 @@ test('Mission fits a phone width', async ({ page }) => {
   await openMission(page)
   await expect(page.getByTestId('mission-space-tree')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+})
+
+test('without Pondering Orb, its sources show one note and make no Orb requests', async ({ page }) => {
+  const { errors, orbCalls } = await openMission(page, { orbUrl: '' })
+  for (const tab of ['tasks', 'projects', 'ideas', 'upkeep']) {
+    await page.getByTestId(`mission-source-${tab}-tab`).click()
+    await expect(page.getByTestId('mission-orb-not-connected')).toHaveCount(1)
+  }
+  // Chats do not need Orb and keep working.
+  await page.getByTestId('mission-source-chats-tab').click()
+  await expect(page.getByTestId('mission-orb-not-connected')).toHaveCount(0)
+  // No error toasts and no Orb data requests.
+  await page.waitForTimeout(300)
+  await expect(page.locator('.n-message--error-type')).toHaveCount(0)
+  expect(orbCalls).toEqual([])
+  // The note leads to the place to set Orb up.
+  await page.getByTestId('mission-source-tasks-tab').click()
+  await page.getByTestId('mission-orb-open-control').click()
+  await expect(page.getByTestId('mission-source-control-tab')).toHaveAttribute('aria-selected', 'true')
+  expect(errors).toEqual([])
 })

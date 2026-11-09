@@ -23,7 +23,8 @@ import SourceProjects from './sources/SourceProjects.vue'
 import SourceIdeas from './sources/SourceIdeas.vue'
 import SourceUpkeep from './sources/SourceUpkeep.vue'
 import ControlPanel from './sources/ControlPanel.vue'
-import { studioUrl, useLaunchTools } from './useMission'
+import OrbNotConnected from './sources/OrbNotConnected.vue'
+import { studioUrl, useLaunchTools, useOrbConnection } from './useMission'
 
 type View = 'mission' | 'classic'
 type Source = 'chats' | 'tasks' | 'projects' | 'ideas' | 'upkeep' | 'control'
@@ -41,6 +42,10 @@ function stored<T extends string>(key: string, allowed: readonly T[], fallback: 
 }
 const view = ref<View>(stored('herdr_mission_view', ['mission', 'classic'] as const, 'mission'))
 const source = ref<Source>(stored('herdr_mission_source', SOURCES, 'chats'))
+/** Orb is optional: its sources wait for an Orb address and show one note without it. */
+const orb = useOrbConnection()
+const ORB_SOURCES = new Set<Source>(['tasks', 'projects', 'ideas', 'upkeep'])
+const orbBlocked = computed(() => ORB_SOURCES.has(source.value) && (!orb.state.checked || !orb.state.configured))
 const panelOpen = ref(false)
 const selectedSpace = ref('')
 const selectedPane = ref('')
@@ -290,6 +295,9 @@ onBeforeUnmount(() => {
           </nav>
           <div class="mission-source-view">
             <SourceChats v-if="source === 'chats'" @select-pane="selectPane" />
+            <template v-else-if="orbBlocked">
+              <OrbNotConnected v-if="orb.state.checked" @open-control="source = 'control'" />
+            </template>
             <SourceTasks v-else-if="source === 'tasks'" :panes="panes" :workspace="spaceCwd" @select-pane="selectPane" />
             <SourceProjects v-else-if="source === 'projects'" :panes="panes" :workspace="spaceCwd" @select-pane="selectPane" />
             <SourceIdeas v-else-if="source === 'ideas'" :panes="panes" :workspace="spaceCwd" @select-pane="selectPane" />

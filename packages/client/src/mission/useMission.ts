@@ -1,6 +1,6 @@
 import { computed, reactive, ref } from 'vue'
 import { fetchCodingAgentsStatus, type CodingAgentToolStatus } from '@/api/coding-agents'
-import type { OrbWorkRef } from '@/api/studio/orb'
+import { fetchOrbStatus, type OrbWorkRef } from '@/api/studio/orb'
 import {
   focusHerdrPane,
   launchHerdrAgent,
@@ -123,4 +123,32 @@ export async function launchForCard(input: {
 export function studioUrl(hashPath: string): string | null {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/')
   return window.location.pathname.startsWith(`${base}mission`) ? `${base}#${hashPath}` : null
+}
+
+/**
+ * Pondering Orb is optional. Mission asks once whether it has an address; without
+ * one, the Orb sources show a single "not connected" note and make no Orb requests
+ * (each would fail with "not connected"). `refresh` re-checks after it is set up.
+ */
+const orbConnection = reactive({ checked: false, configured: false })
+let orbCheck: Promise<void> | null = null
+
+export function useOrbConnection(options: { fetchStatus?: typeof fetchOrbStatus } = {}) {
+  const fetchStatus = options.fetchStatus || fetchOrbStatus
+  function refresh(): Promise<void> {
+    orbCheck = fetchStatus()
+      .then(status => { orbConnection.configured = !!status?.settings?.url })
+      .catch(() => { orbConnection.configured = false })
+      .finally(() => { orbConnection.checked = true })
+    return orbCheck
+  }
+  if (!orbCheck) void refresh()
+  return { state: orbConnection, refresh }
+}
+
+/** Test hook: forget the cached check. */
+export function resetOrbConnection() {
+  orbCheck = null
+  orbConnection.checked = false
+  orbConnection.configured = false
 }

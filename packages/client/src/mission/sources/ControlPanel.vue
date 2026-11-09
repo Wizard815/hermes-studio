@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { NButton, NInput, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { useOrbConnection } from '../useMission'
 import { callOrbTool, fetchOrbData, fetchOrbStatus, saveOrbSettings, type OrbChore, type OrbStatus, type OrbTask } from '@/api/studio/orb'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { studioUrl } from '../useMission'
@@ -12,6 +13,8 @@ import { studioUrl } from '../useMission'
  */
 const { t } = useI18n()
 const toast = useMessage()
+/** Saving an address here opens Mission's Orb sources. */
+const orbConnection = useOrbConnection()
 const herdr = useHerdrStore()
 const orb = ref<OrbStatus | null>(null)
 const url = ref('')
@@ -70,7 +73,7 @@ async function save() {
   try {
     await saveOrbSettings({ url: url.value.trim(), ...(token.value.trim() ? { token: token.value.trim() } : {}) })
     token.value = ''
-    await load()
+    await Promise.all([load(), orbConnection.refresh()])
     toast.success(orb.value?.connected ? t('mission.orbConnected') : t('mission.orbSaved'))
   } catch (err: any) {
     toast.error(err?.message || String(err))
