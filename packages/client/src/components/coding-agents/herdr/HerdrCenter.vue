@@ -28,7 +28,8 @@ const terminal = ref<InstanceType<typeof HerdrTerminal> | null>(null)
 const started = ref(false)
 
 const panes = computed<HerdrPaneView[]>(() => herdr.bridge?.panes || [])
-const linked = computed(() => panes.value.find(pane => pane.studioSessionId === props.sessionId) ?? null)
+/** The open chat's pane; with no herdr chat open (sessionId ''), herdr shows its own focus. */
+const linked = computed(() => (props.sessionId ? panes.value.find(pane => pane.studioSessionId === props.sessionId) ?? null : null))
 
 const KEY_DEFAULTS = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?', sidebar: 'prefix+b' }
 const keys = computed(() => ({ ...KEY_DEFAULTS, ...(herdr.status?.keys || {}) }))
@@ -117,7 +118,7 @@ async function openHere() {
  */
 const autoOpened = new Set<string>()
 watch(() => [props.active, props.sessionId, herdr.enabled, herdr.bridge?.connected, !!linked.value] as const, ([active, sessionId, enabled, connected, isLinked]) => {
-  if (!active || !enabled || !connected || isLinked || opening.value || autoOpened.has(sessionId)) return
+  if (!active || !sessionId || !enabled || !connected || isLinked || opening.value || autoOpened.has(sessionId)) return
   autoOpened.add(sessionId)
   void openHere()
 }, { immediate: true })
@@ -131,7 +132,7 @@ onBeforeUnmount(() => herdr.release())
 
 <template>
   <section class="herdr-center" data-testid="herdr-center">
-    <div v-if="!herdr.enabled" class="herdr-center-empty">
+    <div v-if="herdr.status && !herdr.enabled" class="herdr-center-empty">
       <p>{{ t('herdr.centerOff') }}</p>
       <a :href="SETTINGS_HREF" class="herdr-center-link" data-testid="herdr-center-settings">{{ t('sidebar.settings') }}</a>
     </div>
@@ -148,7 +149,8 @@ onBeforeUnmount(() => herdr.release())
           <span>{{ linked.label || linked.agent }}</span>
           <small>{{ linked.pane_id }}</small>
         </span>
-        <NButton v-else size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.centerOpenChat') }}</NButton>
+        <NButton v-else-if="sessionId" size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.centerOpenChat') }}</NButton>
+        <span v-else class="herdr-center-landing" data-testid="herdr-center-landing">{{ t('herdr.centerLanding') }}</span>
         <span class="herdr-center-spacer" />
         <NTooltip v-for="button in keyButtons" :key="button.name" trigger="hover">
           <template #trigger>
@@ -215,6 +217,11 @@ onBeforeUnmount(() => herdr.release())
   small {
     color: $text-muted;
   }
+}
+
+.herdr-center-landing {
+  font-size: 12px;
+  color: $text-muted;
 }
 
 .herdr-center-spacer {

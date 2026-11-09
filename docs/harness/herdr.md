@@ -112,6 +112,14 @@ tasks and plans, projects, ideas, upkeep, and Control).
   this chat in herdr" for a chat not running there. Sidebar, header and tool
   panel stay; both centers stay mounted once opened and herdr stays connected,
   so swapping is instant; the choice is remembered (`studio_chat_center`).
+- **Switch availability.** Chat | herdr shows for super admins whenever herdr
+  is on, whichever chat is open (`herdrCenterAvailable` in `ChatPanel.vue`).
+  With no herdr chat open (a Hermes chat, nothing selected, or the New Chat
+  page, which herdr mode closes), the herdr center shows herdr's own focus, the
+  Spaces tree and a hint (`sessionId` ''); picking an agent or switching
+  agents inside herdr opens that agent's Studio chat. While the next chat
+  loads, the center keeps its chat, so herdr does not reconnect; a saved herdr
+  mode stays while herdr's status loads.
 - **herdr mode layout.** In herdr mode the chat list closes (the page sidebar
   is not shown) and the herdr center is: a rail with Mission's Spaces tree
   (Studio's folders 1:1) and Agents list (`HerdrSpacesPanel.vue`), then herdr's

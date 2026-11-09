@@ -96,3 +96,18 @@ test('the chat follows herdr: switching agents inside herdr opens that agent\'s 
   await expect.poll(() => page.evaluate(() => (window as any).herdrCenterFixture.newChats)).toBe(1)
   expect(errors).toEqual([])
 })
+
+test('with no herdr chat open, herdr mode lands on herdr and its spaces, and picking an agent opens its chat', async ({ page }) => {
+  const { posts, errors } = await openCenter(page, 'none')
+  await expect(page.getByTestId('herdr-center-landing')).toBeVisible()
+  await expect(page.getByTestId('herdr-center-open')).toHaveCount(0)
+  await expect(page.locator('.herdr-terminal')).toBeVisible()
+  await expect(page.getByTestId('herdr-spaces-panel').getByTestId('mission-space-row')).toHaveCount(3)
+  // Nothing is opened or focused on its own.
+  await page.waitForTimeout(500)
+  expect(posts.filter(path => path.endsWith('/open') || path.endsWith('/focus'))).toEqual([])
+  // Switching agents inside herdr opens that agent's Studio chat.
+  await page.evaluate(() => { (window as any).herdrCenterFixture.store.status.bridge.focusedPaneId = 'w2:p1' })
+  await expect.poll(() => page.evaluate(() => (window as any).herdrCenterFixture.opened)).toEqual(['herdr-ccc'])
+  expect(errors).toEqual([])
+})

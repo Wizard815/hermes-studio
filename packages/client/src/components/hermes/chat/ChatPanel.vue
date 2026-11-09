@@ -139,16 +139,18 @@ const isSuperAdmin = computed(() => isStoredSuperAdmin());
 const HERDR_ELIGIBLE_AGENTS = new Set(['claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot'])
 // By id and the chat list too: while Studio switches chats the loaded chat lags
 // behind, and herdr mode must not flicker off (it would reconnect herdr).
-const herdrEligible = computed(() => {
+// 'unknown' while the chat is not loaded yet; 'other' for chats herdr cannot host.
+const herdrChatState = computed<'eligible' | 'other' | 'unknown' | 'none'>(() => {
   const id = chatStore.activeSessionId
-  if (!id) return false
-  if (sessionStates.herdrLink(id)) return true
+  if (!id) return 'none'
+  if (sessionStates.herdrLink(id)) return 'eligible'
   const active = chatStore.activeSession
   const session = active && active.id === id ? active : chatStore.sessions.find(item => item.id === id)
-  if (!session) return false
+  if (!session) return 'unknown'
   const agent = session.codingAgentId || (session.agent === 'claude' ? 'claude-code' : session.agent)
-  return !!agent && HERDR_ELIGIBLE_AGENTS.has(agent)
+  return agent && HERDR_ELIGIBLE_AGENTS.has(agent) ? 'eligible' : 'other'
 })
+const herdrEligible = computed(() => herdrChatState.value === 'eligible')
 
 // The center column swaps between the chat and its herdr agent; the sidebar,
 // header and tool panel stay. Both stay mounted once opened, so swapping is instant.
@@ -168,11 +170,27 @@ watch(() => [route.query.center, route.query.pane] as const, async ([center, pan
   if (chat) void handleSessionClick(chat)
   else void focusHerdrPane(pane).catch(() => undefined)
 }, { immediate: true })
-const herdrCenterAvailable = computed(() => !props.standalone && isSuperAdmin.value && !!chatStore.activeSessionId && herdrEligible.value)
+// The switch is there whenever herdr is on (super admins): with no herdr chat open,
+// herdr mode shows herdr's own view and spaces, and picking an agent opens its chat.
+// Until herdr's status loads, a saved herdr mode stays (no flash of the chat on reload).
+const herdrCenterAvailable = computed(() => !props.standalone && isSuperAdmin.value
+  && (herdrStore.enabled || (!herdrStore.status && centerMode.value === 'herdr')))
+watch(isSuperAdmin, admin => { if (admin && !props.standalone && !herdrStore.status) void herdrStore.refresh().catch(() => undefined) }, { immediate: true })
 const herdrCenterMounted = ref(false)
-/** The chat the herdr center follows; kept while switching so the center stays mounted. */
+/**
+ * The chat the herdr center shows ('' = none: herdr's own focus). Kept while the
+ * next chat loads, so the center stays mounted and herdr does not reconnect.
+ */
 const herdrSessionId = ref('')
-watch(() => [chatStore.activeSessionId, herdrEligible.value] as const, ([id, eligible]) => { if (id && eligible) herdrSessionId.value = id }, { immediate: true })
+watch(() => [chatStore.activeSessionId, herdrChatState.value] as const, ([id, state]) => {
+  if (state === 'eligible') herdrSessionId.value = id || ''
+  else if (state !== 'unknown') herdrSessionId.value = ''
+}, { immediate: true })
+/** herdr from the New Chat page leaves it: herdr has its own New Studio chat. */
+function selectCenter(mode: ChatCenter) {
+  centerMode.value = mode
+  if (mode === 'herdr' && showNewChatPage.value) closeNewChatPage()
+}
 const showHerdrCenter = computed(() => centerMode.value === 'herdr' && herdrCenterAvailable.value && !showNewChatPage.value)
 // Lazy: showHerdrCenter reads state declared further down, so it is first read from the template.
 watch(showHerdrCenter, value => { if (value) herdrCenterMounted.value = true })
@@ -3208,7 +3226,7 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
             </template>
           </NButton>
           <div
-            v-if="herdrCenterAvailable && !showNewChatPage"
+            v-if="herdrCenterAvailable"
             class="header-center-switch"
             role="radiogroup"
             :aria-label="t('herdr.centerSwitch')"
@@ -3223,7 +3241,7 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               :aria-checked="centerMode === mode"
               :class="{ active: centerMode === mode }"
               :data-testid="`chat-center-${mode}`"
-              @click="centerMode = mode"
+              @click="selectCenter(mode)"
             >{{ mode === 'chat' ? t('herdr.centerChat') : t('herdr.centerHerdr') }}</button>
           </div>
           <HerdrOpenButton
@@ -3375,7 +3393,7 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
             </NewChatPage>
             <template v-else>
             <HerdrCenter
-              v-if="(herdrCenterMounted || showHerdrCenter) && herdrSessionId"
+              v-if="herdrCenterMounted || showHerdrCenter"
               v-show="showHerdrCenter"
               :session-id="herdrSessionId"
               :active="showHerdrCenter"

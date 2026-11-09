@@ -23,6 +23,7 @@ export const herdrMessages = {
       "takeControl": "Take control",
       "releaseControl": "Release control",
       "centerOpenChat": "Open this chat in herdr",
+      "centerLanding": "No herdr chat open. Pick a space or agent, or start a New Chat.",
       "cardDescription": "Terminal workspace for coding agents. Its chats are Studio chats; switch between them with Chat | herdr at the top of Chats.",
       "cardOpen": "Open in Chats",
       "key": {
@@ -250,6 +251,7 @@ export const herdrMessages = {
       "takeControl": "接管控制",
       "releaseControl": "释放控制",
       "centerOpenChat": "在 herdr 中打开此聊天",
+      "centerLanding": "未打开 herdr 对话。选择一个空间或智能体，或新建对话。",
       "cardDescription": "面向编程智能体的终端工作区。它的对话就是 Studio 对话；在对话页顶部用 对话 | herdr 切换。",
       "cardOpen": "在对话中打开",
       "key": {
@@ -477,6 +479,7 @@ export const herdrMessages = {
       "takeControl": "接管控制",
       "releaseControl": "釋放控制",
       "centerOpenChat": "在 herdr 中開啟此聊天",
+      "centerLanding": "未開啟 herdr 對話。選擇一個空間或代理，或新增對話。",
       "cardDescription": "面向程式代理的終端工作區。它的對話就是 Studio 對話；在對話頁頂部用 對話 | herdr 切換。",
       "cardOpen": "在對話中開啟",
       "key": {
@@ -704,6 +707,7 @@ export const herdrMessages = {
       "takeControl": "操作を引き継ぐ",
       "releaseControl": "操作を解放",
       "centerOpenChat": "このチャットを herdr で開く",
+      "centerLanding": "herdr のチャットが開かれていません。スペースかエージェントを選ぶか、新しいチャットを始めてください。",
       "cardDescription": "コーディングエージェント用のターミナルワークスペース。そのチャットは Studio のチャットです。チャット上部の チャット | herdr で切り替えます。",
       "cardOpen": "チャットで開く",
       "key": {
@@ -931,6 +935,7 @@ export const herdrMessages = {
       "takeControl": "제어 가져오기",
       "releaseControl": "제어 해제",
       "centerOpenChat": "이 채팅을 herdr에서 열기",
+      "centerLanding": "열린 herdr 채팅이 없습니다. 스페이스나 에이전트를 선택하거나 새 채팅을 시작하세요.",
       "cardDescription": "코딩 에이전트용 터미널 작업 공간. 채팅은 Studio 채팅과 같으며, 채팅 상단의 채팅 | herdr로 전환합니다.",
       "cardOpen": "채팅에서 열기",
       "key": {
@@ -1158,6 +1163,7 @@ export const herdrMessages = {
       "takeControl": "Steuerung übernehmen",
       "releaseControl": "Steuerung freigeben",
       "centerOpenChat": "Diesen Chat in herdr öffnen",
+      "centerLanding": "Kein herdr-Chat offen. Wähle einen Bereich oder Agenten oder starte einen neuen Chat.",
       "cardDescription": "Terminal-Arbeitsbereich für Coding-Agenten. Seine Chats sind Studio-Chats; wechsle oben in Chats mit Chat | herdr.",
       "cardOpen": "In Chats öffnen",
       "key": {
@@ -1385,6 +1391,7 @@ export const herdrMessages = {
       "takeControl": "Tomar el control",
       "releaseControl": "Liberar el control",
       "centerOpenChat": "Abrir este chat en herdr",
+      "centerLanding": "No hay un chat de herdr abierto. Elige un espacio o agente, o inicia un chat nuevo.",
       "cardDescription": "Espacio de terminal para agentes de código. Sus chats son chats de Studio; cambia con Chat | herdr arriba en Chats.",
       "cardOpen": "Abrir en Chats",
       "key": {
@@ -1612,6 +1619,7 @@ export const herdrMessages = {
       "takeControl": "Prendre le contrôle",
       "releaseControl": "Rendre le contrôle",
       "centerOpenChat": "Ouvrir ce chat dans herdr",
+      "centerLanding": "Aucune discussion herdr ouverte. Choisissez un espace ou un agent, ou lancez une nouvelle discussion.",
       "cardDescription": "Espace terminal pour agents de code. Ses discussions sont des discussions Studio ; basculez avec Chat | herdr en haut des discussions.",
       "cardOpen": "Ouvrir dans les discussions",
       "key": {
@@ -1839,6 +1847,7 @@ export const herdrMessages = {
       "takeControl": "Assumir o controle",
       "releaseControl": "Liberar o controle",
       "centerOpenChat": "Abrir este chat no herdr",
+      "centerLanding": "Nenhuma conversa do herdr aberta. Escolha um espaço ou agente, ou inicie uma nova conversa.",
       "cardDescription": "Espaço de terminal para agentes de código. Suas conversas são conversas do Studio; alterne com Chat | herdr no topo das conversas.",
       "cardOpen": "Abrir nas conversas",
       "key": {
@@ -2066,6 +2075,7 @@ export const herdrMessages = {
       "takeControl": "Взять управление",
       "releaseControl": "Отпустить управление",
       "centerOpenChat": "Открыть этот чат в herdr",
+      "centerLanding": "Чат herdr не открыт. Выберите пространство или агента либо начните новый чат.",
       "cardDescription": "Терминальное пространство для агентов-программистов. Его чаты — это чаты Studio; переключайтесь через Чат | herdr вверху чатов.",
       "cardOpen": "Открыть в чатах",
       "key": {
@@ -2293,6 +2303,7 @@ export const herdrMessages = {
       "takeControl": "Kontrolü al",
       "releaseControl": "Kontrolü bırak",
       "centerOpenChat": "Bu sohbeti herdr'da aç",
+      "centerLanding": "Açık herdr sohbeti yok. Bir alan veya ajan seçin ya da yeni sohbet başlatın.",
       "cardDescription": "Kodlama ajanları için terminal çalışma alanı. Sohbetleri Studio sohbetleridir; Sohbetler'in üstündeki Sohbet | herdr ile geçiş yapın.",
       "cardOpen": "Sohbetlerde aç",
       "key": {
@@ -2520,6 +2531,7 @@ export const herdrMessages = {
       "takeControl": "تولي التحكم",
       "releaseControl": "ترك التحكم",
       "centerOpenChat": "افتح هذه الدردشة في herdr",
+      "centerLanding": "لا توجد محادثة herdr مفتوحة. اختر مساحة أو وكيلًا، أو ابدأ محادثة جديدة.",
       "cardDescription": "مساحة طرفية لوكلاء البرمجة. محادثاتها هي محادثات Studio؛ بدّل بينها عبر محادثة | herdr أعلى صفحة المحادثات.",
       "cardOpen": "فتح في المحادثات",
       "key": {

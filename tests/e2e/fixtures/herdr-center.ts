@@ -7,7 +7,9 @@ import { useHerdrStore } from '../../../packages/client/src/stores/hermes/herdr'
 import '../../../packages/client/src/styles/global.scss'
 
 // The herdr center is real; the spec mocks the API and swallows sockets.
-const sessionId = new URLSearchParams(location.search).get('session') || 'herdr-aaa'
+// ?session=none: herdr mode with no herdr chat open.
+const requested = new URLSearchParams(location.search).get('session') || 'herdr-aaa'
+const sessionId = requested === 'none' ? '' : requested
 const active = ref(true)
 const opened: string[] = []
 const fixture: any = { setActive: (value: boolean) => { active.value = value }, opened, newChats: 0 }
