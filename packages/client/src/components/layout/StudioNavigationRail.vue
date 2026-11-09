@@ -19,8 +19,6 @@ const entries = computed(() => [
   { key: 'workflow', route: 'hermes.workflow', label: 'sidebar.workflow', path: 'M8 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0M22 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0M22 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0M8 12h3a4 4 0 0 0 4-4V6M8 12h3a4 4 0 0 1 4 4v2' },
   { key: 'history', route: 'hermes.history', label: 'sidebar.history', path: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M12 7v5l3 2' },
   { key: 'connections', route: 'hermes.connections', label: 'sidebar.connections', path: 'M3 4h14a1 1 0 0 1 1 1v4M3 4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h9M7 16v4M5 20h7M15 9h6a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1M17 18h2' },
-  // Terminal-grid icon: swap the whole UI to herdr.
-  ...(canManageAgents.value ? [{ key: 'herdr', route: 'herdr', label: 'herdr.nav', path: 'M3 4h18v16H3zM12 4v16M3 12h9M7 8l2 2-2 2' }] : []),
   // Phone icon: emulators, phones and BlueStacks over adb.
   ...(canManageAgents.value ? [{ key: 'android', route: 'android', label: 'android.nav', path: 'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2M11 18h2' }] : []),
   // Pulse icon: processes, resources and Docker on this machine.
@@ -40,7 +38,7 @@ const activeKey = computed(() => {
 })
 const mobileNavigation = useMobileNavigation()
 function handleNavigate(key: string) {
-  if (mobileNavigation && ['person', 'connections', 'herdr', 'android', 'system', 'agents', 'models', 'usage', 'upstream'].includes(key)) {
+  if (mobileNavigation && ['person', 'connections', 'android', 'system', 'agents', 'models', 'usage', 'upstream'].includes(key)) {
     mobileNavigation.open.value = false
   }
 }

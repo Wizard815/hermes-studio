@@ -37,6 +37,14 @@ const keyButtons = computed(() => (['search', 'workspaces', 'settings', 'help'] 
   .map(name => ({ name, combo: keys.value[name], bytes: herdrKeyBytes(keys.value[name], keys.value.prefix) }))
   .filter(button => button.bytes != null))
 
+/** herdr's settings on the agents page (Studio uses hash routes). */
+const SETTINGS_HREF = '#/studio/agents/herdr/settings'
+const startingServer = ref(false)
+async function startServer() {
+  startingServer.value = true
+  try { await herdr.startServer() } catch (err: any) { toast.error(err?.message || String(err)) } finally { startingServer.value = false }
+}
+
 function press(bytes: string | null) {
   if (bytes) terminal.value?.send(bytes)
 }
@@ -123,8 +131,17 @@ onBeforeUnmount(() => herdr.release())
 
 <template>
   <section class="herdr-center" data-testid="herdr-center">
-    <p v-if="!herdr.enabled" class="herdr-center-empty">{{ t('herdr.centerOff') }}</p>
+    <div v-if="!herdr.enabled" class="herdr-center-empty">
+      <p>{{ t('herdr.centerOff') }}</p>
+      <a :href="SETTINGS_HREF" class="herdr-center-link" data-testid="herdr-center-settings">{{ t('sidebar.settings') }}</a>
+    </div>
     <template v-else>
+      <!-- herdr's connection, as the old herdr page showed it: the reason and a way to start it. -->
+      <div v-if="herdr.status && !herdr.connected" class="herdr-center-notice" data-testid="herdr-center-notice">
+        <span>{{ herdr.status?.error || herdr.error || t('herdr.disconnected') }}</span>
+        <NButton v-if="herdr.status?.installed && !herdr.status?.server?.running" size="tiny" :loading="startingServer" data-testid="herdr-center-start" @click="startServer">{{ t('herdr.settings.startServer') }}</NButton>
+        <a :href="SETTINGS_HREF" class="herdr-center-link">{{ t('sidebar.settings') }}</a>
+      </div>
       <header class="herdr-center-bar">
         <span v-if="linked" class="herdr-center-agent" data-testid="herdr-center-agent">
           <AgentStatusIcon :status="linked.agent_status || 'unknown'" live :size="11" />
@@ -250,9 +267,23 @@ onBeforeUnmount(() => herdr.release())
   }
 }
 
+.herdr-center-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: var(--border-width, 1px) solid $border-light;
+  background: rgba(var(--accent-primary-rgb), 0.06);
+  color: $text-secondary;
+  font-size: 12px;
+}
+
 .herdr-center-empty {
   display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
   align-items: center;
   justify-content: center;
   margin: 0;

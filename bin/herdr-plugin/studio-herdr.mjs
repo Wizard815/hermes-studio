@@ -77,7 +77,7 @@ async function openInStudio() {
   const { sessionId } = paneId ? await api(config, `/link?pane=${encodeURIComponent(paneId)}`) : { sessionId: null }
   const url = sessionId
     ? `${config.browserUrl}/#/hermes/session/${encodeURIComponent(sessionId)}`
-    : `${config.browserUrl}/#/herdr?tab=agents${paneId ? `&pane=${encodeURIComponent(paneId)}` : ''}`
+    : `${config.browserUrl}/#/herdr${paneId ? `?pane=${encodeURIComponent(paneId)}` : ''}`
   const opened = openUrl(url)
   notify(opened ? 'Opened in Studio' : 'Studio link', url)
   process.stdout.write(`${url}\n`)

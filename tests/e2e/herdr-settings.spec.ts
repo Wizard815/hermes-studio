@@ -74,60 +74,24 @@ async function openFixture(page: Page, options: { enabled: boolean; installed?: 
     if (url.pathname.startsWith('/api/coding-agents/herdr/panes/')) return route.fulfill({ json: { ok: true } })
     return route.fulfill({ json: {} })
   })
-  const entry = '/@fs/' + resolve('tests/e2e/fixtures/herdr-view.ts').replaceAll('\\', '/').replace(/^\//, '')
   const settingsEntry = '/@fs/' + resolve('tests/e2e/fixtures/herdr-settings.ts').replaceAll('\\', '/').replace(/^\//, '')
   await page.route('**/__herdr_settings__*', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script type="module" src="${settingsEntry}"></script></body></html>` }))
-  await page.route('**/__herdr_view__*', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script type="module" src="${entry}"></script></body></html>` }))
   return { requests, errors }
 }
 
-test('turning herdr on from settings', async ({ page }) => {
+test('turning herdr on from its settings on the agents page', async ({ page }) => {
   const { requests, errors } = await openFixture(page, { enabled: false })
-  await page.goto('/__herdr_view__')
+  await page.goto('/__herdr_settings__')
   await expect(page.getByTestId('herdr-settings')).toBeVisible()
-  await expect(page.getByTestId('herdr-tab-agents')).toBeDisabled()
   await page.getByTestId('herdr-enable').click()
   await expect.poll(() => requests.find(r => r.path === '/api/coding-agents/herdr/settings')?.body).toEqual({ enabled: true })
-  await expect(page.getByTestId('herdr-tab-agents')).toBeEnabled()
-  expect(errors).toEqual([])
-})
-
-test('agents grouped by workspace with herdr status icons and chat links', async ({ page }) => {
-  const { errors } = await openFixture(page, { enabled: true })
-  await page.goto('/__herdr_view__?tab=agents')
-  const rows = page.getByTestId('herdr-pane-row')
-  await expect(rows).toHaveCount(3)
-  await expect(rows.nth(0).locator('.agent-status-icon')).toHaveText('×')
-  await expect(rows.nth(1).locator('.agent-status-icon')).toHaveText('◐')
-  await expect(rows.nth(2).locator('.agent-status-icon')).toHaveText('✓')
-  // The blocked agent is selected first because it needs attention.
-  await expect(rows.nth(0)).toHaveClass(/active/)
-  await expect(page.locator('.herdr-view-pane-bar')).toContainText('auth refactor')
-  // Only panes linked to a Studio chat offer the chat link.
-  await expect(page.locator('.herdr-view-pane-chat')).toHaveCount(2)
-  await rows.nth(2).locator('.herdr-view-pane-chat').click()
-  await expect.poll(() => page.evaluate(() => (window as any).herdrFixture.route())).toBe('/hermes/session/herdr-ccc')
-  expect(errors).toEqual([])
-})
-
-test('starting an agent only offers agents herdr can host', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  const { requests, errors } = await openFixture(page, { enabled: true })
-  await page.goto('/__herdr_view__?tab=agents')
-  await page.getByTestId('herdr-new-agent').click()
-  await page.getByTestId('herdr-launch-agent').click()
-  await expect(page.locator('.n-base-select-option')).toHaveText(['Claude Code', 'Codex'])
-  await page.locator('.n-base-select-option', { hasText: 'Codex' }).click()
-  await page.getByTestId('herdr-launch-submit').click()
-  await expect.poll(() => requests.find(r => r.path === '/api/coding-agents/herdr/agents')?.body).toEqual({ agentId: 'codex' })
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
-  expect(overflow).toBe(false)
+  await expect(page.getByTestId('herdr-enable')).toHaveAttribute('aria-checked', 'true')
   expect(errors).toEqual([])
 })
 
 test('installing herdr from Studio and choosing the profile for herdr chats', async ({ page }) => {
   const { requests, errors } = await openFixture(page, { enabled: false, installed: false })
-  await page.goto('/__herdr_view__')
+  await page.goto('/__herdr_settings__')
   await page.getByTestId('herdr-install').click()
   await expect(page.getByText('herdr is set up. Open Studio chats in herdr with prefix+shift+s')).toBeVisible()
   await expect(page.getByTestId('herdr-setup')).toBeVisible()

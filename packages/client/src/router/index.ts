@@ -197,10 +197,12 @@ const router = createRouter({
       meta: { requiresSuperAdmin: true },
     },
     {
+      // herdr lives in Chats (Chat | herdr) and its settings with the agents; old links still work.
       path: '/herdr',
       name: 'herdr',
-      component: () => import('@/views/hermes/HerdrView.vue'),
-      meta: { requiresSuperAdmin: true },
+      redirect: to => to.query.tab === 'settings'
+        ? { name: 'codingAgent.config', params: { agentId: 'herdr', section: 'settings' } }
+        : { name: 'hermes.chat', query: { center: 'herdr', ...(typeof to.query.pane === 'string' ? { pane: to.query.pane } : {}) } },
     },
     {
       path: '/android',

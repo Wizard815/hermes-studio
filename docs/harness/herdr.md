@@ -17,8 +17,11 @@ stay separate apps; this integration links them.
 - **Status.** Chat rows use herdr's glyphs (`◐ × ✓ ○ ·`, see
   `components/common/AgentStatusIcon.vue`); `packages/shared/session-state.ts`
   merges Studio run state, pending approvals and herdr pane status.
-- **Swap.** Studio → herdr: nav rail "herdr" (full herdr UI over a PTY) and the
-  chat header button. herdr → Studio: the generated plugin `studio.hermes`
+- **Swap.** Studio → herdr: the Chat | herdr switch at the top of Chats (there
+  is no separate herdr nav item; `/herdr` redirects to Chats in herdr mode,
+  `/herdr?pane=<id>` to that pane's chat, `/herdr?tab=settings` to Agents → herdr)
+  and the chat header button. herdr's settings, remote machines and Pondering
+  Orb's address are on the agents page (`/studio/agents/herdr/settings`). herdr → Studio: the generated plugin `studio.hermes`
   ("Open in Studio", "Studio chats", "Start agent with Studio").
 - **Studio tools in herdr agents.** Studio's MCP servers read a short-lived
   per-profile login (`profiles/<profile>/.model-run-token`, 1 hour), which
@@ -33,7 +36,7 @@ stay separate apps; this integration links them.
 
 ## Install, start and setup
 
-- **Install.** Studio's herdr page → Settings → "Install herdr" downloads the release named in
+- **Install.** Agents → herdr → Settings → "Install herdr" downloads the release named in
   `https://herdr.dev/latest.json` for this OS/CPU, checks its SHA-256 and puts
   it in `HERMES_WEB_UI_HOME/herdr/bin` (`services/herdr/install.ts`). Tests and
   mirrors can point `HERDR_MANIFEST_URL` at another manifest.
@@ -95,7 +98,7 @@ tasks and plans, projects, ideas, upkeep, and Control).
   project) starts in the start directory of the Studio folder with the
   project's name, and its chat is filed in that folder
   (`HerdrBridgeDeps.folderForWork`).
-- **Studio ↔ Mission.** "Open in herdr" and the herdr nav item open Mission
+- **Studio ↔ Mission.** "Open in herdr" and the herdr center's Open Mission link open Mission
   (`utils/mission-url.ts`); Mission's "Back to Studio" returns.
 - **herdr in the chat center.** The chat header's Chat | herdr switch swaps
   only the center column (`components/coding-agents/herdr/HerdrCenter.vue` in

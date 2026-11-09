@@ -8,6 +8,8 @@ import { usePageLoadingState, usePageLoadingTask } from '@/composables/usePageLo
 import { useCodingAgentModels } from '@/composables/useCodingAgentModels'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import HeaderSidebarToggle from '@/components/layout/HeaderSidebarToggle.vue'
+import { useHerdrStore } from '@/stores/hermes/herdr'
+import { focusHerdrPane } from '@/api/coding-agents/herdr'
 import HeaderToolPanelToggle from '@/components/layout/HeaderToolPanelToggle.vue'
 import { AGENT_OPTIONS } from "@/utils/agent-options"
 import { setSessionPinned } from "@/api/studio/sessions";
@@ -153,6 +155,19 @@ const herdrEligible = computed(() => {
 type ChatCenter = 'chat' | 'herdr'
 const centerMode = ref<ChatCenter>((() => { try { return localStorage.getItem('studio_chat_center') === 'herdr' ? 'herdr' : 'chat' } catch { return 'chat' } })())
 watch(centerMode, value => { try { localStorage.setItem('studio_chat_center', value) } catch { /* private mode */ } })
+// Old /herdr links land here (?center=herdr, optionally &pane=<herdr pane>): herdr mode, on that pane's chat.
+const herdrStore = useHerdrStore()
+watch(() => [route.query.center, route.query.pane] as const, async ([center, pane]) => {
+  if (center !== 'herdr' && center !== 'chat') return
+  centerMode.value = center
+  const { center: _center, pane: _pane, ...rest } = route.query
+  void router.replace({ query: rest })
+  if (typeof pane !== 'string' || !pane) return
+  if (!herdrStore.status) await herdrStore.refresh().catch(() => undefined)
+  const chat = herdrStore.bridge?.panes.find(item => item.pane_id === pane)?.studioSessionId
+  if (chat) void handleSessionClick(chat)
+  else void focusHerdrPane(pane).catch(() => undefined)
+}, { immediate: true })
 const herdrCenterAvailable = computed(() => !props.standalone && isSuperAdmin.value && !!chatStore.activeSessionId && herdrEligible.value)
 const herdrCenterMounted = ref(false)
 /** The chat the herdr center follows; kept while switching so the center stays mounted. */
