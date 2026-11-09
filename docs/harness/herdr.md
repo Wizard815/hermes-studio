@@ -112,6 +112,12 @@ tasks and plans, projects, ideas, upkeep, and Control).
   this chat in herdr" for a chat not running there. Sidebar, header and tool
   panel stay; both centers stay mounted once opened and herdr stays connected,
   so swapping is instant; the choice is remembered (`studio_chat_center`).
+- **Every Studio chat in herdr mode.** The Spaces tree also lists Studio chats
+  that are not running in herdr, in their folders (`TreeChat`, `useStudioFolders().chats`;
+  chats not in a folder under "Other chats"). Picking a coding-agent chat opens
+  it and herdr mode starts it in herdr, resuming its native session, so chats
+  made before herdr (or after herdr restarted empty) need no remaking; their
+  history is already in Studio. Hermes/Ekko chats open in the Chat view.
 - **Switch availability.** Chat | herdr shows for super admins whenever herdr
   is on, whichever chat is open (`herdrCenterAvailable` in `ChatPanel.vue`).
   With no herdr chat open (a Hermes chat, nothing selected, or the New Chat

@@ -17,7 +17,7 @@ import HerdrSpacesPanel from './HerdrSpacesPanel.vue'
  * mounted together and only shows one, so swapping is instant.
  */
 const props = defineProps<{ sessionId: string; active: boolean }>()
-const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'new-chat': [] }>()
+const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': [] }>()
 
 const { t } = useI18n()
 const toast = useMessage()
@@ -208,6 +208,7 @@ onBeforeUnmount(() => herdr.release())
             :machines="machines"
             :machine="machine"
             @open-chat="id => { machine = ''; emit('open-chat', id) }"
+            @open-studio-chat="id => emit('open-studio-chat', id)"
             @select-local="machine = ''"
             @open-machine="openMachine"
             @new-chat="machine = ''; newChat()"

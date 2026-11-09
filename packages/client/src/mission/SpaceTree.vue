@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import type { HerdrPaneView, HerdrStatusValue, HerdrWorkspace } from '@/api/coding-agents/herdr'
 import { rollupStatus } from './useMission'
-import type { MissionFolder } from './useFolders'
+import type { MissionFolder, TreeChat } from './useFolders'
 
 /**
  * The Spaces tree: Studio's chat folders (same names and nesting as Studio's
@@ -20,6 +20,12 @@ const props = defineProps<{
   placeOf: (spaceId: string) => string
   selectedSpace: string
   selectedPane: string
+  /**
+   * Studio chats that are not running in herdr, listed in their folders (herdr
+   * mode passes them; Mission does not). Picking one opens it.
+   */
+  chats?: TreeChat[]
+  selectedChat?: string
 }>()
 
 const emit = defineEmits<{
@@ -31,6 +37,7 @@ const emit = defineEmits<{
   'toggle-folder': [id: string]
   'place-space': [spaceId: string, folderId: string]
   'move-folder': [folderId: string, parentId: string]
+  'select-chat': [chat: TreeChat]
 }>()
 
 const { t } = useI18n()
@@ -43,6 +50,8 @@ type Row =
   | { kind: 'folder'; key: string; depth: number; folder: MissionFolder; count: number; status: HerdrStatusValue }
   | { kind: 'space'; key: string; depth: number; space: HerdrWorkspace }
   | { kind: 'pane'; key: string; depth: number; pane: HerdrPaneView }
+  | { kind: 'chat'; key: string; depth: number; chat: TreeChat }
+  | { kind: 'chats-group'; key: string; depth: number; count: number }
 
 function panesOf(workspaceId: string): HerdrPaneView[] {
   return props.panes.filter(p => p.workspace_id === workspaceId && p.agent)
@@ -63,6 +72,21 @@ const matches = computed(() => {
     .map(w => w.workspace_id))
 })
 
+const knownFolders = computed(() => new Set(props.folders.map(folder => folder.id)))
+/** Chats per folder ('' = not in a folder), filtered by the search. */
+const chatsByFolder = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  const map = new Map<string, TreeChat[]>()
+  for (const chat of props.chats || []) {
+    if (q && !`${chat.title} ${chat.agent}`.toLowerCase().includes(q)) continue
+    const folder = knownFolders.value.has(chat.folderId) ? chat.folderId : ''
+    map.set(folder, [...(map.get(folder) || []), chat])
+  }
+  return map
+})
+/** Chats not in a folder sit in one foldable group at the end. */
+const looseChatsOpen = ref(true)
+
 const placement = computed(() => new Map(props.workspaces.map(w => [w.workspace_id, props.placeOf(w.workspace_id)])))
 
 const rows = computed<Row[]>(() => {
@@ -71,6 +95,8 @@ const rows = computed<Row[]>(() => {
   for (const folder of props.folders) children.set(folder.parentId, [...(children.get(folder.parentId) || []), folder])
   const spacesIn = (folderId: string) => props.workspaces.filter(w => placement.value.get(w.workspace_id) === folderId && matches.value.has(w.workspace_id))
   const subtree = (folder: MissionFolder): HerdrWorkspace[] => [...spacesIn(folder.id), ...(children.get(folder.id) || []).flatMap(subtree)]
+  const chatsIn = (folderId: string) => chatsByFolder.value.get(folderId) || []
+  const subtreeChats = (folder: MissionFolder): number => chatsIn(folder.id).length + (children.get(folder.id) || []).reduce((n, child) => n + subtreeChats(child), 0)
   const out: Row[] = []
   const pushSpace = (space: HerdrWorkspace, depth: number) => {
     out.push({ kind: 'space', key: `s:${space.workspace_id}`, depth, space })
@@ -81,15 +107,22 @@ const rows = computed<Row[]>(() => {
   const walk = (parentId: string, depth: number) => {
     for (const folder of children.get(parentId) || []) {
       const inside = subtree(folder)
-      if (q && !inside.length && !folder.name.toLowerCase().includes(q)) continue
-      out.push({ kind: 'folder', key: `f:${folder.id}`, depth, folder, count: inside.length, status: rollupStatus(inside.map(w => w.agent_status)) })
+      const chatCount = subtreeChats(folder)
+      if (q && !inside.length && !chatCount && !folder.name.toLowerCase().includes(q)) continue
+      out.push({ kind: 'folder', key: `f:${folder.id}`, depth, folder, count: inside.length + chatCount, status: rollupStatus(inside.map(w => w.agent_status)) })
       if (folder.folded) continue
       walk(folder.id, depth + 1)
       for (const space of spacesIn(folder.id)) pushSpace(space, depth + 1)
+      for (const chat of chatsIn(folder.id)) out.push({ kind: 'chat', key: `c:${chat.id}`, depth: depth + 1, chat })
     }
   }
   walk('', 0)
   for (const space of spacesIn('')) pushSpace(space, 0)
+  const loose = chatsIn('')
+  if (loose.length) {
+    out.push({ kind: 'chats-group', key: 'g:chats', depth: 0, count: loose.length })
+    if (looseChatsOpen.value) for (const chat of loose) out.push({ kind: 'chat', key: `c:${chat.id}`, depth: 1, chat })
+  }
   return out
 })
 
@@ -220,6 +253,35 @@ const indent = (depth: number) => ({ paddingLeft: `${8 + depth * 18}px` })
           <span class="tree-name">{{ label(row.space) }}</span>
         </div>
         <div
+          v-else-if="row.kind === 'chats-group'"
+          class="tree-row tree-folder tree-chats-group"
+          :style="indent(row.depth)"
+          role="treeitem"
+          :aria-level="row.depth + 1"
+          :aria-expanded="looseChatsOpen"
+          data-testid="mission-chats-group"
+          @click="looseChatsOpen = !looseChatsOpen"
+        >
+          <span class="tree-chevron" :class="{ open: looseChatsOpen }" aria-hidden="true">›</span>
+          <span class="tree-name">{{ t('mission.otherChats') }}</span>
+          <span class="tree-count">{{ row.count }}</span>
+        </div>
+        <div
+          v-else-if="row.kind === 'chat'"
+          class="tree-row tree-chat"
+          :class="{ active: row.chat.id === selectedChat, 'is-studio-only': !row.chat.hostable }"
+          :style="indent(row.depth)"
+          role="treeitem"
+          :aria-level="row.depth + 1"
+          :title="row.chat.hostable ? t('mission.chatOpensInHerdr') : t('mission.chatOpensInStudio')"
+          data-testid="mission-chat-row"
+          @click="emit('select-chat', row.chat)"
+        >
+          <svg class="tree-chat-icon" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" /></svg>
+          <span class="tree-name">{{ row.chat.title }}</span>
+          <span class="tree-meta">{{ row.chat.agent }}</span>
+        </div>
+        <div
           v-else
           class="tree-row tree-pane"
           :class="{ active: row.pane.pane_id === selectedPane }"
@@ -242,7 +304,7 @@ const indent = (depth: number) => ({ paddingLeft: `${8 + depth * 18}px` })
         @dragover="onDragOver($event, 'out')"
         @drop.prevent="dropOut"
       >{{ dragging.kind === 'folder' ? t('mission.dropFolderOut') : t('mission.dropOut') }}</div>
-      <p v-if="!workspaces.length" class="tree-empty">{{ t('mission.noSpaces') }}</p>
+      <p v-if="!workspaces.length && !(chats && chats.length)" class="tree-empty">{{ t('mission.noSpaces') }}</p>
     </div>
   </section>
 </template>
@@ -288,6 +350,19 @@ const indent = (depth: number) => ({ paddingLeft: `${8 + depth * 18}px` })
   &:hover {
     background: rgba(var(--accent-primary-rgb), 0.06);
     color: $text-primary;
+  }
+}
+
+.tree-chat {
+  color: $text-secondary;
+
+  .tree-chat-icon {
+    flex: 0 0 auto;
+    color: $text-muted;
+  }
+
+  &.is-studio-only .tree-name {
+    font-style: italic;
   }
 }
 

@@ -3398,6 +3398,7 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               :session-id="herdrSessionId"
               :active="showHerdrCenter"
               @open-chat="sessionId => handleSessionClick(sessionId)"
+              @open-studio-chat="sessionId => { centerMode = 'chat'; void handleSessionClick(sessionId) }"
               @new-chat="openNewChatPage()"
             />
             <MessageList

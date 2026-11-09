@@ -26,6 +26,22 @@ export interface MissionFolder extends SpaceFolder {
   depth: number
 }
 
+/** A Studio chat as the Spaces tree lists it, in its Studio folder. */
+export interface TreeChat {
+  id: string
+  title: string
+  /** Folder id (`c<category id>`) or '' when not in a folder. */
+  folderId: string
+  agent: string
+  /** herdr can run it (a coding agent herdr hosts); other chats open in Studio's Chat view. */
+  hostable: boolean
+  lastActive: number
+}
+
+/** Stored chat agents herdr can host (see services/herdr/protocol.ts). */
+const HERDR_HOSTABLE_AGENTS = new Set(['claude', 'claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot'])
+export const herdrCanHost = (agent: string | undefined | null) => HERDR_HOSTABLE_AGENTS.has(String(agent || ''))
+
 export const folderIdOf = (categoryId: number) => `c${categoryId}`
 export const categoryIdOf = (folderId: string): number | null => (/^c\d+$/.test(folderId) ? Number(folderId.slice(1)) : null)
 
@@ -102,6 +118,8 @@ export function useStudioFolders(onError: (message: string) => void) {
   const categories = ref<SessionCategory[]>([])
   const meta = ref<SpaceFolderState>({ list: [], of: {}, at: 0 })
   const chatFolders = ref(new Map<string, number | null>())
+  /** Every Studio chat (newest first), so herdr mode can open chats herdr has not run yet. */
+  const chats = ref<TreeChat[]>([])
   const folders = computed(() => buildFolderTree(categories.value, meta.value))
   let saveTimer = 0
 
@@ -120,8 +138,20 @@ export function useStudioFolders(onError: (message: string) => void) {
 
   async function loadChats() {
     try {
-      const chats = await fetchSessions('coding_agent', 500)
-      chatFolders.value = new Map((Array.isArray(chats) ? chats : []).map(chat => [chat.id, chat.category_id ?? null]))
+      const list = await fetchSessions(undefined, 1000)
+      const rows = Array.isArray(list) ? list : []
+      chatFolders.value = new Map(rows.map(chat => [chat.id, chat.category_id ?? null]))
+      chats.value = rows
+        .filter(chat => !chat.parent_session_id && !chat.is_archived)
+        .map(chat => ({
+          id: chat.id,
+          title: chat.title || chat.id,
+          folderId: chat.category_id != null ? folderIdOf(chat.category_id) : '',
+          agent: chat.agent || '',
+          hostable: herdrCanHost(chat.agent),
+          lastActive: chat.last_active || chat.started_at || 0,
+        }))
+        .sort((a, b) => b.lastActive - a.lastActive)
     } catch { /* keep the last known */ }
   }
 
@@ -231,5 +261,5 @@ export function useStudioFolders(onError: (message: string) => void) {
     return folderForSpace({ spaceId, panes, cwd, home, folders: folders.value, meta: meta.value, chatFolders: chatFolders.value })
   }
 
-  return { folders, meta, load, refresh, createFolder, updateFolder, moveFolder, removeFolder, toggleFolded, placeSpace, folderOfSpace }
+  return { folders, meta, chats, load, refresh, createFolder, updateFolder, moveFolder, removeFolder, toggleFolded, placeSpace, folderOfSpace }
 }

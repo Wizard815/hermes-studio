@@ -5,7 +5,7 @@ import { createHerdrWorkspace, fetchHerdrMachineAgents, focusHerdrPane, type Her
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import SpaceTree from '@/mission/SpaceTree.vue'
 import FolderEditor from '@/mission/FolderEditor.vue'
-import { useStudioFolders, type MissionFolder } from '@/mission/useFolders'
+import { useStudioFolders, type MissionFolder, type TreeChat } from '@/mission/useFolders'
 import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 
@@ -16,7 +16,7 @@ import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
  * Studio chat, so swapping back to Chat lands on the same conversation.
  */
 const props = withDefaults(defineProps<{ activeSessionId: string | null; newChatKey?: string; machines?: HerdrMachine[]; machine?: string }>(), { newChatKey: '', machines: () => [], machine: '' })
-const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'new-chat': []; 'open-machine': [id: string, paneId?: string]; 'select-local': [] }>()
+const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': []; 'open-machine': [id: string, paneId?: string]; 'select-local': [] }>()
 
 const toast = useMessage()
 const { t } = useI18n()
@@ -33,6 +33,22 @@ const panes = computed<HerdrPaneView[]>(() => herdr.bridge?.panes || [])
 const chatPane = computed(() => panes.value.find(pane => pane.studioSessionId && pane.studioSessionId === props.activeSessionId) ?? null)
 const selectedPane = computed(() => chatPane.value?.pane_id || herdr.bridge?.focusedPaneId || '')
 const selectedSpace = computed(() => pickedSpace.value || panes.value.find(pane => pane.pane_id === selectedPane.value)?.workspace_id || '')
+
+/**
+ * Studio chats not running in herdr (live ones show as their spaces), so every
+ * chat is reachable in herdr mode, including ones herdr has never run.
+ */
+const treeChats = computed(() => {
+  const live = new Set(panes.value.map(pane => pane.studioSessionId).filter(Boolean))
+  return folders.chats.value.filter(chat => !live.has(chat.id))
+})
+
+/** herdr runs coding-agent chats (resuming them); other chats open in Studio's Chat view. */
+function selectChat(chat: TreeChat) {
+  if (props.machine) emit('select-local')
+  if (chat.hostable) emit('open-chat', chat.id)
+  else emit('open-studio-chat', chat.id)
+}
 
 /** Agents most in need of you first, as in Mission and herdr. */
 const agents = computed(() => {
@@ -146,6 +162,9 @@ onBeforeUnmount(() => {
       :place-of="placeOf"
       :selected-space="selectedSpace"
       :selected-pane="selectedPane"
+      :chats="treeChats"
+      :selected-chat="activeSessionId || ''"
+      @select-chat="selectChat"
       @select-space="selectSpace"
       @select-pane="selectPane"
       @new-space="newSpace"
