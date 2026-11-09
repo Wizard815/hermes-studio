@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('@/api/studio/sessions', () => ({}))
 vi.mock('@/api/coding-agents/herdr', () => ({}))
 vi.mock('@/api/coding-agents', () => ({}))
+vi.mock('@/api/studio/orb', () => ({ fetchOrbStatus: async () => ({ settings: { url: '' } }) }))
 import { buildFolderTree, folderForSpace } from '@/mission/useFolders'
 
 const cat = (id: number, name: string, parent_id: number | null = null) => ({ id, name, parent_id, created_at: 0, updated_at: 0 })
