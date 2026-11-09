@@ -90,3 +90,54 @@ export async function changeHerdrMachine(binary: string, id: unknown, change: { 
   }
   if (change.enabled !== undefined) await runHerdr(binary, ['machine', change.enabled ? 'enable' : 'disable', machine], 15000)
 }
+
+/**
+ * Full herdr of a saved machine: herdr's own remote attach (`herdr --remote`),
+ * the same UI, keys and agents as running it in a terminal on that machine.
+ */
+export async function remoteAttachArgs(binary: string, id: unknown): Promise<string[]> {
+  const machineKey = machineId(id)
+  const machine = (await listHerdrMachines(binary)).find(item => item.id === machineKey)
+  if (!machine) throw Object.assign(new Error('No such herdr machine'), { status: 404 })
+  if (!SSH_TARGET.test(machine.target)) throw invalid('This machine has an unusual SSH target; open it from a terminal')
+  const session = SESSION.test(machine.session) && machine.session !== 'default' ? machine.session : ''
+  return ['--remote', machine.target, ...(session ? ['--session', session] : [])]
+}
+
+/** An agent on a saved machine, as `herdr --machine <id> agent list` reports it. */
+export interface HerdrRemoteAgent {
+  pane_id: string
+  workspace_id: string
+  agent: string
+  agent_status: string
+  label: string
+  cwd: string
+  focused: boolean
+}
+
+export function parseRemoteAgents(text: string): HerdrRemoteAgent[] {
+  let raw: any
+  try { raw = JSON.parse(text) } catch { return [] }
+  const agents = raw?.result?.agents ?? raw?.agents ?? (Array.isArray(raw) ? raw : [])
+  return (Array.isArray(agents) ? agents : []).map((agent: any) => ({
+    pane_id: String(agent?.pane_id || ''),
+    workspace_id: String(agent?.workspace_id || ''),
+    agent: String(agent?.agent || agent?.display_agent || ''),
+    agent_status: String(agent?.agent_status || 'unknown'),
+    label: String(agent?.name || agent?.title || agent?.terminal_title_stripped || agent?.agent || agent?.pane_id || ''),
+    cwd: String(agent?.foreground_cwd || agent?.cwd || ''),
+    focused: agent?.focused === true,
+  })).filter(agent => agent.pane_id)
+}
+
+/** Agents on a saved machine (its herdr API over SSH, no open client needed). */
+export async function listRemoteAgents(binary: string, id: unknown): Promise<HerdrRemoteAgent[]> {
+  return parseRemoteAgents(await runHerdr(binary, ['--machine', machineId(id), 'agent', 'list'], 30000))
+}
+
+/** Show an agent in that machine's herdr (its view in Studio follows the remote focus). */
+export async function focusRemoteAgent(binary: string, id: unknown, paneId: unknown): Promise<void> {
+  const pane = String(paneId ?? '')
+  if (!/^[A-Za-z0-9:_-]{1,64}$/.test(pane)) throw invalid('Invalid pane id')
+  await runHerdr(binary, ['--machine', machineId(id), 'agent', 'focus', pane], 30000)
+}

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { addHerdrMachine, changeHerdrMachine, listHerdrMachines, machineAddArgs, machineId } from '../../packages/server/src/modules/coding-agents/services/herdr/machines'
+import { addHerdrMachine, changeHerdrMachine, listHerdrMachines, machineAddArgs, machineId, parseRemoteAgents, remoteAttachArgs } from '../../packages/server/src/modules/coding-agents/services/herdr/machines'
 
 describe('herdr remote machines', () => {
   let dir = ''
@@ -52,5 +52,20 @@ else if (args[1] === 'add') console.log('Saved SSH machine ssh-3. Remote server 
       ['machine', 'rename', '--label', 'builder', 'ssh-1'],
       ['machine', 'remove', 'ssh-1'],
     ])
+  })
+
+  it('attaches to a saved machine\'s full herdr with herdr --remote', async () => {
+    const { binary } = await fakeHerdr()
+    expect(await remoteAttachArgs(binary, 'ssh-1')).toEqual(['--remote', 'me@build'])
+    await expect(remoteAttachArgs(binary, 'nope')).rejects.toThrow(/No such herdr machine/)
+  })
+
+  it('reads a machine\'s agents from herdr --machine agent list', () => {
+    const output = JSON.stringify({ id: 'cli:agent:list', result: { type: 'agent_list', agents: [
+      { pane_id: 'w2:p1', workspace_id: 'w2', tab_id: 'w2:t1', agent: 'claude', agent_status: 'working', name: 'deploy', foreground_cwd: '/srv/app', focused: true, terminal_id: 't' },
+      { workspace_id: 'w3' },
+    ] } })
+    expect(parseRemoteAgents(output)).toEqual([{ pane_id: 'w2:p1', workspace_id: 'w2', agent: 'claude', agent_status: 'working', label: 'deploy', cwd: '/srv/app', focused: true }])
+    expect(parseRemoteAgents('not json')).toEqual([])
   })
 })

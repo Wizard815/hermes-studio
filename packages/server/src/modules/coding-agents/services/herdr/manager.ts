@@ -5,7 +5,7 @@ import { installHerdrRelease } from './install'
 import { installStudioKeybinding, STUDIO_NEW_CHAT_BINDING, readHerdrKeys, readHerdrView, readHerdrWelcome, setHerdrWelcome, type HerdrKeys, type HerdrView, type KeybindResult } from './keybind'
 import { herdrKindForStudioAgent } from './protocol'
 import { SpaceFolderStore } from './folders'
-import { addHerdrMachine, changeHerdrMachine, listHerdrMachines, type HerdrMachine } from './machines'
+import { addHerdrMachine, changeHerdrMachine, focusRemoteAgent, listHerdrMachines, listRemoteAgents, remoteAttachArgs, type HerdrMachine, type HerdrRemoteAgent } from './machines'
 import { homedir } from 'node:os'
 import {
   DEFAULT_HERDR_SETTINGS,
@@ -389,6 +389,19 @@ export class HerdrManager {
 
   addMachine(input: { target?: unknown; label?: unknown; session?: unknown }): Promise<string> {
     return addHerdrMachine(this.requireBinary(), input)
+  }
+
+  /** herdr arguments that attach to a saved machine's full herdr. */
+  remoteAttachArgs(id: unknown): Promise<string[]> {
+    return remoteAttachArgs(this.requireBinary(), id)
+  }
+
+  listRemoteAgents(id: unknown): Promise<HerdrRemoteAgent[]> {
+    return listRemoteAgents(this.requireBinary(), id)
+  }
+
+  focusRemoteAgent(id: unknown, paneId: unknown): Promise<void> {
+    return focusRemoteAgent(this.requireBinary(), id, paneId)
   }
 
   changeMachine(id: unknown, change: { enabled?: boolean; label?: unknown; remove?: boolean }): Promise<void> {

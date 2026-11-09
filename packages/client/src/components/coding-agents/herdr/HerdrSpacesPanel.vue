@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
-import { createHerdrWorkspace, focusHerdrPane, type HerdrPaneView, type HerdrWorkspace, type SpaceFolder } from '@/api/coding-agents/herdr'
+import { createHerdrWorkspace, fetchHerdrMachineAgents, focusHerdrPane, type HerdrMachine, type HerdrPaneView, type HerdrRemoteAgent, type HerdrWorkspace, type SpaceFolder } from '@/api/coding-agents/herdr'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import SpaceTree from '@/mission/SpaceTree.vue'
 import FolderEditor from '@/mission/FolderEditor.vue'
@@ -15,8 +15,8 @@ import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
  * chat list. Picking an agent shows it in the herdr center and opens its
  * Studio chat, so swapping back to Chat lands on the same conversation.
  */
-const props = defineProps<{ activeSessionId: string | null; newChatKey?: string }>()
-const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'new-chat': [] }>()
+const props = withDefaults(defineProps<{ activeSessionId: string | null; newChatKey?: string; machines?: HerdrMachine[]; machine?: string }>(), { newChatKey: '', machines: () => [], machine: '' })
+const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'new-chat': []; 'open-machine': [id: string, paneId?: string]; 'select-local': [] }>()
 
 const toast = useMessage()
 const { t } = useI18n()
@@ -53,7 +53,32 @@ function placeOf(spaceId: string): string {
   return folders.folderOfSpace(spaceId, panes.value, cwdOf(spaceId), herdr.status?.home || '')
 }
 
+/** herdr remote: each saved machine's agents, over herdr's API on SSH. */
+const remoteAgents = ref<Record<string, HerdrRemoteAgent[]>>({})
+const remoteErrors = ref<Record<string, string>>({})
+let machinesTimer = 0
+
+async function loadRemoteAgents() {
+  await Promise.all(props.machines.map(async machine => {
+    try {
+      remoteAgents.value = { ...remoteAgents.value, [machine.id]: (await fetchHerdrMachineAgents(machine.id)).agents }
+      remoteErrors.value = { ...remoteErrors.value, [machine.id]: '' }
+    } catch (err: any) {
+      remoteErrors.value = { ...remoteErrors.value, [machine.id]: err?.message || String(err) }
+    }
+  }))
+}
+
+watch(() => props.machines.map(machine => machine.id).join(','), ids => {
+  if (machinesTimer) window.clearInterval(machinesTimer)
+  machinesTimer = 0
+  if (!ids) return
+  void loadRemoteAgents()
+  machinesTimer = window.setInterval(() => { void loadRemoteAgents() }, 15000)
+}, { immediate: true })
+
 async function selectPane(paneId: string) {
+  if (props.machine) emit('select-local')
   pickedSpace.value = ''
   await focusHerdrPane(paneId).catch(() => undefined)
   const chat = panes.value.find(pane => pane.pane_id === paneId)?.studioSessionId
@@ -103,6 +128,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   herdr.release()
   if (refreshTimer) window.clearInterval(refreshTimer)
+  if (machinesTimer) window.clearInterval(machinesTimer)
 })
 </script>
 
@@ -144,6 +170,31 @@ onBeforeUnmount(() => {
         <span class="herdr-spaces-agent-kind">{{ pane.agent }}</span>
       </button>
       <p v-if="!agents.length" class="herdr-spaces-empty">{{ t('herdr.noAgents') }}</p>
+      <!-- herdr remote: saved machines and their agents; picking one opens that machine's herdr. -->
+      <template v-for="machine in machines" :key="machine.id">
+        <button
+          type="button"
+          class="herdr-spaces-machine"
+          :class="{ active: props.machine === machine.id }"
+          :data-testid="`herdr-spaces-machine-${machine.id}`"
+          @click="emit('open-machine', machine.id)"
+        >
+          <span class="herdr-spaces-agent-name">{{ machine.label || machine.target }}</span>
+          <span class="herdr-spaces-agent-kind">{{ remoteErrors[machine.id] ? t('herdr.machineUnreachable') : (remoteAgents[machine.id]?.length ?? '…') }}</span>
+        </button>
+        <button
+          v-for="agent in remoteAgents[machine.id] || []"
+          :key="`${machine.id}:${agent.pane_id}`"
+          type="button"
+          class="herdr-spaces-agent herdr-spaces-agent--remote"
+          data-testid="herdr-spaces-remote-agent"
+          @click="emit('open-machine', machine.id, agent.pane_id)"
+        >
+          <AgentStatusIcon :status="(agent.agent_status as any) || 'unknown'" live :size="12" />
+          <span class="herdr-spaces-agent-name">{{ agent.label }}</span>
+          <span class="herdr-spaces-agent-kind">{{ agent.agent }}</span>
+        </button>
+      </template>
     </section>
     <FolderEditor v-model:show="editorOpen" :folder="editing" @save="saveFolder" @remove="folder => folders.removeFolder(folder.id)" />
   </div>
@@ -231,6 +282,35 @@ onBeforeUnmount(() => {
   &.active {
     background: rgba(var(--accent-primary-rgb), 0.12);
   }
+}
+
+.herdr-spaces-machine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 26px;
+  margin-top: 6px;
+  padding: 0 8px;
+  border: 0;
+  border-top: var(--border-width, 1px) solid $border-light;
+  background: transparent;
+  color: $text-secondary;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+
+  &.active,
+  &:hover {
+    color: $text-primary;
+  }
+}
+
+.herdr-spaces-agent--remote {
+  padding-left: 16px;
 }
 
 .herdr-spaces-agent-name {

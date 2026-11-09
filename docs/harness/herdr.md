@@ -164,6 +164,20 @@ tasks and plans, projects, ideas, upkeep, and Control).
   /api/coding-agents/herdr/welcome`, `setHerdrWelcome` in `keybind.ts`, same
   backup and `herdr config check` as the keybinding). It is herdr's own option,
   so it applies to every herdr client.
+- **herdr remote.** herdr settings → Remote machines lists herdr's saved SSH
+  machines and adds, enables/disables or removes them (`services/herdr/machines.ts`,
+  herdr's own `machine` commands; SSH key login must already work). In herdr
+  mode a Local | machine switch opens a machine's full herdr in the center
+  (`terminal.open` client on `machine:<id>` runs `herdr --remote <target>`), and
+  the Agents panel lists each machine's agents (`herdr --machine <id> agent list`,
+  every 15 seconds); picking one focuses it there (`agent focus`). Remote agents
+  are used in that machine's herdr; they are not Studio chats.
+- **One Orb form.** `HerdrOrbSettings.vue` is shown in herdr settings and in
+  Mission's Control tab.
+- **Testing remote without SSH.** A stand-in `ssh` on PATH that runs the remote
+  command locally with another `HOME` (a second herdr server) lets `machine add`,
+  `--machine` and `--remote` run for real; herdr only probes a remote PowerShell
+  first, which fails harmlessly.
 - **Chat mode of herdr chats.** A chat herdr starts is Studio-routed
   (`agent_mode` `scoped`) only when launched with a real provider; native
   launches report the provider as `global` and are stored `global`

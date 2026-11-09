@@ -145,7 +145,11 @@ export function setupHerdrSocket(io: Server) {
         const binary = herdrManager.requireBinary()
         const cols = clampSize(data?.cols, 100, 500)
         const rows = clampSize(data?.rows, 30, 200)
-        const launch = mode === 'client' ? await clientLaunch(binary) : null
+        // A client on `machine:<id>` is that saved machine's full herdr (herdr --remote).
+        const machine = mode === 'client' && typeof data?.target === 'string' && data.target.startsWith('machine:') ? data.target.slice('machine:'.length) : ''
+        const launch = mode !== 'client' ? null
+          : machine ? { args: await herdrManager.remoteAttachArgs(machine), env: {} }
+            : await clientLaunch(binary)
         streams.get(streamId)?.close()
         const onData = (bytes: string) => socket.emit('terminal.data', { streamId, bytes })
         const onClose = (reason: string) => {

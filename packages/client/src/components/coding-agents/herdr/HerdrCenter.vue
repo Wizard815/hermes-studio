@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import HerdrTerminal from './HerdrTerminal.vue'
 import { useHerdrStore } from '@/stores/hermes/herdr'
-import { focusHerdrPane, openSessionInHerdr, studioFocusRequest, type HerdrPaneView } from '@/api/coding-agents/herdr'
+import { fetchHerdrMachines, focusHerdrMachineAgent, focusHerdrPane, openSessionInHerdr, studioFocusRequest, type HerdrMachine, type HerdrPaneView } from '@/api/coding-agents/herdr'
 import { missionUrl } from '@/utils/mission-url'
 import { herdrKeyBytes } from '@/utils/herdr-keys'
 import HerdrSpacesPanel from './HerdrSpacesPanel.vue'
@@ -23,7 +23,29 @@ const { t } = useI18n()
 const toast = useMessage()
 const herdr = useHerdrStore()
 const opening = ref(false)
-const terminal = ref<InstanceType<typeof HerdrTerminal> | null>(null)
+const localTerminal = ref<InstanceType<typeof HerdrTerminal> | null>(null)
+const remoteTerminal = ref<InstanceType<typeof HerdrTerminal> | null>(null)
+
+/**
+ * herdr remote: saved SSH machines. '' is this machine; a machine id shows that
+ * machine's full herdr (herdr's own remote attach), keys and all. The local
+ * view stays connected underneath, so switching back is instant.
+ */
+const machines = ref<HerdrMachine[]>([])
+const machine = ref('')
+const machineLabel = computed(() => machines.value.find(item => item.id === machine.value)?.label || machine.value)
+const terminal = computed(() => (machine.value ? remoteTerminal.value : localTerminal.value))
+
+async function loadMachines() {
+  try { machines.value = (await fetchHerdrMachines()).machines.filter(item => item.enabled) } catch { machines.value = [] }
+  if (machine.value && !machines.value.some(item => item.id === machine.value)) machine.value = ''
+}
+
+/** Open a machine's herdr, optionally on one of its agents. */
+async function openMachine(id: string, paneId?: string) {
+  machine.value = id
+  if (paneId) await focusHerdrMachineAgent(id, paneId).catch((err: any) => toast.error(err?.message || String(err)))
+}
 /** The herdr client starts the first time this is shown, then stays connected. */
 const started = ref(false)
 
@@ -77,7 +99,7 @@ const focusedChat = computed(() => {
 })
 watch(() => `${focusedChat.value.pane}|${focusedChat.value.chat}`, (_key, previous) => {
   const { pane, chat } = focusedChat.value
-  if (!previous || previous.startsWith('|') || !props.active || !chat || chat === props.sessionId) return
+  if (!previous || previous.startsWith('|') || !props.active || machine.value || !chat || chat === props.sessionId) return
   if (Date.now() - studioFocusRequest.at < STALE_FOCUS_MS && pane !== studioFocusRequest.paneId) return
   emit('open-chat', chat)
 })
@@ -118,12 +140,13 @@ async function openHere() {
  */
 const autoOpened = new Set<string>()
 watch(() => [props.active, props.sessionId, herdr.enabled, herdr.bridge?.connected, !!linked.value] as const, ([active, sessionId, enabled, connected, isLinked]) => {
-  if (!active || !sessionId || !enabled || !connected || isLinked || opening.value || autoOpened.has(sessionId)) return
+  if (!active || machine.value || !sessionId || !enabled || !connected || isLinked || opening.value || autoOpened.has(sessionId)) return
   autoOpened.add(sessionId)
   void openHere()
 }, { immediate: true })
 
 onMounted(() => {
+  void loadMachines()
   herdr.acquire()
   if (!herdr.status) void herdr.refresh()
 })
@@ -144,13 +167,27 @@ onBeforeUnmount(() => herdr.release())
         <a :href="SETTINGS_HREF" class="herdr-center-link">{{ t('sidebar.settings') }}</a>
       </div>
       <header class="herdr-center-bar">
-        <span v-if="linked" class="herdr-center-agent" data-testid="herdr-center-agent">
+        <div v-if="machines.length" class="herdr-center-machines" role="radiogroup" :aria-label="t('herdr.machineSwitch')" data-testid="herdr-center-machines">
+          <button type="button" role="radio" :aria-checked="!machine" :class="{ active: !machine }" @click="machine = ''">{{ t('herdr.machineLocal') }}</button>
+          <button
+            v-for="item in machines"
+            :key="item.id"
+            type="button"
+            role="radio"
+            :aria-checked="machine === item.id"
+            :class="{ active: machine === item.id }"
+            :data-testid="`herdr-center-machine-${item.id}`"
+            @click="openMachine(item.id)"
+          >{{ item.label || item.target }}</button>
+        </div>
+        <span v-if="machine" class="herdr-center-agent" data-testid="herdr-center-remote-chip">{{ t('herdr.remoteChip', { name: machineLabel }) }}</span>
+        <span v-else-if="linked" class="herdr-center-agent" data-testid="herdr-center-agent">
           <AgentStatusIcon :status="linked.agent_status || 'unknown'" live :size="11" />
           <span>{{ linked.label || linked.agent }}</span>
           <small>{{ linked.pane_id }}</small>
         </span>
-        <NButton v-else-if="sessionId" size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.centerOpenChat') }}</NButton>
-        <span v-else class="herdr-center-landing" data-testid="herdr-center-landing">{{ t('herdr.centerLanding') }}</span>
+        <NButton v-else-if="sessionId && !machine" size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.centerOpenChat') }}</NButton>
+        <span v-else-if="!machine" class="herdr-center-landing" data-testid="herdr-center-landing">{{ t('herdr.centerLanding') }}</span>
         <span class="herdr-center-spacer" />
         <NTooltip v-for="button in keyButtons" :key="button.name" trigger="hover">
           <template #trigger>
@@ -165,15 +202,35 @@ onBeforeUnmount(() => herdr.release())
       <div class="herdr-center-body">
         <!-- Studio's spaces (its folders) and agents stand in for herdr's own sidebar, whose rail is cropped off. -->
         <aside class="herdr-center-rail" data-testid="herdr-center-rail">
-          <HerdrSpacesPanel :active-session-id="sessionId" :new-chat-key="newChatKey" @open-chat="id => emit('open-chat', id)" @new-chat="newChat" />
+          <HerdrSpacesPanel
+            :active-session-id="sessionId"
+            :new-chat-key="newChatKey"
+            :machines="machines"
+            :machine="machine"
+            @open-chat="id => { machine = ''; emit('open-chat', id) }"
+            @select-local="machine = ''"
+            @open-machine="openMachine"
+            @new-chat="machine = ''; newChat()"
+          />
         </aside>
         <HerdrTerminal
           v-if="started"
-          ref="terminal"
+          v-show="!machine"
+          ref="localTerminal"
           class="herdr-center-terminal"
           mode="client"
           :crop-left="herdr.status?.view?.rail ?? 4"
           :crop-above="herdr.status?.view?.mobileWidth ?? 64"
+        />
+        <!-- A saved machine's full herdr (its own sidebar included: it is that machine's UI). -->
+        <HerdrTerminal
+          v-if="machine"
+          :key="machine"
+          ref="remoteTerminal"
+          class="herdr-center-terminal"
+          mode="client"
+          :target="`machine:${machine}`"
+          data-testid="herdr-center-remote"
         />
       </div>
     </template>
@@ -222,6 +279,29 @@ onBeforeUnmount(() => herdr.release())
 .herdr-center-landing {
   font-size: 12px;
   color: $text-muted;
+}
+
+.herdr-center-machines {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: var(--border-width, 1px) solid $border-light;
+  border-radius: 999px;
+
+  button {
+    padding: 2px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: $text-secondary;
+    font-size: 12px;
+    cursor: pointer;
+
+    &.active {
+      background: rgba(var(--accent-primary-rgb), 0.14);
+      color: $text-primary;
+    }
+  }
 }
 
 .herdr-center-spacer {

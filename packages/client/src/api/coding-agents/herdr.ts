@@ -104,6 +104,23 @@ export const changeHerdrMachine = (id: string, change: { enabled?: boolean; labe
 export const removeHerdrMachine = (id: string) =>
   request<{ machines: HerdrMachine[] }>(`${base}/machines/${encodeURIComponent(id)}`, { method: 'DELETE' })
 
+/** An agent on a saved machine (herdr's API over SSH). */
+export interface HerdrRemoteAgent {
+  pane_id: string
+  workspace_id: string
+  agent: string
+  agent_status: HerdrStatusValue | string
+  label: string
+  cwd: string
+  focused: boolean
+}
+
+export const fetchHerdrMachineAgents = (id: string) =>
+  request<{ agents: HerdrRemoteAgent[] }>(`${base}/machines/${encodeURIComponent(id)}/agents`)
+
+export const focusHerdrMachineAgent = (id: string, paneId: string) =>
+  request<{ ok: boolean }>(`${base}/machines/${encodeURIComponent(id)}/agents/${encodeURIComponent(paneId)}/focus`, { method: 'POST', body: '{}' })
+
 export const startHerdrServer = () => request<HerdrStatus>(`${base}/server/start`, { method: 'POST', body: '{}' })
 
 export const installHerdrIntegrations = (kinds?: string[]) =>

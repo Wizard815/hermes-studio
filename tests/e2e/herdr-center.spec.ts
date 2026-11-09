@@ -8,7 +8,7 @@ const PANES = [
   { pane_id: 'w2:p1', workspace_id: 'w2', agent: 'claude', agent_status: 'done', label: 'docs', studioAgent: 'claude-code', studioSessionId: 'herdr-ccc' },
 ]
 
-async function openCenter(page: Page, session: string) {
+async function openCenter(page: Page, session: string, options: { machines?: boolean } = {}) {
   const posts: string[] = []
   const errors: string[] = []
   let panes = [...PANES]
@@ -28,6 +28,12 @@ async function openCenter(page: Page, session: string) {
         bridge: { connected: true, error: '', version: '0.9.5', focusedPaneId: 'w1:p1', workspaces: [{ workspace_id: 'w1', label: 'api' }, { workspace_id: 'w2', label: 'site' }, { workspace_id: 'w3', label: 'new' }], panes },
         integrations: ['claude', 'codex'],
       } })
+    }
+    if (path === '/api/coding-agents/herdr/machines') {
+      return route.fulfill({ json: { machines: options.machines ? [{ id: 'm1', label: 'Build box', target: 'me@build', session: 'default', enabled: true, selected: false }] : [] } })
+    }
+    if (path === '/api/coding-agents/herdr/machines/m1/agents') {
+      return route.fulfill({ json: { agents: [{ pane_id: 'w2:p1', workspace_id: 'w2', agent: 'claude', agent_status: 'working', label: 'Refactor deploy', cwd: '/srv', focused: false }] } })
     }
     if (path === '/api/studio/session-categories') return route.fulfill({ json: { categories: [] } })
     if (path === '/api/coding-agents/herdr/folders') return route.fulfill({ json: { list: [], of: {}, at: 1 } })
@@ -109,5 +115,21 @@ test('with no herdr chat open, herdr mode lands on herdr and its spaces, and pic
   // Switching agents inside herdr opens that agent's Studio chat.
   await page.evaluate(() => { (window as any).herdrCenterFixture.store.status.bridge.focusedPaneId = 'w2:p1' })
   await expect.poll(() => page.evaluate(() => (window as any).herdrCenterFixture.opened)).toEqual(['herdr-ccc'])
+  expect(errors).toEqual([])
+})
+
+test('herdr remote: a saved machine\'s agents are listed, and picking one opens that machine\'s full herdr', async ({ page }) => {
+  const { posts, errors } = await openCenter(page, 'herdr-aaa', { machines: true })
+  await expect(page.getByTestId('herdr-center-machines')).toBeVisible()
+  const remote = page.getByTestId('herdr-spaces-remote-agent')
+  await expect(remote).toContainText('Refactor deploy')
+  await remote.click()
+  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/machines/m1/agents/w2%3Ap1/focus')
+  await expect(page.getByTestId('herdr-center-remote')).toBeVisible()
+  await expect(page.getByTestId('herdr-center-remote-chip')).toContainText('Build box')
+  // Back to this machine: the local herdr view is still there.
+  await page.getByTestId('herdr-center-machines').getByRole('radio', { name: 'Local' }).click()
+  await expect(page.getByTestId('herdr-center-remote')).toHaveCount(0)
+  await expect(page.getByTestId('herdr-center-agent')).toContainText('auth refactor')
   expect(errors).toEqual([])
 })

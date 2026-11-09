@@ -12,6 +12,8 @@ herdrRoutes.get('/api/coding-agents/herdr/machines', requireSuperAdmin, ctrl.lis
 herdrRoutes.post('/api/coding-agents/herdr/machines', requireSuperAdmin, ctrl.addMachine)
 herdrRoutes.put('/api/coding-agents/herdr/machines/:id', requireSuperAdmin, ctrl.changeMachine)
 herdrRoutes.delete('/api/coding-agents/herdr/machines/:id', requireSuperAdmin, ctrl.removeMachine)
+herdrRoutes.get('/api/coding-agents/herdr/machines/:id/agents', requireSuperAdmin, ctrl.listMachineAgents)
+herdrRoutes.post('/api/coding-agents/herdr/machines/:id/agents/:paneId/focus', requireSuperAdmin, ctrl.focusMachineAgent)
 herdrRoutes.post('/api/coding-agents/herdr/server/start', requireSuperAdmin, ctrl.startServer)
 herdrRoutes.post('/api/coding-agents/herdr/integrations', requireSuperAdmin, ctrl.installIntegrations)
 herdrRoutes.post('/api/coding-agents/herdr/plugin-install', requireSuperAdmin, ctrl.installPlugin)

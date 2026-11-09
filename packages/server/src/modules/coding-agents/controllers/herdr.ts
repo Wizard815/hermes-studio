@@ -78,6 +78,19 @@ export async function changeMachine(ctx: Context) {
   } catch (error) { fail(ctx, error, 'Failed to change the herdr machine') }
 }
 
+export async function listMachineAgents(ctx: Context) {
+  try {
+    ctx.body = { agents: await herdrManager.listRemoteAgents(ctx.params.id) }
+  } catch (error) { fail(ctx, error, 'Failed to list the agents on that herdr machine') }
+}
+
+export async function focusMachineAgent(ctx: Context) {
+  try {
+    await herdrManager.focusRemoteAgent(ctx.params.id, ctx.params.paneId)
+    ctx.body = { ok: true }
+  } catch (error) { fail(ctx, error, 'Failed to focus the agent on that herdr machine') }
+}
+
 export async function removeMachine(ctx: Context) {
   try {
     await herdrManager.changeMachine(ctx.params.id, { remove: true })
