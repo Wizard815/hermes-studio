@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { NButton, NInput, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useOrbConnection } from '../useMission'
-import { callOrbTool, fetchOrbData, fetchOrbStatus, saveOrbSettings, type OrbChore, type OrbStatus, type OrbTask } from '@/api/studio/orb'
+import { callOrbTool, fetchOrbData, fetchOrbStatus, type OrbChore, type OrbStatus, type OrbTask } from '@/api/studio/orb'
+import HerdrOrbSettings from '@/components/coding-agents/herdr/HerdrOrbSettings.vue'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { studioUrl } from '../useMission'
 
@@ -12,14 +12,10 @@ import { studioUrl } from '../useMission'
  * uptime, hosts, chores and plans from Orb, and herdr's own health.
  */
 const { t } = useI18n()
-const toast = useMessage()
 /** Saving an address here opens Mission's Orb sources. */
 const orbConnection = useOrbConnection()
 const herdr = useHerdrStore()
 const orb = ref<OrbStatus | null>(null)
-const url = ref('')
-const token = ref('')
-const saving = ref(false)
 const monitors = ref<Array<{ name: string; status: string; group?: string }>>([])
 const hosts = ref<any[]>([])
 const requests = ref<any[]>([])
@@ -48,7 +44,6 @@ function percent(value: unknown): string {
 async function load() {
   try {
     orb.value = await fetchOrbStatus()
-    url.value = orb.value.settings.url
   } catch (err: any) {
     problems.value = [err?.message || String(err)]
     return
@@ -68,18 +63,9 @@ async function load() {
   problems.value = errs
 }
 
-async function save() {
-  saving.value = true
-  try {
-    await saveOrbSettings({ url: url.value.trim(), ...(token.value.trim() ? { token: token.value.trim() } : {}) })
-    token.value = ''
-    await Promise.all([load(), orbConnection.refresh()])
-    toast.success(orb.value?.connected ? t('mission.orbConnected') : t('mission.orbSaved'))
-  } catch (err: any) {
-    toast.error(err?.message || String(err))
-  } finally {
-    saving.value = false
-  }
+/** The Orb form is herdr settings' own (one place to connect Orb); saving here refreshes Mission. */
+async function orbSaved() {
+  await Promise.all([load(), orbConnection.refresh()])
 }
 
 onMounted(load)
@@ -89,17 +75,7 @@ onMounted(load)
   <section class="source" data-testid="mission-control-panel">
     <div class="control-grid">
       <article class="source-card" data-theme-surface="card">
-        <h4 class="control-title">Pondering Orb</h4>
-        <div class="source-card-meta">
-          <span class="source-chip" :class="orb?.connected ? 'is-good' : 'is-warn'">{{ orb?.connected ? t('mission.connected', { version: orb.version }) : t('mission.notConnected') }}</span>
-        </div>
-        <template v-if="!orb?.settings.fromEnv">
-          <NInput v-model:value="url" size="small" placeholder="http://pondering-orb:8080" data-testid="mission-orb-url" />
-          <NInput v-model:value="token" size="small" type="password" :placeholder="orb?.settings.hasToken ? t('mission.tokenKept') : t('mission.orbToken')" />
-          <NButton size="small" type="primary" :loading="saving" data-testid="mission-orb-save" @click="save">{{ t('mission.connect') }}</NButton>
-        </template>
-        <p v-else class="source-card-meta">{{ t('mission.orbFromEnv') }}</p>
-        <p class="source-card-meta">{{ t('mission.orbHint') }}</p>
+        <HerdrOrbSettings class="control-orb" @saved="orbSaved" />
       </article>
 
       <article class="source-card" data-theme-surface="card">
@@ -150,8 +126,14 @@ onMounted(load)
 </template>
 
 <style scoped lang="scss">
+
 @use '@/styles/variables' as *;
 @use './source';
+
+.control-orb {
+  padding-top: 0;
+  border-top: 0;
+}
 
 .control-grid {
   display: grid;

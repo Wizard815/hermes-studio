@@ -4,7 +4,11 @@ import { NButton, NInput, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { fetchOrbStatus, saveOrbSettings, type OrbStatus } from '@/api/studio/orb'
 
-/** Pondering Orb's address and API token (optional; Mission's Orb sources use it). */
+/**
+ * Pondering Orb's address and API token (optional). The one Orb form: herdr
+ * settings and Mission's Control tab both show it.
+ */
+const emit = defineEmits<{ saved: [] }>()
 const { t } = useI18n()
 const toast = useMessage()
 const orb = ref<OrbStatus | null>(null)
@@ -25,6 +29,7 @@ async function save() {
     await saveOrbSettings({ url: url.value.trim(), ...(token.value.trim() ? { token: token.value.trim() } : {}) })
     token.value = ''
     await load()
+    emit('saved')
     toast.success(orb.value?.connected ? t('mission.orbConnected') : t('mission.orbSaved'))
   } catch (err: any) {
     toast.error(err?.message || String(err))
