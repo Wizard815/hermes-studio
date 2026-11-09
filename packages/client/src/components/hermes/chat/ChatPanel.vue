@@ -154,6 +154,8 @@ const herdrEligible = computed(() => herdrChatState.value === 'eligible')
 
 // The center column swaps between the chat and its herdr agent; the sidebar,
 // header and tool panel stay. Both stay mounted once opened, so swapping is instant.
+// Declared before the herdr center state, which reads it during setup (phones read it at once).
+const showNewChatPage = ref(false);
 type ChatCenter = 'chat' | 'herdr'
 const centerMode = ref<ChatCenter>((() => { try { return localStorage.getItem('studio_chat_center') === 'herdr' ? 'herdr' : 'chat' } catch { return 'chat' } })())
 watch(centerMode, value => { try { localStorage.setItem('studio_chat_center', value) } catch { /* private mode */ } })
@@ -192,7 +194,6 @@ function selectCenter(mode: ChatCenter) {
   if (mode === 'herdr' && showNewChatPage.value) closeNewChatPage()
 }
 const showHerdrCenter = computed(() => centerMode.value === 'herdr' && herdrCenterAvailable.value && !showNewChatPage.value)
-// Lazy: showHerdrCenter reads state declared further down, so it is first read from the template.
 watch(showHerdrCenter, value => { if (value) herdrCenterMounted.value = true })
 
 const showOutline = ref(false);
@@ -917,7 +918,6 @@ const headerTitle = computed(() =>
     : activeSessionTitle.value,
 );
 
-const showNewChatPage = ref(false);
 const pageLoading = usePageLoadingState();
 const isEmptySingleChat = computed(() =>
   props.contentMode === "chat" && currentMode.value === "chat"

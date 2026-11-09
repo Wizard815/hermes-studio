@@ -201,7 +201,7 @@ const router = createRouter({
       path: '/herdr',
       name: 'herdr',
       redirect: to => to.query.tab === 'settings'
-        ? { name: 'codingAgent.config', params: { agentId: 'herdr', section: 'settings' } }
+        ? { name: 'codingAgent.config', params: { agentId: 'herdr', section: 'settings' }, query: {} }
         : { name: 'hermes.chat', query: { center: 'herdr', ...(typeof to.query.pane === 'string' ? { pane: to.query.pane } : {}) } },
     },
     {
