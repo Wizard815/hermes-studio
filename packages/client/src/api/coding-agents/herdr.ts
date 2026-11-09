@@ -80,6 +80,30 @@ export const saveHerdrSettings = (settings: Partial<HerdrSettings>) =>
 export const setHerdrWelcome = (show: boolean) =>
   request<{ welcome: boolean }>(`${base}/welcome`, { method: 'PUT', body: JSON.stringify({ show }) })
 
+/** herdr's remote (SSH) machines; their herdr servers show up in every herdr client. */
+export interface HerdrMachine {
+  id: string
+  label: string
+  target: string
+  session: string
+  enabled: boolean
+  selected: boolean
+  status?: string
+  error?: string
+}
+
+export const fetchHerdrMachines = (withStatus = false) =>
+  request<{ machines: HerdrMachine[] }>(`${base}/machines${withStatus ? '?status=1' : ''}`)
+
+export const addHerdrMachine = (input: { target: string; label?: string; session?: string }) =>
+  request<{ message: string; machines: HerdrMachine[] }>(`${base}/machines`, { method: 'POST', body: JSON.stringify(input) })
+
+export const changeHerdrMachine = (id: string, change: { enabled?: boolean; label?: string }) =>
+  request<{ machines: HerdrMachine[] }>(`${base}/machines/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(change) })
+
+export const removeHerdrMachine = (id: string) =>
+  request<{ machines: HerdrMachine[] }>(`${base}/machines/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
 export const startHerdrServer = () => request<HerdrStatus>(`${base}/server/start`, { method: 'POST', body: '{}' })
 
 export const installHerdrIntegrations = (kinds?: string[]) =>

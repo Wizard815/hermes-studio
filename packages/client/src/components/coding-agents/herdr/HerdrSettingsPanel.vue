@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import HerdrMachinesSettings from './HerdrMachinesSettings.vue'
+import HerdrOrbSettings from './HerdrOrbSettings.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -19,6 +21,8 @@ const form = reactive({ binaryPath: '', session: '', profile: 'default' })
 const profileOptions = computed(() => profiles.value.map(name => ({ label: name, value: name })))
 
 onMounted(async () => {
+  // Shown on its own (the agents page), so it loads herdr's status itself.
+  if (!herdr.status) void herdr.refresh()
   try { profiles.value = (await fetchHerdrProfiles()).profiles } catch { /* keep default */ }
 })
 
@@ -207,6 +211,8 @@ async function startServer() {
       </NButton>
     </div>
     <p class="herdr-settings-hint">{{ t('herdr.settings.pluginHint') }}</p>
+    <HerdrMachinesSettings v-if="herdr.status?.installed" />
+    <HerdrOrbSettings />
   </section>
 </template>
 

@@ -20,6 +20,8 @@ const agentId = computed(() => String(route.params.agentId || ''))
 const activeSection = computed(() => String(route.params.section || 'settings'))
 
 const items = computed(() => [
+    // herdr (the terminal workspace for agents) has one section: its settings.
+    ...(agentId.value === 'herdr' ? [{ section: 'settings', label: t('sidebar.settings'), icon: 'settings' }] : []),
     ...(agentId.value === 'dsh' ? [{ section: 'plugins', label: t('sidebar.plugins'), icon: 'plugins' }, { section: 'presets', label: t('dshPresets.title'), icon: 'presets' }] : []),
     ...(agentMetadata(agentId.value)?.config.skillsTarget ? [{ section: 'skills', label: t('sidebar.skills'), icon: 'skills' }] : []),
     ...(agentMetadata(agentId.value)?.config.mcp ? [{ section: 'mcp', label: t('sidebar.mcp'), icon: 'mcp' }] : []),

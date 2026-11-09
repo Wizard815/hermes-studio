@@ -53,6 +53,38 @@ export async function startServer(ctx: Context) {
   } catch (error) { fail(ctx, error, 'Failed to start herdr') }
 }
 
+export async function listMachines(ctx: Context) {
+  try {
+    ctx.body = { machines: await herdrManager.listMachines(ctx.query.status === '1') }
+  } catch (error) { fail(ctx, error, 'Failed to list herdr machines') }
+}
+
+export async function addMachine(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { target?: unknown; label?: unknown; session?: unknown }
+    const message = await herdrManager.addMachine(body)
+    ctx.body = { message, machines: await herdrManager.listMachines() }
+  } catch (error) { fail(ctx, error, 'Failed to add the herdr machine') }
+}
+
+export async function changeMachine(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { enabled?: unknown; label?: unknown }
+    await herdrManager.changeMachine(ctx.params.id, {
+      ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
+      ...(body.label !== undefined ? { label: body.label } : {}),
+    })
+    ctx.body = { machines: await herdrManager.listMachines() }
+  } catch (error) { fail(ctx, error, 'Failed to change the herdr machine') }
+}
+
+export async function removeMachine(ctx: Context) {
+  try {
+    await herdrManager.changeMachine(ctx.params.id, { remove: true })
+    ctx.body = { machines: await herdrManager.listMachines() }
+  } catch (error) { fail(ctx, error, 'Failed to remove the herdr machine') }
+}
+
 export async function installIntegrations(ctx: Context) {
   try {
     const body = (ctx.request.body || {}) as { kinds?: unknown }

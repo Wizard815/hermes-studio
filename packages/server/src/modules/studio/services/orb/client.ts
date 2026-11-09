@@ -93,7 +93,7 @@ export class OrbClient {
 
   private async request(path: string, init: RequestInit = {}): Promise<any> {
     const { url, token } = await this.load()
-    if (!url) throw new OrbError('Pondering Orb is not connected. Add its address and an API token in herdr settings.', 409)
+    if (!url) throw new OrbError('Pondering Orb is not connected. Add its address and an API token in herdr settings (Agents → herdr).', 409)
     const response = await this.fetcher(`${url}${path}`, {
       ...init,
       headers: {

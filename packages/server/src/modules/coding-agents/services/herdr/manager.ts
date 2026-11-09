@@ -5,6 +5,7 @@ import { installHerdrRelease } from './install'
 import { installStudioKeybinding, STUDIO_NEW_CHAT_BINDING, readHerdrKeys, readHerdrView, readHerdrWelcome, setHerdrWelcome, type HerdrKeys, type HerdrView, type KeybindResult } from './keybind'
 import { herdrKindForStudioAgent } from './protocol'
 import { SpaceFolderStore } from './folders'
+import { addHerdrMachine, changeHerdrMachine, listHerdrMachines, type HerdrMachine } from './machines'
 import { homedir } from 'node:os'
 import {
   DEFAULT_HERDR_SETTINGS,
@@ -381,6 +382,19 @@ export class HerdrManager {
   }
 
   /** Install herdr's session-reporting integrations so agent sessions link to chats. */
+  /** herdr's remote (SSH) machines; their herdr servers show up in every herdr client. */
+  listMachines(withStatus = false): Promise<HerdrMachine[]> {
+    return listHerdrMachines(this.requireBinary(), { withStatus })
+  }
+
+  addMachine(input: { target?: unknown; label?: unknown; session?: unknown }): Promise<string> {
+    return addHerdrMachine(this.requireBinary(), input)
+  }
+
+  changeMachine(id: unknown, change: { enabled?: boolean; label?: unknown; remove?: boolean }): Promise<void> {
+    return changeHerdrMachine(this.requireBinary(), id, change)
+  }
+
   /**
    * herdr integrations for the agents installed in Studio (the agents page
    * installs the agent CLIs; this only adds herdr's session-reporting hooks).

@@ -38,7 +38,7 @@ const agentCounts = computed(() => {
 const down = computed(() => monitors.value.filter(m => m.status === 'down'))
 const overdue = computed(() => chores.value.filter(c => (c.daysLeft ?? 0) < 0))
 const openTasks = computed(() => tasks.value.filter(task => !task.done))
-const settingsHref = studioUrl('/herdr?tab=settings')
+const settingsHref = studioUrl('/studio/agents/herdr/settings')
 
 function percent(value: unknown): string {
   const n = Number(value)

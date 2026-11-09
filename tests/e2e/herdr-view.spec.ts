@@ -14,6 +14,8 @@ async function openFixture(page: Page, options: { enabled: boolean; installed?: 
   let installed = options.installed ?? true
   let profile = 'default'
   let welcome = false
+  let machines: any[] = []
+  let orb = { url: '', hasToken: false }
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(() => { localStorage.setItem('hermes_locale', 'en'); (window as any).__APP_VERSION__ = 'test' })
   await page.routeWebSocket('**/socket.io/**', () => {})
@@ -30,6 +32,21 @@ async function openFixture(page: Page, options: { enabled: boolean; installed?: 
       welcome = request.postDataJSON().show
       return route.fulfill({ json: { welcome } })
     }
+    if (url.pathname === '/api/coding-agents/herdr/machines' && request.method() === 'POST') {
+      const body = request.postDataJSON()
+      machines = [...machines, { id: 'ssh-1', label: body.label || body.target, target: body.target, session: 'default', enabled: true, selected: false }]
+      return route.fulfill({ json: { message: 'Saved SSH machine ssh-1.', machines } })
+    }
+    if (url.pathname.startsWith('/api/coding-agents/herdr/machines/') && request.method() === 'PUT') {
+      machines = machines.map(m => ({ ...m, enabled: request.postDataJSON().enabled ?? m.enabled }))
+      return route.fulfill({ json: { machines } })
+    }
+    if (url.pathname === '/api/coding-agents/herdr/machines') return route.fulfill({ json: { machines } })
+    if (url.pathname === '/api/studio/orb/settings') {
+      orb = { url: request.postDataJSON().url, hasToken: true }
+      return route.fulfill({ json: { ...orb, fromEnv: false } })
+    }
+    if (url.pathname === '/api/studio/orb') return route.fulfill({ json: { connected: !!orb.url, version: orb.url ? '0.2.0' : '', error: '', settings: { ...orb, fromEnv: false } } })
     if (url.pathname === '/api/coding-agents/herdr/profiles') return route.fulfill({ json: { profiles: ['default', 'work'] } })
     if (url.pathname === '/api/coding-agents/herdr/install') {
       installed = true; enabled = true
@@ -58,6 +75,8 @@ async function openFixture(page: Page, options: { enabled: boolean; installed?: 
     return route.fulfill({ json: {} })
   })
   const entry = '/@fs/' + resolve('tests/e2e/fixtures/herdr-view.ts').replaceAll('\\', '/').replace(/^\//, '')
+  const settingsEntry = '/@fs/' + resolve('tests/e2e/fixtures/herdr-settings.ts').replaceAll('\\', '/').replace(/^\//, '')
+  await page.route('**/__herdr_settings__*', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script type="module" src="${settingsEntry}"></script></body></html>` }))
   await page.route('**/__herdr_view__*', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script type="module" src="${entry}"></script></body></html>` }))
   return { requests, errors }
 }
@@ -121,5 +140,28 @@ test('installing herdr from Studio and choosing the profile for herdr chats', as
   await welcome.click()
   await expect.poll(() => requests.filter(r => r.path === '/api/coding-agents/herdr/welcome').map(r => r.body)).toEqual([{ show: true }])
   await expect(welcome).toHaveAttribute('aria-checked', 'true')
+  expect(errors).toEqual([])
+})
+
+test('herdr settings live with the other agents: remote machines and Pondering Orb', async ({ page }) => {
+  const { requests, errors } = await openFixture(page, { enabled: true })
+  await page.goto('/__herdr_settings__')
+  await expect(page.getByTestId('herdr-agent-settings').getByTestId('herdr-settings')).toBeVisible()
+  // herdr remote: add an SSH machine and turn it off.
+  await expect(page.getByTestId('herdr-machines')).toContainText('No remote machines yet.')
+  await page.getByTestId('herdr-machine-target').locator('input').fill('me@build-box')
+  await page.getByTestId('herdr-machine-add').click()
+  await expect.poll(() => requests.find(r => r.path === '/api/coding-agents/herdr/machines')?.body).toEqual({ target: 'me@build-box' })
+  await expect(page.getByTestId('herdr-machine')).toContainText('me@build-box')
+  await page.getByTestId('herdr-machine').locator('.n-switch').click()
+  await expect.poll(() => requests.find(r => r.path === '/api/coding-agents/herdr/machines/ssh-1')?.body).toEqual({ enabled: false })
+  // Pondering Orb is optional, and set up here.
+  const orb = page.getByTestId('herdr-orb-settings')
+  await expect(orb).toContainText('Not connected')
+  await page.getByTestId('herdr-orb-url').locator('input').fill('http://orb.local:8080')
+  await page.getByTestId('herdr-orb-token').locator('input').fill('studio:secret')
+  await page.getByTestId('herdr-orb-save').click()
+  await expect.poll(() => requests.find(r => r.path === '/api/studio/orb/settings')?.body).toEqual({ url: 'http://orb.local:8080', token: 'studio:secret' })
+  await expect(orb).toContainText('Connected 0.2.0')
   expect(errors).toEqual([])
 })
