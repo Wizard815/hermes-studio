@@ -56,8 +56,9 @@ export async function startServer(ctx: Context) {
 export async function installIntegrations(ctx: Context) {
   try {
     const body = (ctx.request.body || {}) as { kinds?: unknown }
-    const kinds = Array.isArray(body.kinds) ? body.kinds.map(String) : [...HERDR_INTEGRATIONS]
-    ctx.body = { results: await herdrManager.installIntegrations(kinds) }
+    // Default: integrations for the agents installed in Studio only.
+    const kinds = Array.isArray(body.kinds) ? body.kinds.map(String) : await herdrManager.detectIntegrationKinds()
+    ctx.body = { kinds, results: await herdrManager.installIntegrations(kinds) }
   } catch (error) { fail(ctx, error, 'Failed to install herdr integrations') }
 }
 

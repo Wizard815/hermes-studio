@@ -83,7 +83,7 @@ export const setHerdrWelcome = (show: boolean) =>
 export const startHerdrServer = () => request<HerdrStatus>(`${base}/server/start`, { method: 'POST', body: '{}' })
 
 export const installHerdrIntegrations = (kinds?: string[]) =>
-  request<{ results: Array<{ kind: string; ok: boolean; message: string }> }>(`${base}/integrations`, {
+  request<{ kinds?: string[]; results: Array<{ kind: string; ok: boolean; message: string }> }>(`${base}/integrations`, {
     method: 'POST', body: JSON.stringify(kinds ? { kinds } : {}),
   })
 

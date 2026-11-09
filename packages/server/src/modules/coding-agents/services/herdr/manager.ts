@@ -66,6 +66,16 @@ export interface HerdrStatus {
   publicUrl: string
 }
 
+/** herdr integration kinds for Studio agent ids: known kinds only, once each. */
+export function integrationKindsFor(agentIds: string[]): string[] {
+  const allowed = new Set<string>(HERDR_INTEGRATIONS)
+  const kinds = agentIds.map(id => {
+    const kind = herdrKindForStudioAgent(id)
+    return kind === 'agy' ? 'antigravity-cli' : kind
+  }).filter((kind): kind is string => !!kind && allowed.has(kind))
+  return [...new Set(kinds)]
+}
+
 /** Herdr agent kinds with a session-reporting integration. */
 export const HERDR_INTEGRATIONS = ['claude', 'codex', 'pi', 'grok', 'opencode', 'copilot', 'cursor', 'antigravity-cli', 'kimi', 'qwen', 'qodercli', 'hermes'] as const
 
@@ -183,15 +193,7 @@ export class HerdrManager {
       const binary = this.requireBinary()
       if (!this.settings.enabled) await this.updateSettings({ enabled: true })
       const version = (await readHerdrServerStatus(binary, this.settings)).version
-      let kinds: string[] = []
-      try {
-        const agents = await this.getPluginDeps().listAgents()
-        const integration = (agentId: string) => {
-          const kind = herdrKindForStudioAgent(agentId)
-          return kind === 'agy' ? 'antigravity-cli' : kind
-        }
-        kinds = agents.map(agent => integration(agent.id)).filter((kind): kind is string => !!kind && (HERDR_INTEGRATIONS as readonly string[]).includes(kind))
-      } catch { kinds = [] }
+      const kinds = await this.detectIntegrationKinds()
       const integrations = kinds.length ? await this.installIntegrations([...new Set(kinds)]) : []
       const plugin = await this.installPlugin().catch(error => ({ error: error instanceof Error ? error.message : String(error) }))
       const keybinding = await installStudioKeybinding(binary, this.settings).catch(error => ({ error: error instanceof Error ? error.message : String(error) }))
@@ -379,6 +381,16 @@ export class HerdrManager {
   }
 
   /** Install herdr's session-reporting integrations so agent sessions link to chats. */
+  /**
+   * herdr integrations for the agents installed in Studio (the agents page
+   * installs the agent CLIs; this only adds herdr's session-reporting hooks).
+   */
+  async detectIntegrationKinds(): Promise<string[]> {
+    let agents: Array<{ id: string }> = []
+    try { agents = await this.getPluginDeps().listAgents() } catch { return [] }
+    return integrationKindsFor(agents.map(agent => agent.id))
+  }
+
   async installIntegrations(kinds: string[]): Promise<Array<{ kind: string; ok: boolean; message: string }>> {
     const binary = this.requireBinary()
     const allowed = new Set<string>(HERDR_INTEGRATIONS)

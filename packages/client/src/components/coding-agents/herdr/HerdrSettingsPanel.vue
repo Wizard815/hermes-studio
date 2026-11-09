@@ -93,10 +93,14 @@ async function saveWelcome(show: boolean) {
 async function installIntegrations() {
   installing.value = true
   try {
+    // Studio picks the integrations for the agents installed in Studio; agents themselves are installed on the agents page.
     const { results } = await installHerdrIntegrations()
-    const failed = results.filter(result => !result.ok)
-    if (failed.length) toast.warning(t('herdr.settings.integrationsPartial', { failed: failed.map(f => f.kind).join(', ') }))
-    else toast.success(t('herdr.settings.integrationsInstalled'))
+    const ok = results.filter(result => result.ok).map(result => result.kind)
+    const failed = results.filter(result => !result.ok).map(result => result.kind)
+    if (!results.length) toast.info(t('herdr.settings.integrationsNone'))
+    else if (!failed.length) toast.success(t('herdr.settings.integrationsInstalledFor', { kinds: ok.join(', ') }))
+    else if (!ok.length) toast.warning(t('herdr.settings.integrationsPartial', { failed: failed.join(', ') }))
+    else toast.warning(t('herdr.settings.integrationsMixed', { ok: ok.join(', '), failed: failed.join(', ') }))
   } catch (err: any) {
     toast.error(err?.message || String(err))
   } finally {

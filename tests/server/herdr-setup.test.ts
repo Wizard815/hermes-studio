@@ -138,3 +138,21 @@ describe('herdr welcome screen option', () => {
     expect(withHerdrWelcome('﻿[keys]\n', false)).toBe('﻿onboarding = false\n[keys]\n')
   })
 })
+
+describe('herdr integrations to install', () => {
+  it('maps installed Studio agents to herdr integrations, known kinds once each', async () => {
+    const { integrationKindsFor } = await import('../../packages/server/src/modules/coding-agents/services/herdr/manager')
+    // antigravity is `agy` in herdr, but its integration is `antigravity-cli`; agents herdr cannot host are skipped.
+    expect(integrationKindsFor(['claude-code', 'codex', 'antigravity', 'dsh', 'claude-code'])).toEqual(['claude', 'codex', 'antigravity-cli'])
+    expect(integrationKindsFor([])).toEqual([])
+  })
+
+  it('defaults to the agents installed in Studio, not every integration herdr has', async () => {
+    const { HerdrManager } = await import('../../packages/server/src/modules/coding-agents/services/herdr/manager')
+    const manager = new HerdrManager()
+    ;(manager as any).pluginDeps = { listAgents: async () => [{ id: 'claude-code', name: 'Claude Code' }, { id: 'opencode', name: 'OpenCode' }] }
+    expect(await manager.detectIntegrationKinds()).toEqual(['claude', 'opencode'])
+    ;(manager as any).pluginDeps = { listAgents: async () => { throw new Error('agents unavailable') } }
+    expect(await manager.detectIntegrationKinds()).toEqual([])
+  })
+})
