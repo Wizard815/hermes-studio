@@ -21,7 +21,6 @@ import {
   codexProxyRoutes,
   codingAgentRoutes,
 } from './coding-agents'
-import { herdrPluginRoutes, herdrRoutes } from '../modules/coding-agents/routes/herdr'
 
 // Studio and agent route modules composed into one HTTP application.
 import { uploadRoutes } from '../modules/studio/routes/upload'
@@ -30,7 +29,6 @@ import { authPublicRoutes, authProtectedRoutes } from '../modules/studio/routes/
 import { mcuDevicePublicRoutes, mcuDeviceRoutes } from '../modules/studio/routes/mcu-devices'
 
 import { sessionRoutes } from '../modules/studio/routes/sessions'
-import { orbRoutes } from '../modules/studio/routes/orb'
 import { modelApiRoutes } from '../modules/studio/routes/model-api'
 import { sessionSharePublicRoutes, sessionShareRoutes } from '../modules/studio/routes/session-shares'
 import { profileRoutes } from '../modules/hermes/routes/profiles'
@@ -105,9 +103,6 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(chatWebhookPublicRoutes.routes())
   app.use(browserPublicRoutes.routes())
 
-  // herdr plugin routes carry their own token and loopback check.
-  app.use(herdrPluginRoutes.routes())
-
   // --- Auth middleware: all routes below require authentication ---
   authMiddleware.forEach((middleware) => app.use(middleware))
 
@@ -119,7 +114,6 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(uploadRoutes.routes())
   app.use(appUploadRoutes.routes())
   app.use(updateRoutes.routes())           // Must be before proxy (proxy catch-all matches everything)
-  app.use(herdrRoutes.routes())           // Before codingAgentRoutes' /:id patterns
   app.use(androidDeviceRoutes.routes())
   app.use(systemRoutes.routes())
   app.use(codingAgentRoutes.routes())
@@ -129,7 +123,6 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(appRelayRoutes.routes())
   app.use(socialMessageRoutes.routes())
   app.use(sessionRoutes.routes())
-  app.use(orbRoutes.routes())
   app.use(modelApiRoutes.routes())
   app.use(personRoutes.routes())
   app.use(sessionShareRoutes.routes())

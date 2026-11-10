@@ -103,7 +103,6 @@ packages/server/src/
         sessions.ts                 # cross-agent single-chat session management; /api/studio/sessions/*
         chat-run.ts
         chat-webhooks.ts            # cross-agent event delivery; /api/studio/webhooks/*
-        orb.ts                      # Pondering Orb connection, data and tools; /api/studio/orb/*
         workflows.ts
         group-chat.ts
         global-agent.ts
@@ -159,7 +158,6 @@ packages/server/src/
         chat-run/                    # shared single-chat lifecycle and persistence
         context-compressor/
         webhooks/                    # aggregates events from every AgentFamily and RunSurface
-        orb/                         # Pondering Orb client (settings, allowlisted data and MCP tools)
         update/
           studio-updater.ts        # upgrades hermes-web-ui
           studio-restarter.ts
@@ -305,17 +303,12 @@ packages/server/src/
         runs.ts
         claude-code-proxy.ts
         codex-proxy.ts
-        herdr.ts                   # herdr integration + plugin-token routes
       controllers/
         agents.ts
         runs.ts
         claude-code-proxy.ts
         codex-proxy.ts
-        herdr.ts
-      sockets/
-        herdr.ts                   # /herdr namespace: live state + terminal streams
       services/
-        herdr/                     # herdr socket client, bridge, settings, plugin (see docs/harness/herdr.md)
         registry/
         credentials/
         sessions/

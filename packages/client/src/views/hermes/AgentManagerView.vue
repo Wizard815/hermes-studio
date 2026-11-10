@@ -27,7 +27,6 @@ import HermesDataDirectoryHint from '@/components/hermes/HermesDataDirectoryHint
 import VersionManagementModal from '@/components/layout/VersionManagementModal.vue'
 import { useAppStore } from '@/stores/hermes/app'
 import { useChatStore } from '@/stores/hermes/chat'
-import { useHerdrStore } from '@/stores/hermes/herdr'
 import { desktopBridge } from '@/utils/desktop-bridge'
 
 const AiHelpChatPanel = defineAsyncComponent(async () => (await import('@/components/hermes/chat/ChatPanel.vue')).default)
@@ -122,9 +121,6 @@ const appStore = useAppStore()
 const chatStore = useChatStore()
 const route = useRoute()
 const router = useRouter()
-/** herdr sits with the other agents: its settings are under /studio/agents/herdr/settings. */
-const herdr = useHerdrStore()
-onMounted(() => { if (!herdr.status) void herdr.refresh().catch(() => undefined) })
 
 const tools = ref<CodingAgentToolStatus[]>([])
 const agentStatusSnapshot = ref<AgentStatusSnapshot | null>(null)
@@ -606,37 +602,6 @@ onUnmounted(() => {
               </NButton>
             </div>
           </section>
-
-            <section class="agent-card coding-agent-card" data-testid="agent-card-herdr">
-              <header class="agent-card-header compact">
-                <div class="agent-identity">
-                  <img :src="deploymentUrl('/coding-agents/herdr.svg')" alt="" class="agent-logo" />
-                  <div>
-                    <div class="agent-name-row">
-                      <h3>herdr</h3>
-                      <NTag :type="herdr.status?.installed ? 'success' : 'warning'" size="small" :bordered="false">
-                        {{ herdr.status?.installed ? t('codingAgents.installed') : t('codingAgents.notInstalled') }}
-                      </NTag>
-                    </div>
-                    <p v-if="herdr.status?.installed && herdr.status?.version" class="agent-version">{{ formatVersion(herdr.status.version) }}</p>
-                    <p v-else>{{ t('herdr.cardDescription') }}</p>
-                  </div>
-                </div>
-              </header>
-              <div class="agent-actions">
-                <NButton
-                  secondary
-                  size="small"
-                  data-testid="agent-settings-herdr"
-                  @click="router.push({ name: 'codingAgent.config', params: { agentId: 'herdr', section: 'settings' } })"
-                >
-                  {{ t('sidebar.settings') }}
-                </NButton>
-                <NButton v-if="herdr.enabled && herdr.status?.installed" secondary size="small" @click="router.push('/herdr')">
-                  {{ t('herdr.cardOpen') }}
-                </NButton>
-              </div>
-            </section>
 
             <section
               v-for="agent in codingAgents"

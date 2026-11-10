@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { agentMetadata, isNativeCodingAgent, isGlobalOnlyCodingAgent } from '@/utils/agent-catalog'
-import { herdrCanHost } from '@/mission/useFolders'
 import SessionListSidebar from "./SessionListSidebar.vue"
 import SessionSelectionToolbar from "./SessionSelectionToolbar.vue"
 import { usePageSidebarState } from "@/composables/usePageSidebar"
@@ -9,8 +8,6 @@ import { usePageLoadingState, usePageLoadingTask } from '@/composables/usePageLo
 import { useCodingAgentModels } from '@/composables/useCodingAgentModels'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import HeaderSidebarToggle from '@/components/layout/HeaderSidebarToggle.vue'
-import { useHerdrStore } from '@/stores/hermes/herdr'
-import { focusHerdrPane } from '@/api/coding-agents/herdr'
 import HeaderToolPanelToggle from '@/components/layout/HeaderToolPanelToggle.vue'
 import { AGENT_OPTIONS } from "@/utils/agent-options"
 import { setSessionPinned } from "@/api/studio/sessions";
@@ -67,8 +64,6 @@ import RealtimeVoiceStage from "./RealtimeVoiceStage.vue";
 import ConversationMonitorPane from "./ConversationMonitorPane.vue";
 import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
-import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
-import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
 import ListActionsMenu from "@/components/layout/ListActionsMenu.vue";
 import OutlinePanel from "./OutlinePanel.vue";
 import ChatToolsPanel from "./ChatToolsPanel.vue";
@@ -136,63 +131,6 @@ function updateSessionTasksVisibility(show: boolean) {
 const message = useMessage();
 const { t } = useI18n();
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
-// By id and the chat list too: while Studio switches chats the loaded chat lags
-// behind, and herdr mode must not flicker off (it would reconnect herdr).
-// 'unknown' while the chat is not loaded yet; 'other' for chats herdr cannot host.
-const herdrChatState = computed<'eligible' | 'other' | 'unknown' | 'none'>(() => {
-  const id = chatStore.activeSessionId
-  if (!id) return 'none'
-  if (sessionStates.herdrLink(id)) return 'eligible'
-  const active = chatStore.activeSession
-  const session = active && active.id === id ? active : chatStore.sessions.find(item => item.id === id)
-  if (!session) return 'unknown'
-  return herdrCanHost(session.codingAgentId || session.agent) ? 'eligible' : 'other'
-})
-const herdrEligible = computed(() => herdrChatState.value === 'eligible')
-
-// The center column swaps between the chat and its herdr agent; the sidebar,
-// header and tool panel stay. Both stay mounted once opened, so swapping is instant.
-// Declared before the herdr center state, which reads it during setup (phones read it at once).
-const showNewChatPage = ref(false);
-type ChatCenter = 'chat' | 'herdr'
-const centerMode = ref<ChatCenter>((() => { try { return localStorage.getItem('studio_chat_center') === 'herdr' ? 'herdr' : 'chat' } catch { return 'chat' } })())
-watch(centerMode, value => { try { localStorage.setItem('studio_chat_center', value) } catch { /* private mode */ } })
-// Old /herdr links land here (?center=herdr, optionally &pane=<herdr pane>): herdr mode, on that pane's chat.
-const herdrStore = useHerdrStore()
-watch(() => [route.query.center, route.query.pane] as const, async ([center, pane]) => {
-  if (center !== 'herdr' && center !== 'chat') return
-  centerMode.value = center
-  const { center: _center, pane: _pane, ...rest } = route.query
-  void router.replace({ query: rest })
-  if (typeof pane !== 'string' || !pane) return
-  if (!herdrStore.status) await herdrStore.refresh().catch(() => undefined)
-  const chat = herdrStore.bridge?.panes.find(item => item.pane_id === pane)?.studioSessionId
-  if (chat) void handleSessionClick(chat)
-  else void focusHerdrPane(pane).catch(() => undefined)
-}, { immediate: true })
-// The switch is there whenever herdr is on (super admins): with no herdr chat open,
-// herdr mode shows herdr's own view and spaces, and picking an agent opens its chat.
-// Until herdr's status loads, a saved herdr mode stays (no flash of the chat on reload).
-const herdrCenterAvailable = computed(() => !props.standalone && isSuperAdmin.value
-  && (herdrStore.enabled || (!herdrStore.status && centerMode.value === 'herdr')))
-watch(isSuperAdmin, admin => { if (admin && !props.standalone && !herdrStore.status) void herdrStore.refresh().catch(() => undefined) }, { immediate: true })
-const herdrCenterMounted = ref(false)
-/**
- * The chat the herdr center shows ('' = none: herdr's own focus). Kept while the
- * next chat loads, so the center stays mounted and herdr does not reconnect.
- */
-const herdrSessionId = ref('')
-watch(() => [chatStore.activeSessionId, herdrChatState.value] as const, ([id, state]) => {
-  if (state === 'eligible') herdrSessionId.value = id || ''
-  else if (state !== 'unknown') herdrSessionId.value = ''
-}, { immediate: true })
-/** herdr from the New Chat page leaves it: herdr has its own New Studio chat. */
-function selectCenter(mode: ChatCenter) {
-  centerMode.value = mode
-  if (mode === 'herdr' && showNewChatPage.value) closeNewChatPage()
-}
-const showHerdrCenter = computed(() => centerMode.value === 'herdr' && herdrCenterAvailable.value && !showNewChatPage.value)
-watch(showHerdrCenter, value => { if (value) herdrCenterMounted.value = true })
 
 const showOutline = ref(false);
 const ACTIVE_SESSION_MENU_ID = "active-session-actions-menu";
@@ -256,8 +194,6 @@ const showBatchDeleteConfirm = ref(false);
 const isBatchDeleting = ref(false);
 
 const { expanded: showSessions, isMobile } = usePageSidebarState(!props.standalone)
-/** herdr mode swaps the chat list for its spaces panel; phones have no room for that panel and keep the drawer. */
-const herdrOwnsSidebar = computed(() => showHerdrCenter.value && !isMobile.value)
 
 const hasPageSidebar = computed(
   () => !props.standalone && currentMode.value === "chat" && props.contentMode === "chat",
@@ -916,6 +852,7 @@ const headerTitle = computed(() =>
     : activeSessionTitle.value,
 );
 
+const showNewChatPage = ref(false);
 const pageLoading = usePageLoadingState();
 const isEmptySingleChat = computed(() =>
   props.contentMode === "chat" && currentMode.value === "chat"
@@ -2667,9 +2604,8 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
 
 <template>
   <div class="chat-panel" :class="{ 'chat-panel--standalone': standalone }">
-    <!-- herdr mode: the chat list closes; the herdr center has its own spaces and agents (phones keep the drawer). -->
     <SessionListSidebar
-      v-if="hasPageSidebar && !(herdrOwnsSidebar && contentMode === 'chat')"
+      v-if="hasPageSidebar"
       :expanded="showSessions"
       :navigation="contentMode !== 'chat'"
     >
@@ -2738,8 +2674,6 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
             :pinned="true"
             can-delete
             :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
-              :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
-              :herdr-linked="!!sessionStates.herdrLink(s.id)"
             :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
             :selectable="isBatchMode"
             :selected="isSessionSelected(s)"
@@ -2794,8 +2728,6 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               :pinned="Boolean(s.isPinned)"
               can-delete
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
-              :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
-              :herdr-linked="!!sessionStates.herdrLink(s.id)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -2900,8 +2832,6 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               :pinned="false"
               can-delete
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
-              :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
-              :herdr-linked="!!sessionStates.herdrLink(s.id)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -3191,7 +3121,7 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
       <header v-if="!standalone" class="chat-header">
         <div class="header-left">
           <HeaderSidebarToggle
-            v-if="currentMode === 'chat' && !herdrOwnsSidebar"
+            v-if="currentMode === 'chat'"
             class="header-sidebar-toggle"
             :expanded="showSessions"
             @toggle="showSessions = !showSessions"
@@ -3223,29 +3153,6 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
               </svg>
             </template>
           </NButton>
-          <div
-            v-if="herdrCenterAvailable"
-            class="header-center-switch"
-            role="radiogroup"
-            :aria-label="t('herdr.centerSwitch')"
-            :title="t('herdr.centerSwitch')"
-            data-testid="chat-center-switch"
-          >
-            <button
-              v-for="mode in (['chat', 'herdr'] as const)"
-              :key="mode"
-              type="button"
-              role="radio"
-              :aria-checked="centerMode === mode"
-              :class="{ active: centerMode === mode }"
-              :data-testid="`chat-center-${mode}`"
-              @click="selectCenter(mode)"
-            >{{ mode === 'chat' ? t('herdr.centerChat') : t('herdr.centerHerdr') }}</button>
-          </div>
-          <HerdrOpenButton
-            v-if="isSuperAdmin && !showNewChatPage && chatStore.activeSessionId && herdrEligible"
-            :session-id="chatStore.activeSessionId"
-          />
           <!-- chat/live mode toggle hidden -->
           <template v-if="currentMode === 'chat' && !showNewChatPage">
             <HeaderToolPanelToggle v-if="isSuperAdmin" :expanded="showToolPanel" controls="chat-tool-panel"
@@ -3390,24 +3297,13 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
                 </button>
             </NewChatPage>
             <template v-else>
-            <HerdrCenter
-              v-if="herdrCenterMounted || showHerdrCenter"
-              v-show="showHerdrCenter"
-              :session-id="herdrSessionId"
-              :active="showHerdrCenter"
-              @open-chat="sessionId => handleSessionClick(sessionId)"
-              @open-studio-chat="sessionId => { centerMode = 'chat'; void handleSessionClick(sessionId) }"
-              @new-chat="openNewChatPage()"
-            />
             <MessageList
-              v-show="!showHerdrCenter"
               ref="messageListRef"
               :selection-actions-target="messageSelectionActionsTarget"
               :approval-portal-to-body="showRealtimeVoice"
               scroll-scope="chat"
             />
             <ChatInput
-              v-show="!showHerdrCenter"
               ref="chatInputRef"
               :model-label="activeSessionModelLabel"
               :model-disabled="activeSessionUsesGlobalCodingAgentConfig"
@@ -3916,28 +3812,6 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
   flex-direction: column;
   min-width: 0;
   background-color: var(--theme-content-bg, $bg-main-surface);
-}
-
-.header-center-switch {
-  display: inline-flex;
-  padding: 2px;
-  border: var(--border-width, 1px) solid $border-light;
-  border-radius: 999px;
-
-  button {
-    padding: 2px 10px;
-    border: 0;
-    border-radius: 999px;
-    background: transparent;
-    color: $text-secondary;
-    font-size: 12px;
-    cursor: pointer;
-
-    &.active {
-      color: $text-primary;
-      background: rgba(var(--accent-primary-rgb), 0.12);
-    }
-  }
 }
 
 .chat-header {

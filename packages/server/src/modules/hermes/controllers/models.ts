@@ -392,24 +392,6 @@ async function isCopilotAuthorized(envContent: string): Promise<boolean> {
   return !!(await resolveCopilotOAuthToken(envContent))
 }
 
-/**
- * Provider groups and models for one profile, with Studio's aliases and
- * visibility rules applied (the same list the model picker shows). Used by
- * integrations such as herdr that launch agents outside a browser request.
- */
-export async function listProfileModelGroups(profile: string): Promise<Array<{ provider: string; label: string; models: string[] }>> {
-  const appConfig = await readAppConfig()
-  const aliases = normalizeAliases(appConfig.modelAliases)
-  const visibility = normalizeModelVisibility(appConfig.modelVisibility)
-  const enrich = createCatalogModelMetadataEnricher(
-    group => filterModelsForProvider(group.provider, group.models, visibility),
-  )
-  const cache = await readProviderModelCatalogCache()
-  const result = await buildAvailableForProfile(profile, cache, appConfig, enrich)
-  return applyModelVisibility(applyModelAliases(result.groups, aliases), visibility)
-    .map((group: any) => ({ provider: String(group.provider), label: String(group.label || group.provider), models: (group.models || []).map(String) }))
-}
-
 async function buildAvailableForProfile(
   profile: string,
   modelCatalogCache: ProviderModelCatalogCache,

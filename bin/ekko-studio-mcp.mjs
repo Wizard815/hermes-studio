@@ -1370,42 +1370,6 @@ const tools = [
       }, ['input']),
   },
   {
-    name: 'ekko_studio_use_orb_read',
-    toolset: 'use',
-    description: 'Read the Pondering Orb homelab dashboard connected to Studio: tasks (plans and to-dos), projects, logs, chores, ideas (idea board cards), upkeep-repos, upkeep-requests, uptime or system. Use it when the user asks about their plans, tasks, projects, ideas or homelab upkeep.',
-    inputSchema: inputSchema({
-        kind: {
-          type: 'string',
-          enum: ['tasks', 'projects', 'logs', 'chores', 'ideas', 'upkeep-repos', 'upkeep-requests', 'uptime', 'system'],
-          description: 'Which Orb data to read.',
-        },
-        list: {
-          type: 'string',
-          description: 'For tasks: only this list (a project uses its own name).',
-        },
-        openOnly: {
-          type: 'boolean',
-          description: 'For tasks: only open tasks (default true).',
-        },
-      }, ['kind']),
-  },
-  {
-    name: 'ekko_studio_use_orb_update',
-    toolset: 'use',
-    description: 'Change the Pondering Orb dashboard when the user asks: add_task (title, list, due YYYY-MM-DD, priority), start_task (title, list: mark it in progress), complete_task (title, list), add_log (text, project), move_project (name, status: next, active, blocked, paused, shipped), set_task_priority (title, priority) or chore_done (name).',
-    inputSchema: inputSchema({
-        action: {
-          type: 'string',
-          enum: ['add_task', 'start_task', 'complete_task', 'add_log', 'move_project', 'set_task_priority', 'chore_done'],
-          description: 'What to change.',
-        },
-        arguments: {
-          type: 'object',
-          description: 'The fields for that action, as listed in the description.',
-        },
-      }, ['action']),
-  },
-  {
     name: 'ekko_studio_use_sessions_list',
     toolset: 'use',
     description: 'List Ekko Studio chat sessions for an explicit user-requested session operation. Do not use this as an internal delegation mechanism.',
@@ -1893,8 +1857,8 @@ const CATEGORY_TOOLSETS = {
   },
   use: {
     name: 'ekko_studio_use_toolset',
-    coverage: 'Explicit user-requested Studio chat/coding runs; one-time confirmed mobile location, calendar and reminder operations; session list/count/detail/messages/context/rename/delete; usage statistics; profiles and available models; provider add/delete; worker status; workflow CRUD and workflow run list/start/stop/rerun/delete; Pondering Orb tasks/plans, projects, logs, chores, ideas and upkeep (read, add tasks and logs, complete tasks, move projects).',
-    description: 'Discover and invoke high-level Ekko Studio operations without loading every Studio-use tool schema into the model context. Covers explicit user-requested chat or coding runs, one-time confirmed mobile location, calendar/reminder operations, session management and clean context, usage statistics, profiles/models/providers, worker status, workflow CRUD, workflow run lifecycle, and the connected Pondering Orb dashboard (tasks and plans, projects, ideas, upkeep). Never use chat/session or mobile-device operations as an internal delegation mechanism. Use action=list for the compact operation catalog, action=describe for one full input schema, then action=call with that exact tool name and arguments.',
+    coverage: 'Explicit user-requested Studio chat/coding runs; one-time confirmed mobile location, calendar and reminder operations; session list/count/detail/messages/context/rename/delete; usage statistics; profiles and available models; provider add/delete; worker status; workflow CRUD and workflow run list/start/stop/rerun/delete.',
+    description: 'Discover and invoke high-level Ekko Studio operations without loading every Studio-use tool schema into the model context. Covers explicit user-requested chat or coding runs, one-time confirmed mobile location, calendar/reminder operations, session management and clean context, usage statistics, profiles/models/providers, worker status, workflow CRUD, and workflow run lifecycle. Never use chat/session or mobile-device operations as an internal delegation mechanism. Use action=list for the compact operation catalog, action=describe for one full input schema, then action=call with that exact tool name and arguments.',
   },
 }
 
@@ -2167,36 +2131,6 @@ async function callToolInner(name, args = {}, signal) {
           'include_events',
         ]),
       })))
-    case 'ekko_studio_use_orb_read': {
-      // Tasks and projects go through Orb's own tools, which normalize lists and priorities.
-      if (args.kind === 'tasks') {
-        return jsonText(await request('/api/studio/orb/tools/orb_list_tasks', withAuthArgs(args, {
-          method: 'POST',
-          body: pickDefined(args, ['list', 'openOnly']),
-        })))
-      }
-      if (args.kind === 'projects') {
-        return jsonText(await request('/api/studio/orb/tools/orb_list_projects', withAuthArgs(args, { method: 'POST', body: {} })))
-      }
-      if (args.kind === 'chores') {
-        return jsonText(await request('/api/studio/orb/tools/orb_list_chores', withAuthArgs(args, { method: 'POST', body: {} })))
-      }
-      return jsonText(await request(`/api/studio/orb/data/${encodeURIComponent(String(args.kind || ''))}`, withAuthArgs(args)))
-    }
-    case 'ekko_studio_use_orb_update': {
-      const tool = {
-        add_task: 'orb_add_task',
-        start_task: 'orb_start_task',
-        complete_task: 'orb_complete_task',
-        add_log: 'orb_add_log',
-        move_project: 'orb_move_project',
-        set_task_priority: 'orb_set_task_priority',
-        chore_done: 'orb_chore_done',
-      }[String(args.action || '')]
-      if (!tool) throw new Error(`Unknown Orb action: ${args.action}`)
-      const fields = args.arguments && typeof args.arguments === 'object' ? args.arguments : {}
-      return jsonText(await request(`/api/studio/orb/tools/${tool}`, withAuthArgs(args, { method: 'POST', body: fields })))
-    }
     case 'ekko_studio_use_sessions_list':
       return jsonText(await request('/api/studio/sessions', withAuthArgs(args, {
         query: pickDefined(args, ['limit', 'source']),

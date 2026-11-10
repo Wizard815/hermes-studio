@@ -14,7 +14,6 @@ and keep this file small enough to fit into every task context.
 - `docs/harness/server-module-boundaries.md` - target backend modules, ownership, and dependency rules.
 - `docs/harness/jev-integrations.md` - required switches, frontend configuration and registration for JEV consumers.
 - `docs/harness/frontend-ui.md` - required theme surfaces, UI exceptions and automatic checks.
-- `docs/harness/herdr.md` - herdr integration: chat linking, status, plugin and how to test it.
 - `docs/android-devices.md` - Android page: adb devices, emulator stream, BlueStacks, phones, Termux bridge in the Android app.
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.
 

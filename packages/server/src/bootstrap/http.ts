@@ -1,6 +1,5 @@
 import { registerDesktopBrowserRelay } from '../modules/studio/sockets/desktop-browser'
 import { setupMobileTerminal } from '../modules/hermes/sockets/mobile-terminal'
-import { startHerdrIntegration } from './herdr'
 import { startAndroidDevices } from './android'
 import { getSessionMetadata as getTerminalSessionMetadata } from '../modules/studio/public/sessions'
 import Koa from 'koa'
@@ -166,17 +165,6 @@ async function listenWithFallback(app: Koa, port: number, host?: string): Promis
   console.log(`[bootstrap] listening on ${bindHost}:${port}`)
   const primary = await listen(app, port, bindHost)
   return { primary, servers: [primary] }
-}
-
-/** Own port for the herdr Mission view; 0 turns it off (it stays at /mission/). */
-const missionPort = (() => {
-  const raw = String(process.env.HERDR_MISSION_PORT ?? '5180').trim()
-  const value = Number(raw)
-  return Number.isInteger(value) && value >= 0 && value < 65536 ? value : 5180
-})()
-
-function isMissionPath(path: string): boolean {
-  return path === '/mission' || path.startsWith('/mission/')
 }
 
 function getLoopbackBaseUrl(httpServer: any): string {
@@ -529,17 +517,6 @@ export async function bootstrap() {
   // SPA fallback
   const distDir = resolve(__dirname, '..', 'client')
   app.use(createStaticCompressionMiddleware())
-  // On the Mission port the root page is Mission, not Studio; static serving
-  // would otherwise answer "/" with index.html first.
-  app.use(async (ctx, next) => {
-    if (missionPort > 0 && ctx.req.socket.localPort === missionPort && (ctx.method === 'GET' || ctx.method === 'HEAD')
-      && (ctx.path === '/' || ctx.path === '/index.html')) {
-      ctx.set('Cache-Control', SPA_ENTRY_CACHE_CONTROL)
-      await send(ctx, 'mission.html', { root: distDir })
-      return
-    }
-    await next()
-  })
   app.use(serve(distDir, {
     setHeaders(res, filePath) {
       const cacheControl = getStaticCacheControl(relative(distDir, filePath))
@@ -551,10 +528,7 @@ export async function bootstrap() {
       !ctx.path.startsWith('/api') &&
       ctx.path !== '/health') {
       ctx.set('Cache-Control', SPA_ENTRY_CACHE_CONTROL)
-      // The herdr Mission view: /mission/ on Studio's port (so one tunnel port
-      // serves both), and the whole of its own port.
-      const missionPage = isMissionPath(ctx.path) || (missionPort > 0 && ctx.req.socket.localPort === missionPort)
-      await send(ctx, missionPage ? 'mission.html' : 'index.html', { root: distDir })
+      await send(ctx, 'index.html', { root: distDir })
     }
   })
   console.log('[bootstrap] SPA fallback registered')
@@ -567,17 +541,6 @@ export async function bootstrap() {
     if (address && typeof address === 'object') process.send({ type: 'hermes-desktop:listening', port: address.port })
   }
   servers.splice(0, servers.length, ...listenResult.servers)
-  if (missionPort > 0 && missionPort !== config.port) {
-    // Same app on a second port: Socket.IO namespaces attach to every server in
-    // `servers`, so the Mission view's live data works on either port.
-    try {
-      const missionServer = await listen(app, missionPort, config.host || '0.0.0.0')
-      servers.push(missionServer)
-      console.log(`[bootstrap] herdr Mission view on port ${missionPort}`)
-    } catch (err) {
-      logger.warn(err, '[bootstrap] herdr Mission port %d unavailable; Mission stays at /mission/', missionPort)
-    }
-  }
   console.log('[bootstrap] app.listen called')
   // The Desktop shell only needs registered HTTP routes and static assets before
   // it can render. Keep slower runtime, socket, and recovery work below in the
@@ -629,8 +592,6 @@ export async function bootstrap() {
     return room ? { profile: context.profile, workspace: room.workspace || '' } : null
   })
   additionalShutdownSteps.push({ name: 'Mobile terminal PTY sessions', close: () => mobileTerminal.close() })
-  const herdrIntegration = startHerdrIntegration(activeGroupChatServer.getIO(), loopbackBaseUrl)
-  additionalShutdownSteps.push({ name: 'herdr bridge', close: () => herdrIntegration.close() })
   const androidDevices = startAndroidDevices(activeGroupChatServer.getIO())
   additionalShutdownSteps.push({ name: 'Android device screens', close: () => androidDevices.close() })
   startLocalAppRelayServer(activeGroupChatServer.getIO(), { localBaseUrl: loopbackBaseUrl })

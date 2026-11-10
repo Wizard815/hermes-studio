@@ -1,4 +1,3 @@
-import { herdrMessages } from '../herdr-messages'
 import { androidMessages } from '../android-messages'
 import { systemMessages } from '../system-messages'
 import { personMessages } from '../person-messages'
@@ -40,7 +39,6 @@ export default {
     campaignLabel: "Çifte 11",
   },
   person: personMessages['tr'],
-  ...herdrMessages['tr'],
   ...androidMessages['tr'],
   ...systemMessages['tr'],
   sessionTasks: {

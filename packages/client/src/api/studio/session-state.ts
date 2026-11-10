@@ -11,6 +11,6 @@ export function connectSessionState() {
     path: endpoint.path, auth: { token: getApiKey() },
     query: { session_state: '1', profile: localStorage.getItem('hermes_active_profile_name') || 'default' },
     transports: ['websocket', 'polling'], reconnection: true,
-    reconnectionDelay: 500, reconnectionDelayMax: 5000,
+    reconnectionDelay: 1000, reconnectionDelayMax: 30000,
   })
 }

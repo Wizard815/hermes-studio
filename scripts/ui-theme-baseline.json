@@ -429,7 +429,15 @@
       "literal-color | .session-item-warning | background: rgba(220, 38, 38, 0.1)": 1,
       "unowned-background | .session-item-warning | background: rgba(220, 38, 38, 0.1)": 1,
       "literal-color | .session-item-warning | color: #b42318": 1,
-      "literal-color | .session-item-agent-logo | border: var(--border-width, 1px) solid #fff": 1
+      "literal-color | .session-item-agent-logo-wrap.streaming::before | box-shadow: 0 0 0 2px #ff6b6b, 0 0 10px rgba(255, 107, 107, 0.4), 0 0 20px rgba(255, 107, 107, 0.2)": 1,
+      "literal-color | .session-item-agent-logo | border: var(--border-width, 1px) solid #fff": 1,
+      "literal-color | 0% | box-shadow: 0 0 0 2px #ff6b6b, 0 0 10px rgba(255, 107, 107, 0.4), 0 0 20px rgba(255, 107, 107, 0.2)": 1,
+      "literal-color | 16.66% | box-shadow: 0 0 0 2px #feca57, 0 0 10px rgba(254, 202, 87, 0.4), 0 0 20px rgba(254, 202, 87, 0.2)": 1,
+      "literal-color | 33.33% | box-shadow: 0 0 0 2px #48dbfb, 0 0 10px rgba(72, 219, 251, 0.4), 0 0 20px rgba(72, 219, 251, 0.2)": 1,
+      "literal-color | 50% | box-shadow: 0 0 0 2px #ff9ff3, 0 0 10px rgba(255, 159, 243, 0.4), 0 0 20px rgba(255, 159, 243, 0.2)": 1,
+      "literal-color | 66.66% | box-shadow: 0 0 0 2px #54a0ff, 0 0 10px rgba(84, 160, 255, 0.4), 0 0 20px rgba(84, 160, 255, 0.2)": 1,
+      "literal-color | 83.33% | box-shadow: 0 0 0 2px #5f27cd, 0 0 10px rgba(95, 39, 205, 0.4), 0 0 20px rgba(95, 39, 205, 0.2)": 1,
+      "literal-color | 100% | box-shadow: 0 0 0 2px #ff6b6b, 0 0 10px rgba(255, 107, 107, 0.4), 0 0 20px rgba(255, 107, 107, 0.2)": 1
     },
     "packages/client/src/components/hermes/chat/SubagentStreamPanel.vue": {
       "literal-color | .subagent-live-tool | background: rgba(0, 0, 0, 0.03)": 1,

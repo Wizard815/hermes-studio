@@ -1,4 +1,3 @@
-import { herdrMessages } from '../herdr-messages'
 import { androidMessages } from '../android-messages'
 import { systemMessages } from '../system-messages'
 import { personMessages } from '../person-messages'
@@ -9,7 +8,6 @@ import { socialMessagesZh } from '../social-messages'
 
 export default {
   person: personMessages['zh'],
-  ...herdrMessages['zh'],
   ...androidMessages['zh'],
   ...systemMessages['zh'],
   sessionTasks: {

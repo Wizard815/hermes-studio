@@ -3311,12 +3311,6 @@ export class ChatRunSocket {
     const tagged = { ...payload, session_id: sessionId }
     const profile = this.resolvePetEventProfile(sessionId, tagged)
     const state = this.sessionMap.get(sessionId)
-    // Runtimes report their own queue; the chat's queue (messages sent while it
-    // worked) is here. Without it a client treats the session as finished and
-    // misses the queued message starting, so it stays shown as queued.
-    if ((event === 'run.completed' || event === 'run.failed') && state?.queue.length) {
-      tagged.queue_remaining = Math.max(Number(tagged.queue_remaining) || 0, state.queue.length)
-    }
     const session = getSession(sessionId)
     const storedAgent = String(session?.agent || '')
     observeChatRunWebhookEvent({

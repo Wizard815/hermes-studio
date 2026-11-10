@@ -22,8 +22,6 @@ import { useSettingsStore } from './settings'
 import { primeCompletionSound, playCompletionSound } from '@/utils/completion-sound'
 import { showCompletionNotification } from '@/utils/completion-notification'
 import { notifyComputerUseStarted } from '@/composables/useComputerUsePermissionPrompt'
-import { useSessionStateStore } from './session-state'
-import { promptHerdrSession } from '@/api/coding-agents/herdr'
 import { detectThinkingBoundary } from '@/utils/thinking-parser'
 import { isKnownBridgeSessionCommand } from '@/utils/hermes/bridge-session-commands'
 import { responseErrorMessage } from '@/utils/http-error'
@@ -3802,25 +3800,6 @@ function createChatState(scopedSessionId?: string) {
 
     // Capture session ID at send time — all callbacks use this, not activeSessionId
     const sid = activeSessionId.value!
-
-    // A chat open in a live herdr pane takes input there: one process owns the
-    // conversation, and the reply comes back through the transcript mirror.
-    const herdrLink = !attachments?.length && trimmedContent ? useSessionStateStore().herdrLink(sid) : undefined
-    if (herdrLink) {
-      try {
-        await promptHerdrSession(sid, trimmedContent)
-        addMessage(sid, {
-          id: uid(),
-          role: 'system',
-          content: `→ herdr ${herdrLink.paneId}`,
-          timestamp: Date.now(),
-          commandAction: 'herdr.prompt',
-        })
-      } catch (err: any) {
-        addMessage(sid, { id: uid(), role: 'system', content: `Error: ${err?.message || err}`, timestamp: Date.now() })
-      }
-      return
-    }
     const shouldSendInitialSessionConfig = activeSession.value
       ? activeSession.value.messageCount == null || activeSession.value.messageCount === 0
       : false
@@ -5644,26 +5623,6 @@ function createChatState(scopedSessionId?: string) {
       void refreshSessionListOnly()
     }, 12_000)
     onScopeDispose(() => window.clearInterval(refreshTimer))
-
-    // Push-based list sync: chats created or deleted anywhere (another tab, MCP,
-    // herdr) appear immediately instead of on the next poll.
-    const sessionStates = useSessionStateStore()
-    let listTimer = 0
-    const stopListChanges = sessionStates.onListChanged(change => {
-      if (change.type === 'updated' && change.sessionId === activeSessionId.value
-        && !isStreaming.value && !streamStates.value.has(change.sessionId)) {
-        void refreshActiveSession()
-      }
-      if (listTimer) return
-      listTimer = window.setTimeout(() => {
-        listTimer = 0
-        void refreshSessionListOnly()
-      }, 120)
-    })
-    onScopeDispose(() => {
-      stopListChanges()
-      if (listTimer) window.clearTimeout(listTimer)
-    })
   }
 
   // Transient observation of <think> boundaries during active streaming.
