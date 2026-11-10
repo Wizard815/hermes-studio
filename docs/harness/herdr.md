@@ -11,6 +11,16 @@ stay separate apps; this integration links them.
   `agent_session` in herdr). An agent started in herdr becomes a Studio chat
   once it does something (`herdr-<native id>`); a Studio chat opened in herdr
   resumes the same native session (`claude --resume`, `codex resume`).
+- **Hermes chats too.** A Studio Hermes chat opens in herdr as
+  `hermes chat --resume <session> --create-if-missing`
+  (`modules/hermes/services/herdr-launch.ts`, branched in `bootstrap/herdr.ts`):
+  Studio drives the Hermes agent with the Studio session id as the agent
+  session id, so the pane resumes the same conversation, and herdr's own
+  `hermes` integration reports it back for linking. Replies typed in the pane
+  reach Studio's chat view only for agents with transcript mirroring
+  (claude-code, codex today). Ekko chats cannot open in herdr: the ekko agent
+  is an embedded runtime with no terminal CLI, and herdr's supported agent
+  kinds are fixed in its binary (no `ekko`).
 - **One writer per conversation.** While a chat is live in a pane, Studio's chat
   box sends to the pane (`agent.prompt`); replies return through the transcript
   mirror. A blocked agent (approval/question on screen) is never typed into.

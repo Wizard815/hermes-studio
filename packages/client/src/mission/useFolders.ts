@@ -38,8 +38,9 @@ export interface TreeChat {
   lastActive: number
 }
 
-/** Stored chat agents herdr can host (see services/herdr/protocol.ts). */
-const HERDR_HOSTABLE_AGENTS = new Set(['claude', 'claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot'])
+/** Stored chat agents herdr can host (see services/herdr/protocol.ts); hermes
+ * chats resume as `hermes chat` panes. */
+const HERDR_HOSTABLE_AGENTS = new Set(['claude', 'claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot', 'hermes'])
 export const herdrCanHost = (agent: string | undefined | null) => HERDR_HOSTABLE_AGENTS.has(String(agent || ''))
 
 export const folderIdOf = (categoryId: number) => `c${categoryId}`

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { agentMetadata, isNativeCodingAgent, isGlobalOnlyCodingAgent } from '@/utils/agent-catalog'
+import { herdrCanHost } from '@/mission/useFolders'
 import SessionListSidebar from "./SessionListSidebar.vue"
 import SessionSelectionToolbar from "./SessionSelectionToolbar.vue"
 import { usePageSidebarState } from "@/composables/usePageSidebar"
@@ -135,8 +136,6 @@ function updateSessionTasksVisibility(show: boolean) {
 const message = useMessage();
 const { t } = useI18n();
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
-// Coding-agent chats herdr can host (Claude Code, Codex, OpenCode, ...).
-const HERDR_ELIGIBLE_AGENTS = new Set(['claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot'])
 // By id and the chat list too: while Studio switches chats the loaded chat lags
 // behind, and herdr mode must not flicker off (it would reconnect herdr).
 // 'unknown' while the chat is not loaded yet; 'other' for chats herdr cannot host.
@@ -147,8 +146,7 @@ const herdrChatState = computed<'eligible' | 'other' | 'unknown' | 'none'>(() =>
   const active = chatStore.activeSession
   const session = active && active.id === id ? active : chatStore.sessions.find(item => item.id === id)
   if (!session) return 'unknown'
-  const agent = session.codingAgentId || (session.agent === 'claude' ? 'claude-code' : session.agent)
-  return agent && HERDR_ELIGIBLE_AGENTS.has(agent) ? 'eligible' : 'other'
+  return herdrCanHost(session.codingAgentId || session.agent) ? 'eligible' : 'other'
 })
 const herdrEligible = computed(() => herdrChatState.value === 'eligible')
 

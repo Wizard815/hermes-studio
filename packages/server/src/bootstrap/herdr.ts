@@ -27,6 +27,13 @@ import {
 import { herdrManager, type HerdrPluginDeps } from '../modules/coding-agents/services/herdr/manager'
 import { listProfileModelGroups } from '../modules/hermes/controllers/models'
 import { listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
+import { hermesCliAvailable, hermesInteractiveLaunch, hermesNewChatLaunch } from '../modules/hermes/services/herdr-launch'
+
+/** The stored agent id when herdr can host the chat as a pane, else null. */
+function herdrHostableAgentId(agent: string | null | undefined): string | null {
+  const id = codingAgentIdForStoredAgent(agent) || String(agent || '')
+  return herdrKindForStudioAgent(id) ? id : null
+}
 import { herdrChatMode, herdrKindForStudioAgent } from '../modules/coding-agents/services/herdr/protocol'
 import { locateTranscript } from '../modules/coding-agents/services/herdr/transcript'
 import type { HerdrBridgeDeps, HerdrSessionRef, HerdrWorkRef } from '../modules/coding-agents/services/herdr/bridge'
@@ -101,15 +108,22 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     setLink: (sessionId, link) => setSessionHerdrLink(sessionId, link),
     notifyUpdated: sessionId => notifySessionListChanged({ type: 'updated', sessionId }),
     locateTranscript: (agent, nativeId) => locateTranscript(agent, nativeId),
-    prepareSessionLaunch: sessionId => prepareCodingAgentSessionLaunch(sessionId),
-    prepareAgentLaunch: (agentId, input) => prepareCodingAgentInteractiveLaunch(agentId, {
-      profile: input.profile,
-      provider: input.provider,
-      model: input.model,
-      workspace: input.workspace,
-      // Without a provider the agent runs with its own native configuration.
-      mode: input.provider ? 'scoped' : 'global',
-    }),
+    // Hermes chats resume as `hermes chat` panes (herdr has a hermes
+    // integration); everything else goes through the coding-agent launcher.
+    prepareSessionLaunch: async sessionId => {
+      const session = getSession(sessionId)
+      return session?.agent === 'hermes' ? hermesInteractiveLaunch(session) : prepareCodingAgentSessionLaunch(sessionId)
+    },
+    prepareAgentLaunch: async (agentId, input) => agentId === 'hermes'
+      ? hermesNewChatLaunch(input.workspace)
+      : prepareCodingAgentInteractiveLaunch(agentId, {
+          profile: input.profile,
+          provider: input.provider,
+          model: input.model,
+          workspace: input.workspace,
+          // Without a provider the agent runs with its own native configuration.
+          mode: input.provider ? 'scoped' : 'global',
+        }),
     herdrKindFor: agentId => herdrKindForStudioAgent(agentId),
     agentLabel: agentId => AGENT_LABELS[agentId] || getCodingAgentDefinition(agentId)?.name || agentId,
     log: (level, message, data) => logger[level](data || {}, message),
@@ -167,17 +181,23 @@ let stopListChanges: (() => void) | null = null
 
 export function herdrPluginDeps(baseUrl: string): HerdrPluginDeps {
   return {
-    listChats: limit => listSessions(undefined, 'coding_agent', limit, { lite: true })
-      .filter(row => !!codingAgentIdForStoredAgent(row.agent))
+    // Every chat herdr can host: coding-agent chats and Hermes chats alike
+    // (they all resume as panes); sub-chats and archived chats stay out.
+    listChats: limit => listSessions(undefined, undefined, limit * 4, { lite: true })
+      .filter(row => !row.parent_session_id && !row.is_archived && !!herdrHostableAgentId(row.agent))
+      .slice(0, limit)
       .map(row => ({
         id: row.id,
         title: row.title || '',
-        agent: codingAgentIdForStoredAgent(row.agent) || row.agent,
+        agent: herdrHostableAgentId(row.agent)!,
         updatedAt: Number(row.last_active || row.started_at || 0),
       })),
-    listAgents: async () => (await getCodingAgentsStatus()).tools
-      .filter(tool => tool.installed)
-      .map(tool => ({ id: tool.id, name: tool.name })),
+    listAgents: async () => [
+      ...(await getCodingAgentsStatus()).tools
+        .filter(tool => tool.installed)
+        .map(tool => ({ id: tool.id, name: tool.name })),
+      ...(hermesCliAvailable() ? [{ id: 'hermes', name: AGENT_LABELS.hermes }] : []),
+    ],
     listProviders: profile => listProfileModelGroups(profile),
     listProfiles: () => { try { const names = listProfileNamesFromDisk(); return names.length ? names : ['default'] } catch { return ['default'] } },
     studioUrl: () => baseUrl,

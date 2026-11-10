@@ -3,7 +3,7 @@ vi.mock('@/api/studio/sessions', () => ({}))
 vi.mock('@/api/coding-agents/herdr', () => ({}))
 vi.mock('@/api/coding-agents', () => ({}))
 vi.mock('@/api/studio/orb', () => ({ fetchOrbStatus: async () => ({ settings: { url: '' } }) }))
-import { buildFolderTree, folderForSpace } from '@/mission/useFolders'
+import { buildFolderTree, folderForSpace, herdrCanHost } from '@/mission/useFolders'
 
 const cat = (id: number, name: string, parent_id: number | null = null) => ({ id, name, parent_id, created_at: 0, updated_at: 0 })
 const categories = [cat(1, 'Clients'), cat(2, 'acme', 1), cat(3, 'api', 2), cat(4, 'Home')]
@@ -32,5 +32,10 @@ describe('Mission folders are Studio chat folders', () => {
     // A chat moved out of every folder in Studio is no longer pinned by it.
     chatFolders.set('chat-a', null)
     expect(place('w1', '/home/me/code/acme')).toBe('c2')
+  })
+
+  it('hosts coding-agent and hermes chats in herdr; other chats open in Studio', () => {
+    for (const agent of ['claude', 'claude-code', 'codex', 'opencode', 'hermes']) expect(herdrCanHost(agent)).toBe(true)
+    for (const agent of ['ekko-agent', '', null, undefined]) expect(herdrCanHost(agent)).toBe(false)
   })
 })
