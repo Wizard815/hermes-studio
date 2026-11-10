@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
@@ -112,9 +112,42 @@ export interface HerdrServerStatus {
   compatible: boolean
 }
 
+/** Every installed nvm node version's bin, newest first: npm-global agents
+ * (codex, claude, ...) live in the version they were installed under, which
+ * need not be the version Studio runs on. */
+function nvmNodeBinDirs(): string[] {
+  if (process.platform === 'win32') return []
+  const versionsDir = join(process.env.NVM_DIR?.trim() || join(homedir(), '.nvm'), 'versions', 'node')
+  try {
+    return readdirSync(versionsDir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name)
+      .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))
+      .map(version => join(versionsDir, version, 'bin'))
+      .filter(binDir => existsSync(binDir))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * herdr's environment: Studio's own, with the directory of Studio's node and
+ * the nvm node versions' bins on PATH. herdr spawns agents (codex, claude, ...)
+ * from its PATH, and under a service manager Studio's PATH has no login-shell
+ * additions, so npm-global agents would otherwise be
+ * "No viable candidates found in PATH".
+ */
+export function herdrEnv(): NodeJS.ProcessEnv {
+  const path = String(process.env.PATH || '')
+  const existing = new Set(path.split(delimiter).filter(Boolean))
+  const missing = [dirname(process.execPath), ...nvmNodeBinDirs()].filter(dir => !existing.has(dir))
+  if (!missing.length) return process.env
+  return { ...process.env, PATH: [...new Set(missing), path].filter(Boolean).join(delimiter) }
+}
+
 export function runHerdr(binary: string, args: string[], timeoutMs = 8000): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(binary, args, { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, env: process.env }, (error, stdout, stderr) => {
+    execFile(binary, args, { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, env: herdrEnv() }, (error, stdout, stderr) => {
       if (error) reject(Object.assign(new Error(String(stderr || error.message).trim() || 'herdr failed'), { stdout }))
       else resolve(String(stdout))
     })
@@ -139,7 +172,7 @@ export async function readHerdrServerStatus(binary: string, settings: Pick<Herdr
  * failure is shown instead of a bare "not running".
  */
 export function startHerdrServer(binary: string, settings: Pick<HerdrSettings, 'session'>, onEarlyExit?: (message: string) => void): void {
-  const child = spawn(binary, herdrArgs(settings, ['server']), { detached: true, stdio: ['ignore', 'ignore', 'pipe'], env: process.env })
+  const child = spawn(binary, herdrArgs(settings, ['server']), { detached: true, stdio: ['ignore', 'ignore', 'pipe'], env: herdrEnv() })
   let stderr = ''
   child.stderr?.setEncoding('utf8')
   child.stderr?.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-2000) })
