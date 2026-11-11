@@ -149,20 +149,17 @@ tasks and plans, projects, ideas, upkeep, and Control).
   loads, the center keeps its chat, so herdr does not reconnect; a saved herdr
   mode stays while herdr's status loads.
 - **herdr mode layout.** In herdr mode the chat list closes (the page sidebar
-  is not shown) and the herdr center is: a rail with Mission's Spaces tree
-  (Studio's folders 1:1) and Agents list (`HerdrSpacesPanel.vue`), then herdr's
-  own UI. The rail starts with New chat (the chat list's, which herdr mode
-  hides). On phones (768px and under) there is no room for the rail, so the
-  chat list stays in the menu drawer. Picking a space or agent focuses it in
-  herdr and opens its Studio chat; the center stays mounted while the chat switches, so herdr does not
-  reconnect. herdr's own sidebar starts hidden in Studio only: the embedded
+  is not shown) and the center is herdr's own full UI. herdr's sidebar is the
+  chat list: every Studio chat is a space named with its folder path (see
+  "Every chat is a herdr space"), and its Agents list shows each chat's agent.
+  The bar above has New chat (herdr's New Studio chat picker when bound, else
+  Studio's new chat page) and one-tap keys, including the herdr sidebar
+  toggle. On phones the chat list stays in the menu drawer. The embedded
   client connects through Studio's own links to herdr's sockets
-  (`services/herdr/client-view.ts`, `HERDR_SOCKET_PATH`), and herdr keeps client
-  preferences per socket path, so Studio gets its own preferences file (seeded
-  with `sidebar_collapsed`) while a terminal herdr keeps its sidebar. herdr's
-  4-column collapsed rail is cropped off the left edge (`HerdrTerminal`
-  `cropLeft`), unless herdr's config uses `sidebar_collapsed_mode = "hidden"`
-  or the view is at or under herdr's phone layout width (`readHerdrView`).
+  (`services/herdr/client-view.ts`, `HERDR_SOCKET_PATH`), and herdr keeps
+  client preferences per socket path, so hiding herdr's sidebar in Studio does
+  not hide it in a terminal herdr. Studio seeds that file with the sidebar
+  shown (and undoes, once, the hidden-sidebar file older versions wrote).
   Windows (named pipes) keeps the shared preferences.
 - **Chats made in herdr are Studio chats.** herdr's Studio chats picker and
   "New Studio chat" are bound to free herdr keys at setup (`STUDIO_CHATS_BINDING`,

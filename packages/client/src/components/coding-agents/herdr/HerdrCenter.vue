@@ -8,7 +8,6 @@ import { useHerdrStore } from '@/stores/hermes/herdr'
 import { fetchHerdrMachines, focusHerdrMachineAgent, focusHerdrPane, openSessionInHerdr, studioFocusRequest, type HerdrMachine, type HerdrPaneView } from '@/api/coding-agents/herdr'
 import { missionUrl } from '@/utils/mission-url'
 import { herdrKeyBytes } from '@/utils/herdr-keys'
-import HerdrSpacesPanel from './HerdrSpacesPanel.vue'
 
 /**
  * herdr in the chat page's center column: herdr's own full UI (its key bar,
@@ -56,7 +55,7 @@ const linked = computed(() => (props.sessionId ? panes.value.find(pane => pane.s
 const KEY_DEFAULTS = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?', sidebar: 'prefix+b' }
 const keys = computed(() => ({ ...KEY_DEFAULTS, ...(herdr.status?.keys || {}) }))
 /** One-tap herdr keys: handy on a phone, where the prefix key is awkward. */
-const keyButtons = computed(() => (['search', 'workspaces', 'settings', 'help'] as const)
+const keyButtons = computed(() => (['sidebar', 'search', 'workspaces', 'settings', 'help'] as const)
   .map(name => ({ name, combo: keys.value[name], bytes: herdrKeyBytes(keys.value[name], keys.value.prefix) }))
   .filter(button => button.bytes != null))
 
@@ -189,6 +188,14 @@ onBeforeUnmount(() => herdr.release())
         <NButton v-else-if="sessionId && !machine" size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.centerOpenChat') }}</NButton>
         <span v-else-if="!machine" class="herdr-center-landing" data-testid="herdr-center-landing">{{ t('herdr.centerLanding') }}</span>
         <span class="herdr-center-spacer" />
+        <button
+          v-if="!machine"
+          type="button"
+          class="herdr-center-key herdr-center-new"
+          data-testid="herdr-center-new-chat"
+          :title="newChatKey ? newChatKey.replace(/^prefix\+/i, `${keys.prefix} then `) : undefined"
+          @click="newChat"
+        ><span aria-hidden="true">+</span> {{ t('chat.newChat') }}</button>
         <NTooltip v-for="button in keyButtons" :key="button.name" trigger="hover">
           <template #trigger>
             <button type="button" class="herdr-center-key" :data-testid="`herdr-center-key-${button.name}`" @click="press(button.bytes)">
@@ -200,28 +207,13 @@ onBeforeUnmount(() => herdr.release())
         <a class="herdr-center-link" :href="missionUrl(linked ? { pane: linked.pane_id } : {})">{{ t('herdr.centerMission') }}</a>
       </header>
       <div class="herdr-center-body">
-        <!-- Studio's spaces (its folders) and agents stand in for herdr's own sidebar, whose rail is cropped off. -->
-        <aside class="herdr-center-rail" data-testid="herdr-center-rail">
-          <HerdrSpacesPanel
-            :active-session-id="sessionId"
-            :new-chat-key="newChatKey"
-            :machines="machines"
-            :machine="machine"
-            @open-chat="id => { machine = ''; emit('open-chat', id) }"
-            @open-studio-chat="id => emit('open-studio-chat', id)"
-            @select-local="machine = ''"
-            @open-machine="openMachine"
-            @new-chat="machine = ''; newChat()"
-          />
-        </aside>
+        <!-- herdr's own sidebar lists every Studio chat as a space (folder path in its name). -->
         <HerdrTerminal
           v-if="started"
           v-show="!machine"
           ref="localTerminal"
           class="herdr-center-terminal"
           mode="client"
-          :crop-left="herdr.status?.view?.rail ?? 4"
-          :crop-above="herdr.status?.view?.mobileWidth ?? 64"
         />
         <!-- A saved machine's full herdr (its own sidebar included: it is that machine's UI). -->
         <HerdrTerminal
@@ -335,24 +327,10 @@ onBeforeUnmount(() => herdr.release())
   min-height: 0;
 }
 
-.herdr-center-rail {
-  display: flex;
-  flex: 0 0 260px;
-  flex-direction: column;
-  min-height: 0;
-  border-right: var(--border-width, 1px) solid $border-light;
-}
-
 .herdr-center-terminal {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-}
-
-@media (max-width: 768px) {
-  .herdr-center-rail {
-    display: none;
-  }
 }
 
 .herdr-center-notice {

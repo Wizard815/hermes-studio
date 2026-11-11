@@ -24,11 +24,16 @@ describe('Studio\'s embedded herdr view', () => {
     expect(await readlink(socket)).toBe(api)
     expect(await readlink(socket.replace(/herdr\.sock$/, 'herdr-client.sock'))).toBe('/run/user/1000/herdr/herdr-client.sock')
     const prefs = join(dir, 'state', 'herdr', 'client-shell', `local-${herdrEndpointHash(socket.replace(/herdr\.sock$/, 'herdr-client.sock'))}.json`)
-    expect(JSON.parse(await readFile(prefs, 'utf8'))).toEqual({ sidebar_collapsed: true })
-    // A choice made later in Studio's herdr view is kept.
-    await writeFile(prefs, '{"sidebar_collapsed":false}')
-    expect(studioClientView(api, { env, platform: 'linux', baseDir: dir })!.env.HERDR_SOCKET_PATH).toBe(socket)
+    // herdr's sidebar lists every chat, so it starts shown.
     expect(JSON.parse(await readFile(prefs, 'utf8'))).toEqual({ sidebar_collapsed: false })
+    // The hidden-sidebar file earlier Studio versions wrote is undone once.
+    await writeFile(prefs, '{"sidebar_collapsed":true}\n')
+    studioClientView(api, { env, platform: 'linux', baseDir: dir })
+    expect(JSON.parse(await readFile(prefs, 'utf8'))).toEqual({ sidebar_collapsed: false })
+    // A choice made later in Studio's herdr view (herdr writes its own file) is kept.
+    await writeFile(prefs, '{"sidebar_collapsed":true,"sidebar_width":30}')
+    expect(studioClientView(api, { env, platform: 'linux', baseDir: dir })!.env.HERDR_SOCKET_PATH).toBe(socket)
+    expect(JSON.parse(await readFile(prefs, 'utf8'))).toEqual({ sidebar_collapsed: true, sidebar_width: 30 })
     expect(existsSync(join(dir, 'state', 'herdr', 'client-shell'))).toBe(true)
   })
 

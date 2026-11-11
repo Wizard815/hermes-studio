@@ -18,14 +18,7 @@ const props = withDefaults(defineProps<{
   mode: 'client' | 'observe' | 'control'
   target?: string
   takeover?: boolean
-  /**
-   * Columns to hide at the left edge (herdr's collapsed sidebar rail, when
-   * Studio shows its own spaces panel instead), while the terminal is wider
-   * than `cropAbove` columns (herdr's phone layout has no rail).
-   */
-  cropLeft?: number
-  cropAbove?: number
-}>(), { target: '', takeover: false, cropLeft: 0, cropAbove: 0 })
+}>(), { target: '', takeover: false })
 
 const emit = defineEmits<{ closed: [reason: string]; error: [message: string] }>()
 
@@ -62,21 +55,8 @@ function onClosed(payload: { streamId: string; reason: string }) {
   emit('closed', closedReason.value)
 }
 
-/** Widen the terminal past the left edge so the cropped columns sit off screen. */
-function applyCrop() {
-  const el = host.value
-  if (!el || !term) return
-  const cell = (term as any)._core?._renderService?.dimensions?.css?.cell?.width || 0
-  const visible = cell ? Math.floor((el.parentElement?.clientWidth || 0) / cell) : 0
-  const crop = props.cropLeft > 0 && cell && visible + props.cropLeft > props.cropAbove ? props.cropLeft * cell : 0
-  el.style.flex = crop ? `0 0 calc(100% + ${crop}px)` : ''
-  el.style.transform = crop ? `translateX(-${crop}px)` : ''
-  el.style.paddingLeft = crop ? '0' : ''
-}
-
 function sizeNow() {
   if (!fit || !term) return
-  applyCrop()
   try { fit.fit() } catch { return }
   const key = `${term.cols}x${term.rows}`
   if (key === lastSize) return
@@ -136,7 +116,6 @@ onMounted(() => {
   socket.on('terminal.closed', onClosed)
   socket.on('connect', reconnectOnSocket)
   observer = new ResizeObserver(() => sizeNow())
-  // The frame, not the host: the host's width changes with the crop.
   observer.observe(host.value!.parentElement || host.value!)
   sizeNow()
   if (socket.connected) open()
@@ -149,8 +128,6 @@ watch([customization, isDark], () => {
   term.options.fontSize = customization.value.fontSize
   sizeNow()
 })
-
-watch(() => [props.cropLeft, props.cropAbove], () => sizeNow())
 
 watch(() => [props.mode, props.target, props.takeover], () => {
   if (!socket || !term) return

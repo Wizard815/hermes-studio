@@ -61,9 +61,9 @@ test('herdr\'s own UI opens on the chat\'s agent, with one-tap herdr keys', asyn
   await expect(page.getByTestId('herdr-center-key-settings')).toHaveText('herdr settings')
   // A key the terminal cannot send (cmd+?) has no button.
   await expect(page.getByTestId('herdr-center-key-help')).toHaveCount(0)
-  // Studio's spaces and agents stand in for herdr's sidebar, inside the center.
-  await expect(page.getByTestId('herdr-center-rail').getByTestId('mission-space-row')).toHaveCount(3)
-  await expect(page.getByTestId('herdr-spaces-agents')).toContainText('auth refactor')
+  // herdr's own sidebar is the chat list here: one tap toggles it, and Studio adds no second list.
+  await expect(page.getByTestId('herdr-center-key-sidebar')).toHaveText('herdr sidebar')
+  await expect(page.locator('.herdr-center-rail')).toHaveCount(0)
   await page.getByTestId('herdr-center-key-settings').hover()
   await expect(page.getByText('ctrl+a then s')).toBeVisible()
   expect(errors).toEqual([])
@@ -98,17 +98,16 @@ test('the chat follows herdr: switching agents inside herdr opens that agent\'s 
   await page.waitForTimeout(300)
   expect(await page.evaluate(() => (window as any).herdrCenterFixture.opened)).toEqual(['herdr-ccc'])
   // New chat without a connected herdr view falls back to Studio's new chat page.
-  await page.getByTestId('herdr-spaces-new-chat').click()
+  await page.getByTestId('herdr-center-new-chat').click()
   await expect.poll(() => page.evaluate(() => (window as any).herdrCenterFixture.newChats)).toBe(1)
   expect(errors).toEqual([])
 })
 
-test('with no herdr chat open, herdr mode lands on herdr and its spaces, and picking an agent opens its chat', async ({ page }) => {
+test('with no herdr chat open, herdr mode lands on herdr, and picking an agent opens its chat', async ({ page }) => {
   const { posts, errors } = await openCenter(page, 'none')
   await expect(page.getByTestId('herdr-center-landing')).toBeVisible()
   await expect(page.getByTestId('herdr-center-open')).toHaveCount(0)
   await expect(page.locator('.herdr-terminal')).toBeVisible()
-  await expect(page.getByTestId('herdr-spaces-panel').getByTestId('mission-space-row')).toHaveCount(3)
   // Nothing is opened or focused on its own.
   await page.waitForTimeout(500)
   expect(posts.filter(path => path.endsWith('/open') || path.endsWith('/focus'))).toEqual([])
@@ -118,13 +117,12 @@ test('with no herdr chat open, herdr mode lands on herdr and its spaces, and pic
   expect(errors).toEqual([])
 })
 
-test('herdr remote: a saved machine\'s agents are listed, and picking one opens that machine\'s full herdr', async ({ page }) => {
-  const { posts, errors } = await openCenter(page, 'herdr-aaa', { machines: true })
+test('herdr remote: picking a saved machine opens that machine\'s full herdr', async ({ page }) => {
+  const { errors } = await openCenter(page, 'herdr-aaa', { machines: true })
   await expect(page.getByTestId('herdr-center-machines')).toBeVisible()
-  const remote = page.getByTestId('herdr-spaces-remote-agent')
-  await expect(remote).toContainText('Refactor deploy')
-  await remote.click()
-  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/machines/m1/agents/w2%3Ap1/focus')
+  await page.getByTestId('herdr-center-machine-m1').click()
+  // A remote herdr has no Studio chats to start: New chat is for this machine.
+  await expect(page.getByTestId('herdr-center-new-chat')).toHaveCount(0)
   await expect(page.getByTestId('herdr-center-remote')).toBeVisible()
   await expect(page.getByTestId('herdr-center-remote-chip')).toContainText('Build box')
   // Back to this machine: the local herdr view is still there.

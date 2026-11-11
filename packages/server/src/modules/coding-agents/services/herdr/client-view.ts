@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 /**
- * Studio's embedded herdr UI gets its own herdr client preferences, so Studio
- * can hide herdr's sidebar (Studio shows the same spaces in its own tree)
- * without changing herdr in the user's terminal.
+ * Studio's embedded herdr UI gets its own herdr client preferences, so
+ * choices made in Studio's herdr view (like hiding herdr's sidebar) do not
+ * change herdr in the user's terminal.
  *
  * herdr names a client's preferences after the socket path it connects
  * through. The embedded client connects through a Studio folder of symlinks to
@@ -38,6 +38,9 @@ function link(path: string, target: string) {
   symlinkSync(target, path)
 }
 
+/** The preferences file earlier Studio versions wrote (sidebar hidden). */
+const LEGACY_HIDDEN = `${JSON.stringify({ sidebar_collapsed: true })}\n`
+
 export interface ClientViewLaunch {
   /** herdr arguments: no `--session`, the socket override picks the session. */
   args: string[]
@@ -60,12 +63,15 @@ export function studioClientView(apiSocket: string, options: { env?: NodeJS.Proc
   link(join(dir, 'herdr.sock'), apiSocket)
   link(join(dir, 'herdr-client.sock'), clientSocket)
 
-  // First time only: start with herdr's sidebar hidden. Later choices made in
-  // Studio's herdr view (prefix+b) are herdr's to keep.
+  // herdr's sidebar is Studio's chat list in herdr mode (every chat is a
+  // space), so it starts shown. Earlier Studio versions started it hidden: that
+  // untouched first file is undone once; later choices (prefix+b) are herdr's.
   const preferences = join(herdrStateDir(env), 'client-shell', `local-${herdrEndpointHash(join(dir, 'herdr-client.sock'))}.json`)
-  if (!existsSync(preferences)) {
+  let current = ''
+  try { current = readFileSync(preferences, 'utf8') } catch { /* first time */ }
+  if (!current || current === LEGACY_HIDDEN) {
     mkdirSync(dirname(preferences), { recursive: true })
-    writeFileSync(preferences, `${JSON.stringify({ sidebar_collapsed: true })}\n`)
+    writeFileSync(preferences, `${JSON.stringify({ sidebar_collapsed: false })}\n`)
   }
   return { args: [], env: { HERDR_SOCKET_PATH: join(dir, 'herdr.sock') } }
 }
