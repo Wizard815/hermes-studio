@@ -100,11 +100,18 @@ export class OrbWorkTracker {
     } catch { this.work = [] }
   }
 
-  private async save(): Promise<void> {
-    await mkdir(dirname(this.file), { recursive: true })
-    const temp = `${this.file}.${process.pid}.tmp`
-    await writeFile(temp, `${JSON.stringify(this.work.slice(0, MAX_KEPT), null, 2)}\n`)
-    await rename(temp, this.file)
+  /** Saves run one at a time (a run's first events can save while the chat is still being set up). */
+  private saving: Promise<void> = Promise.resolve()
+
+  private save(): Promise<void> {
+    const next = this.saving.catch(() => undefined).then(async () => {
+      await mkdir(dirname(this.file), { recursive: true })
+      const temp = `${this.file}.${process.pid}.${randomUUID()}.tmp`
+      await writeFile(temp, `${JSON.stringify(this.work.slice(0, MAX_KEPT), null, 2)}\n`)
+      await rename(temp, this.file)
+    })
+    this.saving = next
+    return next
   }
 
   async list(): Promise<OrbWork[]> {
