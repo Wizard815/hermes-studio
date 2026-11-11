@@ -1,6 +1,7 @@
 import { dirname, join } from 'node:path'
 import { HerdrBridge, type HerdrBridgeDeps, type HerdrBridgeState } from './bridge'
-import { findPluginScript, installHerdrPlugin, pluginTokenMatches, readOrCreatePluginToken, type PluginInstallResult } from './plugin'
+import { existsSync } from 'node:fs'
+import { findPluginScript, HERDR_PLUGIN_ID, installHerdrPlugin, pluginTokenMatches, readOrCreatePluginToken, type PluginInstallResult } from './plugin'
 import { installHerdrRelease } from './install'
 import { installStudioKeybinding, STUDIO_NEW_CHAT_BINDING, readHerdrKeys, readHerdrView, readHerdrWelcome, setHerdrWelcome, type HerdrKeys, type HerdrView, type KeybindResult } from './keybind'
 import { herdrKindForStudioAgent } from './protocol'
@@ -382,6 +383,37 @@ export class HerdrManager {
   }
 
   /** Install herdr's session-reporting integrations so agent sessions link to chats. */
+  private pluginConfigDir = ''
+
+  /**
+   * How herdr runs a Studio chat's waiting pane: `bin/herdr-plugin/studio-chat.sh`
+   * next to the plugin script, with Studio's node, the plugin script and its
+   * config folder (for resuming), and the folder of chat cards.
+   */
+  async chatPaneSetup(): Promise<{ script: string; env: Record<string, string>; cardsDir: string; studioUrl: string } | null> {
+    if (!this.pluginDeps || !this.settingsDir) return null
+    const plugin = findPluginScript(this.pluginDeps.scriptCandidates)
+    if (!plugin) return null
+    const script = join(dirname(plugin), 'studio-chat.sh')
+    if (!existsSync(script)) return null
+    if (!this.pluginConfigDir) {
+      const binary = this.binary()
+      if (binary) this.pluginConfigDir = (await runHerdr(binary, ['plugin', 'config-dir', HERDR_PLUGIN_ID], 15000).catch(() => '')).trim()
+    }
+    const cardsDir = join(this.settingsDir, 'chat-cards')
+    return {
+      script,
+      cardsDir,
+      studioUrl: this.publicUrl() || this.pluginDeps.browserUrl().replace(/\/+$/, ''),
+      env: {
+        STUDIO_CHAT_DIR: cardsDir,
+        STUDIO_NODE: this.pluginDeps.nodePath,
+        STUDIO_PLUGIN: plugin,
+        ...(this.pluginConfigDir ? { STUDIO_PLUGIN_CONFIG_DIR: this.pluginConfigDir } : {}),
+      },
+    }
+  }
+
   /** herdr's remote (SSH) machines; their herdr servers show up in every herdr client. */
   listMachines(withStatus = false): Promise<HerdrMachine[]> {
     return listHerdrMachines(this.requireBinary(), { withStatus })

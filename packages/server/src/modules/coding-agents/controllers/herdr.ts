@@ -219,6 +219,18 @@ export async function pluginAgents(ctx: Context) {
   } catch (error) { fail(ctx, error, 'Failed to list agents') }
 }
 
+/** A chat's waiting pane resumes its agent in place: the launch it runs there. */
+export async function pluginResume(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { sessionId?: unknown; paneId?: unknown }
+    const sessionId = String(body.sessionId || '')
+    const paneId = String(body.paneId || '')
+    if (!sessionId || !/^[\w:.-]{1,64}$/.test(paneId)) throw Object.assign(new Error('A chat id and pane id are required'), { status: 400 })
+    const launch = await herdrManager.requireBridge().prepareResume(sessionId, paneId)
+    ctx.body = { launch: { command: launch.command, args: launch.args, env: launch.env, cwd: launch.workspaceDir } }
+  } catch (error) { fail(ctx, error, 'Failed to resume the chat in herdr') }
+}
+
 export async function pluginOpen(ctx: Context) {
   try {
     const body = (ctx.request.body || {}) as { sessionId?: unknown }

@@ -21,6 +21,18 @@ stay separate apps; this integration links them.
   (claude-code, codex today). Ekko chats cannot open in herdr: the ekko agent
   is an embedded runtime with no terminal CLI, and herdr's supported agent
   kinds are fixed in its binary (no `ekko`).
+- **Every chat is a herdr space.** With `chatSpaces` on (default), each
+  Studio chat (not archived, not a sub-chat, group chat or workflow) has its
+  own herdr space, labeled with its folder path (`Clients / site / Title`) and
+  kept in Studio's folder order (`services/herdr/chat-spaces.ts` plans,
+  `bridge.syncChatSpaces` applies). A chat whose agent is not running sits in
+  a waiting pane (`bin/herdr-plugin/studio-chat.sh`, plain `sh`, ~0.2 MB
+  each): it shows the chat's last messages, reports itself to herdr as the
+  chat's idle agent (Ekko chats as `ekko`) and resumes the agent in place on
+  Enter (`studio-herdr.mjs resume` → `POST /plugin/resume`). The waiting pane
+  reports its own command as its resume command, so a herdr restart brings it
+  back; one that still goes silent for 20 s is rebuilt. Renames, folder
+  moves and deletes in Studio follow within seconds.
 - **One writer per conversation.** While a chat is live in a pane, Studio's chat
   box sends to the pane (`agent.prompt`); replies return through the transcript
   mirror. A blocked agent (approval/question on screen) is never typed into.
@@ -237,6 +249,7 @@ an API token from Orb's `ORB_API_TOKENS`, set in Mission → Control or with
 | UI | `views/hermes/HerdrView.vue`, `components/coding-agents/herdr/*` |
 | Mission page | `packages/client/mission.html`, `packages/client/src/mission/*`, `bootstrap/http.ts` |
 | Space folders | `services/herdr/folders.ts` |
+| Chat spaces, waiting pane | `services/herdr/chat-spaces.ts`, `bin/herdr-plugin/studio-chat.sh` |
 | Pondering Orb | `modules/studio/services/orb/client.ts`, `studio/routes/orb.ts`, `studio/controllers/orb.ts` |
 
 Rules that keep it safe:

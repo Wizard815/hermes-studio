@@ -1,5 +1,5 @@
 import { readFile, writeFile, mkdir, rename, stat } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   HERDR_LIFECYCLE_EVENTS,
   isHerdrStatus,
@@ -14,6 +14,8 @@ import {
 import { HerdrRequestError, HerdrSocketClient } from './socket-client'
 import { readTranscriptFrom, type TranscriptMessage } from './transcript'
 import type { HerdrSettings } from './runtime'
+
+import { chatAgentLabel, chatSpaceLabel, planChatSpaces, type ChatSpaceChat, type ChatSpaceRecord } from './chat-spaces'
 
 export interface HerdrSessionRef {
   id: string
@@ -79,6 +81,16 @@ export interface HerdrBridgeDeps {
    * the folder whose start directory or rules match its directory).
    */
   categoryForSpace?: (spaceId: string, cwd: string) => Promise<number | null>
+  /** Every Studio chat (all agents, not archived), so each one is a herdr space. */
+  listChatSpaces?: () => Promise<ChatSpaceChat[]>
+  /** A chat's newest messages for its card in herdr. */
+  chatPreview?: (sessionId: string) => Promise<Array<{ role: string; text: string }>>
+  /**
+   * How herdr runs a chat's waiting pane: the shell script and the environment
+   * it needs (Studio's node and plugin script, cards folder). Null when the
+   * script is missing.
+   */
+  chatPane?: () => Promise<{ script: string; env: Record<string, string>; cardsDir: string; studioUrl: string } | null>
   /** Where work belongs: a Studio chat folder (and its start directory) matching the project. */
   folderForWork?: (data: HerdrWorkRef) => Promise<{ categoryId: number | null; workspace: string } | null>
   /**
@@ -121,6 +133,8 @@ interface PersistedState {
   dismissed: string[]
   /** Agents launched for a piece of work, by pane id, until their pane closes. */
   working?: Record<string, HerdrWorkRef>
+  /** Each Studio chat's herdr space, by chat id. */
+  chatSpaces?: Record<string, ChatSpaceRecord>
 }
 
 interface PendingLaunch {
@@ -134,6 +148,9 @@ interface PendingLaunch {
 }
 
 /** Stable chat id for an agent session first seen in herdr. */
+/** How long a new or restarted waiting pane has to report itself to herdr. */
+const STUB_GRACE_MS = 20_000
+
 export function herdrChatId(nativeId: string): string {
   return `herdr-${nativeId.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64)}`
 }
@@ -166,6 +183,15 @@ export class HerdrBridge {
   private stopped = true
   private error = ''
   private listeners = new Set<(state: HerdrBridgeState) => void>()
+  /** Chats whose own agent runs in herdr right now (not a waiting pane): chat id → workspace id. */
+  private liveChats = new Map<string, string>()
+  /** Waiting panes that stopped reporting (a herdr restart brings them back as plain shells), and since when. */
+  private silentStubs = new Map<string, number>()
+  private chatSync: Promise<void> | null = null
+  private chatSyncAgain = false
+  private chatSyncTimer: ReturnType<typeof setTimeout> | null = null
+  /** What each chat card was last written from, so unchanged cards are not rewritten. */
+  private cards = new Map<string, string>()
 
   constructor(
     private settings: HerdrSettings,
@@ -195,7 +221,9 @@ export class HerdrBridge {
   }
 
   updateSettings(settings: HerdrSettings): void {
+    const chatSpacesChanged = settings.chatSpaces !== this.settings.chatSpaces
     this.settings = settings
+    if (chatSpacesChanged) this.scheduleChatSync(0)
   }
 
   async start(): Promise<void> {
@@ -349,7 +377,13 @@ export class HerdrBridge {
       }
     }
 
+    const stubOwner = new Map(Object.entries(this.persisted.chatSpaces || {}).filter(([, record]) => record.stubPaneId).map(([sessionId, record]) => [record.stubPaneId, sessionId]))
+    const liveChats = new Map<string, string>()
+    const silent = new Map<string, number>()
     for (const pane of snapshot.panes) {
+      if (stubOwner.has(pane.pane_id) && !pane.agent && !this.pending.has(pane.pane_id)) {
+        silent.set(pane.pane_id, this.silentStubs.get(pane.pane_id) ?? Date.now())
+      }
       const pending = this.pending.get(pane.pane_id)
       const studioAgent = studioAgentForHerdrAgent(pane.agent) ?? (pending?.agentId || null)
       const nativeId = pane.agent ? nativeSessionIdOf(pane) : null
@@ -376,6 +410,11 @@ export class HerdrBridge {
         if (sessionId && pending) pending.sessionId = sessionId
       }
 
+      // The chat's own agent runs here (a waiting pane has no agent session of its own).
+      if (sessionId && (nativeId || pending)) liveChats.set(sessionId, pane.workspace_id)
+      // A chat's waiting pane stands for its chat until its agent resumes.
+      if (!sessionId && stubOwner.has(pane.pane_id)) sessionId = stubOwner.get(pane.pane_id)!
+
       if (sessionId) {
         seen.add(sessionId)
         const link: HerdrLinkInfo = { paneId: pane.pane_id, workspaceId: pane.workspace_id, status }
@@ -395,8 +434,185 @@ export class HerdrBridge {
       this.deps.setLink(sessionId, null)
     }
     this.panes = views
+    this.liveChats = liveChats
+    this.silentStubs = silent
+    this.scheduleChatSync()
     this.syncStatusSubscription(snapshot.panes.filter(pane => pane.agent).map(pane => pane.pane_id))
     this.emit()
+  }
+
+  /** Bring herdr's chat spaces in line with Studio's chats (soon, once at a time). */
+  scheduleChatSync(delayMs = 1500): void {
+    if (this.stopped || this.chatSyncTimer) return
+    this.chatSyncTimer = setTimeout(() => {
+      this.chatSyncTimer = null
+      if (this.chatSync) { this.chatSyncAgain = true; return }
+      this.chatSync = this.syncChatSpaces()
+        .catch(error => this.log('warn', '[herdr] could not sync chat spaces', { error: String(error) }))
+        .finally(() => {
+          this.chatSync = null
+          if (this.chatSyncAgain) { this.chatSyncAgain = false; this.scheduleChatSync(0) }
+        })
+    }, delayMs)
+    this.chatSyncTimer.unref?.()
+  }
+
+  /**
+   * Every Studio chat is a herdr space: chats without one get a space with a
+   * waiting pane, labels follow titles and folders, spaces of deleted chats
+   * close, and spaces keep Studio's folder order in herdr's sidebar.
+   */
+  private async syncChatSpaces(): Promise<void> {
+    const client = this.client
+    if (!client || !this.deps.listChatSpaces || !this.deps.chatPane) return
+    const records = { ...(this.persisted.chatSpaces || {}) }
+    const workspaces = new Set(this.snapshot.workspaces.map(workspace => workspace.workspace_id))
+    if (this.settings.chatSpaces === false) {
+      // Turned off: waiting spaces go; spaces with a running agent stay.
+      for (const [sessionId, record] of Object.entries(records)) {
+        if (record.stubPaneId && workspaces.has(record.workspaceId) && !this.liveChats.has(sessionId)) {
+          await client.request('workspace.close', { workspace_id: record.workspaceId }).catch(() => undefined)
+        }
+      }
+      if (Object.keys(records).length) { this.persisted.chatSpaces = {}; await this.savePersisted() }
+      return
+    }
+    const pane = await this.deps.chatPane()
+    if (!pane) return
+    const chats = await this.deps.listChatSpaces()
+    let changed = false
+    // A waiting pane that stopped reporting is a plain shell now: its space is made again.
+    for (const [sessionId, record] of Object.entries(records)) {
+      const since = record.stubPaneId ? this.silentStubs.get(record.stubPaneId) : undefined
+      if (since === undefined || Date.now() - since < STUB_GRACE_MS || this.liveChats.has(sessionId)) continue
+      await client.request('workspace.close', { workspace_id: record.workspaceId }).catch(() => undefined)
+      workspaces.delete(record.workspaceId)
+      this.silentStubs.delete(record.stubPaneId)
+      delete records[sessionId]
+      changed = true
+    }
+    const plan = planChatSpaces({ chats, records, workspaces, live: this.liveChats })
+    for (const sessionId of plan.forget) { delete records[sessionId]; changed = true }
+    for (const { sessionId, workspaceId } of plan.close) {
+      await client.request('workspace.close', { workspace_id: workspaceId }).catch(() => undefined)
+      delete records[sessionId]; changed = true
+    }
+    await this.writeCards(chats, pane.cardsDir)
+    // A chat whose agent runs in another space (started from herdr's picker, or
+    // opened there): that space is the chat's now, and its waiting space closes.
+    for (const chat of chats) {
+      const workspaceId = this.liveChats.get(chat.id)
+      const record = records[chat.id]
+      if (!workspaceId || record?.workspaceId === workspaceId) continue
+      if (record?.stubPaneId && workspaces.has(record.workspaceId)) {
+        await client.request('workspace.close', { workspace_id: record.workspaceId }).catch(() => undefined)
+      }
+      records[chat.id] = { workspaceId, stubPaneId: '', label: record?.label || '' }
+      changed = true
+    }
+    for (const { workspaceId, label } of plan.rename) {
+      await client.request('workspace.rename', { workspace_id: workspaceId, label }).catch(() => undefined)
+      const sessionId = Object.keys(records).find(id => records[id].workspaceId === workspaceId)
+      if (!sessionId) continue
+      records[sessionId] = { ...records[sessionId], label }
+      changed = true
+      // The waiting pane carries the chat's title too.
+      const title = chats.find(chat => chat.id === sessionId)?.title
+      if (records[sessionId].stubPaneId && title) {
+        await client.request('pane.rename', { pane_id: records[sessionId].stubPaneId, label: title.slice(0, 48) }).catch(() => undefined)
+      }
+    }
+    const created: string[] = []
+    for (const chat of plan.create) {
+      if (this.stopped || client !== this.client) break
+      const record = await this.createChatSpace(client, chat, pane).catch(error => {
+        this.log('warn', '[herdr] could not create a chat space', { sessionId: chat.id, error: String(error) })
+        return null
+      })
+      if (!record) continue
+      records[chat.id] = record
+      created.push(record.workspaceId)
+      changed = true
+    }
+    const order = [...plan.order, ...created]
+    if (order.length > 1) {
+      // herdr's sidebar keeps Studio's folder order; other spaces stay above.
+      const current = this.snapshot.workspaces.map(workspace => workspace.workspace_id).filter(id => order.includes(id))
+      if (created.length || current.join(',') !== plan.order.join(',')) {
+        await client.request('workspace.move_block', { workspace_ids: order }).catch(() => undefined)
+      }
+    }
+    if (changed) {
+      this.persisted.chatSpaces = records
+      await this.savePersisted()
+      this.scheduleRefresh(0)
+    }
+    // Look again once a silent waiting pane's grace is over.
+    const left = [...this.silentStubs.values()].map(since => STUB_GRACE_MS - (Date.now() - since)).filter(ms => ms > 0)
+    if (left.length) this.scheduleChatSync(Math.min(...left) + 500)
+  }
+
+  private async createChatSpace(client: HerdrSocketClient, chat: ChatSpaceChat, pane: NonNullable<Awaited<ReturnType<NonNullable<HerdrBridgeDeps['chatPane']>>>>): Promise<ChatSpaceRecord> {
+    const label = chatSpaceLabel(chat)
+    const cwd = chat.workspace || process.env.HOME || '/'
+    const created = await client.request<any>('workspace.create', { cwd, label, focus: false })
+    const workspaceId = String(created?.workspace?.workspace_id || '')
+    const tabId = String(created?.tab?.tab_id || '')
+    if (!workspaceId || !tabId) throw new Error('herdr did not return the new workspace')
+    const kind = chat.hostable ? this.deps.herdrKindFor(chat.agent) || '' : ''
+    const applied = await client.request<any>('layout.apply', {
+      tab_id: tabId,
+      tab_label: (chat.title || 'Chat').slice(0, 32),
+      focus: false,
+      root: {
+        type: 'pane',
+        label: (chat.title || 'Chat').slice(0, 48),
+        cwd,
+        command: ['sh', pane.script, chat.id],
+        env: {
+          ...pane.env,
+          STUDIO_CHAT_KIND: kind,
+          // What herdr's agent list calls the chat's agent (Ekko and Hermes chats show too).
+          STUDIO_CHAT_AGENT: kind || chatAgentLabel(chat.agent),
+          STUDIO_CHAT_URL: `${pane.studioUrl}/#/hermes/session/${encodeURIComponent(chat.id)}`,
+        },
+      },
+    })
+    const stubPaneId = String(applied?.layout?.focused_pane_id || applied?.layout?.root?.pane_id || '') || await this.firstPaneIn(workspaceId)
+    return { workspaceId, stubPaneId, label }
+  }
+
+  /** Each chat's card (title, folder, agent, newest messages), shown in its waiting pane. */
+  private async writeCards(chats: ChatSpaceChat[], dir: string): Promise<void> {
+    await mkdir(dir, { recursive: true })
+    for (const chat of chats) {
+      const key = `${chat.title}|${chat.folderPath.join('/')}|${chat.agent}|${chat.lastActive}`
+      if (this.cards.get(chat.id) === key) continue
+      const preview = await this.deps.chatPreview?.(chat.id).catch(() => []) ?? []
+      const lines = [
+        `  \u001b[1m${chat.title || 'Chat'}\u001b[0m`,
+        `  ${[...chat.folderPath, ''].join(' / ').replace(/ \/ $/, '') || 'No folder'} · ${chat.agent || 'chat'}`,
+        '',
+        ...preview.slice(-6).map(message => `  ${message.role === 'user' ? '>' : ' '} ${message.text.replace(/\s+/g, ' ').slice(0, 300)}`),
+      ]
+      await writeFile(join(dir, `${chat.id.replace(/[^A-Za-z0-9_-]/g, '_')}.txt`), `${lines.join('\n')}\n`).catch(() => undefined)
+      this.cards.set(chat.id, key)
+    }
+  }
+
+  /**
+   * A chat's waiting pane resumes its agent in place: the launch the pane runs,
+   * and the pane remembered as this chat's so herdr's detection links it.
+   */
+  async prepareResume(sessionId: string, paneId: string): Promise<HerdrInteractiveLaunch> {
+    if (!this.snapshot.panes.some(pane => pane.pane_id === paneId)) throw Object.assign(new Error('No such herdr pane'), { status: 404 })
+    const row = this.deps.getSession(sessionId)
+    if (!row) throw Object.assign(new Error('Chat not found'), { status: 404 })
+    await this.refreshAgentAccess(true)
+    const launch = await this.deps.prepareSessionLaunch(sessionId)
+    this.pending.set(paneId, { sessionId, agentId: launch.agentId, provider: launch.provider, model: launch.model, title: row.title || '' })
+    this.scheduleRefresh(500)
+    return launch
   }
 
   /** Create a Studio chat for an agent session that started in herdr. */
@@ -487,6 +703,7 @@ export class HerdrBridge {
       if (raw && typeof raw.offsets === 'object') this.persisted.offsets = raw.offsets
       if (Array.isArray(raw?.dismissed)) this.persisted.dismissed = raw.dismissed.filter((id: unknown) => typeof id === 'string').slice(-500)
       if (raw?.working && typeof raw.working === 'object') this.persisted.working = raw.working
+      if (raw?.chatSpaces && typeof raw.chatSpaces === 'object') this.persisted.chatSpaces = raw.chatSpaces
     } catch { /* fresh state */ }
   }
 
@@ -579,6 +796,17 @@ export class HerdrBridge {
     }
     const row = this.deps.getSession(sessionId)
     if (!row) throw Object.assign(new Error('Chat not found'), { status: 404 })
+    // The chat waits in its own herdr space: resume it there, as Enter in that pane does.
+    const record = this.persisted.chatSpaces?.[sessionId]
+    if (record?.stubPaneId && this.snapshot.panes.some(pane => pane.pane_id === record.stubPaneId)) {
+      const client = this.requireClient()
+      await this.focusPane(record.stubPaneId).catch(() => undefined)
+      await client.request('pane.send_keys', { pane_id: record.stubPaneId, keys: ['Enter'] })
+      const link: HerdrLinkInfo = { paneId: record.stubPaneId, workspaceId: record.workspaceId, status: 'unknown' }
+      this.links.set(sessionId, link)
+      this.deps.setLink(sessionId, link)
+      return link
+    }
     await this.refreshAgentAccess(true)
     const launch = await this.deps.prepareSessionLaunch(sessionId)
     return this.openLaunch(launch, row.title || this.deps.agentLabel(launch.agentId), {

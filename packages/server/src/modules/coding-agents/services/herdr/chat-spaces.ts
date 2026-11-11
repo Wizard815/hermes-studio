@@ -1,0 +1,125 @@
+/**
+ * Every Studio chat is a herdr space. A chat whose agent is not running sits
+ * in herdr as a space with a small waiting pane (`bin/herdr-plugin/studio-chat.sh`):
+ * it shows the chat, reports itself to herdr as the chat's idle agent, and
+ * resumes the agent in place when you press Enter. Spaces are labeled with
+ * the chat's Studio folder path, so herdr's sidebar lists chats the way
+ * Studio's folder tree does.
+ *
+ * This file only plans: given Studio's chats and herdr's spaces, what to
+ * create, rename, close and in which order (the bridge applies the plan).
+ */
+
+/** A Studio chat as herdr shows it. */
+export interface ChatSpaceChat {
+  id: string
+  title: string
+  /** Folder names from the top folder down ([] when not in a folder). */
+  folderPath: string[]
+  /** Studio agent id (claude-code, codex, hermes, ekko-agent, ...). */
+  agent: string
+  /** herdr can run its agent (others show the chat and point to Studio). */
+  hostable: boolean
+  /** The chat's working directory, if it has one. */
+  workspace: string | null
+  lastActive: number
+}
+
+/** A chat's space in herdr, as the bridge remembers it. */
+export interface ChatSpaceRecord {
+  workspaceId: string
+  /** The waiting pane; '' once the chat's agent is running in the space. */
+  stubPaneId: string
+  label: string
+}
+
+export interface ChatSpacePlan {
+  /** Chats that need a space (in sidebar order). */
+  create: ChatSpaceChat[]
+  /** Spaces whose label no longer matches their chat. */
+  rename: Array<{ workspaceId: string; label: string }>
+  /** Waiting spaces of chats that are gone (deleted or archived in Studio). */
+  close: Array<{ sessionId: string; workspaceId: string }>
+  /** Records that no longer point at a herdr space (herdr restarted, or the space was closed). */
+  forget: string[]
+  /** Every chat space in sidebar order (workspace ids that exist after the plan; new ones are appended by the bridge). */
+  order: string[]
+}
+
+/** herdr shows about this much of a label in its sidebar; the title keeps its end. */
+const MAX_LABEL = 72
+
+/** "Clients / site / Build the pricing page" (folder path, then title). */
+export function chatSpaceLabel(chat: Pick<ChatSpaceChat, 'title' | 'folderPath'>): string {
+  const title = (chat.title || 'Chat').replace(/\s+/g, ' ').trim() || 'Chat'
+  const folders = chat.folderPath.map(name => name.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  const full = [...folders, title].join(' / ')
+  if (full.length <= MAX_LABEL) return full
+  const prefix = folders.length ? `${folders.join(' / ')} / ` : ''
+  const room = MAX_LABEL - prefix.length
+  // A deep folder path keeps its last folders; the title always shows.
+  if (room < 16) return `… / ${folders.slice(-1)[0] ? `${folders.slice(-1)[0]} / ` : ''}${title}`.slice(0, MAX_LABEL)
+  return `${prefix}${title.slice(0, room - 1)}…`
+}
+
+/** Sidebar order: folder tree order (folders before loose chats), then newest first. */
+export function chatSpaceOrder(chats: ChatSpaceChat[]): ChatSpaceChat[] {
+  return [...chats].sort((a, b) => {
+    const depth = Math.min(a.folderPath.length, b.folderPath.length)
+    for (let i = 0; i < depth; i += 1) {
+      const cmp = a.folderPath[i].localeCompare(b.folderPath[i], undefined, { sensitivity: 'base' })
+      if (cmp) return cmp
+    }
+    // Inside the same folder, chats in subfolders come first, then this folder's own chats.
+    if (a.folderPath.length !== b.folderPath.length) {
+      if (!a.folderPath.length) return 1
+      if (!b.folderPath.length) return -1
+      return b.folderPath.length - a.folderPath.length
+    }
+    return b.lastActive - a.lastActive || a.id.localeCompare(b.id)
+  })
+}
+
+export function planChatSpaces(input: {
+  chats: ChatSpaceChat[]
+  records: Record<string, ChatSpaceRecord>
+  /** herdr's workspace ids right now. */
+  workspaces: Set<string>
+  /** Chats whose agent is running in herdr right now, and its workspace. */
+  live: Map<string, string>
+}): ChatSpacePlan {
+  const plan: ChatSpacePlan = { create: [], rename: [], close: [], forget: [], order: [] }
+  const wanted = new Map(input.chats.map(chat => [chat.id, chat]))
+  const spaceOf = new Map<string, string>()
+
+  for (const [sessionId, record] of Object.entries(input.records)) {
+    if (!input.workspaces.has(record.workspaceId)) { plan.forget.push(sessionId); continue }
+    if (!wanted.has(sessionId)) {
+      // A chat that is gone: close its waiting space; a running agent keeps its space.
+      if (record.stubPaneId && !input.live.has(sessionId)) plan.close.push({ sessionId, workspaceId: record.workspaceId })
+      else plan.forget.push(sessionId)
+      continue
+    }
+    spaceOf.set(sessionId, record.workspaceId)
+  }
+  // A chat started in herdr (or resumed elsewhere) is its agent's space.
+  for (const [sessionId, workspaceId] of input.live) {
+    if (wanted.has(sessionId) && input.workspaces.has(workspaceId)) spaceOf.set(sessionId, workspaceId)
+  }
+
+  for (const chat of chatSpaceOrder(input.chats)) {
+    const workspaceId = spaceOf.get(chat.id)
+    if (!workspaceId) { plan.create.push(chat); continue }
+    const label = chatSpaceLabel(chat)
+    if (input.records[chat.id]?.label !== label || input.records[chat.id]?.workspaceId !== workspaceId) plan.rename.push({ workspaceId, label })
+    plan.order.push(workspaceId)
+  }
+  return plan
+}
+
+/** The agent name herdr shows for a chat herdr cannot run itself ("ekko", "hermes"). */
+export function chatAgentLabel(agent: string): string {
+  const id = String(agent || 'hermes').toLowerCase()
+  if (id === 'ekko-agent' || id === 'ekko') return 'ekko'
+  return id.replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'hermes'
+}

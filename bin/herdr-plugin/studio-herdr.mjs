@@ -14,7 +14,8 @@ import { createInterface } from 'node:readline/promises'
 const ICONS = { working: '◐', blocked: '×', done: '✓', idle: '○', unknown: '·' }
 
 function loadConfig() {
-  const dir = process.env.HERDR_PLUGIN_CONFIG_DIR || ''
+  // Chat panes are not plugin commands; Studio gives them the plugin's config folder.
+  const dir = process.env.HERDR_PLUGIN_CONFIG_DIR || process.env.STUDIO_PLUGIN_CONFIG_DIR || ''
   try {
     const config = JSON.parse(readFileSync(join(dir, 'studio.json'), 'utf8'))
     if (!config.url || !config.token) throw new Error('incomplete')
@@ -213,9 +214,29 @@ async function settings() {
 }
 
 const command = process.argv[2]
-const run = command === 'open-in-studio' ? openInStudio : command === 'chats' ? chats : command === 'launch' ? launch : command === 'settings' ? settings : null
+/**
+ * A chat's waiting pane resumes the chat's agent right here: Studio prepares
+ * the agent (its resume command, models, MCP and login), this runs it in the
+ * pane and returns when it exits, so the chat waits here again.
+ */
+async function resume() {
+  const config = loadConfig()
+  const sessionId = process.argv[3] || ''
+  const paneId = process.env.HERDR_PANE_ID || ''
+  if (!sessionId || !paneId) throw new Error('resume needs a chat id and a herdr pane')
+  process.stdout.write('\x1b[2J\x1b[H  Starting the chat\'s agent…\n')
+  const { launch } = await api(config, '/resume', { method: 'POST', body: JSON.stringify({ sessionId, paneId }) })
+  const child = spawn(launch.command, launch.args || [], { cwd: launch.cwd || process.cwd(), env: { ...process.env, ...(launch.env || {}) }, stdio: 'inherit' })
+  // The terminal's Ctrl-C belongs to the agent, not to this launcher.
+  process.on('SIGINT', () => {})
+  // Exit 1 only when the agent could not start; however the agent itself ends, the chat waits again.
+  const started = await new Promise(resolve => { child.on('exit', () => resolve(true)); child.on('error', error => { process.stderr.write(`${error.message}\n`); resolve(false) }) })
+  process.exit(started ? 0 : 1)
+}
+
+const run = command === 'open-in-studio' ? openInStudio : command === 'chats' ? chats : command === 'launch' ? launch : command === 'settings' ? settings : command === 'resume' ? resume : null
 if (!run) {
-  process.stderr.write('usage: studio-herdr.mjs open-in-studio|chats|launch|settings\n')
+  process.stderr.write('usage: studio-herdr.mjs open-in-studio|chats|launch|settings|resume <chat>\n')
   process.exit(2)
 }
 run().catch(error => {

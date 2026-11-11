@@ -13,6 +13,7 @@ import {
   updateSession,
   updateSessionStats,
   listSessionCategories,
+  getRecentSessionMessages,
   type HermesSessionRow,
 } from '../modules/studio/public/sessions'
 import { notifySessionListChanged, onSessionListChanged, setSessionHerdrLink } from '../modules/studio/public/session-status'
@@ -130,6 +131,9 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     workStatusChanged: (data, _paneId, status, agent) => reportOrbAgentStatus(data.orb, status, agent),
     folderForWork,
     categoryForSpace,
+    listChatSpaces: async () => listChatSpaces(),
+    chatPreview: async sessionId => getRecentSessionMessages(sessionId, 6).map(message => ({ role: message.role, text: messageText(message.content) })).filter(message => message.text),
+    chatPane: () => herdrManager.chatPaneSetup(),
     // Agents in herdr act for the Studio admin using herdr (herdr routes are
     // super-admin only), or the first active super admin after a restart.
     grantAgentAccess: async profile => {
@@ -179,6 +183,55 @@ async function folderForWork(ref: HerdrWorkRef): Promise<{ categoryId: number | 
 
 let stopListChanges: (() => void) | null = null
 
+/** A message's plain text for a chat card (content can be a string or content blocks). */
+function messageText(content: unknown): string {
+  if (typeof content === 'string') {
+    const trimmed = content.trim()
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try { return messageText(JSON.parse(trimmed)) } catch { return trimmed }
+    }
+    return trimmed
+  }
+  if (Array.isArray(content)) return content.map(part => (typeof part === 'string' ? part : typeof part?.text === 'string' ? part.text : '')).join(' ').trim()
+  if (content && typeof content === 'object' && typeof (content as { text?: unknown }).text === 'string') return String((content as { text: string }).text).trim()
+  return ''
+}
+
+/**
+ * Every Studio chat (not archived, not a sub-chat), with its folder path, for
+ * its herdr space. Chats herdr cannot run (Ekko) still get a space that shows
+ * the chat and points to Studio.
+ */
+function listChatSpaces() {
+  const categories = listSessionCategories()
+  const byId = new Map(categories.map(category => [category.id, category]))
+  const pathOf = (id: number | null | undefined): string[] => {
+    const names: string[] = []
+    const seen = new Set<number>()
+    let current = id != null ? byId.get(id) : undefined
+    while (current && !seen.has(current.id) && names.length < 10) {
+      seen.add(current.id)
+      names.unshift(current.name)
+      current = current.parent_id != null ? byId.get(current.parent_id) : undefined
+    }
+    return names
+  }
+  return listSessions(undefined, undefined, 5000)
+    .filter(row => !row.parent_session_id && !row.is_archived && row.source !== 'group_chat' && row.source !== 'workflow')
+    .map(row => {
+      const hostable = herdrHostableAgentId(row.agent)
+      return {
+        id: row.id,
+        title: row.title || '',
+        folderPath: pathOf(row.category_id),
+        agent: hostable || codingAgentIdForStoredAgent(row.agent) || String(row.agent || 'hermes'),
+        hostable: !!hostable,
+        workspace: row.workspace || null,
+        lastActive: Number(row.last_active || row.started_at || 0),
+      }
+    })
+}
+
 export function herdrPluginDeps(baseUrl: string): HerdrPluginDeps {
   return {
     // Every chat herdr can host: coding-agent chats and Hermes chats alike
@@ -226,6 +279,8 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
   } catch (error) { logger.warn(error, '[herdr] could not check herdr chat modes') }
   stopListChanges = onSessionListChanged(change => {
     if (change.type === 'deleted') void herdrManager.getBridge()?.forgetSession(change.sessionId)
+    // New, renamed, moved or deleted chats: herdr's chat spaces follow.
+    herdrManager.getBridge()?.scheduleChatSync()
   })
   void herdrManager.init().catch(error => logger.warn(error, '[herdr] integration failed to start'))
   return {

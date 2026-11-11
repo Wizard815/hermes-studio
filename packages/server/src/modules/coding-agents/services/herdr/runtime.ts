@@ -21,6 +21,8 @@ export interface HerdrSettings {
   autoImport: boolean
   /** Mirror agent transcripts into linked Studio chats. */
   mirrorTranscripts: boolean
+  /** Every Studio chat is a herdr space (a waiting pane for chats whose agent is not running). */
+  chatSpaces: boolean
   /** Studio profile used for chats created from herdr. */
   profile: string
 }
@@ -34,6 +36,7 @@ export const DEFAULT_HERDR_SETTINGS: HerdrSettings = {
   session: '',
   autoImport: true,
   mirrorTranscripts: true,
+  chatSpaces: true,
   profile: 'default',
 }
 
@@ -45,6 +48,7 @@ export function sanitizeHerdrSettings(input: Partial<HerdrSettings> | null | und
   if (typeof input.enabled === 'boolean') next.enabled = input.enabled
   if (typeof input.autoImport === 'boolean') next.autoImport = input.autoImport
   if (typeof input.mirrorTranscripts === 'boolean') next.mirrorTranscripts = input.mirrorTranscripts
+  if (typeof input.chatSpaces === 'boolean') next.chatSpaces = input.chatSpaces
   if (typeof input.autoStart === 'boolean') next.autoStart = input.autoStart
   if (typeof input.setupVersion === 'string') next.setupVersion = input.setupVersion.slice(0, 32)
   if (typeof input.setupRevision === 'number' && Number.isInteger(input.setupRevision) && input.setupRevision >= 0) next.setupRevision = input.setupRevision

@@ -1091,6 +1091,18 @@ export function getSessionContextMessages(
   return rows.map(mapMessageRow)
 }
 
+/** A chat's newest user and assistant messages, oldest first (for previews). */
+export function getRecentSessionMessages(sessionId: string, limit = 6): HermesMessageRow[] {
+  if (!isSqliteAvailable()) return []
+  const db = getDb()!
+  const rows = db.prepare(
+    `SELECT * FROM ${MESSAGES_TABLE}
+     WHERE session_id = ? AND role IN ('user', 'assistant')
+     ORDER BY id DESC LIMIT ?`,
+  ).all(sessionId, Math.max(1, Math.min(50, Math.floor(limit)))) as Record<string, unknown>[]
+  return rows.map(mapMessageRow).reverse()
+}
+
 export function getSessionContextMessage(sessionId: string, messageId: number): HermesMessageRow | null {
   if (!isSqliteAvailable() || !Number.isSafeInteger(messageId)) return null
   const row = getDb()!.prepare(
