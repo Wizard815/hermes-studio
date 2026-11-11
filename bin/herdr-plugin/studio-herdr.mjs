@@ -284,13 +284,19 @@ async function chat() {
   socket.on('run.started', () => { busy = true; report('working') })
   socket.on('message.delta', event => { if (event?.delta) process.stdout.write(String(event.delta)) })
   socket.on('tool.started', event => { say(`${DIM}  ⚙ ${event?.tool || event?.name || 'tool'}${event?.preview ? ` ${String(event.preview).slice(0, 100)}` : ''}${RESET}`) })
+  // Studio can send the same request twice (to the run and to the chat): ask once.
+  const asked = new Set()
   socket.on('approval.requested', event => {
+    if (asked.has(`a:${event?.approval_id}`)) return
+    asked.add(`a:${event?.approval_id}`)
     waiting = { kind: 'approval', id: event?.approval_id, choices: Array.isArray(event?.choices) && event.choices.length ? event.choices : ['once', 'deny'] }
     report('blocked')
     say(`\n${BOLD}Approve?${RESET} ${event?.description || event?.title || ''}${event?.command ? `\n  ${event.command}` : ''}\n  ${waiting.choices.join(' / ')}`)
     prompt()
   })
   socket.on('clarify.requested', event => {
+    if (asked.has(`c:${event?.clarify_id}`)) return
+    asked.add(`c:${event?.clarify_id}`)
     waiting = { kind: 'clarify', id: event?.clarify_id, choices: Array.isArray(event?.choices) ? event.choices : [] }
     report('blocked')
     say(`\n${BOLD}Question:${RESET} ${event?.question || ''}${waiting.choices.length ? `\n  ${waiting.choices.join(' / ')}` : ''}`)

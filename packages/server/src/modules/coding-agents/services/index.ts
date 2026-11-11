@@ -4068,12 +4068,23 @@ export async function prepareCodingAgentInteractiveLaunch(
     // herdr starts panes through a login shell with its own PATH; give it the
     // exact binary Studio would run (including Studio-managed installs).
     command: await resolveInteractiveCommand(launch.command),
-    args: [...resume.prefix, ...launch.args, ...resume.suffix],
+    args: [...resume.prefix, ...withApprovals(launch.args), ...resume.suffix],
     env: launch.env,
     workspaceDir: launch.workspaceDir,
     provider: launch.provider,
     model: launch.model,
   }
+}
+
+/**
+ * Flags that let an agent act without asking. Studio's own background runs
+ * use them; an agent in a terminal (herdr) has a person at it, so it asks
+ * before running commands or editing files, as it does on its own.
+ */
+const SKIP_APPROVAL_FLAGS = new Set(['--dangerously-skip-permissions', '--dangerously-bypass-approvals-and-sandbox', '--yolo'])
+
+export function withApprovals(args: string[]): string[] {
+  return args.filter(arg => !SKIP_APPROVAL_FLAGS.has(arg))
 }
 
 /** Interactive launch for an existing Studio chat, reusing its stored provider and model. */

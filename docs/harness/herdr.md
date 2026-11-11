@@ -26,7 +26,8 @@ stay separate apps; this integration links them.
   `chatRunFields` in `bootstrap/herdr.ts`) and sends each line as a turn of
   Studio's own chat run (`/chat-run` socket), so the reply streams in the pane
   and the same turn shows in Studio. Approvals and questions are answered on
-  the next line. The pane reports itself to herdr as `hermes`
+  the next line (`once`, `session`, `always` or `deny`; anything else denies).
+  The pane reports itself to herdr as `hermes`
   (working, blocked, idle). Ctrl-C stops a reply, Ctrl-D goes back to the card.
 - **Every chat is a herdr space.** With `chatSpaces` on (default), each
   Studio chat (not archived, not a sub-chat, group chat or workflow) has its
@@ -60,6 +61,11 @@ stay separate apps; this integration links them.
   herdr launch and refreshes it at most every 15 minutes while any herdr agent
   works (`HerdrBridgeDeps.grantAgentAccess`), for the admin using herdr or,
   after a restart, the first active super admin.
+- **Approvals.** Agents in herdr panes ask before acting: launches for herdr
+  drop the flags Studio's own background runs use to skip approvals
+  (`withApprovals` in `coding-agents/services/index.ts`, e.g. Claude Code's
+  `--dangerously-skip-permissions`). Ekko keeps its own rules (deleting,
+  sudo, killing processes, shell source, ...) and asks in the pane.
 - **Models and MCP.** Launches from Studio or the plugin use
   `prepareCodingAgentInteractiveLaunch`, i.e. the same provider routing
   (including custom OpenAI-compatible providers such as llama-swap), MCP
