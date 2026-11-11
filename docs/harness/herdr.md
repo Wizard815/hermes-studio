@@ -23,7 +23,7 @@ stay separate apps; this integration links them.
   kinds are fixed in its binary (no `ekko`).
 - **Every chat is a herdr space.** With `chatSpaces` on (default), each
   Studio chat (not archived, not a sub-chat, group chat or workflow) has its
-  own herdr space, labeled with its folder path (`Clients / site / Title`) and
+  own herdr space, named after the chat and
   kept in Studio's folder order (`services/herdr/chat-spaces.ts` plans,
   `bridge.syncChatSpaces` applies). A chat whose agent is not running sits in
   a waiting pane (`bin/herdr-plugin/studio-chat.sh`, plain `sh`, ~0.2 MB
@@ -150,7 +150,7 @@ tasks and plans, projects, ideas, upkeep, and Control).
   mode stays while herdr's status loads.
 - **herdr mode layout.** In herdr mode the chat list closes (the page sidebar
   is not shown) and the center is herdr's own full UI. herdr's sidebar is the
-  chat list: every Studio chat is a space named with its folder path (see
+  chat list: every Studio chat is a space named after it, in folder order (see
   "Every chat is a herdr space"), and its Agents list shows each chat's agent.
   The bar above has New chat (herdr's New Studio chat picker when bound, else
   Studio's new chat page) and one-tap keys, including the herdr sidebar

@@ -5,15 +5,13 @@ const chat = (id: string, title: string, folderPath: string[] = [], lastActive =
   ({ id, title, folderPath, agent: 'claude-code', hostable: true, workspace: null, lastActive, ...extra })
 
 describe('every Studio chat is a herdr space', () => {
-  it('labels a space with the chat\'s folder path, subfolders included', () => {
-    expect(chatSpaceLabel(chat('a', 'Build the pricing page', ['Clients', 'site']))).toBe('Clients / site / Build the pricing page')
-    expect(chatSpaceLabel(chat('b', 'Loose idea'))).toBe('Loose idea')
+  it('names a space after its chat only', () => {
+    expect(chatSpaceLabel(chat('a', 'Build the pricing page', ['Clients', 'site']))).toBe('Build the pricing page')
+    expect(chatSpaceLabel(chat('b', '  Loose   idea '))).toBe('Loose idea')
     expect(chatSpaceLabel(chat('c', ''))).toBe('Chat')
-    const long = chatSpaceLabel(chat('d', 'A very long chat title that keeps going and going far past the edge', ['Clients', 'Acme']))
-    expect(long.startsWith('Clients / Acme / A very long')).toBe(true)
-    expect(long.length).toBeLessThanOrEqual(72)
-    const deep = chatSpaceLabel(chat('e', 'Fix it', ['One very long folder name', 'Another very long folder name', 'Third folder']))
-    expect(deep.endsWith('Third folder / Fix it')).toBe(true)
+    const long = chatSpaceLabel(chat('d', 'x'.repeat(100)))
+    expect(long).toHaveLength(72)
+    expect(long.endsWith('…')).toBe(true)
   })
 
   it('orders spaces like Studio\'s folder tree: folders (subfolders first), then loose chats, newest first', () => {
@@ -38,7 +36,7 @@ describe('every Studio chat is a herdr space', () => {
       live: new Map([['live', 'w4'], ['runningDeleted', 'w3']]),
     })
     expect(plan.create.map(c => c.id)).toEqual(['new'])
-    expect(plan.rename).toEqual([{ workspaceId: 'w1', label: 'Clients / Renamed chat' }, { workspaceId: 'w4', label: 'Home / Started in herdr' }])
+    expect(plan.rename).toEqual([{ workspaceId: 'w1', label: 'Renamed chat' }, { workspaceId: 'w4', label: 'Started in herdr' }])
     expect(plan.close).toEqual([{ sessionId: 'deleted', workspaceId: 'w2' }])
     // A deleted chat whose agent is still running keeps its space; a space herdr lost is forgotten.
     expect(plan.forget.sort()).toEqual(['gone', 'runningDeleted'])
@@ -48,7 +46,7 @@ describe('every Studio chat is a herdr space', () => {
   it('leaves everything alone when herdr already matches Studio', () => {
     const plan = planChatSpaces({
       chats: [chat('a', 'Pricing', ['Clients'])],
-      records: { a: { workspaceId: 'w1', stubPaneId: 'w1:p1', label: 'Clients / Pricing' } },
+      records: { a: { workspaceId: 'w1', stubPaneId: 'w1:p1', label: 'Pricing' } },
       workspaces: new Set(['w1']),
       live: new Map(),
     })

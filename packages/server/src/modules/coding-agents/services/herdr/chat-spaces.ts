@@ -2,9 +2,9 @@
  * Every Studio chat is a herdr space. A chat whose agent is not running sits
  * in herdr as a space with a small waiting pane (`bin/herdr-plugin/studio-chat.sh`):
  * it shows the chat, reports itself to herdr as the chat's idle agent, and
- * resumes the agent in place when you press Enter. Spaces are labeled with
- * the chat's Studio folder path, so herdr's sidebar lists chats the way
- * Studio's folder tree does.
+ * resumes the agent in place when you press Enter. Spaces are named after
+ * their chat and kept in Studio's folder order, so herdr's sidebar lists chats
+ * the way Studio's folder tree does.
  *
  * This file only plans: given Studio's chats and herdr's spaces, what to
  * create, rename, close and in which order (the bridge applies the plan).
@@ -46,20 +46,13 @@ export interface ChatSpacePlan {
   order: string[]
 }
 
-/** herdr shows about this much of a label in its sidebar; the title keeps its end. */
+/** herdr shows about this much of a label in its sidebar. */
 const MAX_LABEL = 72
 
-/** "Clients / site / Build the pricing page" (folder path, then title). */
-export function chatSpaceLabel(chat: Pick<ChatSpaceChat, 'title' | 'folderPath'>): string {
+/** A space is named after its chat (the folder shows in Studio; the order follows folders). */
+export function chatSpaceLabel(chat: Pick<ChatSpaceChat, 'title'>): string {
   const title = (chat.title || 'Chat').replace(/\s+/g, ' ').trim() || 'Chat'
-  const folders = chat.folderPath.map(name => name.replace(/\s+/g, ' ').trim()).filter(Boolean)
-  const full = [...folders, title].join(' / ')
-  if (full.length <= MAX_LABEL) return full
-  const prefix = folders.length ? `${folders.join(' / ')} / ` : ''
-  const room = MAX_LABEL - prefix.length
-  // A deep folder path keeps its last folders; the title always shows.
-  if (room < 16) return `… / ${folders.slice(-1)[0] ? `${folders.slice(-1)[0]} / ` : ''}${title}`.slice(0, MAX_LABEL)
-  return `${prefix}${title.slice(0, room - 1)}…`
+  return title.length <= MAX_LABEL ? title : `${title.slice(0, MAX_LABEL - 1)}…`
 }
 
 /** Sidebar order: folder tree order (folders before loose chats), then newest first. */
