@@ -109,23 +109,29 @@ async function focusPane(config, paneId) {
 async function chats() {
   const config = loadConfig()
   const rl = createInterface({ input: process.stdin, output: process.stdout })
+  let query = ''
+  let page = 0
   try {
     for (;;) {
-      // Fit the popup: header and footer take 6 rows.
-      const limit = Math.max(5, Math.min(30, (process.stdout.rows || 30) - 6))
-      const { chats: list } = await api(config, `/chats?limit=${limit}`)
+      // Fit the popup: header and footer take 7 rows.
+      const limit = Math.max(5, Math.min(30, (process.stdout.rows || 30) - 7))
+      const { chats: list } = await api(config, `/chats?limit=${limit}&offset=${page * limit}&q=${encodeURIComponent(query)}`)
       process.stdout.write('\x1b[2J\x1b[H')
-      process.stdout.write('Studio chats   ◐ working  × blocked  ✓ done  ○ idle\n\n')
-      if (!list.length) process.stdout.write('  No coding-agent chats yet.\n')
+      process.stdout.write(`Studio chats${query ? ` matching "${query}"` : ''}${page ? `  (page ${page + 1})` : ''}   ◐ working  × blocked  ✓ done  ○ idle  z asleep\n\n`)
+      if (!list.length) process.stdout.write(query ? '  No chats match.\n' : '  No chats yet.\n')
       list.forEach((chat, index) => {
         const live = chat.herdrPaneId ? `  [live ${chat.herdrPaneId}]` : ''
         const title = String(chat.title || chat.id).slice(0, 48).padEnd(48)
-        process.stdout.write(`${String(index + 1).padStart(3)}  ${ICONS[chat.status] || '·'} ${title} ${String(chat.agent).padEnd(12)}${live}\n`)
+        const icon = chat.asleep ? 'z' : ICONS[chat.status] || '·'
+        process.stdout.write(`${String(index + 1).padStart(3)}  ${icon} ${title} ${String(chat.agent).padEnd(12)}${live}\n`)
       })
-      process.stdout.write('\n  <n> open in herdr   o <n> link to Studio   l launch agent   s settings   r refresh   q quit\n')
+      process.stdout.write('\n  <n> open in herdr (wakes it)   o <n> open in Studio   / <text> search   n/p next/previous page\n  l launch agent   s settings   r refresh   q quit\n')
       const answer = await ask(rl, '> ')
       if (!answer || answer === 'q') return
       if (answer === 'r') continue
+      if (answer.startsWith('/')) { query = answer.slice(1).trim(); page = 0; continue }
+      if (answer === 'n') { if (list.length === limit) page += 1; continue }
+      if (answer === 'p') { page = Math.max(0, page - 1); continue }
       if (answer === 'l') { rl.close(); return launch() }
       if (answer === 's') { rl.close(); return settings() }
       const browser = answer.startsWith('o ')

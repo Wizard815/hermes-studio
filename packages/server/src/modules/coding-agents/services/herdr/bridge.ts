@@ -15,7 +15,7 @@ import { HerdrRequestError, HerdrSocketClient } from './socket-client'
 import { readTranscriptFrom, type TranscriptMessage } from './transcript'
 import type { HerdrSettings } from './runtime'
 
-import { chatAgentLabel, chatSpaceLabel, planChatSpaces, type ChatSpaceChat, type ChatSpaceRecord } from './chat-spaces'
+import { awakeChats, chatAgentLabel, chatSpaceLabel, keptWakeUps, planChatSpaces, type ChatSpaceChat, type ChatSpaceRecord } from './chat-spaces'
 
 export interface HerdrSessionRef {
   id: string
@@ -155,6 +155,8 @@ interface PersistedState {
   working?: Record<string, HerdrWorkRef>
   /** Each Studio chat's herdr space, by chat id. */
   chatSpaces?: Record<string, ChatSpaceRecord>
+  /** Sleeping chats woken in herdr, and when (they stay awake for the awake window). */
+  wokenChats?: Record<string, number>
 }
 
 interface PendingLaunch {
@@ -238,12 +240,17 @@ export class HerdrBridge {
     }
   }
 
+  /** Whether the chat has its own herdr space (awake). */
+  hasChatSpace(sessionId: string): boolean {
+    return !!this.persisted.chatSpaces?.[sessionId]
+  }
+
   linkFor(sessionId: string): HerdrLinkInfo | undefined {
     return this.links.get(sessionId)
   }
 
   updateSettings(settings: HerdrSettings): void {
-    const chatSpacesChanged = settings.chatSpaces !== this.settings.chatSpaces
+    const chatSpacesChanged = settings.chatSpaces !== this.settings.chatSpaces || settings.chatSpacesAwakeDays !== this.settings.chatSpacesAwakeDays
     this.settings = settings
     if (chatSpacesChanged) this.scheduleChatSync(0)
   }
@@ -461,7 +468,10 @@ export class HerdrBridge {
     // Chat spaces only need a look when herdr's spaces or panes changed (not on every status change).
     const layout = `${snapshot.workspaces.map(item => item.workspace_id).join(',')}|${snapshot.panes.map(item => `${item.pane_id}${item.agent ? '+' : ''}`).join(',')}`
     if (layout !== this.chatLayout || silent.size) { this.chatLayout = layout; this.scheduleChatSync() }
-    this.syncStatusSubscription(snapshot.panes.filter(pane => pane.agent).map(pane => pane.pane_id))
+    // Follow status only where a chat's agent really runs: herdr's status
+    // subscription costs CPU per pane, and a waiting pane is always idle.
+    const waiting = (pane: HerdrPane) => stubOwner.has(pane.pane_id) && !liveChats.has(stubOwner.get(pane.pane_id)!)
+    this.syncStatusSubscription(snapshot.panes.filter(pane => pane.agent && !waiting(pane)).map(pane => pane.pane_id))
     this.emit()
   }
 
@@ -503,8 +513,12 @@ export class HerdrBridge {
     }
     const pane = await this.deps.chatPane()
     if (!pane) return
-    const chats = await this.deps.listChatSpaces()
-    let changed = false
+    // Only awake chats have a space; sleeping ones wake when opened or messaged.
+    const awakeDays = this.settings.chatSpacesAwakeDays ?? 7
+    const woken = keptWakeUps(this.persisted.wokenChats || {}, Date.now(), awakeDays)
+    const chats = awakeChats(await this.deps.listChatSpaces(), { now: Date.now(), awakeDays, woken, live: this.liveChats })
+    let changed = Object.keys(woken).length !== Object.keys(this.persisted.wokenChats || {}).length
+    this.persisted.wokenChats = woken
     // A waiting pane that stopped reporting: herdr dropped its report (a busy
     // restart) and Studio reports it again, or it is a plain shell now and its
     // space is made again.
@@ -667,6 +681,17 @@ export class HerdrBridge {
     return launch
   }
 
+  /** Wake a sleeping chat: it gets its herdr space now and stays awake for the awake window. */
+  async wakeChat(sessionId: string): Promise<ChatSpaceRecord | null> {
+    this.persisted.wokenChats = { ...(this.persisted.wokenChats || {}), [sessionId]: Date.now() }
+    await this.savePersisted()
+    // Run the sync now (after one already running), not on the usual delay.
+    while (this.chatSync) await this.chatSync.catch(() => undefined)
+    this.chatSync = this.syncChatSpaces().finally(() => { this.chatSync = null })
+    await this.chatSync
+    return this.persisted.chatSpaces?.[sessionId] ?? null
+  }
+
   /** A herdr pane (a chat's waiting pane) talks to its chat through Studio's own runs. */
   async prepareChat(sessionId: string, paneId: string): Promise<StudioChatAccess> {
     if (!this.snapshot.panes.some(pane => pane.pane_id === paneId)) throw Object.assign(new Error('No such herdr pane'), { status: 404 })
@@ -764,6 +789,7 @@ export class HerdrBridge {
       if (Array.isArray(raw?.dismissed)) this.persisted.dismissed = raw.dismissed.filter((id: unknown) => typeof id === 'string').slice(-500)
       if (raw?.working && typeof raw.working === 'object') this.persisted.working = raw.working
       if (raw?.chatSpaces && typeof raw.chatSpaces === 'object') this.persisted.chatSpaces = raw.chatSpaces
+      if (raw?.wokenChats && typeof raw.wokenChats === 'object') this.persisted.wokenChats = raw.wokenChats
     } catch { /* fresh state */ }
   }
 
@@ -857,8 +883,15 @@ export class HerdrBridge {
     const row = this.deps.getSession(sessionId)
     if (!row) throw Object.assign(new Error('Chat not found'), { status: 404 })
     // The chat waits in its own herdr space: resume it there, as Enter in that pane does.
-    const record = this.persisted.chatSpaces?.[sessionId]
-    if (record?.stubPaneId && this.snapshot.panes.some(pane => pane.pane_id === record.stubPaneId)) {
+    // A sleeping chat wakes into its space first.
+    let record = this.persisted.chatSpaces?.[sessionId]
+    let ready = !!record?.stubPaneId && this.snapshot.panes.some(pane => pane.pane_id === record!.stubPaneId)
+    if (!ready && this.settings.chatSpaces !== false && this.deps.listChatSpaces) {
+      await this.wakeChat(sessionId)
+      record = this.persisted.chatSpaces?.[sessionId]
+      ready = !!record?.stubPaneId
+    }
+    if (record?.stubPaneId && ready) {
       const client = this.requireClient()
       await this.focusPane(record.stubPaneId).catch(() => undefined)
       await client.request('pane.send_keys', { pane_id: record.stubPaneId, keys: ['Enter'] })

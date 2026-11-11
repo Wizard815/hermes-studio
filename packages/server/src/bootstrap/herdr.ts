@@ -213,6 +213,11 @@ function messageText(content: unknown): string {
  * its herdr space. Chats herdr cannot run (Ekko) still get a space that shows
  * the chat and points to Studio.
  */
+/** Studio stores chat times in seconds; herdr's chat spaces work in milliseconds. */
+export function toMs(time: number): number {
+  return time > 0 && time < 1e12 ? time * 1000 : time
+}
+
 /** The run fields that continue a chat with its own agent, model and folder. */
 export function chatRunFields(row: Pick<HermesSessionRow, 'id' | 'agent' | 'agent_mode' | 'model' | 'provider' | 'workspace'>): Record<string, unknown> {
   const fields: Record<string, unknown> = { session_id: row.id }
@@ -254,24 +259,31 @@ function listChatSpaces() {
         agent: hostable || codingAgentIdForStoredAgent(row.agent) || String(row.agent || 'hermes'),
         hostable: !!hostable,
         workspace: row.workspace || null,
-        lastActive: Number(row.last_active || row.started_at || 0),
+        lastActive: toMs(Number(row.last_active || row.started_at || 0)),
       }
     })
 }
 
 export function herdrPluginDeps(baseUrl: string): HerdrPluginDeps {
   return {
-    // Every chat herdr can host: coding-agent chats and Hermes chats alike
-    // (they all resume as panes); sub-chats and archived chats stay out.
-    listChats: limit => listSessions(undefined, undefined, limit * 4, { lite: true })
-      .filter(row => !row.parent_session_id && !row.is_archived && !!herdrHostableAgentId(row.agent))
-      .slice(0, limit)
-      .map(row => ({
-        id: row.id,
-        title: row.title || '',
-        agent: herdrHostableAgentId(row.agent)!,
-        updatedAt: Number(row.last_active || row.started_at || 0),
-      })),
+    // Every chat, old ones included (opening one wakes it in herdr); sub-chats,
+    // archived chats, group chats and workflows stay out.
+    listChats: (limit, options = {}) => {
+      const query = String(options.query || '').trim().toLowerCase()
+      return listSessions(undefined, undefined, 5000, { lite: true })
+        .filter(row => !row.parent_session_id && !row.is_archived && row.source !== 'group_chat' && row.source !== 'workflow')
+        .filter(row => !query || String(row.title || '').toLowerCase().includes(query))
+        .slice(options.offset || 0, (options.offset || 0) + limit)
+        .map(row => {
+          const stored = String(row.agent || '').trim()
+          return {
+            id: row.id,
+            title: row.title || '',
+            agent: herdrHostableAgentId(stored) || (stored === 'ekko-agent' ? 'ekko' : codingAgentIdForStoredAgent(stored) || 'hermes'),
+            updatedAt: Number(row.last_active || row.started_at || 0),
+          }
+        })
+    },
     listAgents: async () => [
       ...(await getCodingAgentsStatus()).tools
         .filter(tool => tool.installed)

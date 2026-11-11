@@ -192,11 +192,14 @@ export async function requirePluginToken(ctx: Context, next: () => Promise<unkno
 export async function pluginChats(ctx: Context) {
   try {
     const limit = Math.min(Math.max(Number(ctx.query.limit) || 30, 1), 100)
+    const offset = Math.min(Math.max(Number(ctx.query.offset) || 0, 0), 100000)
+    const query = String(ctx.query.q || '').slice(0, 100)
     const bridge = herdrManager.getBridge()
     ctx.body = {
-      chats: herdrManager.getPluginDeps().listChats(limit).map(chat => {
+      chats: herdrManager.getPluginDeps().listChats(limit, { query, offset }).map(chat => {
         const link = bridge?.linkFor(chat.id)
-        return { ...chat, status: link?.status || 'idle', herdrPaneId: link?.paneId || null }
+        // A chat with no space in herdr is asleep; opening it wakes it.
+        return { ...chat, status: link?.status || 'idle', herdrPaneId: link?.paneId || null, asleep: !link && !bridge?.hasChatSpace(chat.id) }
       }),
     }
   } catch (error) { fail(ctx, error, 'Failed to list chats') }

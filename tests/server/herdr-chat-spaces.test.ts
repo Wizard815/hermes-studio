@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chatAgentLabel, chatSpaceLabel, chatSpaceOrder, planChatSpaces, type ChatSpaceChat } from '../../packages/server/src/modules/coding-agents/services/herdr/chat-spaces'
+import { awakeChats, chatAgentLabel, keptWakeUps, chatSpaceLabel, chatSpaceOrder, planChatSpaces, type ChatSpaceChat } from '../../packages/server/src/modules/coding-agents/services/herdr/chat-spaces'
 
 const chat = (id: string, title: string, folderPath: string[] = [], lastActive = 1, extra: Partial<ChatSpaceChat> = {}): ChatSpaceChat =>
   ({ id, title, folderPath, agent: 'claude-code', hostable: true, workspace: null, lastActive, ...extra })
@@ -80,5 +80,20 @@ describe('every Studio chat is a herdr space', () => {
     })
     expect(plan.forget).toEqual(['a'])
     expect(plan.create.map(item => item.id)).toEqual(['a'])
+  })
+
+  it('keeps recent, woken and running chats awake; the rest sleep', () => {
+    const day = 24 * 60 * 60 * 1000
+    const now = 100 * day
+    const chats = [
+      chat('recent', 'Recent', [], now - 2 * day),
+      chat('old', 'Old', [], now - 30 * day),
+      chat('woken', 'Woken', [], now - 30 * day),
+      chat('running', 'Running', [], now - 30 * day),
+    ]
+    const awake = awakeChats(chats, { now, awakeDays: 7, woken: { woken: now - day }, live: new Map([['running', 'w9']]) })
+    expect(awake.map(item => item.id)).toEqual(['recent', 'woken', 'running'])
+    expect(awakeChats(chats, { now, awakeDays: 0, woken: {}, live: new Map() })).toHaveLength(4)
+    expect(keptWakeUps({ a: now - day, b: now - 20 * day }, now, 7)).toEqual({ a: now - day })
   })
 })

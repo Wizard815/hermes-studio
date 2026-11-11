@@ -23,10 +23,12 @@ Done:
 
 Open:
 
-- Check approvals and questions from Ekko inside herdr on a real setup.
-- Cost: each open herdr pane uses about 0.12% CPU in herdr itself, so 300 chats
-  use about 38% of one core. If that is too much, add a "recent chats only"
-  limit, with older chats opened from herdr's Studio chats picker.
+- Approvals (done): agents in herdr panes ask before acting; Ekko's
+  approvals tested in herdr (deny, once, asks again).
+- Check approvals on a real setup with a real model.
+- Sleep mode (done): chats used in the last 7 days (setting) are awake in
+  herdr; older ones sleep with no process and wake when opened or messaged.
+  With 304 chats herdr uses about 4% CPU (all awake: 41%).
 
 ## Later (parked until the UI goal is finished)
 

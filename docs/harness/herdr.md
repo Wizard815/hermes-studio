@@ -102,8 +102,18 @@ stay separate apps; this integration links them.
   in the data volume, so spaces and agent sessions survive a recreated
   container. The hermes CLI is found through `HERMES_BIN` (set in the image),
   `~/.local/bin` or PATH.
-- **Cost.** About 0.13 MB per waiting pane, plus about 0.12% CPU per open pane
-  inside herdr itself (300 chats: about 40 MB and 38% of one core).
+- **Sleep.** Chats used in the last `chatSpacesAwakeDays` days (default 7,
+  0 = all) keep a space; older ones sleep with no pane or process
+  (`awakeChats`). A sleeping chat wakes into its space when it is opened in
+  herdr (Studio's herdr view, Open in herdr, herdr's Studio chats picker,
+  which lists every chat with search and pages and marks sleeping ones `z`),
+  or when it is used (a message moves its last activity). A wake-up lasts the
+  awake window (`wokenChats`). Studio stores chat times in seconds; the chat
+  list converts them (`toMs`).
+- **Cost.** herdr's own cost is about 0.12% CPU per open pane (304 panes: 41%;
+  10: 4%), plus about 0.13 MB per waiting pane. Status updates are followed
+  only for panes where an agent really runs: herdr's per-pane status
+  subscription costs CPU per pane (10 waiting panes cost 16% before).
 
 ## Mission view
 

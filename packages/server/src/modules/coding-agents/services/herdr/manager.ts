@@ -23,7 +23,8 @@ import {
 
 /** What the herdr plugin (running inside herdr) may ask Studio for. */
 export interface HerdrPluginDeps {
-  listChats(limit: number): Array<{ id: string; title: string; agent: string; updatedAt: number }>
+  /** Studio chats for herdr's picker, newest first; `query` matches titles. */
+  listChats(limit: number, options?: { query?: string; offset?: number }): Array<{ id: string; title: string; agent: string; updatedAt: number }>
   listAgents(): Promise<Array<{ id: string; name: string }>>
   listProviders(profile: string): Promise<Array<{ provider: string; label: string; models: string[] }>>
   /** Studio profiles a herdr chat can belong to. */

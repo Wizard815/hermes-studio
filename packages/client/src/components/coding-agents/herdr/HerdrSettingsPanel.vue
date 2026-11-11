@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import HerdrMachinesSettings from './HerdrMachinesSettings.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { NButton, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
+import { NButton, NInput, NInputNumber, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { fetchHerdrProfiles, installHerdr, installHerdrIntegrations, installHerdrStudioPlugin, setHerdrWelcome, setupHerdr, type HerdrSetupResult } from '@/api/coding-agents/herdr'
 import { useHerdrStore } from '@/stores/hermes/herdr'
@@ -178,6 +178,19 @@ async function startServer() {
       <span>{{ t('herdr.settings.mirror') }}</span>
       <NSwitch :value="settings?.mirrorTranscripts !== false" @update:value="value => save({ mirrorTranscripts: value })" />
     </label>
+    <label class="herdr-settings-row">
+      <span>{{ t('herdr.settings.awakeDays') }}</span>
+      <NInputNumber
+        class="herdr-settings-days"
+        size="small"
+        :min="0"
+        :max="3650"
+        :value="settings?.chatSpacesAwakeDays ?? 7"
+        data-testid="herdr-awake-days"
+        @update:value="value => value != null && save({ chatSpacesAwakeDays: value })"
+      />
+    </label>
+    <p class="herdr-settings-hint">{{ t('herdr.settings.awakeDaysHint') }}</p>
     <label v-if="herdr.status?.installed" class="herdr-settings-row">
       <span>{{ t('herdr.settings.welcome') }}</span>
       <NSwitch :value="herdr.status?.welcome !== false" :disabled="saving" data-testid="herdr-welcome" @update:value="saveWelcome" />
@@ -296,6 +309,10 @@ async function startServer() {
 
 .herdr-settings-profile {
   width: min(220px, 50%);
+}
+
+.herdr-settings-days {
+  width: 110px;
 }
 
 .herdr-settings-actions {

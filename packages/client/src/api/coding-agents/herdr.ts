@@ -13,6 +13,10 @@ export interface HerdrSettings {
   session: string
   autoImport: boolean
   mirrorTranscripts: boolean
+  /** Every chat is a herdr space. */
+  chatSpaces?: boolean
+  /** Chats used within this many days stay awake in herdr (0: all). */
+  chatSpacesAwakeDays?: number
   profile: string
 }
 

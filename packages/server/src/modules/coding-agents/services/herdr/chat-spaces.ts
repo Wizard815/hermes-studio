@@ -130,3 +130,22 @@ export function planChatSpaces(input: {
 export function chatAgentLabel(_agent: string): string {
   return 'hermes'
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Chats awake in herdr: used in the last `awakeDays` days, woken since (opened
+ * in herdr, picked in herdr's Studio chats, messaged), or with their agent
+ * running. The rest sleep: no space and no process until they are woken.
+ */
+export function awakeChats(chats: ChatSpaceChat[], input: { now: number; awakeDays: number; woken: Record<string, number>; live: Map<string, string> }): ChatSpaceChat[] {
+  if (!(input.awakeDays > 0)) return chats
+  const since = input.now - input.awakeDays * DAY_MS
+  return chats.filter(chat => chat.lastActive >= since || (input.woken[chat.id] || 0) >= since || input.live.has(chat.id))
+}
+
+/** Woken chats still inside the awake window (older wake-ups are dropped). */
+export function keptWakeUps(woken: Record<string, number>, now: number, awakeDays: number): Record<string, number> {
+  const since = now - Math.max(awakeDays, 1) * DAY_MS
+  return Object.fromEntries(Object.entries(woken).filter(([, at]) => at >= since))
+}
