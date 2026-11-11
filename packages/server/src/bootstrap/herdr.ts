@@ -42,7 +42,8 @@ import { setupHerdrSocket } from '../modules/coding-agents/sockets/herdr'
 import { getOrbClient } from '../modules/studio/services/orb/client'
 import { writeModelRunProfileToken } from '../modules/studio/services/chat-run/model-run-prompt'
 import { listUsers } from '../modules/studio/public/users'
-import type { AuthenticatedUser } from '../modules/studio/public/auth'
+import { issueModelRunJwt, type AuthenticatedUser } from '../modules/studio/public/auth'
+import { chatAgentLabel } from '../modules/coding-agents/services/herdr/chat-spaces'
 
 function toRef(row: HermesSessionRow | null): HerdrSessionRef | null {
   if (!row) return null
@@ -132,6 +133,14 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     folderForWork,
     categoryForSpace,
     listChatSpaces: async () => listChatSpaces(),
+    chatAccess: async sessionId => {
+      const row = getSession(sessionId)
+      if (!row) throw Object.assign(new Error('Chat not found'), { status: 404 })
+      const user = herdrManager.actingUser() ?? listUsers().find(item => item.role === 'super_admin' && item.status === 'active') ?? null
+      if (!user) throw Object.assign(new Error('Sign in to Studio first'), { status: 401 })
+      const token = await issueModelRunJwt({ id: user.id, username: user.username, role: user.role as AuthenticatedUser['role'] })
+      return { token, profile: row.profile || 'default', run: chatRunFields(row), agent: chatAgentLabel(codingAgentIdForStoredAgent(row.agent) || row.agent || 'hermes') }
+    },
     chatPreview: async sessionId => getRecentSessionMessages(sessionId, 6).map(message => ({ role: message.role, text: messageText(message.content) })).filter(message => message.text),
     chatPane: () => herdrManager.chatPaneSetup(),
     // Agents in herdr act for the Studio admin using herdr (herdr routes are
@@ -202,6 +211,20 @@ function messageText(content: unknown): string {
  * its herdr space. Chats herdr cannot run (Ekko) still get a space that shows
  * the chat and points to Studio.
  */
+/** The run fields that continue a chat with its own agent, model and folder. */
+export function chatRunFields(row: Pick<HermesSessionRow, 'id' | 'agent' | 'agent_mode' | 'model' | 'provider' | 'workspace'>): Record<string, unknown> {
+  const fields: Record<string, unknown> = { session_id: row.id }
+  if (row.workspace) fields.workspace = row.workspace
+  if (row.model) fields.model = row.model
+  if (row.provider) fields.provider = row.provider
+  const stored = String(row.agent || '').trim()
+  // Ekko uses Studio's models; other coding agents keep the chat's mode.
+  if (stored === 'ekko-agent' || stored === 'ekko') return { ...fields, source: 'coding_agent', coding_agent_id: 'ekko-agent' }
+  const agent = codingAgentIdForStoredAgent(stored)
+  if (!agent) return fields
+  return { ...fields, source: 'coding_agent', coding_agent_id: agent, mode: row.agent_mode === 'scoped' ? 'scoped' : 'global' }
+}
+
 function listChatSpaces() {
   const categories = listSessionCategories()
   const byId = new Map(categories.map(category => [category.id, category]))
@@ -216,10 +239,12 @@ function listChatSpaces() {
     }
     return names
   }
+  const hermesCli = hermesCliAvailable()
   return listSessions(undefined, undefined, 5000)
     .filter(row => !row.parent_session_id && !row.is_archived && row.source !== 'group_chat' && row.source !== 'workflow')
     .map(row => {
-      const hostable = herdrHostableAgentId(row.agent)
+      // Hermes runs in herdr through its CLI; without it the chat is talked to through Studio.
+      const hostable = herdrHostableAgentId(row.agent) === 'hermes' && !hermesCli ? null : herdrHostableAgentId(row.agent)
       return {
         id: row.id,
         title: row.title || '',

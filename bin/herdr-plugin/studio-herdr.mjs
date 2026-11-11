@@ -6,10 +6,13 @@
 //   chats           popup:  list Studio coding-agent chats, open one as a herdr pane
 //   launch          popup:  start an agent with Studio's providers/models (e.g. llama-swap)
 //   settings        popup:  choose the Studio profile chats from herdr go to
+//   resume <chat>   pane:   run a chat's agent here (agents herdr can run)
+//   chat <chat>     pane:   talk to a chat herdr cannot run (Ekko, Hermes) through Studio's chat runs
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { createInterface } from 'node:readline/promises'
+import { createRequire } from 'node:module'
 
 const ICONS = { working: '◐', blocked: '×', done: '✓', idle: '○', unknown: '·' }
 
@@ -234,9 +237,97 @@ async function resume() {
   process.exit(started ? 0 : 1)
 }
 
-const run = command === 'open-in-studio' ? openInStudio : command === 'chats' ? chats : command === 'launch' ? launch : command === 'settings' ? settings : command === 'resume' ? resume : null
+/** The waiting pane's own command, so herdr brings the chat back after a restart. */
+function waitingPaneCommand(sessionId) {
+  const keys = ['STUDIO_CHAT_DIR', 'STUDIO_CHAT_KIND', 'STUDIO_CHAT_AGENT', 'STUDIO_CHAT_URL', 'STUDIO_NODE', 'STUDIO_PLUGIN', 'STUDIO_PLUGIN_CONFIG_DIR']
+  const script = process.env.STUDIO_CHAT_SCRIPT || ''
+  if (!script) return []
+  return ['env', ...keys.map(key => `${key}=${process.env[key] || ''}`), 'sh', script, sessionId]
+}
+
+const DIM = '\x1b[2m'
+const BOLD = '\x1b[1m'
+const RESET = '\x1b[0m'
+
+/**
+ * A chat herdr cannot run (Ekko, Hermes without its CLI) in a herdr pane:
+ * each line is a turn of Studio's own chat run for that chat, so the reply
+ * streams here and the chat in Studio shows the same turn. herdr lists the
+ * pane as the chat's agent (working, blocked, idle). Ctrl-C stops a reply;
+ * Ctrl-D goes back to the chat's card.
+ */
+async function chat() {
+  const config = loadConfig()
+  const sessionId = process.argv[3] || ''
+  const paneId = process.env.HERDR_PANE_ID || ''
+  if (!sessionId || !paneId) throw new Error('chat needs a chat id and a herdr pane')
+  const access = await api(config, '/chat', { method: 'POST', body: JSON.stringify({ sessionId, paneId }) })
+  const { io } = createRequire(import.meta.url)('socket.io-client')
+  const restore = waitingPaneCommand(sessionId)
+  const report = state => herdr(['pane', 'report-agent', paneId, '--source', 'studio:chat', '--agent', access.agent, '--state', state, ...(restore.length ? ['--', ...restore] : [])])
+  const socket = io(`${config.url}/chat-run`, { auth: { token: access.token }, query: { profile: access.profile }, transports: ['websocket'], reconnection: true })
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true })
+  let busy = false
+  /** An approval or question waiting for the next line. */
+  let waiting = null
+  const prompt = () => { rl.setPrompt(waiting ? `${BOLD}answer>${RESET} ` : `${BOLD}>${RESET} `); rl.prompt() }
+  const say = text => { process.stdout.write(`\r\x1b[K${text}\n`) }
+  const finish = () => { busy = false; report('idle'); prompt() }
+
+  process.stdout.write(`${DIM}${access.agent} · Studio chat. Type a message. Ctrl-C stops a reply, Ctrl-D goes back.${RESET}\n`)
+  await new Promise((resolve, reject) => {
+    socket.once('connect', resolve)
+    socket.once('connect_error', error => reject(new Error(`Studio refused the chat: ${error.message}`)))
+  })
+  report('idle')
+  socket.on('run.started', () => { busy = true; report('working') })
+  socket.on('message.delta', event => { if (event?.delta) process.stdout.write(String(event.delta)) })
+  socket.on('tool.started', event => { say(`${DIM}  ⚙ ${event?.tool || event?.name || 'tool'}${event?.preview ? ` ${String(event.preview).slice(0, 100)}` : ''}${RESET}`) })
+  socket.on('approval.requested', event => {
+    waiting = { kind: 'approval', id: event?.approval_id, choices: Array.isArray(event?.choices) && event.choices.length ? event.choices : ['once', 'deny'] }
+    report('blocked')
+    say(`\n${BOLD}Approve?${RESET} ${event?.description || event?.title || ''}${event?.command ? `\n  ${event.command}` : ''}\n  ${waiting.choices.join(' / ')}`)
+    prompt()
+  })
+  socket.on('clarify.requested', event => {
+    waiting = { kind: 'clarify', id: event?.clarify_id, choices: Array.isArray(event?.choices) ? event.choices : [] }
+    report('blocked')
+    say(`\n${BOLD}Question:${RESET} ${event?.question || ''}${waiting.choices.length ? `\n  ${waiting.choices.join(' / ')}` : ''}`)
+    prompt()
+  })
+  socket.on('approval.resolved', () => { if (waiting?.kind === 'approval') waiting = null; if (busy) report('working') })
+  socket.on('clarify.resolved', () => { if (waiting?.kind === 'clarify') waiting = null; if (busy) report('working') })
+  socket.on('run.completed', () => { process.stdout.write('\n'); finish() })
+  socket.on('run.failed', event => { say(`\n${BOLD}Failed:${RESET} ${event?.error || 'the run failed'}`); finish() })
+
+  rl.on('SIGINT', () => {
+    if (busy) { socket.emit('abort', { session_id: sessionId }); say(`${DIM}  stopping…${RESET}`) } else { rl.close() }
+  })
+  rl.on('line', line => {
+    const text = line.trim()
+    if (waiting) {
+      const answer = waiting
+      waiting = null
+      if (answer.kind === 'approval') socket.emit('approval.respond', { session_id: sessionId, approval_id: answer.id, choice: answer.choices.includes(text) ? text : (text.toLowerCase().startsWith('y') ? answer.choices[0] : 'deny') })
+      else socket.emit('clarify.respond', { session_id: sessionId, clarify_id: answer.id, response: text })
+      return
+    }
+    if (!text) { prompt(); return }
+    if (busy) { say(`${DIM}  still replying; wait for it or press Ctrl-C${RESET}`); return }
+    busy = true
+    report('working')
+    socket.emit('run', { ...access.run, input: text, profile: access.profile })
+  })
+  prompt()
+  await new Promise(resolve => rl.on('close', resolve))
+  socket.disconnect()
+  process.exit(0)
+}
+
+const run = command === 'open-in-studio' ? openInStudio : command === 'chats' ? chats : command === 'launch' ? launch : command === 'settings' ? settings : command === 'resume' ? resume : command === 'chat' ? chat : null
 if (!run) {
-  process.stderr.write('usage: studio-herdr.mjs open-in-studio|chats|launch|settings|resume <chat>\n')
+  process.stderr.write('usage: studio-herdr.mjs open-in-studio|chats|launch|settings|resume <chat>|chat <chat>\n')
   process.exit(2)
 }
 run().catch(error => {

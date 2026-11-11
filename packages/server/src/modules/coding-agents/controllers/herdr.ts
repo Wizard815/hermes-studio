@@ -231,6 +231,17 @@ export async function pluginResume(ctx: Context) {
   } catch (error) { fail(ctx, error, 'Failed to resume the chat in herdr') }
 }
 
+/** A chat herdr cannot run itself: the pane talks to it through Studio's chat runs. */
+export async function pluginChat(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { sessionId?: unknown; paneId?: unknown }
+    const sessionId = String(body.sessionId || '')
+    const paneId = String(body.paneId || '')
+    if (!sessionId || !/^[\w:.-]{1,64}$/.test(paneId)) throw Object.assign(new Error('A chat id and pane id are required'), { status: 400 })
+    ctx.body = await herdrManager.requireBridge().prepareChat(sessionId, paneId)
+  } catch (error) { fail(ctx, error, 'Failed to open the chat in herdr') }
+}
+
 export async function pluginOpen(ctx: Context) {
   try {
     const body = (ctx.request.body || {}) as { sessionId?: unknown }

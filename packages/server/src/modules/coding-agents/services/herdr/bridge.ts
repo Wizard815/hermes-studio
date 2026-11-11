@@ -45,6 +45,16 @@ export interface HerdrLinkInfo {
 }
 
 /** Everything the bridge needs from Studio, injected so it stays testable. */
+export interface StudioChatAccess {
+  /** Studio login for its chat-run socket (short-lived). */
+  token: string
+  profile: string
+  /** Fields every turn's run sends (session, agent, model, folder). */
+  run: Record<string, unknown>
+  /** What herdr lists as the pane's agent. */
+  agent: string
+}
+
 export interface HerdrBridgeDeps {
   findSessionByNativeId(nativeId: string): HerdrSessionRef | null
   getSession(id: string): HerdrSessionRef | null
@@ -83,6 +93,12 @@ export interface HerdrBridgeDeps {
   categoryForSpace?: (spaceId: string, cwd: string) => Promise<number | null>
   /** Every Studio chat (all agents, not archived), so each one is a herdr space. */
   listChatSpaces?: () => Promise<ChatSpaceChat[]>
+  /**
+   * Talk to a chat whose agent herdr cannot run (Ekko, Hermes without its
+   * CLI) from a herdr pane: a short-lived login for Studio's chat runs and the
+   * run fields that keep the chat's agent, model and folder.
+   */
+  chatAccess?: (sessionId: string) => Promise<StudioChatAccess>
   /** A chat's newest messages for its card in herdr. */
   chatPreview?: (sessionId: string) => Promise<Array<{ role: string; text: string }>>
   /**
@@ -579,7 +595,7 @@ export class HerdrBridge {
       },
     })
     const stubPaneId = String(applied?.layout?.focused_pane_id || applied?.layout?.root?.pane_id || '') || await this.firstPaneIn(workspaceId)
-    return { workspaceId, stubPaneId, label }
+    return { workspaceId, stubPaneId, label, hostable: chat.hostable }
   }
 
   /** Each chat's card (title, folder, agent, newest messages), shown in its waiting pane. */
@@ -613,6 +629,14 @@ export class HerdrBridge {
     this.pending.set(paneId, { sessionId, agentId: launch.agentId, provider: launch.provider, model: launch.model, title: row.title || '' })
     this.scheduleRefresh(500)
     return launch
+  }
+
+  /** A herdr pane (a chat's waiting pane) talks to its chat through Studio's own runs. */
+  async prepareChat(sessionId: string, paneId: string): Promise<StudioChatAccess> {
+    if (!this.snapshot.panes.some(pane => pane.pane_id === paneId)) throw Object.assign(new Error('No such herdr pane'), { status: 404 })
+    if (!this.deps.getSession(sessionId)) throw Object.assign(new Error('Chat not found'), { status: 404 })
+    if (!this.deps.chatAccess) throw Object.assign(new Error('Studio cannot run chats from herdr here'), { status: 501 })
+    return this.deps.chatAccess(sessionId)
   }
 
   /** Create a Studio chat for an agent session that started in herdr. */

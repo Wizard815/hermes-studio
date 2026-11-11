@@ -18,9 +18,16 @@ stay separate apps; this integration links them.
   session id, so the pane resumes the same conversation, and herdr's own
   `hermes` integration reports it back for linking. Replies typed in the pane
   reach Studio's chat view only for agents with transcript mirroring
-  (claude-code, codex today). Ekko chats cannot open in herdr: the ekko agent
-  is an embedded runtime with no terminal CLI, and herdr's supported agent
-  kinds are fixed in its binary (no `ekko`).
+  (claude-code, codex today).
+- **Ekko (and Hermes without its CLI) in herdr.** These agents have no
+  terminal CLI, so their chat's pane talks to Studio instead:
+  `studio-herdr.mjs chat <id>` gets a short-lived login and the chat's run
+  fields (`POST /plugin/chat`, `bridge.prepareChat`, `chatAccess` and
+  `chatRunFields` in `bootstrap/herdr.ts`) and sends each line as a turn of
+  Studio's own chat run (`/chat-run` socket), so the reply streams in the pane
+  and the same turn shows in Studio. Approvals and questions are answered on
+  the next line. The pane reports itself to herdr as `ekko` or `hermes`
+  (working, blocked, idle). Ctrl-C stops a reply, Ctrl-D goes back to the card.
 - **Every chat is a herdr space.** With `chatSpaces` on (default), each
   Studio chat (not archived, not a sub-chat, group chat or workflow) has its
   own herdr space, named after the chat and
@@ -28,8 +35,9 @@ stay separate apps; this integration links them.
   `bridge.syncChatSpaces` applies). A chat whose agent is not running sits in
   a waiting pane (`bin/herdr-plugin/studio-chat.sh`, plain `sh`, ~0.2 MB
   each): it shows the chat's last messages, reports itself to herdr as the
-  chat's idle agent (Ekko chats as `ekko`) and resumes the agent in place on
-  Enter (`studio-herdr.mjs resume` → `POST /plugin/resume`). The waiting pane
+  chat's idle agent (Ekko chats as `ekko`) and, on Enter, resumes the agent
+  in place (`studio-herdr.mjs resume` → `POST /plugin/resume`; Ekko opens the
+  Studio chat client described below). The waiting pane
   reports its own command as its resume command, so a herdr restart brings it
   back; one that still goes silent for 20 s is rebuilt. Renames, folder
   moves and deletes in Studio follow within seconds.

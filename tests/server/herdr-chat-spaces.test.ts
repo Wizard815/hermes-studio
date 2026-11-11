@@ -27,10 +27,10 @@ describe('every Studio chat is a herdr space', () => {
     const plan = planChatSpaces({
       chats: [chat('kept', 'Renamed chat', ['Clients']), chat('new', 'Brand new'), chat('live', 'Started in herdr', ['Home'])],
       records: {
-        kept: { workspaceId: 'w1', stubPaneId: 'w1:p1', label: 'Old title' },
-        deleted: { workspaceId: 'w2', stubPaneId: 'w2:p1', label: 'Deleted' },
-        gone: { workspaceId: 'w9', stubPaneId: 'w9:p1', label: 'herdr restarted' },
-        runningDeleted: { workspaceId: 'w3', stubPaneId: 'w3:p1', label: 'Still running' },
+        kept: { workspaceId: 'w1', stubPaneId: 'w1:p1', label: 'Old title', hostable: true },
+        deleted: { workspaceId: 'w2', stubPaneId: 'w2:p1', label: 'Deleted', hostable: true },
+        gone: { workspaceId: 'w9', stubPaneId: 'w9:p1', label: 'herdr restarted', hostable: true },
+        runningDeleted: { workspaceId: 'w3', stubPaneId: 'w3:p1', label: 'Still running', hostable: true },
       },
       workspaces: new Set(['w1', 'w2', 'w3', 'w4']),
       live: new Map([['live', 'w4'], ['runningDeleted', 'w3']]),
@@ -46,7 +46,7 @@ describe('every Studio chat is a herdr space', () => {
   it('leaves everything alone when herdr already matches Studio', () => {
     const plan = planChatSpaces({
       chats: [chat('a', 'Pricing', ['Clients'])],
-      records: { a: { workspaceId: 'w1', stubPaneId: 'w1:p1', label: 'Pricing' } },
+      records: { a: { workspaceId: 'w1', stubPaneId: 'w1:p1', label: 'Pricing', hostable: true } },
       workspaces: new Set(['w1']),
       live: new Map(),
     })
@@ -58,5 +58,16 @@ describe('every Studio chat is a herdr space', () => {
     expect(chatAgentLabel('hermes')).toBe('hermes')
     expect(chatAgentLabel('')).toBe('hermes')
     expect(chatAgentLabel('My Agent!')).toBe('my-agent')
+  })
+
+  it('makes a waiting pane again when its chat changes how it runs (the hermes CLI came or went)', () => {
+    const plan = planChatSpaces({
+      chats: [chat('h', 'Notes', [], 1, { agent: 'hermes', hostable: false })],
+      records: { h: { workspaceId: 'w1', stubPaneId: 'w1:p1', label: 'Notes', hostable: true } },
+      workspaces: new Set(['w1']),
+      live: new Map(),
+    })
+    expect(plan.close).toEqual([{ sessionId: 'h', workspaceId: 'w1' }])
+    expect(plan.create.map(item => item.id)).toEqual(['h'])
   })
 })

@@ -22,7 +22,7 @@ show() {
   if [ -n "$STUDIO_CHAT_KIND" ]; then
     printf '  \033[1mPress Enter\033[0m to continue this chat here.\n'
   else
-    printf '  This chat runs in Hermes Studio: %s\n' "${STUDIO_CHAT_URL:-open it in Studio}"
+    printf '  \033[1mPress Enter\033[0m to talk to this chat here (it runs in Studio: %s).\n' "${STUDIO_CHAT_URL:-open it in Studio}"
   fi
 }
 
@@ -56,7 +56,14 @@ while :; do
   fi
   read -r _ || { [ -n "$watch" ] && kill "$watch" 2>/dev/null; exit 0; }
   [ -n "$watch" ] && kill "$watch" 2>/dev/null
-  [ -n "$STUDIO_CHAT_KIND" ] || continue
+  if [ -z "$STUDIO_CHAT_KIND" ]; then
+    # herdr cannot run this agent (Ekko, Hermes without its CLI): talk to it through Studio.
+    if ! STUDIO_CHAT_SCRIPT="$script" "${STUDIO_NODE:-node}" "$STUDIO_PLUGIN" chat "$id"; then
+      printf '\n  Press Enter to go back to the chat.\n'
+      read -r _ || exit 0
+    fi
+    continue
+  fi
   # Hand the pane back to herdr's own agent detection, then run the agent here.
   [ -n "$HERDR_PANE_ID" ] && "$herdr" pane release-agent "$HERDR_PANE_ID" --source studio:chat --agent "$agent" >/dev/null 2>&1
   if ! "${STUDIO_NODE:-node}" "$STUDIO_PLUGIN" resume "$id"; then

@@ -31,6 +31,8 @@ export interface ChatSpaceRecord {
   /** The waiting pane; '' once the chat's agent is running in the space. */
   stubPaneId: string
   label: string
+  /** Whether the waiting pane runs the chat's agent itself (else it talks to Studio). */
+  hostable?: boolean
 }
 
 export interface ChatSpacePlan {
@@ -91,6 +93,11 @@ export function planChatSpaces(input: {
       // A chat that is gone: close its waiting space; a running agent keeps its space.
       if (record.stubPaneId && !input.live.has(sessionId)) plan.close.push({ sessionId, workspaceId: record.workspaceId })
       else plan.forget.push(sessionId)
+      continue
+    }
+    // A waiting pane made for the other way of running its chat (the hermes CLI came or went) is made again.
+    if (record.stubPaneId && !input.live.has(sessionId) && record.hostable !== wanted.get(sessionId)!.hostable) {
+      plan.close.push({ sessionId, workspaceId: record.workspaceId })
       continue
     }
     spaceOf.set(sessionId, record.workspaceId)
