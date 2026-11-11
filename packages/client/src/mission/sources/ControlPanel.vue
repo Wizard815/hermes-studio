@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useOrbConnection } from '../useMission'
 import { callOrbTool, fetchOrbData, fetchOrbStatus, type OrbChore, type OrbStatus, type OrbTask } from '@/api/studio/orb'
-import HerdrOrbSettings from '@/components/coding-agents/herdr/HerdrOrbSettings.vue'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { studioUrl } from '../useMission'
 
@@ -12,8 +10,6 @@ import { studioUrl } from '../useMission'
  * uptime, hosts, chores and plans from Orb, and herdr's own health.
  */
 const { t } = useI18n()
-/** Saving an address here opens Mission's Orb sources. */
-const orbConnection = useOrbConnection()
 const herdr = useHerdrStore()
 const orb = ref<OrbStatus | null>(null)
 const monitors = ref<Array<{ name: string; status: string; group?: string }>>([])
@@ -35,6 +31,8 @@ const down = computed(() => monitors.value.filter(m => m.status === 'down'))
 const overdue = computed(() => chores.value.filter(c => (c.daysLeft ?? 0) < 0))
 const openTasks = computed(() => tasks.value.filter(task => !task.done))
 const settingsHref = studioUrl('/studio/agents/herdr/settings')
+/** Orb's address and token are a Studio setting (Connections → Pondering Orb). */
+const connectionsHref = studioUrl('/hermes/connections?tab=orb')
 
 function percent(value: unknown): string {
   const n = Number(value)
@@ -63,11 +61,6 @@ async function load() {
   problems.value = errs
 }
 
-/** The Orb form is herdr settings' own (one place to connect Orb); saving here refreshes Mission. */
-async function orbSaved() {
-  await Promise.all([load(), orbConnection.refresh()])
-}
-
 onMounted(load)
 </script>
 
@@ -75,7 +68,12 @@ onMounted(load)
   <section class="source" data-testid="mission-control-panel">
     <div class="control-grid">
       <article class="source-card" data-theme-surface="card">
-        <HerdrOrbSettings class="control-orb" @saved="orbSaved" />
+        <h4 class="control-title">Pondering Orb</h4>
+        <div class="source-card-meta">
+          <span class="source-chip" :class="orb?.connected ? 'is-good' : 'is-warn'">{{ orb?.connected ? t('mission.connected', { version: orb.version }) : t('mission.notConnected') }}</span>
+        </div>
+        <p class="source-card-meta">{{ t('herdr.settings.orbInConnections') }}</p>
+        <a v-if="connectionsHref" class="source-link" :href="connectionsHref">{{ t('herdr.settings.orbOpenConnections') }}</a>
       </article>
 
       <article class="source-card" data-theme-surface="card">
@@ -130,10 +128,6 @@ onMounted(load)
 @use '@/styles/variables' as *;
 @use './source';
 
-.control-orb {
-  padding-top: 0;
-  border-top: 0;
-}
 
 .control-grid {
   display: grid;

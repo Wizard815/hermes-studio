@@ -8,7 +8,7 @@ export interface OrbStatus {
 }
 
 export interface OrbTask { title: string; list: string; due: string; done: boolean; inProgress?: boolean; agentStatus?: AgentWorkStatus; priority: string }
-/** herdr's state of the agent working on it ('' when none). */
+/** State of the Studio agent working on it ('' when none). */
 export type AgentWorkStatus = '' | 'working' | 'blocked' | 'done' | 'idle'
 /** The Orb task or project an agent works on; Studio marks it in progress once the agent starts working. */
 export interface OrbWorkRef { task?: { title: string; list: string }; project?: string }
@@ -31,3 +31,17 @@ export async function fetchOrbData<T = unknown>(kind: OrbDataKind): Promise<T> {
 export async function callOrbTool<T = unknown>(name: string, args: Record<string, unknown> = {}): Promise<T> {
   return (await request<{ result: T }>(`${base}/tools/${encodeURIComponent(name)}`, { method: 'POST', body: JSON.stringify(args) })).result
 }
+
+/** A Studio chat working on an Orb task or project (started from Orb). */
+export interface OrbWork {
+  sessionId: string
+  title: string
+  agentId: string
+  orb: OrbWorkRef
+  status: 'working' | 'blocked' | 'done' | 'idle' | 'gone'
+  startedAt: number
+  updatedAt: number
+  error?: string
+}
+
+export const fetchOrbWork = () => request<{ work: OrbWork[] }>(`${base}/work`)

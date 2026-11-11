@@ -129,11 +129,9 @@ test('without Pondering Orb, its sources show one note and make no Orb requests'
   expect(errors).toEqual([])
 })
 
-test('Mission Control connects Orb with the same form as herdr settings', async ({ page }) => {
+test('Mission Control points to Studio\'s Connections for Pondering Orb', async ({ page }) => {
   const { errors } = await openMission(page, { orbUrl: '' })
   await page.getByTestId('mission-source-control-tab').click()
-  const form = page.getByTestId('mission-control-panel').getByTestId('herdr-orb-settings')
-  await expect(form).toBeVisible()
-  await expect(form.getByTestId('herdr-orb-url')).toBeVisible()
+  await expect(page.getByTestId('mission-control-panel')).toContainText('Connections → Pondering Orb')
   expect(errors).toEqual([])
 })

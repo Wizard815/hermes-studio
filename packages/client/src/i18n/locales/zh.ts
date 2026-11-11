@@ -1,5 +1,6 @@
 import { herdrMessages } from '../herdr-messages'
 import { androidMessages } from '../android-messages'
+import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
 import { personMessages } from '../person-messages'
 import { remoteDeviceMessages } from '../remote-device-messages'
@@ -11,6 +12,7 @@ export default {
   person: personMessages['zh'],
   ...herdrMessages['zh'],
   ...androidMessages['zh'],
+  ...orbMessages['zh'],
   ...systemMessages['zh'],
   sessionTasks: {
       "title": "任务",

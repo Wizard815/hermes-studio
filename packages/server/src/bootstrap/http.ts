@@ -2,6 +2,7 @@ import { registerDesktopBrowserRelay } from '../modules/studio/sockets/desktop-b
 import { setupMobileTerminal } from '../modules/hermes/sockets/mobile-terminal'
 import { startHerdrIntegration } from './herdr'
 import { startAndroidDevices } from './android'
+import { startOrbIntegration } from './orb'
 import { getSessionMetadata as getTerminalSessionMetadata } from '../modules/studio/public/sessions'
 import Koa from 'koa'
 import type { Context } from 'koa'
@@ -629,6 +630,9 @@ export async function bootstrap() {
     return room ? { profile: context.profile, workspace: room.workspace || '' } : null
   })
   additionalShutdownSteps.push({ name: 'Mobile terminal PTY sessions', close: () => mobileTerminal.close() })
+  // Orb first: herdr's bridge reports agent status to the Orb client configured here.
+  const orbIntegration = startOrbIntegration()
+  additionalShutdownSteps.push({ name: 'Pondering Orb work', close: () => orbIntegration.close() })
   const herdrIntegration = startHerdrIntegration(activeGroupChatServer.getIO(), loopbackBaseUrl)
   additionalShutdownSteps.push({ name: 'herdr bridge', close: () => herdrIntegration.close() })
   const androidDevices = startAndroidDevices(activeGroupChatServer.getIO())

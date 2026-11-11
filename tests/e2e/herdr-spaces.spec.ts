@@ -33,6 +33,8 @@ test('herdr mode sidebar shows spaces in Studio\'s folders and opens the chat of
       // Chats made in Studio that herdr has never run: listed so they can be opened in herdr mode.
       { id: 'studio-plan', category_id: 2, title: 'Plan the pricing page', agent: 'claude', started_at: 1 },
       { id: 'studio-notes', category_id: null, title: 'Weekly notes with Hermes', agent: 'hermes', started_at: 1 },
+      // Studio's own Ekko runs in Studio; its chat opens in the Chat view.
+      { id: 'studio-ekko', category_id: null, title: 'Ekko budget review', agent: 'ekko-agent', started_at: 1 },
     ] } })
     return route.fulfill({ json: {} })
   })
@@ -43,17 +45,18 @@ test('herdr mode sidebar shows spaces in Studio\'s folders and opens the chat of
   const rows = page.locator('[data-testid="mission-folder-row"], [data-testid="mission-space-row"]')
   await expect(rows).toHaveText([/Clients/, /site/, /Build the pricing page/, /Fix flaky login test/])
   // Studio chats not running in herdr sit in their folders; live ones show as their spaces.
-  await expect(page.getByTestId('mission-chat-row')).toHaveText([/Plan the pricing page/, /Weekly notes with Hermes/])
+  await expect(page.getByTestId('mission-chat-row')).toHaveText([/Plan the pricing page/, /Weekly notes with Hermes/, /Ekko budget review/])
   // The open chat's space is selected; expand the other space and pick its agent.
   await expect(page.getByTestId('mission-space-row').filter({ hasText: 'Build the pricing page' })).toHaveClass(/active/)
   await page.getByTestId('mission-space-row').filter({ hasText: 'Fix flaky login test' }).click()
   await expect.poll(() => posts).toContain('/api/coding-agents/herdr/panes/w2%3Ap1/focus')
   await expect.poll(() => page.evaluate(() => (window as any).herdrSpacesFixture.opened)).toEqual(['herdr-bbb'])
-  // A coding-agent chat opens (and herdr mode then runs it in herdr); a Hermes chat opens in Studio's Chat view.
+  // Coding-agent and Hermes chats open (herdr mode then runs them in herdr); Ekko chats open in Studio's Chat view.
   await page.getByTestId('mission-chat-row').filter({ hasText: 'Plan the pricing page' }).click()
-  await expect.poll(() => page.evaluate(() => (window as any).herdrSpacesFixture.opened)).toEqual(['herdr-bbb', 'studio-plan'])
   await page.getByTestId('mission-chat-row').filter({ hasText: 'Weekly notes' }).click()
-  await expect.poll(() => page.evaluate(() => (window as any).herdrSpacesFixture.studioChats)).toEqual(['studio-notes'])
+  await expect.poll(() => page.evaluate(() => (window as any).herdrSpacesFixture.opened)).toEqual(['herdr-bbb', 'studio-plan', 'studio-notes'])
+  await page.getByTestId('mission-chat-row').filter({ hasText: 'Ekko budget review' }).click()
+  await expect.poll(() => page.evaluate(() => (window as any).herdrSpacesFixture.studioChats)).toEqual(['studio-ekko'])
   // The chat list's New chat, which herdr mode hides with the list.
   await page.getByTestId('herdr-spaces-new-chat').click()
   await expect.poll(() => page.evaluate(() => (window as any).herdrSpacesFixture.newChats)).toBe(1)

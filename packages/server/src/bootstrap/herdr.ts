@@ -38,7 +38,7 @@ import { herdrChatMode, herdrKindForStudioAgent } from '../modules/coding-agents
 import { locateTranscript } from '../modules/coding-agents/services/herdr/transcript'
 import type { HerdrBridgeDeps, HerdrSessionRef, HerdrWorkRef } from '../modules/coding-agents/services/herdr/bridge'
 import { setupHerdrSocket } from '../modules/coding-agents/sockets/herdr'
-import { configureOrbClient, getOrbClient } from '../modules/studio/services/orb/client'
+import { getOrbClient } from '../modules/studio/services/orb/client'
 import { writeModelRunProfileToken } from '../modules/studio/services/chat-run/model-run-prompt'
 import { listUsers } from '../modules/studio/public/users'
 import type { AuthenticatedUser } from '../modules/studio/public/auth'
@@ -215,7 +215,6 @@ export function herdrPluginDeps(baseUrl: string): HerdrPluginDeps {
 /** Configure and (if enabled) connect the herdr bridge. Never blocks startup on herdr. */
 export function startHerdrIntegration(io: Server, baseUrl: string): { close: () => void } {
   const home = getWebUiHome()
-  configureOrbClient(join(home, 'orb', 'settings.json'))
   herdrManager.configure(herdrBridgeDeps(), {
     settingsFile: join(home, 'herdr', 'settings.json'),
     stateFile: join(home, 'herdr', 'bridge-state.json'),

@@ -107,7 +107,7 @@ test('installing herdr from Studio and choosing the profile for herdr chats', as
   expect(errors).toEqual([])
 })
 
-test('herdr settings live with the other agents: remote machines and Pondering Orb', async ({ page }) => {
+test('herdr settings live with the other agents: remote machines, and Orb lives in Connections', async ({ page }) => {
   const { requests, errors } = await openFixture(page, { enabled: true })
   await page.goto('/__herdr_settings__')
   await expect(page.getByTestId('herdr-agent-settings').getByTestId('herdr-settings')).toBeVisible()
@@ -119,13 +119,7 @@ test('herdr settings live with the other agents: remote machines and Pondering O
   await expect(page.getByTestId('herdr-machine')).toContainText('me@build-box')
   await page.getByTestId('herdr-machine').locator('.n-switch').click()
   await expect.poll(() => requests.find(r => r.path === '/api/coding-agents/herdr/machines/ssh-1')?.body).toEqual({ enabled: false })
-  // Pondering Orb is optional, and set up here.
-  const orb = page.getByTestId('herdr-orb-settings')
-  await expect(orb).toContainText('Not connected')
-  await page.getByTestId('herdr-orb-url').locator('input').fill('http://orb.local:8080')
-  await page.getByTestId('herdr-orb-token').locator('input').fill('studio:secret')
-  await page.getByTestId('herdr-orb-save').click()
-  await expect.poll(() => requests.find(r => r.path === '/api/studio/orb/settings')?.body).toEqual({ url: 'http://orb.local:8080', token: 'studio:secret' })
-  await expect(orb).toContainText('Connected 0.2.0')
+  // Pondering Orb is a Studio connection; herdr settings point there.
+  await expect(page.getByTestId('herdr-orb-link')).toContainText('Connections → Pondering Orb')
   expect(errors).toEqual([])
 })
