@@ -171,13 +171,22 @@ export class HerdrManager {
     }
   }
 
+  /** Whether herdr still has Studio's plugin (false when herdr's config was lost). */
+  private async pluginLinked(binary: string): Promise<boolean> {
+    const list = await runHerdr(binary, ['plugin', 'list'], 15000).catch(() => null)
+    return list === null ? true : list.includes(HERDR_PLUGIN_ID)
+  }
+
   /** Run the one-time setup once per herdr version, in the background. */
   private async ensureSetup(): Promise<void> {
     try {
       const binary = this.binary()
       if (!binary) return
       const version = (await readHerdrServerStatus(binary, this.settings)).version || 'unknown'
-      if (this.settings.setupVersion === version && (this.settings.setupRevision || 0) >= HERDR_SETUP_REVISION) return
+      const current = this.settings.setupVersion === version && (this.settings.setupRevision || 0) >= HERDR_SETUP_REVISION
+      // herdr's own config can be lost while Studio's settings stay (a new
+      // container without herdr's folders): set up again when the plugin is gone.
+      if (current && await this.pluginLinked(binary)) return
       await this.setup()
     } catch {
       /* setup reports its own failures through status; startup must not fail */

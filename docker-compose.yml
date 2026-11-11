@@ -15,6 +15,9 @@ services:
       - ${HERMES_DATA_DIR:-./hermes_data}/hermes-web-ui:/home/agent/.hermes-web-ui
       # adb's key: phones and BlueStacks stay authorized after the container is recreated.
       - ${HERMES_DATA_DIR:-./hermes_data}/android:/home/agent/.android
+      # herdr's config, chat spaces and sessions: herdr picks up where it was after the container is recreated.
+      - ${HERMES_DATA_DIR:-./hermes_data}/herdr/config:/home/agent/.config/herdr
+      - ${HERMES_DATA_DIR:-./hermes_data}/herdr/state:/home/agent/.local/state/herdr
       # System page → Docker: manage the host's containers. This gives Studio full control of Docker.
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:

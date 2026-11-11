@@ -45,6 +45,8 @@ export interface HerdrLinkInfo {
 }
 
 /** Everything the bridge needs from Studio, injected so it stays testable. */
+type ChatPaneSetup = NonNullable<Awaited<ReturnType<NonNullable<HerdrBridgeDeps['chatPane']>>>>
+
 export interface StudioChatAccess {
   /** Studio login for its chat-run socket (short-lived). */
   token: string
@@ -53,6 +55,8 @@ export interface StudioChatAccess {
   run: Record<string, unknown>
   /** What herdr lists as the pane's agent. */
   agent: string
+  /** The agent's name for people ("Ekko"). */
+  name: string
 }
 
 export interface HerdrBridgeDeps {
@@ -203,6 +207,8 @@ export class HerdrBridge {
   private liveChats = new Map<string, string>()
   /** Waiting panes that stopped reporting (a herdr restart brings them back as plain shells), and since when. */
   private silentStubs = new Map<string, number>()
+  /** herdr's spaces and panes as the last chat sync saw them. */
+  private chatLayout = ''
   private chatSync: Promise<void> | null = null
   private chatSyncAgain = false
   private chatSyncTimer: ReturnType<typeof setTimeout> | null = null
@@ -452,7 +458,9 @@ export class HerdrBridge {
     this.panes = views
     this.liveChats = liveChats
     this.silentStubs = silent
-    this.scheduleChatSync()
+    // Chat spaces only need a look when herdr's spaces or panes changed (not on every status change).
+    const layout = `${snapshot.workspaces.map(item => item.workspace_id).join(',')}|${snapshot.panes.map(item => `${item.pane_id}${item.agent ? '+' : ''}`).join(',')}`
+    if (layout !== this.chatLayout || silent.size) { this.chatLayout = layout; this.scheduleChatSync() }
     this.syncStatusSubscription(snapshot.panes.filter(pane => pane.agent).map(pane => pane.pane_id))
     this.emit()
   }
@@ -497,17 +505,33 @@ export class HerdrBridge {
     if (!pane) return
     const chats = await this.deps.listChatSpaces()
     let changed = false
-    // A waiting pane that stopped reporting is a plain shell now: its space is made again.
+    // A waiting pane that stopped reporting: herdr dropped its report (a busy
+    // restart) and Studio reports it again, or it is a plain shell now and its
+    // space is made again.
     for (const [sessionId, record] of Object.entries(records)) {
       const since = record.stubPaneId ? this.silentStubs.get(record.stubPaneId) : undefined
       if (since === undefined || Date.now() - since < STUB_GRACE_MS || this.liveChats.has(sessionId)) continue
+      const chat = chats.find(item => item.id === sessionId)
+      if (chat && await this.stubRunning(client, record.stubPaneId)) {
+        const env = this.stubEnv(chat, pane)
+        await client.request('pane.report_agent', {
+          pane_id: record.stubPaneId,
+          source: 'studio:chat',
+          agent: env.STUDIO_CHAT_AGENT,
+          state: 'idle',
+          resume_argv: ['env', ...Object.entries(env).map(([key, value]) => `${key}=${value}`), 'sh', pane.script, chat.id],
+        }).catch(() => undefined)
+        this.silentStubs.delete(record.stubPaneId)
+        continue
+      }
       await client.request('workspace.close', { workspace_id: record.workspaceId }).catch(() => undefined)
       workspaces.delete(record.workspaceId)
       this.silentStubs.delete(record.stubPaneId)
       delete records[sessionId]
       changed = true
     }
-    const plan = planChatSpaces({ chats, records, workspaces, live: this.liveChats })
+    const panes = new Map(this.snapshot.panes.map(item => [item.pane_id, item.workspace_id]))
+    const plan = planChatSpaces({ chats, records, workspaces, panes, live: this.liveChats })
     for (const sessionId of plan.forget) { delete records[sessionId]; changed = true }
     for (const { sessionId, workspaceId } of plan.close) {
       await client.request('workspace.close', { workspace_id: workspaceId }).catch(() => undefined)
@@ -568,14 +592,32 @@ export class HerdrBridge {
     if (left.length) this.scheduleChatSync(Math.min(...left) + 500)
   }
 
-  private async createChatSpace(client: HerdrSocketClient, chat: ChatSpaceChat, pane: NonNullable<Awaited<ReturnType<NonNullable<HerdrBridgeDeps['chatPane']>>>>): Promise<ChatSpaceRecord> {
+  /** The waiting pane's environment (also what herdr runs to bring it back). */
+  private stubEnv(chat: ChatSpaceChat, pane: ChatPaneSetup): Record<string, string> {
+    const kind = chat.hostable ? this.deps.herdrKindFor(chat.agent) || '' : ''
+    return {
+      ...pane.env,
+      STUDIO_CHAT_KIND: kind,
+      // What herdr's agent list calls the chat's agent (Ekko and Hermes chats show too).
+      STUDIO_CHAT_AGENT: kind || chatAgentLabel(chat.agent),
+      STUDIO_CHAT_URL: `${pane.studioUrl}/#/hermes/session/${encodeURIComponent(chat.id)}`,
+    }
+  }
+
+  /** Whether the pane still runs its waiting script (not a plain shell). */
+  private async stubRunning(client: HerdrSocketClient, paneId: string): Promise<boolean> {
+    const info = await client.request<any>('pane.process_info', { pane_id: paneId }).catch(() => null)
+    const processes: Array<{ argv?: string[] }> = info?.process_info?.foreground_processes || []
+    return processes.some(item => (item.argv || []).some(arg => arg.endsWith('studio-chat.sh')))
+  }
+
+  private async createChatSpace(client: HerdrSocketClient, chat: ChatSpaceChat, pane: ChatPaneSetup): Promise<ChatSpaceRecord> {
     const label = chatSpaceLabel(chat)
     const cwd = chat.workspace || process.env.HOME || '/'
     const created = await client.request<any>('workspace.create', { cwd, label, focus: false })
     const workspaceId = String(created?.workspace?.workspace_id || '')
     const tabId = String(created?.tab?.tab_id || '')
     if (!workspaceId || !tabId) throw new Error('herdr did not return the new workspace')
-    const kind = chat.hostable ? this.deps.herdrKindFor(chat.agent) || '' : ''
     const applied = await client.request<any>('layout.apply', {
       tab_id: tabId,
       tab_label: (chat.title || 'Chat').slice(0, 32),
@@ -585,13 +627,7 @@ export class HerdrBridge {
         label: (chat.title || 'Chat').slice(0, 48),
         cwd,
         command: ['sh', pane.script, chat.id],
-        env: {
-          ...pane.env,
-          STUDIO_CHAT_KIND: kind,
-          // What herdr's agent list calls the chat's agent (Ekko and Hermes chats show too).
-          STUDIO_CHAT_AGENT: kind || chatAgentLabel(chat.agent),
-          STUDIO_CHAT_URL: `${pane.studioUrl}/#/hermes/session/${encodeURIComponent(chat.id)}`,
-        },
+        env: this.stubEnv(chat, pane),
       },
     })
     const stubPaneId = String(applied?.layout?.focused_pane_id || applied?.layout?.root?.pane_id || '') || await this.firstPaneIn(workspaceId)

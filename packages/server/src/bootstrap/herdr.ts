@@ -139,7 +139,9 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
       const user = herdrManager.actingUser() ?? listUsers().find(item => item.role === 'super_admin' && item.status === 'active') ?? null
       if (!user) throw Object.assign(new Error('Sign in to Studio first'), { status: 401 })
       const token = await issueModelRunJwt({ id: user.id, username: user.username, role: user.role as AuthenticatedUser['role'] })
-      return { token, profile: row.profile || 'default', run: chatRunFields(row), agent: chatAgentLabel(codingAgentIdForStoredAgent(row.agent) || row.agent || 'hermes') }
+      const stored = String(row.agent || '').trim()
+      const name = stored === 'ekko-agent' || stored === 'ekko' ? 'Ekko' : !stored || stored === 'hermes' ? 'Hermes' : getCodingAgentDefinition(stored)?.name || stored
+      return { token, profile: row.profile || 'default', run: chatRunFields(row), agent: chatAgentLabel(stored), name }
     },
     chatPreview: async sessionId => getRecentSessionMessages(sessionId, 6).map(message => ({ role: message.role, text: messageText(message.content) })).filter(message => message.text),
     chatPane: () => herdrManager.chatPaneSetup(),

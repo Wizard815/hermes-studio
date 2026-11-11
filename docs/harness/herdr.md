@@ -26,7 +26,7 @@ stay separate apps; this integration links them.
   `chatRunFields` in `bootstrap/herdr.ts`) and sends each line as a turn of
   Studio's own chat run (`/chat-run` socket), so the reply streams in the pane
   and the same turn shows in Studio. Approvals and questions are answered on
-  the next line. The pane reports itself to herdr as `ekko` or `hermes`
+  the next line. The pane reports itself to herdr as `hermes`
   (working, blocked, idle). Ctrl-C stops a reply, Ctrl-D goes back to the card.
 - **Every chat is a herdr space.** With `chatSpaces` on (default), each
   Studio chat (not archived, not a sub-chat, group chat or workflow) has its
@@ -35,7 +35,8 @@ stay separate apps; this integration links them.
   `bridge.syncChatSpaces` applies). A chat whose agent is not running sits in
   a waiting pane (`bin/herdr-plugin/studio-chat.sh`, plain `sh`, ~0.2 MB
   each): it shows the chat's last messages, reports itself to herdr as the
-  chat's idle agent (Ekko chats as `ekko`) and, on Enter, resumes the agent
+  chat's idle agent (Ekko and Hermes chats as `hermes`: herdr keeps live
+  reports only for agent names it knows) and, on Enter, resumes the agent
   in place (`studio-herdr.mjs resume` → `POST /plugin/resume`; Ekko opens the
   Studio chat client described below). The waiting pane
   reports its own command as its resume command, so a herdr restart brings it
@@ -85,6 +86,18 @@ stay separate apps; this integration links them.
 - **Profile.** Chats created from herdr go to the `default` profile. Change it in
   Studio's herdr settings or inside herdr: Studio chats → `s`, or the
   "Studio settings" plugin action.
+- **Upgrading and containers.** Old chats need no migration: once the new
+  build starts and herdr is connected, the chat-space sync gives every chat
+  its space (304 chats took about 35 s). Studio re-runs setup when herdr's
+  config was lost (the `studio.hermes` plugin is missing), even if its own
+  settings say setup is done. When herdr starts over and reuses space ids, a
+  waiting space only counts while its own pane is there (`planChatSpaces`
+  `panes`). docker-compose keeps `~/.config/herdr` and `~/.local/state/herdr`
+  in the data volume, so spaces and agent sessions survive a recreated
+  container. The hermes CLI is found through `HERMES_BIN` (set in the image),
+  `~/.local/bin` or PATH.
+- **Cost.** About 0.13 MB per waiting pane, plus about 0.12% CPU per open pane
+  inside herdr itself (300 chats: about 40 MB and 38% of one core).
 
 ## Mission view
 

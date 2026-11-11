@@ -275,7 +275,7 @@ async function chat() {
   const say = text => { process.stdout.write(`\r\x1b[K${text}\n`) }
   const finish = () => { busy = false; report('idle'); prompt() }
 
-  process.stdout.write(`${DIM}${access.agent} · Studio chat. Type a message. Ctrl-C stops a reply, Ctrl-D goes back.${RESET}\n`)
+  process.stdout.write(`${DIM}${access.name || access.agent} · Studio chat. Type a message. Ctrl-C stops a reply, Ctrl-D goes back.${RESET}\n`)
   await new Promise((resolve, reject) => {
     socket.once('connect', resolve)
     socket.once('connect_error', error => reject(new Error(`Studio refused the chat: ${error.message}`)))

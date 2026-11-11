@@ -48,11 +48,14 @@ while :; do
     report
     # herdr can drop the report while it is still restoring panes: check again
     # for a short while (stopped as soon as the chat resumes).
-    ( for wait in 2 3 5 10 10; do
+    # Detached (not this shell's child), so no finished process lingers while
+    # this pane waits; herdr would wait for it when it shuts down.
+    watch=$( (
+      for wait in 2 3 5 10 10; do
         sleep "$wait"
         "$herdr" pane get "$HERDR_PANE_ID" 2>/dev/null | grep -q '"agent":"' || report
-      done ) &
-    watch=$!
+      done ) </dev/null >/dev/null 2>&1 &
+      echo $! )
   fi
   read -r _ || { [ -n "$watch" ] && kill "$watch" 2>/dev/null; exit 0; }
   [ -n "$watch" ] && kill "$watch" 2>/dev/null

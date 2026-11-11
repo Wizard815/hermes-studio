@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 
 /** Shape herdr's bridge expects from a session launch (structural match). */
 export interface HermesHerdrLaunch {
@@ -13,15 +13,26 @@ export interface HermesHerdrLaunch {
   model: string
 }
 
-/** The hermes CLI: the installer's copy, or PATH when it lives elsewhere. */
-export function hermesCliPath(home = homedir()): string {
-  const installed = join(home, '.local', 'bin', 'hermes')
-  return existsSync(installed) ? installed : 'hermes'
+/**
+ * The hermes CLI: `HERMES_BIN` (Studio's Docker image sets it), the
+ * installer's copy, or one on PATH. Null when there is none.
+ */
+export function findHermesCli(home = homedir(), env: NodeJS.ProcessEnv = process.env): string | null {
+  const candidates = [
+    env.HERMES_BIN || '',
+    join(home, '.local', 'bin', 'hermes'),
+    ...String(env.PATH || '').split(delimiter).filter(Boolean).map(dir => join(dir, 'hermes')),
+  ].filter(Boolean)
+  return candidates.find(candidate => existsSync(candidate)) ?? null
 }
 
-/** Whether the installed hermes CLI is present (herdr can only host it then). */
+export function hermesCliPath(home = homedir()): string {
+  return findHermesCli(home) || 'hermes'
+}
+
+/** Whether the hermes CLI is present (herdr can only host it then). */
 export function hermesCliAvailable(home = homedir()): boolean {
-  return existsSync(join(home, '.local', 'bin', 'hermes'))
+  return findHermesCli(home) !== null
 }
 
 /** Start a fresh `hermes chat` pane in herdr; herdr's hermes integration

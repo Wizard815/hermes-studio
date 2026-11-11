@@ -53,11 +53,10 @@ describe('every Studio chat is a herdr space', () => {
     expect(plan).toEqual({ create: [], rename: [], close: [], forget: [], order: ['w1'] })
   })
 
-  it('names the agent herdr lists for chats herdr cannot run itself', () => {
-    expect(chatAgentLabel('ekko-agent')).toBe('ekko')
+  it('lists chats herdr cannot run itself under an agent name herdr knows', () => {
+    expect(chatAgentLabel('ekko-agent')).toBe('hermes')
     expect(chatAgentLabel('hermes')).toBe('hermes')
     expect(chatAgentLabel('')).toBe('hermes')
-    expect(chatAgentLabel('My Agent!')).toBe('my-agent')
   })
 
   it('makes a waiting pane again when its chat changes how it runs (the hermes CLI came or went)', () => {
@@ -69,5 +68,17 @@ describe('every Studio chat is a herdr space', () => {
     })
     expect(plan.close).toEqual([{ sessionId: 'h', workspaceId: 'w1' }])
     expect(plan.create.map(item => item.id)).toEqual(['h'])
+  })
+
+  it('does not take a new herdr\'s spaces for old chats when herdr started over and reuses ids', () => {
+    const plan = planChatSpaces({
+      chats: [chat('a', 'Pricing')],
+      records: { a: { workspaceId: 'w1', stubPaneId: 'w1:p2', label: 'Pricing', hostable: true } },
+      workspaces: new Set(['w1']),
+      panes: new Map([['w1:p1', 'w1']]),
+      live: new Map(),
+    })
+    expect(plan.forget).toEqual(['a'])
+    expect(plan.create.map(item => item.id)).toEqual(['a'])
   })
 })

@@ -80,6 +80,8 @@ export function planChatSpaces(input: {
   records: Record<string, ChatSpaceRecord>
   /** herdr's workspace ids right now. */
   workspaces: Set<string>
+  /** herdr's panes right now (pane id → workspace id). */
+  panes?: Map<string, string>
   /** Chats whose agent is running in herdr right now, and its workspace. */
   live: Map<string, string>
 }): ChatSpacePlan {
@@ -89,6 +91,9 @@ export function planChatSpaces(input: {
 
   for (const [sessionId, record] of Object.entries(input.records)) {
     if (!input.workspaces.has(record.workspaceId)) { plan.forget.push(sessionId); continue }
+    // herdr started over (its state was lost) and reuses ids: a waiting space
+    // only counts while its own pane is still there.
+    if (record.stubPaneId && input.panes && input.panes.get(record.stubPaneId) !== record.workspaceId) { plan.forget.push(sessionId); continue }
     if (!wanted.has(sessionId)) {
       // A chat that is gone: close its waiting space; a running agent keeps its space.
       if (record.stubPaneId && !input.live.has(sessionId)) plan.close.push({ sessionId, workspaceId: record.workspaceId })
@@ -117,9 +122,11 @@ export function planChatSpaces(input: {
   return plan
 }
 
-/** The agent name herdr shows for a chat herdr cannot run itself ("ekko", "hermes"). */
-export function chatAgentLabel(agent: string): string {
-  const id = String(agent || 'hermes').toLowerCase()
-  if (id === 'ekko-agent' || id === 'ekko') return 'ekko'
-  return id.replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'hermes'
+/**
+ * The agent name herdr lists for a chat herdr cannot run itself (Ekko, Hermes
+ * without its CLI). herdr keeps live reports only for agent names it knows,
+ * so these chats are listed as Studio's Hermes family: `hermes`.
+ */
+export function chatAgentLabel(_agent: string): string {
+  return 'hermes'
 }
