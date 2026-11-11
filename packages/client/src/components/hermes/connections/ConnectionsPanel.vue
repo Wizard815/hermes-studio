@@ -7,9 +7,10 @@ import { useRoute, useRouter } from 'vue-router'
 import AppConnectionsPanel from '@/components/hermes/connections/AppConnectionsPanel.vue'
 import McuDevicesPanel from '@/components/hermes/connections/McuDevicesPanel.vue'
 import RemoteDevicesPanel from '@/components/hermes/connections/RemoteDevicesPanel.vue'
+import OrbConnectionPanel from '@/components/hermes/connections/OrbConnectionPanel.vue'
 import { desktopBridge } from '@/utils/desktop-bridge'
 
-type ConnectionTab = 'app' | 'mcu' | 'remote'
+type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,7 +19,7 @@ const hasRemoteDevices = desktopBridge()?.isDesktop === true && !!desktopBridge(
 
 function normalizeTab(value: unknown): ConnectionTab {
   if (value === 'remote' && hasRemoteDevices) return value
-  if (value === 'mcu') return value
+  if (value === 'mcu' || value === 'orb') return value
   return 'app'
 }
 
@@ -66,6 +67,9 @@ function updateTab(value: string | number) {
       </NTabPane>
       <NTabPane name="mcu" :tab="t('connections.tabs.mcu')" display-directive="if">
         <McuDevicesPanel />
+      </NTabPane>
+      <NTabPane name="orb" :tab="t('orb.tab')" display-directive="if">
+        <OrbConnectionPanel />
       </NTabPane>
       <NTabPane v-if="hasRemoteDevices" name="remote" :tab="t('remoteDevices.title')" display-directive="if">
         <RemoteDevicesPanel />

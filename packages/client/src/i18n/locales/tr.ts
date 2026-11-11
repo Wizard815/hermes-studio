@@ -1,4 +1,5 @@
 import { androidMessages } from '../android-messages'
+import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
 import { personMessages } from '../person-messages'
 import { remoteDeviceMessages } from '../remote-device-messages'
@@ -40,6 +41,7 @@ export default {
   },
   person: personMessages['tr'],
   ...androidMessages['tr'],
+  ...orbMessages['tr'],
   ...systemMessages['tr'],
   sessionTasks: {
       "title": "Görevler",

@@ -1,4 +1,5 @@
 import { androidMessages } from '../android-messages'
+import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
 import { personMessages } from '../person-messages'
 import { remoteDeviceMessages } from '../remote-device-messages'
@@ -9,6 +10,7 @@ import { socialMessagesJa } from '../social-messages-locales'
 export default {
   person: personMessages['ja'],
   ...androidMessages['ja'],
+  ...orbMessages['ja'],
   ...systemMessages['ja'],
   sessionTasks: {
       "title": "タスク",
