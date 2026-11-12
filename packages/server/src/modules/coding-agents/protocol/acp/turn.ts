@@ -18,6 +18,8 @@ export class NativeAcpTurn {
   private decoder = new StringDecoder('utf8')
   private buffer = ''
   private closed = false
+  /** Tool calls the agent announced, by id (titles and inputs for permission questions). */
+  private toolCalls = new Map<string, any>()
   private sessionId = ''
 
   constructor(private child: ChildProcess, private callbacks: {
@@ -83,11 +85,18 @@ export class NativeAcpTurn {
     if (this.closed) return
     if (message.method) {
       if (message.method === 'session/update' && message.params?.sessionId === this.sessionId) {
+        const update = message.params.update
+        if ((update?.sessionUpdate === 'tool_call' || update?.sessionUpdate === 'tool_call_update') && update.toolCallId) {
+          this.toolCalls.set(String(update.toolCallId), { ...this.toolCalls.get(String(update.toolCallId)), ...update })
+        }
         this.callbacks.update(message.params.update)
       } else if (message.id !== undefined) {
         if (message.method === 'session/request_permission' && message.params?.sessionId === this.sessionId && this.callbacks.askPermission) {
           const id = message.id
-          void this.callbacks.askPermission(message.params)
+          // Some agents (DSH) send only the call's id; its details came with the tool call update.
+          const known = this.toolCalls.get(String(message.params?.toolCall?.toolCallId || ''))
+          const params = known ? { ...message.params, toolCall: { ...known, ...message.params.toolCall } } : message.params
+          void this.callbacks.askPermission(params)
             .then(result => this.write({ id, result }))
             .catch(() => this.write({ id, result: { outcome: { outcome: 'cancelled' } } }))
         } else if (message.method === 'session/request_permission' && message.params?.sessionId === this.sessionId) {

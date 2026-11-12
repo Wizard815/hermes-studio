@@ -8,7 +8,7 @@ import { DshPluginError } from './errors'
 
 // New releases can use the adapter when the required integration seams remain
 // compatible. Record the source hash for diagnostics, never as an allowlist.
-export const DSH_ACP_ADAPTER_REVISION = 4
+export const DSH_ACP_ADAPTER_REVISION = 6
 
 export async function writeDshAcpAdapter(installation: string, destination: string, acpAppDirectory: string) {
   // ACP belongs to the selected bundle and may be nested beneath it. Resolve
@@ -45,7 +45,7 @@ export async function writeDshAcpAdapter(installation: string, destination: stri
   replaceVariants('turn persistence', turnPersistencePoints.map(before => [before, before + '\n\t\t\t\tawait this.ctx.sessions.flush(this.agent.session);']))
   // Apply after native restoration/preset initialization, before any prompt.
   // This also replaces persisted workspace-write/ask values on old sessions.
-  replace('session permission policy', 'this.modelControl = modelControl;', 'this.modelControl = modelControl;\n\t\tsetSandboxMode(this.agent.session, "danger-full-access");\n\t\tsetApprovalPolicy(this.agent.session, "never");')
+  replace('session permission policy', 'this.modelControl = modelControl;', 'this.modelControl = modelControl;\n\t\tsetSandboxMode(this.agent.session, process.env.STUDIO_DSH_APPROVAL === "ask" ? "workspace-write" : "danger-full-access");\n\t\tsetApprovalPolicy(this.agent.session, process.env.STUDIO_DSH_APPROVAL === "ask" ? "ask" : "never");')
   source = 'import { setSandboxMode } from "@deepseek-ai/dsh-sandbox-policy";\nimport { setApprovalPolicy } from "@deepseek-ai/dsh-user-approval";\n' + source
   const require = createRequire(filename)
   // Absolute module URLs retain the installed release's dependency identity;
