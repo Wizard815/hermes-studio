@@ -3,7 +3,7 @@ import { deploymentUrl } from '@/utils/deployment-url'
 import { agentMetadata } from '@/utils/agent-catalog'
 import PageLoading from '@/components/common/PageLoading.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import { getAgentUpdatePolicies, setAgentAutoUpdate, type AgentUpdatePolicyState } from '@/api/coding-agents'
+import { getAgentApprovals, getAgentUpdatePolicies, setAgentApproval, setAgentAutoUpdate, type AgentUpdatePolicyState } from '@/api/coding-agents'
 import { computed, defineAsyncComponent, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -102,8 +102,15 @@ const codingAgents: CodingAgentCard[] = [
 
 const updatePolicies = ref<Record<string, AgentUpdatePolicyState>>({})
 let policyTimer: ReturnType<typeof setInterval> | undefined
+/** Agents set to act without asking ("auto"); every other agent asks in Studio before acting. */
+const approvalModes = ref<Record<string, 'ask' | 'auto'>>({})
+const approvalsLoaded = ref(false)
 async function refreshPolicies() {
   try { updatePolicies.value = (await getAgentUpdatePolicies()).agents } catch { /* unavailable to non-admin/old server */ }
+  try { approvalModes.value = (await getAgentApprovals()).agents; approvalsLoaded.value = true } catch { /* unavailable to non-admin/old server */ }
+}
+async function toggleApproval(id: CodingAgentId, ask: boolean) {
+  try { approvalModes.value = (await setAgentApproval(id, ask ? 'ask' : 'auto')).agents } catch (error) { message.error(String(error)) }
 }
 function availableUpdateVersion(id: CodingAgentId): string {
   const policy = updatePolicies.value[id]
@@ -728,6 +735,9 @@ onUnmounted(() => {
                   </template>
                   {{ t('agentManager.deleteConfirm', { name: agent.name }) }}
                 </NPopconfirm>
+              </div>
+              <div v-if="toolStatus(agent.id)?.installed && approvalsLoaded" class="agent-update-policy" data-testid="agent-approval">
+                <div class="agent-update-policy-row"><span>{{ t('agentApprovals.label') }}</span><NSwitch class="agent-update-switch" size="small" :theme-overrides="{ railHeightSmall: '16px', railWidthSmall: '28px', buttonHeightSmall: '12px', buttonWidthSmall: '12px' }" :value="approvalModes[agent.id] !== 'auto'" @update:value="toggleApproval(agent.id, $event)" /></div>
               </div>
               <div v-if="toolStatus(agent.id)?.installed && updatePolicies[agent.id]" class="agent-update-policy">
                 <div class="agent-update-policy-row"><span>{{ t('agentAutoUpdate.label') }}</span><NSwitch class="agent-update-switch" size="small" :theme-overrides="{ railHeightSmall: '16px', railWidthSmall: '28px', buttonHeightSmall: '12px', buttonWidthSmall: '12px' }" :disabled="!updatePolicies[agent.id]?.autoUpdateSupported" :value="updatePolicies[agent.id]?.autoUpdate" @update:value="toggleAutoUpdate(agent.id, $event)" /></div>

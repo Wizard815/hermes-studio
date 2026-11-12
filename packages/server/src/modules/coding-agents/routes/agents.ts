@@ -22,6 +22,8 @@ codingAgentRoutes.post('/api/coding-agents/dsh/web-plugins', requireSuperAdmin, 
 codingAgentRoutes.post('/api/coding-agents/dsh/ui-session', requireSuperAdmin, plugins.openUi)
 codingAgentRoutes.delete('/api/coding-agents/dsh/ui-session/:id', requireSuperAdmin, plugins.closeUi)
 
+codingAgentRoutes.get('/api/coding-agents/approvals', requireAdmin, ctrl.approvals)
+codingAgentRoutes.put('/api/coding-agents/approvals', requireSuperAdmin, ctrl.setApprovals)
 codingAgentRoutes.get('/api/coding-agents/update-policies', requireAdmin, ctrl.updatePolicies)
 codingAgentRoutes.put('/api/coding-agents/:id/update-policy', requireAdmin, ctrl.setUpdatePolicy)
 codingAgentRoutes.get('/api/coding-agents', ctrl.status)

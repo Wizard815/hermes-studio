@@ -3062,6 +3062,7 @@ export class CodingAgentRunManager {
     const child = startAntigravityTurnProcess({
       command: run.launch.command,
       baseArgs: run.launch.args,
+      asks: run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId),
       workspaceDir,
       env: run.launch.mode === 'global'
         ? { ...process.env, ...(run.launch.env || {}) }
@@ -3180,6 +3181,7 @@ export class CodingAgentRunManager {
     const child = startCursorTurnProcess({
       command: run.launch.command,
       baseArgs: run.launch.args,
+      asks: run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId),
       workspaceDir,
       env: run.launch.mode === 'global'
         ? { ...process.env, ...(run.launch.env || {}) }

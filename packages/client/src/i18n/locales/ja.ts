@@ -291,6 +291,7 @@ export default {
   announcements: {"later": "後で", "details": "詳細を見る", "gotIt": "確認しました"},
   taskPlan: {"title": "タスク計画", "progress": "{completed}/{total} 完了", "pending": "未完了", "in_progress": "進行中", "completed": "完了", "running": "実行中", "ended": "実行終了・未完了の手順があります", "interrupted": "中断・未完了の手順があります", "failed": "実行失敗・未完了の手順があります"},
   agentAutoUpdate: { label: '自動更新' },
+  agentApprovals: { label: '実行前に確認する' },
   ekkoConfig: {
     "settingsTitle": "設定",
     "settingsRuntime": "ランタイム",

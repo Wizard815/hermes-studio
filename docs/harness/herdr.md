@@ -67,6 +67,20 @@ stay separate apps; this integration links them.
   `--dangerously-skip-permissions`, Grok's `--always-approve`; OpenCode gets
   `OPENCODE_PERMISSION={"*":"ask"}`, `withApprovalsEnv`). Ekko keeps its own rules (deleting,
   sudo, killing processes, shell source, ...) and asks in the pane.
+- **Approvals in Studio chats.** Agents ask before acting (Agents page,
+  "Ask before acting"; off = the agent's yolo mode, also in herdr). Each
+  agent's own rules decide when to ask; Studio shows the question as its
+  approval card (`askApproval` in `runtime/run-manager.ts`: once / for this
+  chat / deny, denied after 5 minutes or when the run ends). How each agent
+  asks: Claude Code `--permission-prompt-tool stdio` (control requests);
+  Codex its app-server (`codex/app-server-turn.ts`); Qwen, Kimi, Copilot,
+  Qoder, CodeBuddy, DSH, OpenCode (`opencode acp`) and Grok (`grok agent
+  stdio`) ACP `session/request_permission` (`protocol/acp/permission.ts`);
+  Pi Studio's Pi extension (`HERMES_PI_ASK`). DSH asks only to leave its
+  sandbox, so asking DSH works in its folder. Cursor, Antigravity and Zcode
+  cannot ask in print mode: asking means their safe mode, which refuses
+  instead (no --force / skip-permissions; Zcode plan mode). Settings:
+  `HERMES_WEB_UI_HOME/coding-agent/approvals.json`, `/api/coding-agents/approvals`.
 - **Models and MCP.** Launches from Studio or the plugin use
   `prepareCodingAgentInteractiveLaunch`, i.e. the same provider routing
   (including custom OpenAI-compatible providers such as llama-swap), MCP

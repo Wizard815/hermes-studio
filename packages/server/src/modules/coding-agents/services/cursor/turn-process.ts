@@ -9,6 +9,8 @@ export const CURSOR_COMPACT_UNSUPPORTED = 'Native /compact is not supported for 
 export interface CursorTurnProcessInput {
   command: string
   baseArgs: string[]
+  /** Ask before acting: drop the flag that lets the agent act unchecked. */
+  asks?: boolean
   workspaceDir: string
   env: NodeJS.ProcessEnv
   nativeSessionId: string
@@ -26,13 +28,15 @@ export function buildCursorTurnArgs(
   nativeSessionId: string,
   resume: boolean,
   images: CodingAgentImageInput[] = [],
+  /** Without --force Cursor refuses what needs approval instead of running it (print mode cannot ask). */
+  force = true,
 ): string[] {
   const resumeArgs = resume && String(nativeSessionId || '').trim()
     ? ['--resume', String(nativeSessionId).trim()]
     : []
   return [
     '-p',
-    '--force',
+    ...(force ? ['--force'] : []),
     '--output-format',
     'stream-json',
     '--stream-partial-output',
@@ -85,7 +89,7 @@ function spawnCursor(command: string, args: string[], input: CursorTurnProcessIn
 }
 
 export function startCursorTurnProcess(input: CursorTurnProcessInput): ChildProcess {
-  const args = buildCursorTurnArgs(input.baseArgs, input.nativeSessionId, input.resume, input.images)
+  const args = buildCursorTurnArgs(input.baseArgs, input.nativeSessionId, input.resume, input.images, !input.asks)
   const child = spawnCursor(input.command, args, input)
   const stdout = createCursorStdoutReader()
   child.stdout?.on('data', (chunk: Buffer) => {

@@ -291,6 +291,7 @@ export default {
   announcements: {"later": "Later", "details": "View details", "gotIt": "Got it"},
   taskPlan: {"title": "Task plan", "progress": "{completed}/{total} completed", "pending": "Not completed", "in_progress": "In progress", "completed": "Completed", "running": "Running", "ended": "Run ended; unfinished steps remain", "interrupted": "Interrupted; unfinished steps remain", "failed": "Run failed; unfinished steps remain"},
   agentAutoUpdate: { label: 'Automatic updates' },
+  agentApprovals: { label: 'Ask before acting' },
   ekkoConfig: {
     "settingsTitle": "Settings",
     "settingsRuntime": "Runtime",

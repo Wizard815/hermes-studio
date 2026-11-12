@@ -1,5 +1,6 @@
 import { getAgentUpdateManager, checkAgentUpdateAndPublish, installAgentAndPublish } from '../services/update-manager'
 import type { Context } from 'koa'
+import { readAgentApprovalSettings, writeAgentApprovalSettings } from '../services/approvals'
 import {
   deleteCodingAgent,
   getCodingAgentsStatus,
@@ -251,4 +252,18 @@ export async function setUpdatePolicy(ctx: Context) {
     await manager.set(ctx.params.id, (ctx.request.body as any)?.autoUpdate)
     ctx.body = { agents: manager.snapshot() }
   } catch (error) { ctx.status=400;ctx.body={error:error instanceof Error?error.message:'Invalid policy'} }
+}
+
+/** Whether each agent asks in Studio before acting ("ask", the default) or acts without asking ("auto"). */
+export async function approvals(ctx: Context) {
+  ctx.body = readAgentApprovalSettings()
+}
+
+export async function setApprovals(ctx: Context) {
+  try {
+    ctx.body = writeAgentApprovalSettings(ctx.request.body)
+  } catch (err: any) {
+    ctx.status = err?.status || 500
+    ctx.body = { error: err?.message || 'Failed to save approval settings' }
+  }
 }

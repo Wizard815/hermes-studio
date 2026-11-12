@@ -24,7 +24,7 @@ import { delimiter, dirname, join, win32 as win32Path } from 'path'
 import { promisify } from 'util'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { getWebUiHome } from '../../studio/public/config'
-import { withApprovals, withApprovalsEnv } from './approvals'
+import { agentAsksBeforeActing, withApprovals, withApprovalsEnv } from './approvals'
 export { withApprovals, withApprovalsEnv } from './approvals'
 import { getProfileDir, PROVIDER_ENV_MAP, readConfigYamlForProfile, safeReadFile } from '../../studio/public/profile-config'
 import { getCompatibleCustomProviders } from '../../studio/contracts/provider-compat'
@@ -4081,8 +4081,9 @@ export async function prepareCodingAgentInteractiveLaunch(
     // herdr starts panes through a login shell with its own PATH; give it the
     // exact binary Studio would run (including Studio-managed installs).
     command: await resolveInteractiveCommand(launch.command),
-    args: [...resume.prefix, ...withApprovals(launch.args), ...resume.suffix],
-    env: withApprovalsEnv(launch.agentId, launch.env),
+    // Agents ask in a terminal too, unless set to act without asking in Studio.
+    args: [...resume.prefix, ...(agentAsksBeforeActing(launch.agentId) ? withApprovals(launch.args) : launch.args), ...resume.suffix],
+    env: agentAsksBeforeActing(launch.agentId) ? withApprovalsEnv(launch.agentId, launch.env) : launch.env,
     workspaceDir: launch.workspaceDir,
     provider: launch.provider,
     model: launch.model,
