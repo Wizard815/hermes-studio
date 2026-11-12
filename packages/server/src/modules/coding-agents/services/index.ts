@@ -4069,7 +4069,7 @@ export async function prepareCodingAgentInteractiveLaunch(
     // exact binary Studio would run (including Studio-managed installs).
     command: await resolveInteractiveCommand(launch.command),
     args: [...resume.prefix, ...withApprovals(launch.args), ...resume.suffix],
-    env: launch.env,
+    env: withApprovalsEnv(launch.agentId, launch.env),
     workspaceDir: launch.workspaceDir,
     provider: launch.provider,
     model: launch.model,
@@ -4081,10 +4081,20 @@ export async function prepareCodingAgentInteractiveLaunch(
  * use them; an agent in a terminal (herdr) has a person at it, so it asks
  * before running commands or editing files, as it does on its own.
  */
-const SKIP_APPROVAL_FLAGS = new Set(['--dangerously-skip-permissions', '--dangerously-bypass-approvals-and-sandbox', '--yolo'])
+const SKIP_APPROVAL_FLAGS = new Set(['--dangerously-skip-permissions', '--dangerously-bypass-approvals-and-sandbox', '--yolo', '--always-approve', '--force'])
 
 export function withApprovals(args: string[]): string[] {
   return args.filter(arg => !SKIP_APPROVAL_FLAGS.has(arg))
+}
+
+/**
+ * Settings that let an agent act without asking, by agent. OpenCode's
+ * Studio config allows every tool; in a terminal it asks instead
+ * (OPENCODE_PERMISSION is merged over its config).
+ */
+export function withApprovalsEnv(agentId: string, env: Record<string, string>): Record<string, string> {
+  if (agentId === 'opencode') return { ...env, OPENCODE_PERMISSION: JSON.stringify({ '*': 'ask' }) }
+  return env
 }
 
 /** Interactive launch for an existing Studio chat, reusing its stored provider and model. */

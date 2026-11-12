@@ -64,7 +64,8 @@ stay separate apps; this integration links them.
 - **Approvals.** Agents in herdr panes ask before acting: launches for herdr
   drop the flags Studio's own background runs use to skip approvals
   (`withApprovals` in `coding-agents/services/index.ts`, e.g. Claude Code's
-  `--dangerously-skip-permissions`). Ekko keeps its own rules (deleting,
+  `--dangerously-skip-permissions`, Grok's `--always-approve`; OpenCode gets
+  `OPENCODE_PERMISSION={"*":"ask"}`, `withApprovalsEnv`). Ekko keeps its own rules (deleting,
   sudo, killing processes, shell source, ...) and asks in the pane.
 - **Models and MCP.** Launches from Studio or the plugin use
   `prepareCodingAgentInteractiveLaunch`, i.e. the same provider routing
