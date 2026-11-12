@@ -13,10 +13,16 @@ export function startAcpChatTurn(definition: { name: string; acpArgs: readonly s
     emptyPrompt: images.length ? 'Inspect the attached images.' : '',
   })
   let connection: NativeAcpTurn | undefined
+  // Some agents (Grok) end the turn as "cancelled" when a request is denied: that is the user's answer, not a failure.
+  let denied = false
   connection = new NativeAcpTurn(child, {
     session, permissionRequired: run.launch.approvalRequired,
     ...(host.askApproval && (run.launch.approvalRequired || agentAsksBeforeActing(run.launch.agentId))
-      ? { askPermission: (params: any) => answerAcpPermission(params, definition.name, host.askApproval!) } : {}),
+      ? { askPermission: (params: any) => answerAcpPermission(params, definition.name, async request => {
+          const choice = await host.askApproval!(request)
+          if (choice === 'deny') denied = true
+          return choice
+        }) } : {}),
     update: update => { if (!run.exited && !run.stoppedByUser && !isFinished()) { host.touch(); applyNativeAcpUpdate(update, host) } },
   })
   run.nativeAcpTurn = connection
@@ -25,7 +31,7 @@ export function startAcpChatTurn(definition: { name: string; acpArgs: readonly s
     mcpServers: acpMcpServers(run.launch.nativeMcpServers || {}),
     model: run.launch.mode === 'global' ? run.launch.model : undefined,
     reasoningEffort: run.launch.mode === 'global' ? run.launch.reasoningEffort : undefined,
-  }).then(reason => finish(['end_turn', 'max_tokens'].includes(reason) ? undefined : `${definition.name} stopped: ${reason}`))
+  }).then(reason => finish(['end_turn', 'max_tokens'].includes(reason) || (reason === 'cancelled' && denied) ? undefined : `${definition.name} stopped: ${reason}`))
     .catch(error => { finish(host.processError(error)); host.terminate(child) })
     .finally(() => {
       connection?.dispose()

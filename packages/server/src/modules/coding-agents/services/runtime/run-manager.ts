@@ -273,6 +273,18 @@ interface AgentApprovalWait {
   timer: ReturnType<typeof setTimeout>
 }
 
+/** Grok's options that `grok agent` takes (model and reasoning effort). */
+export function grokAgentOptions(args: readonly string[]): string[] {
+  const kept: string[] = []
+  for (let index = 0; index < args.length; index += 1) {
+    if ((args[index] === '--model' || args[index] === '-m' || args[index] === '--reasoning-effort') && args[index + 1]) {
+      kept.push(args[index], args[index + 1])
+      index += 1
+    }
+  }
+  return kept
+}
+
 /** What OpenCode asks about when it asks before acting. */
 const OPENCODE_ASK = { edit: 'ask', bash: 'ask', webfetch: 'ask', external_directory: 'ask' }
 
@@ -2882,6 +2894,11 @@ export class CodingAgentRunManager {
     images: CodingAgentImageInput[] = [],
   ) {
     if (childIsRunning(run.currentChild)) throw new Error('Grok is still processing the previous input')
+    // Grok asks before acting over its ACP mode (`grok agent stdio`); keep only the agent's options.
+    if ((run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId)) && !input.startsWith('/compact')) {
+      startAcpChatTurn({ name: 'Grok', acpArgs: ['stdio'], baseArgs: ['agent', ...grokAgentOptions(run.launch.args)] }, run, input, systemPrompt, this.nativeTurnHost(run), images)
+      return
+    }
 
     const responseId = `resp_${Date.now()}`
     run.printResponseId = responseId
