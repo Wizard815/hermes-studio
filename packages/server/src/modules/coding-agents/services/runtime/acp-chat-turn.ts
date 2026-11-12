@@ -1,4 +1,6 @@
 import { NativeAcpTurn } from '../../protocol/acp/turn'
+import { answerAcpPermission } from '../../protocol/acp/permission'
+import { agentAsksBeforeActing } from '../approvals'
 import { acpMcpServers, applyNativeAcpUpdate } from '../../protocol/acp/events'
 import type { ManagedCodingAgentRun } from './run-manager'
 import type { NativeTurnHost } from './turn-host'
@@ -13,6 +15,8 @@ export function startAcpChatTurn(definition: { name: string; acpArgs: readonly s
   let connection: NativeAcpTurn | undefined
   connection = new NativeAcpTurn(child, {
     session, permissionRequired: run.launch.approvalRequired,
+    ...(host.askApproval && (run.launch.approvalRequired || agentAsksBeforeActing(run.launch.agentId))
+      ? { askPermission: (params: any) => answerAcpPermission(params, definition.name, host.askApproval!) } : {}),
     update: update => { if (!run.exited && !run.stoppedByUser && !isFinished()) { host.touch(); applyNativeAcpUpdate(update, host) } },
   })
   run.nativeAcpTurn = connection

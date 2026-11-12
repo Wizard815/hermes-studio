@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+import { agentAsksBeforeActing, withApprovals } from '../approvals'
 import { codingAgentWorkingDirectory } from './workspace'
 import { startOpenCodeTurn as startOpenCodeTurnProcess } from '../opencode/chat-turn'
 import { applyOpenCodeLine } from '../opencode/event-adapter'
@@ -211,6 +213,8 @@ export interface ManagedCodingAgentRun {
   printText?: string
   claudeResultUsage?: any
   claudeStreamMessageId?: string
+  /** Claude's stdin while it may still ask for permission (closed with its result). */
+  claudeControlStdin?: NodeJS.WritableStream
   claudeMessageText?: Map<string, string>
   printCompleted?: boolean
   responseStartEmitted?: boolean
@@ -245,7 +249,29 @@ export interface ManagedCodingAgentRun {
   piTextBuffer?: string
   piCurrentMessageText?: string
   piRpcRequests?: Map<string, PiRpcPendingRequest>
+  /** Approvals this run's agent is waiting on (Studio's approval card answers them). */
+  agentApprovals?: Map<string, AgentApprovalWait>
 }
+
+/** What an agent asks before it acts: shown as Studio's approval card. */
+export interface AgentApprovalRequest {
+  /** What "for this chat" remembers, e.g. "Bash" or "edit". */
+  key: string
+  title: string
+  description: string
+  command?: string
+}
+
+export type AgentApprovalChoice = 'once' | 'session' | 'deny'
+
+interface AgentApprovalWait {
+  key: string
+  resolve(choice: AgentApprovalChoice): void
+  timer: ReturnType<typeof setTimeout>
+}
+
+/** An unanswered approval is denied after this long. */
+const AGENT_APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
 
 interface CodingAgentRunSendOptions {
   systemPrompt?: string
@@ -1155,8 +1181,73 @@ export class CodingAgentRunManager {
     return { invalidated, deferred }
   }
 
+  /** Kinds of action allowed "for this chat" (by chat). */
+  private chatApprovals = new Map<string, Set<string>>()
+
+  /**
+   * An agent wants to act: ask in Studio and wait for the answer. The agent's
+   * own rules decide when it asks; Studio only shows the question. Denied when
+   * nobody answers in time or the run ends.
+   */
+  askApproval(run: ManagedCodingAgentRun, request: AgentApprovalRequest): Promise<AgentApprovalChoice> {
+    const sessionId = run.launch.sessionId
+    if (this.chatApprovals.get(sessionId)?.has(request.key)) return Promise.resolve('session')
+    const approvalId = `agent-${randomUUID()}`
+    run.agentApprovals ??= new Map()
+    return new Promise(resolve => {
+      const finish = (choice: AgentApprovalChoice, reason?: string) => {
+        const wait = run.agentApprovals?.get(approvalId)
+        if (!wait) return
+        clearTimeout(wait.timer)
+        run.agentApprovals?.delete(approvalId)
+        if (choice === 'session') {
+          const allowed = this.chatApprovals.get(sessionId) ?? new Set<string>()
+          allowed.add(request.key)
+          this.chatApprovals.set(sessionId, allowed)
+        }
+        if (reason) {
+          this.emitToChat(sessionId, 'approval.resolved', { event: 'approval.resolved', session_id: sessionId, approval_id: approvalId, choice, resolved: true, reason })
+        }
+        resolve(choice)
+      }
+      const timer = setTimeout(() => finish('deny', 'No answer in time'), AGENT_APPROVAL_TIMEOUT_MS)
+      timer.unref?.()
+      run.agentApprovals!.set(approvalId, { key: request.key, resolve: choice => finish(choice), timer })
+      this.emitToChat(sessionId, 'approval.requested', {
+        event: 'approval.requested',
+        session_id: sessionId,
+        approval_id: approvalId,
+        title: request.title,
+        description: request.description,
+        ...(request.command ? { command: request.command } : {}),
+        choices: ['once', 'session', 'deny'],
+        source: run.launch.agentId,
+        timeout_ms: AGENT_APPROVAL_TIMEOUT_MS,
+        remaining_timeout_ms: AGENT_APPROVAL_TIMEOUT_MS,
+        requested_at: Date.now(),
+      })
+    })
+  }
+
+  /** The run ended: every question still open is denied. */
+  private denyOpenApprovals(run: ManagedCodingAgentRun, reason: string) {
+    for (const [approvalId, wait] of run.agentApprovals || []) {
+      clearTimeout(wait.timer)
+      this.emitToChat(run.launch.sessionId, 'approval.resolved', { event: 'approval.resolved', session_id: run.launch.sessionId, approval_id: approvalId, choice: 'deny', resolved: true, reason })
+      wait.resolve('deny')
+    }
+    run.agentApprovals?.clear()
+  }
+
   resolveApproval(sessionId: string, approvalId: string, choice = 'deny'): { handled: boolean; resolved: boolean } {
     const run = this.getBySession(sessionId)
+    const wait = run?.agentApprovals?.get(approvalId)
+    if (run && wait) {
+      const normalized = String(choice || 'deny').trim().toLowerCase()
+      // "always" is kept for this chat; anything unknown denies.
+      wait.resolve(normalized === 'once' ? 'once' : normalized === 'session' || normalized === 'always' ? 'session' : 'deny')
+      return { handled: true, resolved: true }
+    }
     const request = run?.piUiRequests?.get(approvalId)
     if (!run || !request) return { handled: false, resolved: false }
     const normalizedChoice = String(choice || 'deny').trim().toLowerCase()
@@ -1597,6 +1688,7 @@ export class CodingAgentRunManager {
       })
     }
     run.piUiRequests?.clear()
+    this.denyOpenApprovals(run, 'Coding agent session closed')
     this.flushTerminalOutput(run)
     if (run.terminalFlushTimer) clearTimeout(run.terminalFlushTimer)
     this.runs.delete(run.id)
@@ -2121,10 +2213,14 @@ export class CodingAgentRunManager {
     const promptArgument = hasArg(run.launch.args, '--append-system-prompt-file')
       ? ''
       : normalizeCliPromptArgument(systemPrompt)
-    const inputFormat = images.length > 0 ? 'stream-json' : 'text'
-    const stdinInput = images.length > 0 ? buildClaudeStreamJsonInput(input, images) : input
+    // Claude asks Studio before it acts (its own permission rules decide when):
+    // it sends can_use_tool requests on its control channel and waits.
+    const asks = run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId)
+    const inputFormat = asks || images.length > 0 ? 'stream-json' : 'text'
+    const stdinInput = inputFormat === 'stream-json' ? buildClaudeStreamJsonInput(input, images) : input
     const args = [
-      ...run.launch.args,
+      ...(asks ? withApprovals(run.launch.args) : run.launch.args),
+      ...(asks ? ['--permission-prompt-tool', 'stdio'] : []),
       ...nativeSessionArgs,
       ...(promptArgument ? ['--append-system-prompt', promptArgument] : []),
       '-p',
@@ -2163,7 +2259,12 @@ export class CodingAgentRunManager {
       child.stdin.on('error', (err) => {
         logger.warn({ err, runId: run.id, sessionId: run.launch.sessionId }, '[coding-agent-run] claude stdin input failed')
       })
-      child.stdin.end(`${stdinInput}\n`)
+      if (asks) {
+        child.stdin.write(`${stdinInput}\n`)
+        run.claudeControlStdin = child.stdin
+      } else {
+        child.stdin.end(`${stdinInput}\n`)
+      }
     }
 
     child.on('error', (err) => {
@@ -2192,6 +2293,8 @@ export class CodingAgentRunManager {
     // `close` fires only after the stdio streams are closed and drained.
     child.on('close', (code) => {
       if (stdoutBuffer.trim()) this.handleClaudePrintLine(run, stdoutBuffer)
+      run.claudeControlStdin = undefined
+      this.denyOpenApprovals(run, 'The agent stopped')
       if (run.currentChildKillTimer) clearTimeout(run.currentChildKillTimer)
       run.currentChildKillTimer = undefined
       run.currentChild = undefined
@@ -2231,6 +2334,30 @@ export class CodingAgentRunManager {
     }
   }
 
+  /** Claude asks before using a tool: Studio's approval card answers. */
+  private async answerClaudePermission(run: ManagedCodingAgentRun, event: any) {
+    const request = event.request || {}
+    const tool = String(request.tool_name || 'tool')
+    const input = request.input && typeof request.input === 'object' ? request.input : {}
+    const command = tool === 'Bash' ? String(input.command || '')
+      : String(input.file_path || input.path || input.notebook_path || input.url || '')
+    const executable = tool === 'Bash' ? command.trim().split(/\s+/)[0] || '' : ''
+    const choice = await this.askApproval(run, {
+      key: executable ? `${tool}:${executable}` : tool,
+      title: `Claude Code wants to use ${tool}`,
+      description: String(request.description || request.decision_reason || (tool === 'Bash' ? 'Run a command' : `Use ${tool}`)),
+      ...(command ? { command: command.slice(0, 4000) } : {}),
+    })
+    const response = choice === 'deny'
+      ? { behavior: 'deny', message: 'The user denied this in Studio.' }
+      : { behavior: 'allow', updatedInput: input }
+    try {
+      run.claudeControlStdin?.write(`${JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: event.request_id, response } })}\n`)
+    } catch (err) {
+      logger.warn({ err, runId: run.id }, '[coding-agent-run] could not answer Claude permission request')
+    }
+  }
+
   private handleClaudePrintLine(run: ManagedCodingAgentRun, line: string) {
     const trimmed = line.trim()
     if (!trimmed) return
@@ -2240,6 +2367,17 @@ export class CodingAgentRunManager {
     } catch {
       logger.debug({ runId: run.id, line: sanitizeCodingAgentTerminalOutput(trimmed) }, '[coding-agent-run] ignored non-json Claude print line')
       return
+    }
+
+    if (event.type === 'control_request' && event.request?.subtype === 'can_use_tool') {
+      void this.answerClaudePermission(run, event)
+      return
+    }
+    if (event.type === 'control_cancel_request') return
+    // The turn is over: no more questions, so Claude may exit.
+    if (event.type === 'result' && run.claudeControlStdin) {
+      try { run.claudeControlStdin.end() } catch {}
+      run.claudeControlStdin = undefined
     }
 
     if (typeof event.session_id === 'string' && event.session_id.trim()) {
@@ -2694,6 +2832,7 @@ export class CodingAgentRunManager {
 
   private startNativeTurn(run: ManagedCodingAgentRun, input: string, systemPrompt: string, images: CodingAgentImageInput[]) {
     startNativeChatTurn(run, input, systemPrompt, {
+      askApproval: request => this.askApproval(run, request),
       spawn: spawnCodingAgentChild, isRunning: childIsRunning,
       terminate: terminateChildProcess, forceKill: forceKillChildProcess,
       processError: error => childProcessErrorMessage(error, run.launch.agentId), exitError: (code, stderr) => exitErrorMessage(run.launch.agentId, code, stderr),
@@ -2708,6 +2847,7 @@ export class CodingAgentRunManager {
 
   private startDshTurn(run: ManagedCodingAgentRun, input: string, systemPrompt: string, images: CodingAgentImageInput[]) {
     startDshChatTurn(run, input, systemPrompt, images, {
+      askApproval: request => this.askApproval(run, request),
       spawn: spawnCodingAgentChild, isRunning: childIsRunning,
       terminate: terminateChildProcess, forceKill: forceKillChildProcess,
       processError: error => childProcessErrorMessage(error, run.launch.agentId), exitError: (code, stderr) => exitErrorMessage('DSH', code, stderr),

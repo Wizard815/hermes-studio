@@ -1,3 +1,5 @@
+import { answerAcpPermission } from '../../protocol/acp/permission'
+import { agentAsksBeforeActing } from '../approvals'
 import type { ChildProcess } from 'node:child_process'
 import type { ManagedCodingAgentRun } from '../runtime/run-manager'
 import type { CodingAgentImageInput } from '../../protocol/types'
@@ -10,6 +12,8 @@ import { DSH_MODEL_PROVIDER } from './runtime-config'
 import { normalizeTokenUsage, recordSessionUsage } from '../../../studio/public/usage'
 
 export interface DshTurnHost {
+  /** Ask in Studio before DSH acts (Studio's approval card). */
+  askApproval?(request: import('../runtime/run-manager').AgentApprovalRequest): Promise<import('../runtime/run-manager').AgentApprovalChoice>
   spawn(command: string, args: string[], options: { cwd: string; pipeStdin: boolean; env: NodeJS.ProcessEnv }): ChildProcess
   isRunning(child?: ChildProcess): boolean
   terminate(child?: ChildProcess): void
@@ -51,6 +55,8 @@ export function startDshChatTurn(run: ManagedCodingAgentRun, input: string, syst
   run.currentChild = child
   const turn = new DshAcpTurn(child, {
     permissionRequired: run.launch.approvalRequired,
+    ...(host.askApproval && (run.launch.approvalRequired || agentAsksBeforeActing('dsh'))
+      ? { askPermission: (params: any) => answerAcpPermission(params, 'DSH', host.askApproval!) } : {}),
     usage: event => {
       // Scoped calls are already owned by the provider proxy ledger.
       if (run.launch.mode !== 'global' || !event || typeof event.requestId !== 'string' || !event.requestId) return

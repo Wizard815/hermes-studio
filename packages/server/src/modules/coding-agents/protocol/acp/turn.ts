@@ -24,6 +24,8 @@ export class NativeAcpTurn {
     update(update: any): void
     session(id: string): void
     permissionRequired?: boolean
+    /** Ask Studio before the agent acts; without it, permission follows permissionRequired. */
+    askPermission?: (params: any) => Promise<any>
   }) {
     child.stdout?.on('data', (chunk: Buffer) => {
       try {
@@ -83,7 +85,12 @@ export class NativeAcpTurn {
       if (message.method === 'session/update' && message.params?.sessionId === this.sessionId) {
         this.callbacks.update(message.params.update)
       } else if (message.id !== undefined) {
-        if (message.method === 'session/request_permission' && message.params?.sessionId === this.sessionId) {
+        if (message.method === 'session/request_permission' && message.params?.sessionId === this.sessionId && this.callbacks.askPermission) {
+          const id = message.id
+          void this.callbacks.askPermission(message.params)
+            .then(result => this.write({ id, result }))
+            .catch(() => this.write({ id, result: { outcome: { outcome: 'cancelled' } } }))
+        } else if (message.method === 'session/request_permission' && message.params?.sessionId === this.sessionId) {
           const kind = this.callbacks.permissionRequired ? 'reject_once' : 'allow_once'
           const option = message.params.options?.find((entry: any) => entry.kind === kind)
           this.write({ id: message.id, result: { outcome: option

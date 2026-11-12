@@ -24,6 +24,8 @@ import { delimiter, dirname, join, win32 as win32Path } from 'path'
 import { promisify } from 'util'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { getWebUiHome } from '../../studio/public/config'
+import { withApprovals, withApprovalsEnv } from './approvals'
+export { withApprovals, withApprovalsEnv } from './approvals'
 import { getProfileDir, PROVIDER_ENV_MAP, readConfigYamlForProfile, safeReadFile } from '../../studio/public/profile-config'
 import { getCompatibleCustomProviders } from '../../studio/contracts/provider-compat'
 import { registerClaudeCodeProxyTarget } from './claude-code/proxy'
@@ -4074,27 +4076,6 @@ export async function prepareCodingAgentInteractiveLaunch(
     provider: launch.provider,
     model: launch.model,
   }
-}
-
-/**
- * Flags that let an agent act without asking. Studio's own background runs
- * use them; an agent in a terminal (herdr) has a person at it, so it asks
- * before running commands or editing files, as it does on its own.
- */
-const SKIP_APPROVAL_FLAGS = new Set(['--dangerously-skip-permissions', '--dangerously-bypass-approvals-and-sandbox', '--yolo', '--always-approve', '--force'])
-
-export function withApprovals(args: string[]): string[] {
-  return args.filter(arg => !SKIP_APPROVAL_FLAGS.has(arg))
-}
-
-/**
- * Settings that let an agent act without asking, by agent. OpenCode's
- * Studio config allows every tool; in a terminal it asks instead
- * (OPENCODE_PERMISSION is merged over its config).
- */
-export function withApprovalsEnv(agentId: string, env: Record<string, string>): Record<string, string> {
-  if (agentId === 'opencode') return { ...env, OPENCODE_PERMISSION: JSON.stringify({ '*': 'ask' }) }
-  return env
 }
 
 /** Interactive launch for an existing Studio chat, reusing its stored provider and model. */
