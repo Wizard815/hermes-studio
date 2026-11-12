@@ -7,9 +7,9 @@ import type { NativeTurnHost } from './turn-host'
 import { startNativeTurnProcess } from './native-turn-process'
 import type { CodingAgentImageInput } from '../../protocol/types'
 
-export function startAcpChatTurn(definition: { name: string; acpArgs: readonly string[] }, run: ManagedCodingAgentRun, input: string, systemPrompt: string, host: NativeTurnHost, images: CodingAgentImageInput[] = []) {
+export function startAcpChatTurn(definition: { name: string; acpArgs: readonly string[]; baseArgs?: readonly string[] }, run: ManagedCodingAgentRun, input: string, systemPrompt: string, host: NativeTurnHost, images: CodingAgentImageInput[] = []) {
   const { child, text, session, finish, isFinished } = startNativeTurnProcess(run, input, systemPrompt, host, {
-    name: definition.name, args: () => [...run.launch.args, ...definition.acpArgs],
+    name: definition.name, args: () => [...(definition.baseArgs ?? run.launch.args), ...definition.acpArgs],
     emptyPrompt: images.length ? 'Inspect the attached images.' : '',
   })
   let connection: NativeAcpTurn | undefined

@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { agentAsksBeforeActing, withApprovals } from '../approvals'
 import { CodexAppServerTurn } from '../codex/app-server-turn'
+import { startAcpChatTurn } from './acp-chat-turn'
+import type { NativeTurnHost } from './turn-host'
 import { codingAgentWorkingDirectory } from './workspace'
 import { startOpenCodeTurn as startOpenCodeTurnProcess } from '../opencode/chat-turn'
 import { applyOpenCodeLine } from '../opencode/event-adapter'
@@ -270,6 +272,9 @@ interface AgentApprovalWait {
   resolve(choice: AgentApprovalChoice): void
   timer: ReturnType<typeof setTimeout>
 }
+
+/** What OpenCode asks about when it asks before acting. */
+const OPENCODE_ASK = { edit: 'ask', bash: 'ask', webfetch: 'ask', external_directory: 'ask' }
 
 /** An unanswered approval is denied after this long. */
 const AGENT_APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
@@ -2832,7 +2837,11 @@ export class CodingAgentRunManager {
   }
 
   private startNativeTurn(run: ManagedCodingAgentRun, input: string, systemPrompt: string, images: CodingAgentImageInput[]) {
-    startNativeChatTurn(run, input, systemPrompt, {
+    startNativeChatTurn(run, input, systemPrompt, this.nativeTurnHost(run), images)
+  }
+
+  private nativeTurnHost(run: ManagedCodingAgentRun): NativeTurnHost {
+    return {
       askApproval: request => this.askApproval(run, request),
       spawn: spawnCodingAgentChild, isRunning: childIsRunning,
       terminate: terminateChildProcess, forceKill: forceKillChildProcess,
@@ -2843,7 +2852,7 @@ export class CodingAgentRunManager {
       toolStarted: item => this.handleCodexItemStarted(run, item), toolCompleted: item => this.handleCodexItemCompleted(run, item),
       completeAfterUsage: (event, payload) => this.emitAndMarkPrintChatRunCompletedAfterUsage(run, event, payload),
       complete: usage => this.completeClaudePrintTurn(run, usage), fail: message => this.failClaudePrintTurn(run, message),
-    }, images)
+    }
   }
 
   private startDshTurn(run: ManagedCodingAgentRun, input: string, systemPrompt: string, images: CodingAgentImageInput[]) {
@@ -3256,6 +3265,23 @@ export class CodingAgentRunManager {
   }
 
   private startOpenCodeTurn(run: ManagedCodingAgentRun, input: string, systemPrompt = '', images: CodingAgentImageInput[] = []) {
+    // OpenCode asks only over ACP (`run` can only auto-approve). Its Studio
+    // config allows every tool; commands, edits and paths outside the folder ask.
+    if (run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId)) {
+      // `opencode acp` takes no run flags: the model goes into its config instead.
+      const args = [...run.launch.args]
+      const modelAt = args.indexOf('--model')
+      const model = modelAt >= 0 ? args.splice(modelAt, 2)[1] : ''
+      const env: Record<string, string> = { ...(run.launch.env || {}), OPENCODE_PERMISSION: JSON.stringify(OPENCODE_ASK) }
+      if (model) {
+        let config: Record<string, unknown> = {}
+        try { config = JSON.parse(env.OPENCODE_CONFIG_CONTENT || '{}') } catch {}
+        env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ ...config, model })
+      }
+      run.launch.env = env
+      startAcpChatTurn({ name: 'OpenCode', acpArgs: ['acp'], baseArgs: args }, run, input, systemPrompt, this.nativeTurnHost(run), images)
+      return
+    }
     startOpenCodeTurnProcess(run, input, systemPrompt, images, this.openCodeTurnHost(run))
   }
 
