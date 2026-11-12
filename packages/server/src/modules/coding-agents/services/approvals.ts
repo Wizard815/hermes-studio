@@ -70,6 +70,8 @@ export function withApprovals(args: string[]): string[] {
  */
 export function withApprovalsEnv(agentId: string, env: Record<string, string>): Record<string, string> {
   if (agentId === 'opencode') return { ...env, OPENCODE_PERMISSION: JSON.stringify({ '*': 'ask' }) }
+  // Studio's Pi extension asks before commands and file writes.
+  if (agentId === 'pi') return { ...env, HERMES_PI_ASK: '1' }
   return env
 }
 

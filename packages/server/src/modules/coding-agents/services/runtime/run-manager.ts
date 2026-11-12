@@ -1737,6 +1737,10 @@ export class CodingAgentRunManager {
   }
 
   private startPiRpcProcess(run: ManagedCodingAgentRun) {
+    // Studio's Pi extension asks before commands and file writes (Studio's approval card).
+    if (run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId)) {
+      run.launch.env = { ...(run.launch.env || {}), HERMES_PI_ASK: '1' }
+    }
     const child = spawnCodingAgentChild(run.launch.command, run.launch.args, {
       cwd: codingAgentWorkingDirectory(run.launch),
       env: run.launch.mode === 'global'
