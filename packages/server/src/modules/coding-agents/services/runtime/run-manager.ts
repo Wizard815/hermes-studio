@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { agentAsksBeforeActing, withApprovals } from '../approvals'
+import { CodexAppServerTurn } from '../codex/app-server-turn'
 import { codingAgentWorkingDirectory } from './workspace'
 import { startOpenCodeTurn as startOpenCodeTurnProcess } from '../opencode/chat-turn'
 import { applyOpenCodeLine } from '../opencode/event-adapter'
@@ -3301,6 +3302,11 @@ export class CodingAgentRunManager {
     const promptArgument = run.launch.mode === 'scoped' || run.launch.promptFile
       ? ''
       : normalizeCliPromptArgument(systemPrompt)
+    // Codex asks before acting only on its app-server protocol (`exec` cannot ask).
+    if (run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId)) {
+      this.startCodexAppServerTurn(run, input, promptArgument, images)
+      return
+    }
     const commonArgs = [
       '--json',
       ...CODEX_REASONING_SUMMARY_ARGS,
@@ -3370,32 +3376,88 @@ export class CodingAgentRunManager {
     // model lookup; `exit` can precede the last JSONL bytes.
     child.on(run.launch.mode === 'global' ? 'close' : 'exit', (code: number | null) => {
       if (stdoutBuffer.trim()) this.handleCodexExecLine(run, stdoutBuffer)
-      if (run.currentChildKillTimer) clearTimeout(run.currentChildKillTimer)
-      run.currentChildKillTimer = undefined
-      run.currentChild = undefined
-      logger.info({ runId: run.id, sessionId: run.launch.sessionId, code }, '[coding-agent-run] codex exec exited')
-      const nativeSessionId = run.launch.agentNativeSessionId
-      if (run.launch.mode === 'global' && nativeSessionId && run.nativeTurnStartedAt) {
-        const home = run.launch.env?.CODEX_HOME || process.env.CODEX_HOME || join(getCodingAgentGlobalHome(), '.codex')
-        run.nativeCompletionPending = true
-        run.nativeUsageCompletion = readCodexTurnAccounting(home, nativeSessionId, run.nativeTurnStartedAt).then(([metadata, rows]) => {
-          run.nativeCompletionPending = false
-          if (metadata && run.nativeUsage) Object.assign(run.nativeUsage, metadata)
-          if (rows && run.nativeUsage) run.nativeUsage.codexRows = rows
-          if (run.exited || run.stoppedByUser) {
-            if (rows) {
-              this.captureUsage(run, () => this.recordNativeUsage(run, rows, run.printResponseId || run.id))
-              this.completeUsage(run)
-            }
-            return
+      this.codexChildClosed(run, code)
+    })
+  }
+
+  /** A Codex turn's process ended: read its accounting and finish the turn. */
+  private codexChildClosed(run: ManagedCodingAgentRun, code: number | null) {
+    if (run.currentChildKillTimer) clearTimeout(run.currentChildKillTimer)
+    run.currentChildKillTimer = undefined
+    run.currentChild = undefined
+    logger.info({ runId: run.id, sessionId: run.launch.sessionId, code }, '[coding-agent-run] codex exec exited')
+    const nativeSessionId = run.launch.agentNativeSessionId
+    if (run.launch.mode === 'global' && nativeSessionId && run.nativeTurnStartedAt) {
+      const home = run.launch.env?.CODEX_HOME || process.env.CODEX_HOME || join(getCodingAgentGlobalHome(), '.codex')
+      run.nativeCompletionPending = true
+      run.nativeUsageCompletion = readCodexTurnAccounting(home, nativeSessionId, run.nativeTurnStartedAt).then(([metadata, rows]) => {
+        run.nativeCompletionPending = false
+        if (metadata && run.nativeUsage) Object.assign(run.nativeUsage, metadata)
+        if (rows && run.nativeUsage) run.nativeUsage.codexRows = rows
+        if (run.exited || run.stoppedByUser) {
+          if (rows) {
+            this.captureUsage(run, () => this.recordNativeUsage(run, rows, run.printResponseId || run.id))
+            this.completeUsage(run)
           }
-          this.finishCodexExecTurn(run, code)
-        }).catch(err => {
-          run.nativeCompletionPending = false
-          logger.warn({ err, runId: run.id }, '[coding-agent-run] failed to read native model metadata')
-          if (!run.exited && !run.stoppedByUser) this.finishCodexExecTurn(run, code)
-        })
-      } else this.finishCodexExecTurn(run, code)
+          return
+        }
+        this.finishCodexExecTurn(run, code)
+      }).catch(err => {
+        run.nativeCompletionPending = false
+        logger.warn({ err, runId: run.id }, '[coding-agent-run] failed to read native model metadata')
+        if (!run.exited && !run.stoppedByUser) this.finishCodexExecTurn(run, code)
+      })
+    } else this.finishCodexExecTurn(run, code)
+  }
+
+  /** A Codex turn on its app-server, where Codex asks Studio before it acts. */
+  private startCodexAppServerTurn(run: ManagedCodingAgentRun, input: string, developerInstructions: string, images: CodingAgentImageInput[]) {
+    // The app-server takes Codex's config overrides (-c key=value), not exec's flags.
+    const configArgs: string[] = []
+    for (let index = 0; index < run.launch.args.length; index += 1) {
+      if (run.launch.args[index] === '-c' && run.launch.args[index + 1]) { configArgs.push('-c', run.launch.args[index + 1]); index += 1 }
+    }
+    const child = spawnCodingAgentChild(run.launch.command, ['app-server', ...configArgs], {
+      cwd: codingAgentWorkingDirectory(run.launch),
+      env: run.launch.mode === 'global'
+        ? { ...process.env, ...(run.launch.env || {}) }
+        : isolatedCodingAgentChildEnv(run.launch.env),
+      pipeStdin: true,
+    })
+    run.currentChild = child
+    child.stderr?.on('data', (chunk: Buffer) => {
+      this.touch(run)
+      const text = appendChildStderr(run, chunk)
+      if (text) logger.debug({ runId: run.id, sessionId: run.launch.sessionId, text }, '[coding-agent-run] codex app-server stderr')
+    })
+    child.stdin?.on('error', err => logger.warn({ err, runId: run.id }, '[coding-agent-run] codex app-server stdin failed'))
+    let completed = false
+    const turn = new CodexAppServerTurn(child, {
+      notify: (method, params) => { this.touch(run); this.handleCodexProtocolEvent(run, method, params) },
+      ask: request => this.askApproval(run, request),
+    })
+    const stop = () => {
+      try { child.stdin?.end() } catch {}
+      run.currentChildKillTimer = setTimeout(() => { if (childIsRunning(child)) terminateChildProcess(child) }, 1500)
+    }
+    void turn.run({
+      threadId: run.nativeResumeReady ? run.launch.agentNativeSessionId || undefined : undefined,
+      cwd: run.launch.workspaceDir,
+      text: input,
+      images: images.map(image => String(image.path || '')).filter(Boolean),
+      developerInstructions: developerInstructions || undefined,
+    }).then(() => { completed = true; stop() }).catch(error => {
+      if (!run.stoppedByUser) run.codexPendingError = error instanceof Error ? error.message : String(error)
+      stop()
+    })
+    child.on('error', err => {
+      run.currentChild = undefined
+      logger.warn({ err, runId: run.id }, '[coding-agent-run] codex app-server failed to start')
+      if (!run.printCompleted) this.failCodexExecTurn(run, childProcessErrorMessage(err, run.launch.agentId))
+    })
+    child.on('close', code => {
+      this.denyOpenApprovals(run, 'The agent stopped')
+      this.codexChildClosed(run, completed ? 0 : code || 1)
     })
   }
 
