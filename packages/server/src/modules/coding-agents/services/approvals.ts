@@ -8,10 +8,10 @@ import { getWebUiHome } from '../../studio/public/config'
  * policy, an ACP agent's permission requests); Studio shows the question as
  * its approval card. "auto" lets an agent act without asking (yolo).
  */
-export type AgentApprovalMode = 'ask' | 'auto'
+export type AgentApprovalMode = 'ask' | 'guarded' | 'auto'
 
 export interface AgentApprovalSettings {
-  /** Agents set to "auto"; every other agent asks. */
+  /** Agents not on the default "ask" (see approval-policy.ts for what each mode asks). */
   agents: Record<string, AgentApprovalMode>
 }
 
@@ -25,7 +25,7 @@ export function readAgentApprovalSettings(file = settingsFile()): AgentApprovalS
     const raw = JSON.parse(readFileSync(file, 'utf8'))
     const agents: Record<string, AgentApprovalMode> = {}
     for (const [id, mode] of Object.entries(raw?.agents || {})) {
-      if (/^[a-z0-9-]{1,40}$/.test(id) && (mode === 'ask' || mode === 'auto')) agents[id] = mode
+      if (/^[a-z0-9-]{1,40}$/.test(id) && (mode === 'ask' || mode === 'guarded' || mode === 'auto')) agents[id] = mode
     }
     return { agents }
   } catch {
@@ -38,7 +38,7 @@ export function writeAgentApprovalSettings(input: unknown, file = settingsFile()
   const current = readAgentApprovalSettings(file)
   for (const [id, mode] of Object.entries(raw.agents || {})) {
     if (!/^[a-z0-9-]{1,40}$/.test(id)) throw Object.assign(new Error('Invalid agent id'), { status: 400 })
-    if (mode !== 'ask' && mode !== 'auto') throw Object.assign(new Error('Approval mode must be ask or auto'), { status: 400 })
+    if (mode !== 'ask' && mode !== 'guarded' && mode !== 'auto') throw Object.assign(new Error('Approval mode must be ask, guarded or auto'), { status: 400 })
     current.agents[id] = mode
   }
   mkdirSync(dirname(file), { recursive: true })
@@ -48,9 +48,16 @@ export function writeAgentApprovalSettings(input: unknown, file = settingsFile()
   return current
 }
 
-/** Asking is the default; only an agent set to "auto" acts without asking. */
+export function agentApprovalMode(agentId: string, file?: string): AgentApprovalMode {
+  return readAgentApprovalSettings(file).agents[agentId] || 'ask'
+}
+
+/**
+ * Whether the agent runs in its asking mode (ask and guarded: its requests
+ * reach Studio, which shows the ones the mode cares about). "auto" is yolo.
+ */
 export function agentAsksBeforeActing(agentId: string, file?: string): boolean {
-  return readAgentApprovalSettings(file).agents[agentId] !== 'auto'
+  return agentApprovalMode(agentId, file) !== 'auto'
 }
 
 /**

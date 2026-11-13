@@ -291,7 +291,7 @@ export default {
   announcements: {"later": "لاحقًا", "details": "عرض التفاصيل", "gotIt": "فهمت"},
   taskPlan: {"title": "خطة المهام", "progress": "اكتمل {completed}/{total}", "pending": "غير مكتمل", "in_progress": "قيد التقدم", "completed": "مكتمل", "running": "قيد التنفيذ", "ended": "انتهى التنفيذ؛ توجد خطوات غير مكتملة", "interrupted": "تمت المقاطعة؛ توجد خطوات غير مكتملة", "failed": "فشل التنفيذ؛ توجد خطوات غير مكتملة"},
   agentAutoUpdate: { label: 'التحديثات التلقائية' },
-  agentApprovals: { label: 'اسأل قبل التنفيذ' },
+  agentApprovals: { label: 'الموافقات', ask: 'اسأل عن الأوامر', guarded: 'اسأل عن الإجراءات الخطرة فقط', auto: 'لا تسأل أبدًا (yolo)' },
   ekkoConfig: {
     "settingsTitle": "الإعدادات",
     "settingsRuntime": "التشغيل",

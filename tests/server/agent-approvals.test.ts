@@ -20,7 +20,7 @@ describe('agents ask in Studio before acting', () => {
     const asked: any[] = []
     const deny = await answerAcpPermission(params, 'Qwen Code', async request => { asked.push(request); return 'deny' })
     expect(deny).toEqual({ outcome: { outcome: 'selected', optionId: 'r1' } })
-    expect(asked[0]).toMatchObject({ key: 'execute:rm', title: 'Qwen Code wants to rm notes.txt', command: 'rm notes.txt' })
+    expect(asked[0]).toMatchObject({ key: 'execute:rm', title: 'Qwen Code wants to rm notes.txt', command: 'rm notes.txt', action: { kind: 'command', command: 'rm notes.txt' } })
     // "For this chat" is remembered by Studio; the agent is only told "once".
     expect(await answerAcpPermission(params, 'Qwen Code', async () => 'session')).toEqual({ outcome: { outcome: 'selected', optionId: 'a1' } })
     expect(await answerAcpPermission({ options: [] }, 'X', async () => 'once')).toEqual({ outcome: { outcome: 'cancelled' } })
@@ -28,7 +28,8 @@ describe('agents ask in Studio before acting', () => {
 
   it('maps Codex app-server approval requests and answers', () => {
     expect(codexApprovalRequest('item/commandExecution/requestApproval', { command: 'rm -rf build', reason: 'clean' }))
-      .toEqual({ key: 'command:rm', title: 'Codex wants to run a command', description: 'clean', command: 'rm -rf build' })
+      .toEqual({ key: 'command:rm', action: { kind: 'command', command: 'rm -rf build' }, title: 'Codex wants to run a command', description: 'clean', command: 'rm -rf build' })
+    expect(codexApprovalRequest('item/fileChange/requestApproval', { itemId: 'i1' }, ['/p/a.ts']).action).toEqual({ kind: 'write', paths: ['/p/a.ts'] })
     expect(codexApprovalResponse('item/commandExecution/requestApproval', 'deny')).toEqual({ decision: 'decline' })
     expect(codexApprovalResponse('item/fileChange/requestApproval', 'session')).toEqual({ decision: 'acceptForSession' })
     expect(codexApprovalResponse('execCommandApproval', 'once')).toEqual({ decision: 'approved' })

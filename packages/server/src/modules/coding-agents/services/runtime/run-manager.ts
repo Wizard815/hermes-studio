@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { agentAsksBeforeActing, withApprovals } from '../approvals'
+import { agentApprovalMode, agentAsksBeforeActing, withApprovals } from '../approvals'
+import { needsApproval, type AgentAction } from '../approval-policy'
 import { CodexAppServerTurn } from '../codex/app-server-turn'
 import { startAcpChatTurn } from './acp-chat-turn'
 import type { NativeTurnHost } from './turn-host'
@@ -260,6 +261,8 @@ export interface ManagedCodingAgentRun {
 export interface AgentApprovalRequest {
   /** What "for this chat" remembers, e.g. "Bash" or "edit". */
   key: string
+  /** What the agent wants to do, for Studio's rules (ask / guarded mode). */
+  action?: AgentAction
   title: string
   description: string
   command?: string
@@ -1209,6 +1212,10 @@ export class CodingAgentRunManager {
    */
   askApproval(run: ManagedCodingAgentRun, request: AgentApprovalRequest): Promise<AgentApprovalChoice> {
     const sessionId = run.launch.sessionId
+    // Studio's rules answer what this agent's mode does not ask you about.
+    // A workflow step that requires approval always asks, whatever the agent's mode.
+    const mode = agentApprovalMode(run.launch.agentId)
+    if (!needsApproval(run.launch.approvalRequired === true && mode !== 'ask' ? 'ask' : mode, request.action, run.launch.workspaceDir)) return Promise.resolve('once')
     if (this.chatApprovals.get(sessionId)?.has(request.key)) return Promise.resolve('session')
     const approvalId = `agent-${randomUUID()}`
     run.agentApprovals ??= new Map()
@@ -1962,6 +1969,20 @@ export class CodingAgentRunManager {
         } catch {}
         return
       }
+      // Studio's Pi extension asks "Pi wants to use <tool>" with the command or path:
+      // Studio's rules answer what the agent's mode does not ask you about.
+      const piTool = event.method === 'confirm' ? /^Pi wants to use (\w+)$/.exec(String(event.title || ''))?.[1] : undefined
+      if (piTool) {
+        const what = String(event.message || '')
+        const action: AgentAction = piTool === 'bash' || piTool === 'powershell' ? { kind: 'command', command: what } : { kind: 'write', paths: what ? [what] : [] }
+        const mode = agentApprovalMode(run.launch.agentId)
+        const allowed = !needsApproval(run.launch.approvalRequired === true && mode !== 'ask' ? 'ask' : mode, action, run.launch.workspaceDir)
+          || this.chatApprovals.get(run.launch.sessionId)?.has(`pi:${piTool}`)
+        if (allowed) {
+          try { this.writePiRpcCommand(run, { type: 'extension_ui_response', id: approvalId, confirmed: true }) } catch {}
+          return
+        }
+      }
       run.piUiRequests ??= new Map()
       const timeoutMs = Number(event.timeout)
       const request = { ...event } as any
@@ -2364,7 +2385,13 @@ export class CodingAgentRunManager {
     const command = tool === 'Bash' ? String(input.command || '')
       : String(input.file_path || input.path || input.notebook_path || input.url || '')
     const executable = tool === 'Bash' ? command.trim().split(/\s+/)[0] || '' : ''
+    const path = String(input.file_path || input.path || input.notebook_path || '')
+    const action: AgentAction = tool === 'Bash' ? { kind: 'command', command }
+      : ['Read', 'Glob', 'Grep', 'LS', 'NotebookRead', 'WebFetch', 'WebSearch', 'TodoWrite'].includes(tool) ? { kind: 'read', paths: path ? [path] : [] }
+        : ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(tool) ? { kind: 'write', paths: path ? [path] : [] }
+          : { kind: 'other' }
     const choice = await this.askApproval(run, {
+      action,
       key: executable ? `${tool}:${executable}` : tool,
       title: `Claude Code wants to use ${tool}`,
       description: String(request.description || request.decision_reason || (tool === 'Bash' ? 'Run a command' : `Use ${tool}`)),

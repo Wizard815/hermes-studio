@@ -424,7 +424,7 @@ export default {
     failed: 'Çalışma başarısız oldu; tamamlanmamış adımlar var',
   },
   agentAutoUpdate: { label: 'Otomatik güncellemeler' },
-  agentApprovals: { label: 'Harekete geçmeden önce sor' },
+  agentApprovals: { label: 'Onaylar', ask: 'Komutlar için sor', guarded: 'Yalnızca tehlikeli işlemlerde sor', auto: 'Asla sorma (yolo)' },
 
   browser: {
     recentDownloads: "Son indirmeler",

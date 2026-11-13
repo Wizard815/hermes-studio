@@ -291,7 +291,7 @@ export default {
   announcements: {"later": "Позже", "details": "Подробнее", "gotIt": "Понятно"},
   taskPlan: {"title": "План задач", "progress": "Завершено: {completed}/{total}", "pending": "Не завершено", "in_progress": "В процессе", "completed": "Завершено", "running": "Выполняется", "ended": "Запуск завершён; остались незавершённые шаги", "interrupted": "Прервано; остались незавершённые шаги", "failed": "Ошибка выполнения; остались незавершённые шаги"},
   agentAutoUpdate: { label: 'Автоматические обновления' },
-  agentApprovals: { label: 'Спрашивать перед действием' },
+  agentApprovals: { label: 'Подтверждения', ask: 'Спрашивать о командах', guarded: 'Спрашивать только об опасных действиях', auto: 'Никогда не спрашивать (yolo)' },
   ekkoConfig: {
     "settingsTitle": "Настройки",
     "settingsRuntime": "Выполнение",

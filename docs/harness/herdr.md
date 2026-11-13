@@ -67,10 +67,16 @@ stay separate apps; this integration links them.
   `--dangerously-skip-permissions`, Grok's `--always-approve`; OpenCode gets
   `OPENCODE_PERMISSION={"*":"ask"}`, `withApprovalsEnv`). Ekko keeps its own rules (deleting,
   sudo, killing processes, shell source, ...) and asks in the pane.
-- **Approvals in Studio chats.** Agents ask before acting (Agents page,
-  "Ask before acting"; off = the agent's yolo mode, also in herdr). Each
-  agent's own rules decide when to ask; Studio shows the question as its
-  approval card (`askApproval` in `runtime/run-manager.ts`: once / for this
+- **Approvals in Studio chats.** Agents page → each agent's "Approvals":
+  ask (default: reading anywhere and writing in the chat's folder go ahead,
+  commands and anything else ask), guarded (acts on its own, but dangerous
+  actions ask: deleting or moving outside the folder or the folder itself,
+  `$VAR` targets, sudo, disk and system tools, killing processes, force
+  pushes, resets, downloads piped into a shell, writing outside the folder),
+  auto (yolo, also in herdr). `approval-policy.ts` decides; adapters pass
+  what the agent wants to do (`AgentAction`). Each agent's own rules decide
+  when it asks; Studio answers what the mode doesn't ask you about and shows
+  the rest as its approval card (`askApproval` in `runtime/run-manager.ts`: once / for this
   chat / deny, denied after 5 minutes or when the run ends). How each agent
   asks: Claude Code `--permission-prompt-tool stdio` (control requests);
   Codex its app-server (`codex/app-server-turn.ts`); Qwen, Kimi, Copilot,

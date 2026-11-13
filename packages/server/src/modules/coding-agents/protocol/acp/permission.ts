@@ -1,4 +1,5 @@
 import type { AgentApprovalChoice, AgentApprovalRequest } from '../../services/runtime/run-manager'
+import { acpAction } from '../../services/approval-policy'
 
 /** Ask Studio about an ACP `session/request_permission` (the agent decides when to ask). */
 export type AcpAsk = (request: AgentApprovalRequest) => Promise<AgentApprovalChoice>
@@ -21,6 +22,7 @@ export async function answerAcpPermission(params: any, agentName: string, ask: A
   const options: any[] = Array.isArray(params?.options) ? params.options : []
   const tool = toolText(params?.toolCall)
   const choice = await ask({
+    action: acpAction(params?.toolCall),
     key: tool.key,
     title: `${agentName} wants to ${tool.title}`,
     description: tool.title,

@@ -291,7 +291,7 @@ export default {
   announcements: {"later": "Plus tard", "details": "Voir les détails", "gotIt": "Compris"},
   taskPlan: {"title": "Plan des tâches", "progress": "{completed}/{total} terminées", "pending": "Non terminé", "in_progress": "En cours", "completed": "Terminé", "running": "Exécution en cours", "ended": "Exécution terminée ; des étapes restent à faire", "interrupted": "Interrompu ; des étapes restent à faire", "failed": "Échec ; des étapes restent à faire"},
   agentAutoUpdate: { label: 'Mises à jour automatiques' },
-  agentApprovals: { label: 'Demander avant d’agir' },
+  agentApprovals: { label: 'Approbations', ask: 'Demander pour les commandes', guarded: 'Demander seulement pour les actions dangereuses', auto: 'Ne jamais demander (yolo)' },
   ekkoConfig: {
     "settingsTitle": "Paramètres",
     "settingsRuntime": "Exécution",

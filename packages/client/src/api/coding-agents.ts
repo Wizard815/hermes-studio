@@ -268,8 +268,9 @@ export interface AgentUpdatePolicyState {
  checkedAt: string
  error?: string
 }
-/** Whether each agent asks in Studio before acting ("ask", the default) or acts without asking ("auto"). */
-export function getAgentApprovals() { return request<{agents:Record<string,'ask'|'auto'>}>('/api/coding-agents/approvals') }
-export function setAgentApproval(id: CodingAgentId, mode: 'ask'|'auto') { return request<{agents:Record<string,'ask'|'auto'>}>('/api/coding-agents/approvals', {method:'PUT',body:JSON.stringify({agents:{[id]:mode}})}) }
+/** What each agent asks you before acting: ask (commands; the default), guarded (dangerous actions only), auto (never, yolo). */
+export type AgentApprovalMode = 'ask'|'guarded'|'auto'
+export function getAgentApprovals() { return request<{agents:Record<string,AgentApprovalMode>}>('/api/coding-agents/approvals') }
+export function setAgentApproval(id: CodingAgentId, mode: AgentApprovalMode) { return request<{agents:Record<string,AgentApprovalMode>}>('/api/coding-agents/approvals', {method:'PUT',body:JSON.stringify({agents:{[id]:mode}})}) }
 export function getAgentUpdatePolicies() { return request<{agents:Record<string,AgentUpdatePolicyState>}>('/api/coding-agents/update-policies') }
 export function setAgentAutoUpdate(id: CodingAgentId, autoUpdate: boolean) { return request<{agents:Record<string,AgentUpdatePolicyState>}>(`/api/coding-agents/${id}/update-policy`, {method:'PUT',body:JSON.stringify({autoUpdate})}) }

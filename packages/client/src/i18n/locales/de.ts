@@ -291,7 +291,7 @@ export default {
   announcements: {"later": "Später", "details": "Details ansehen", "gotIt": "Verstanden"},
   taskPlan: {"title": "Aufgabenplan", "progress": "{completed}/{total} abgeschlossen", "pending": "Nicht abgeschlossen", "in_progress": "In Bearbeitung", "completed": "Abgeschlossen", "running": "Wird ausgeführt", "ended": "Lauf beendet; Schritte bleiben offen", "interrupted": "Unterbrochen; Schritte bleiben offen", "failed": "Lauf fehlgeschlagen; Schritte bleiben offen"},
   agentAutoUpdate: { label: 'Automatische Updates' },
-  agentApprovals: { label: 'Vor Aktionen fragen' },
+  agentApprovals: { label: 'Freigaben', ask: 'Bei Befehlen fragen', guarded: 'Nur bei gefährlichen Aktionen fragen', auto: 'Nie fragen (yolo)' },
   ekkoConfig: {
     "settingsTitle": "Einstellungen",
     "settingsRuntime": "Laufzeit",

@@ -3,11 +3,11 @@ import { deploymentUrl } from '@/utils/deployment-url'
 import { agentMetadata } from '@/utils/agent-catalog'
 import PageLoading from '@/components/common/PageLoading.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import { getAgentApprovals, getAgentUpdatePolicies, setAgentApproval, setAgentAutoUpdate, type AgentUpdatePolicyState } from '@/api/coding-agents'
+import { getAgentApprovals, getAgentUpdatePolicies, setAgentApproval, setAgentAutoUpdate, type AgentApprovalMode, type AgentUpdatePolicyState } from '@/api/coding-agents'
 import { computed, defineAsyncComponent, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NAlert, NButton, NDrawer, NDrawerContent, NPopconfirm, NSwitch, NTag, useDialog, useMessage } from 'naive-ui'
+import { NAlert, NButton, NDrawer, NDrawerContent, NPopconfirm, NSelect, NSwitch, NTag, useDialog, useMessage } from 'naive-ui'
 import {
   checkCodingAgentUpdate,
   deleteCodingAgent,
@@ -102,15 +102,16 @@ const codingAgents: CodingAgentCard[] = [
 
 const updatePolicies = ref<Record<string, AgentUpdatePolicyState>>({})
 let policyTimer: ReturnType<typeof setInterval> | undefined
-/** Agents set to act without asking ("auto"); every other agent asks in Studio before acting. */
-const approvalModes = ref<Record<string, 'ask' | 'auto'>>({})
+/** What each agent asks before acting (agents not listed use "ask"). */
+const approvalModes = ref<Record<string, AgentApprovalMode>>({})
+const approvalOptions = computed(() => (['ask', 'guarded', 'auto'] as const).map(value => ({ value, label: t(`agentApprovals.${value}`) })))
 const approvalsLoaded = ref(false)
 async function refreshPolicies() {
   try { updatePolicies.value = (await getAgentUpdatePolicies()).agents } catch { /* unavailable to non-admin/old server */ }
   try { approvalModes.value = (await getAgentApprovals()).agents; approvalsLoaded.value = true } catch { /* unavailable to non-admin/old server */ }
 }
-async function toggleApproval(id: CodingAgentId, ask: boolean) {
-  try { approvalModes.value = (await setAgentApproval(id, ask ? 'ask' : 'auto')).agents } catch (error) { message.error(String(error)) }
+async function changeApproval(id: CodingAgentId, mode: AgentApprovalMode) {
+  try { approvalModes.value = (await setAgentApproval(id, mode)).agents } catch (error) { message.error(String(error)) }
 }
 function availableUpdateVersion(id: CodingAgentId): string {
   const policy = updatePolicies.value[id]
@@ -737,7 +738,7 @@ onUnmounted(() => {
                 </NPopconfirm>
               </div>
               <div v-if="toolStatus(agent.id)?.installed && approvalsLoaded" class="agent-update-policy" data-testid="agent-approval">
-                <div class="agent-update-policy-row"><span>{{ t('agentApprovals.label') }}</span><NSwitch class="agent-update-switch" size="small" :theme-overrides="{ railHeightSmall: '16px', railWidthSmall: '28px', buttonHeightSmall: '12px', buttonWidthSmall: '12px' }" :value="approvalModes[agent.id] !== 'auto'" @update:value="toggleApproval(agent.id, $event)" /></div>
+                <div class="agent-update-policy-row"><span>{{ t('agentApprovals.label') }}</span><NSelect class="agent-approval-select" size="tiny" :options="approvalOptions" :value="approvalModes[agent.id] || 'ask'" :consistent-menu-width="false" @update:value="changeApproval(agent.id, $event)" /></div>
               </div>
               <div v-if="toolStatus(agent.id)?.installed && updatePolicies[agent.id]" class="agent-update-policy">
                 <div class="agent-update-policy-row"><span>{{ t('agentAutoUpdate.label') }}</span><NSwitch class="agent-update-switch" size="small" :theme-overrides="{ railHeightSmall: '16px', railWidthSmall: '28px', buttonHeightSmall: '12px', buttonWidthSmall: '12px' }" :disabled="!updatePolicies[agent.id]?.autoUpdateSupported" :value="updatePolicies[agent.id]?.autoUpdate" @update:value="toggleAutoUpdate(agent.id, $event)" /></div>
@@ -1041,6 +1042,7 @@ onUnmounted(() => {
 <style scoped>
 .agent-update-policy { min-width: 0; width: 100%; box-sizing: border-box; padding-top: calc(10px * var(--spacing-scale, 1)); border-top: var(--border-width, 1px) solid var(--border-color, #eee); }
 .agent-update-policy-row { display: flex; justify-content: space-between; align-items: center; gap: calc(12px * var(--spacing-scale, 1)); font-size: calc(var(--font-size-base, 14px) * 12 / 14); }
+.agent-approval-select { width: 60%; max-width: 230px; }
 .agent-update-policy small { display: block; margin-top: 6px; overflow-wrap: anywhere; }
 .agent-update-error { color: #c44; }
 </style>

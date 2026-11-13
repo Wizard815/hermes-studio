@@ -291,7 +291,7 @@ export default {
   announcements: {"later": "稍后", "details": "查看详情", "gotIt": "知道了"},
   taskPlan: {"title": "任务计划", "progress": "{completed}/{total} 已完成", "pending": "未完成", "in_progress": "进行中", "completed": "已完成", "running": "执行中", "ended": "本次运行已结束，剩余步骤未完成", "interrupted": "已中断，剩余步骤未完成", "failed": "运行失败，剩余步骤未完成"},
   agentAutoUpdate: { label: '自动更新' },
-  agentApprovals: { label: '执行前先询问' },
+  agentApprovals: { label: '审批', ask: '命令需询问', guarded: '仅危险操作询问', auto: '从不询问（yolo）' },
   ekkoConfig: {
     "settingsTitle": "设置",
     "settingsRuntime": "运行",

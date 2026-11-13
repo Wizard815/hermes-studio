@@ -25,14 +25,18 @@ export interface CodexAppServerTurnHandlers {
 const APPROVAL_POLICY = 'untrusted'
 const SANDBOX = 'danger-full-access'
 
-export function codexApprovalRequest(method: string, params: any): AgentApprovalRequest {
+export function codexApprovalRequest(method: string, params: any, knownPaths: string[] = []): AgentApprovalRequest {
   const command = Array.isArray(params?.command) ? params.command.join(' ') : String(params?.command || '')
   if (method === 'item/fileChange/requestApproval' || method === 'applyPatchApproval') {
-    const files = params?.fileChanges && typeof params.fileChanges === 'object' ? Object.keys(params.fileChanges).join(', ') : ''
-    return { key: 'edit', title: 'Codex wants to change files', description: String(params?.reason || 'Apply a patch'), ...(files || params?.grantRoot ? { command: files || String(params.grantRoot) } : {}) }
+    const paths = [
+      ...(params?.fileChanges && typeof params.fileChanges === 'object' ? Object.keys(params.fileChanges) : []),
+      ...knownPaths,
+      ...(params?.grantRoot ? [String(params.grantRoot)] : []),
+    ]
+    return { key: 'edit', action: { kind: 'write', paths }, title: 'Codex wants to change files', description: String(params?.reason || 'Apply a patch'), ...(paths.length ? { command: paths.join(', ') } : {}) }
   }
   const executable = command.trim().split(/\s+/)[0] || ''
-  return { key: `command:${executable}`, title: 'Codex wants to run a command', description: String(params?.reason || 'Run a command'), ...(command ? { command: command.slice(0, 4000) } : {}) }
+  return { key: `command:${executable}`, action: { kind: 'command', command }, title: 'Codex wants to run a command', description: String(params?.reason || 'Run a command'), ...(command ? { command: command.slice(0, 4000) } : {}) }
 }
 
 /** The answer in the shape each Codex request expects. */
@@ -51,6 +55,8 @@ export class CodexAppServerTurn {
   private sequence = 0
   private pending = new Map<number, { resolve(value: any): void; reject(error: Error): void }>()
   private threadId = ''
+  /** Files each file-change item touches (its approval request carries only the item id). */
+  private itemPaths = new Map<string, string[]>()
   private done?: { resolve(): void; reject(error: Error): void }
 
   constructor(private child: ChildProcess, private handlers: CodexAppServerTurnHandlers) {
@@ -92,7 +98,7 @@ export class CodexAppServerTurn {
     if (message.method && message.id !== undefined) {
       if (APPROVAL_METHODS.has(message.method)) {
         const { id, method, params } = message
-        void this.handlers.ask(codexApprovalRequest(method, params))
+        void this.handlers.ask(codexApprovalRequest(method, params, this.itemPaths.get(String(params?.itemId || '')) || []))
           .then(choice => this.write({ id, result: codexApprovalResponse(method, choice) }))
           .catch(() => this.write({ id, result: codexApprovalResponse(method, 'deny') }))
       } else {
@@ -101,6 +107,10 @@ export class CodexAppServerTurn {
       return
     }
     if (message.method) {
+      const item = message.params?.item
+      if (item?.id && Array.isArray(item.changes)) {
+        this.itemPaths.set(String(item.id), item.changes.map((change: any) => String(change?.path || '')).filter(Boolean))
+      }
       this.handlers.notify(message.method, message.params || {})
       if (message.method === 'turn/completed' && (!this.threadId || message.params?.threadId === this.threadId)) {
         this.done?.resolve()
