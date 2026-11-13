@@ -11,6 +11,7 @@ import {
   getChatCodingAgentMcpServers,
   handleChatCodingAgentSessionCommand as handleCodingAgentSessionCommand,
   parseChatCodingAgentSessionCommand as parseCodingAgentSessionCommand,
+  enterChatCodingAgentCleanRoom as enterCodingAgentCleanRoom,
   sendChatCodingAgentRunInput as sendCodingAgentRunInput,
   startChatCodingAgentRun as startCodingAgentRun,
 } from '../../public/chat-agent-runtime'
@@ -91,7 +92,11 @@ export async function handleCodingAgentRun(
 
   if (typeof data.input === 'string') {
     const command = parseCodingAgentSessionCommand(data.input)
-    if (command) {
+    // "/cleanroom <task>": make the chat a clean room, then run the task in it.
+    if (command?.name === 'cleanroom' && command.args) {
+      await enterCodingAgentCleanRoom(sessionId)
+      data.input = command.args
+    } else if (command) {
       await handleCodingAgentSessionCommand(nsp, socket, data, command, profile, sessionMap)
       return
     }

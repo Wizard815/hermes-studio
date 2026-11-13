@@ -1141,6 +1141,8 @@ export default {
 
   // 對話
   chat: {
+    cleanRoom: '潔淨室',
+    cleanRoomHint: '此對話的代理在獨立容器中執行：容器內不需詢問即可執行任何操作，只能看到此對話的資料夾，只能連到 Studio 與允許的主機。',
     selectMessages: "多選訊息",
     messagesSelected: "已選 {count} 則",
     deleteSelectedMessages: "刪除所選",
@@ -1260,6 +1262,7 @@ export default {
       title: '重新命名目前會話',
       compress: '空閒時觸發上下文壓縮',
       compact: '壓縮目前對話（橋接底層 CLI /compact）',
+      cleanroom: '在獨立容器中執行此對話的代理（容器內完全權限，無法離開）',
       fork: '將目前空閒會話 fork 成一個新的關聯對話',
       steer: '向目前 Bridge 執行傳送引導文字',
       destroy: '釋放目前會話的 Bridge Agent',

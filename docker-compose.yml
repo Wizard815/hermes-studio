@@ -18,7 +18,9 @@ services:
       # herdr's config, chat spaces and sessions: herdr picks up where it was after the container is recreated.
       - ${HERMES_DATA_DIR:-./hermes_data}/herdr/config:/home/agent/.config/herdr
       - ${HERMES_DATA_DIR:-./hermes_data}/herdr/state:/home/agent/.local/state/herdr
-      # System page → Docker: manage the host's containers. This gives Studio full control of Docker.
+      # System page → Docker, and clean-room chats (/cleanroom: a chat's agent runs in its own
+      # container). This gives Studio full control of the host's Docker. Clean rooms also need
+      # each chat's folder on a mounted volume (e.g. under ./hermes_data) so Docker can share it.
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PORT=${PORT:-6060}

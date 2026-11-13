@@ -2,6 +2,7 @@ export type BridgeSessionCommandName =
   | 'usage'
   | 'context'
   | 'status'
+  | 'cleanroom'
   | 'yolo'
   | 'abort'
   | 'queue'
@@ -59,6 +60,7 @@ export const BRIDGE_SESSION_COMMAND_DEFINITIONS: BridgeSessionCommandDefinition[
   { key: 'command:title', name: 'title', argsKey: 'chat.slashCommandArgs.title', descriptionKey: 'chat.slashCommands.title' },
   { key: 'command:compress', name: 'compress', args: '', descriptionKey: 'chat.slashCommands.compress' },
   { key: 'command:compact', name: 'compact', args: '', descriptionKey: 'chat.slashCommands.compact' },
+  { key: 'command:cleanroom', name: 'cleanroom', argsKey: 'chat.slashCommandArgs.text', descriptionKey: 'chat.slashCommands.cleanroom' },
   { key: 'command:fork', name: 'fork', argsKey: 'chat.slashCommandArgs.title', descriptionKey: 'chat.slashCommands.fork' },
   { key: 'command:steer', name: 'steer', argsKey: 'chat.slashCommandArgs.text', descriptionKey: 'chat.slashCommands.steer' },
   { key: 'command:destroy', name: 'destroy', args: '', descriptionKey: 'chat.slashCommands.destroy' },
@@ -66,8 +68,9 @@ export const BRIDGE_SESSION_COMMAND_DEFINITIONS: BridgeSessionCommandDefinition[
   { key: 'command:reload-skills', name: 'reload-skills', args: '', descriptionKey: 'chat.slashCommands.reloadSkills' },
 ]
 
+// "/cleanroom" is listed for coding-agent chats only; Hermes chats do not know it.
 export const BRIDGE_SESSION_COMMAND_NAMES = Array.from(
-  new Set(BRIDGE_SESSION_COMMAND_DEFINITIONS.map(command => command.name)),
+  new Set(BRIDGE_SESSION_COMMAND_DEFINITIONS.map(command => command.name).filter(name => name !== 'cleanroom')),
 )
 
 const BRIDGE_SESSION_COMMAND_ALIASES = new Map<string, BridgeSessionCommandName>([

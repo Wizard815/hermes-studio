@@ -1149,6 +1149,8 @@ export default {
 
   // Chat
   chat: {
+    cleanRoom: 'Clean room',
+    cleanRoomHint: 'This chat\'s agent runs in its own container: it can do anything there without asking, sees only this chat\'s folder and can only reach Studio and the allowed hosts.',
     selectMessages: "Select messages",
     messagesSelected: "{count} selected",
     deleteSelectedMessages: "Delete selected",
@@ -1270,6 +1272,7 @@ export default {
       title: 'Rename this session',
       compress: 'Run context compression while idle',
       compact: 'Compact current conversation using the native CLI /compact',
+      cleanroom: 'Run this chat\'s agent in its own container (full access inside, cannot leave)',
       fork: 'Fork this idle session into a new linked conversation',
       steer: 'Send steering text to the active bridge run',
       destroy: 'Release the bridge agent for this session',

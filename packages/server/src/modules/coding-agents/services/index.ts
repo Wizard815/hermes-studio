@@ -25,6 +25,7 @@ import { promisify } from 'util'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { getWebUiHome } from '../../studio/public/config'
 import { agentAsksBeforeActing, withApprovals, withApprovalsEnv } from './approvals'
+import { cleanRoomCommand, cleanRoomExec, ensureCleanRoom, isCleanRoom, studioConfigDirs } from './cleanroom'
 export { withApprovals, withApprovalsEnv } from './approvals'
 import { getProfileDir, PROVIDER_ENV_MAP, readConfigYamlForProfile, safeReadFile } from '../../studio/public/profile-config'
 import { getCompatibleCustomProviders } from '../../studio/contracts/provider-compat'
@@ -3902,6 +3903,16 @@ async function startCodingAgentRunInternal(
   const persistedProvider = isNativeCodingAgent(id) || id === 'cursor' || id === 'antigravity'
     ? String(launch.provider || 'global').trim() || 'global'
     : String(resolvedInput.provider || launch.provider || '').trim() || launch.provider
+  // A clean-room chat runs its agent inside its own container (see cleanroom/).
+  // The container runs the program by its full path (the same path is shared with it).
+  const roomCommand = isCleanRoom(sessionId) ? await resolveInteractiveCommand(runtimeCommand) : runtimeCommand
+  const cleanRoom = isCleanRoom(sessionId)
+    ? await ensureCleanRoom(sessionId, {
+        workspace: launch.workspaceDir,
+        configs: studioConfigDirs([...launch.args, ...(launch.rootDir ? [launch.rootDir] : [])], launch.env),
+        program: cleanRoomProgramDir(roomCommand),
+      })
+    : ''
   const started = codingAgentRunManager.start({
     agentSessionId,
     agentId: launch.agentId,
@@ -3913,11 +3924,11 @@ async function startCodingAgentRunInternal(
     sessionId,
     agentNativeSessionId,
     nativeResume: Boolean(existingNativeSessionId),
-    command: runtimeCommand,
+    command: cleanRoom ? cleanRoomCommand(cleanRoom, roomCommand) : runtimeCommand,
     args: launch.args,
     shellCommand: launch.shellCommand,
     workspaceDir: launch.workspaceDir,
-    env: runtimeEnv,
+    env: cleanRoom ? launch.env : runtimeEnv,
     promptFile: launch.promptFile,
     nativeSystemPrompt: launch.nativeSystemPrompt,
     nativeMcpServers: launch.nativeMcpServers,
@@ -4065,9 +4076,9 @@ export interface CodingAgentInteractiveLaunch {
  */
 export async function prepareCodingAgentInteractiveLaunch(
   id: string,
-  input: CodingAgentLaunchInput & { resumeNativeSessionId?: string },
+  input: CodingAgentLaunchInput & { resumeNativeSessionId?: string; yolo?: boolean },
 ): Promise<CodingAgentInteractiveLaunch> {
-  const { resumeNativeSessionId, ...launchInput } = input
+  const { resumeNativeSessionId, yolo, ...launchInput } = input
   // A chosen provider (e.g. a llama-swap endpoint) needs its stored URL and key,
   // exactly as Studio's own runs resolve them; without it the agent would fall
   // back to its vendor's default API.
@@ -4082,12 +4093,29 @@ export async function prepareCodingAgentInteractiveLaunch(
     // exact binary Studio would run (including Studio-managed installs).
     command: await resolveInteractiveCommand(launch.command),
     // Agents ask in a terminal too, unless set to act without asking in Studio.
-    args: [...resume.prefix, ...(agentAsksBeforeActing(launch.agentId) ? withApprovals(launch.args) : launch.args), ...resume.suffix],
-    env: agentAsksBeforeActing(launch.agentId) ? withApprovalsEnv(launch.agentId, launch.env) : launch.env,
+    args: [...resume.prefix, ...(!yolo && agentAsksBeforeActing(launch.agentId) ? withApprovals(launch.args) : launch.args), ...resume.suffix],
+    env: !yolo && agentAsksBeforeActing(launch.agentId) ? withApprovalsEnv(launch.agentId, launch.env) : launch.env,
     workspaceDir: launch.workspaceDir,
     provider: launch.provider,
     model: launch.model,
   }
+}
+
+/**
+ * The agent program's install folder, shared read-only with a clean room: the
+ * deepest folder holding both the command (e.g. an npm prefix's bin/ link)
+ * and the file it really runs.
+ */
+export function cleanRoomProgramDir(command: string): string | undefined {
+  if (!command || !command.startsWith('/')) return undefined
+  let real = command
+  try { real = realpathSync(command) } catch {}
+  const a = dirname(dirname(command)).split('/')
+  const b = dirname(real).split('/')
+  let shared = 0
+  while (shared < a.length && shared < b.length && a[shared] === b[shared]) shared += 1
+  const root = a.slice(0, shared).join('/')
+  return root && root !== '/' && root.split('/').length > 2 ? root : undefined
 }
 
 /** Interactive launch for an existing Studio chat, reusing its stored provider and model. */
@@ -4103,12 +4131,24 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
     agentNativeSessionId: session.agent_native_session_id || undefined,
     agentSessionId: session.agent_session_id || undefined,
   }, session)
-  return prepareCodingAgentInteractiveLaunch(id, {
+  const cleanRoom = isCleanRoom(sessionId)
+  const launch = await prepareCodingAgentInteractiveLaunch(id, {
     ...resolved,
     // The pane resumes the native session; it must not also claim a new one.
     agentNativeSessionId: undefined,
     resumeNativeSessionId: session.agent_native_session_id || '',
+    // In a clean room the agent may do anything inside its container.
+    yolo: cleanRoom,
   })
+  if (!cleanRoom) return launch
+  // A clean-room chat in a terminal (herdr): the agent runs in the chat's container.
+  const container = await ensureCleanRoom(sessionId, {
+    workspace: launch.workspaceDir,
+    configs: studioConfigDirs(launch.args, launch.env),
+    program: cleanRoomProgramDir(launch.command),
+  })
+  const exec = cleanRoomExec(container, launch.command, launch.args, launch.workspaceDir, launch.env, { tty: true })
+  return { ...launch, command: exec.command, args: exec.args, env: {} }
 }
 
 /** Absolute path of a bare command on Studio's command PATH, or the command unchanged. */

@@ -1148,6 +1148,8 @@ export default {
 
   // 对话
   chat: {
+    cleanRoom: '洁净室',
+    cleanRoomHint: '此对话的智能体在独立容器中运行：容器内无需询问即可执行任何操作，只能看到此对话的文件夹，只能访问 Studio 和允许的主机。',
     selectMessages: "多选消息",
     messagesSelected: "已选 {count} 条",
     deleteSelectedMessages: "删除所选",
@@ -1269,6 +1271,7 @@ export default {
       title: '重命名当前会话',
       compress: '空闲时触发上下文压缩',
       compact: '压缩当前对话（桥接底层 CLI /compact）',
+      cleanroom: '在独立容器中运行此对话的智能体（容器内完全权限，无法离开）',
       fork: '将当前空闲会话 fork 成一个新的关联对话',
       steer: '向当前 Bridge 运行发送引导文本',
       destroy: '释放当前会话的 Bridge Agent',

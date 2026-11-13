@@ -1127,6 +1127,8 @@ export default {
 
   // 채팅
   chat: {
+    cleanRoom: '클린룸',
+    cleanRoomHint: '이 채팅의 에이전트는 전용 컨테이너에서 실행됩니다. 안에서는 묻지 않고 무엇이든 할 수 있고, 이 채팅의 폴더만 보이며, Studio와 허용된 호스트에만 접속할 수 있습니다.',
     selectMessages: "메시지 선택",
     messagesSelected: "{count}개 선택됨",
     deleteSelectedMessages: "선택 항목 삭제",
@@ -1244,6 +1246,7 @@ export default {
       title: '이 세션 이름 변경',
       compress: '유휴 상태에서 컨텍스트 압축 실행',
       compact: '네이티브 CLI /compact로 현재 대화 압축',
+      cleanroom: '이 채팅의 에이전트를 전용 컨테이너에서 실행 (안에서는 모든 권한, 밖으로는 못 나감)',
       steer: '활성 Bridge 실행에 지시 텍스트 보내기',
       destroy: '이 세션의 Bridge Agent 해제',
       reloadMcp: 'MCP 서버 다시 로드',

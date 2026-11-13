@@ -274,3 +274,6 @@ export function getAgentApprovals() { return request<{agents:Record<string,Agent
 export function setAgentApproval(id: CodingAgentId, mode: AgentApprovalMode) { return request<{agents:Record<string,AgentApprovalMode>}>('/api/coding-agents/approvals', {method:'PUT',body:JSON.stringify({agents:{[id]:mode}})}) }
 export function getAgentUpdatePolicies() { return request<{agents:Record<string,AgentUpdatePolicyState>}>('/api/coding-agents/update-policies') }
 export function setAgentAutoUpdate(id: CodingAgentId, autoUpdate: boolean) { return request<{agents:Record<string,AgentUpdatePolicyState>}>(`/api/coding-agents/${id}/update-policy`, {method:'PUT',body:JSON.stringify({autoUpdate})}) }
+
+/** Whether a chat is a clean room (its coding agent runs in its own container). */
+export function getCleanRoomStatus(sessionId: string) { return request<{ cleanRoom: boolean; container: string | null }>(`/api/coding-agents/cleanroom/sessions/${encodeURIComponent(sessionId)}`) }

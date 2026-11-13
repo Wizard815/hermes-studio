@@ -1,6 +1,6 @@
 import { NativeAcpTurn } from '../../protocol/acp/turn'
 import { answerAcpPermission } from '../../protocol/acp/permission'
-import { agentAsksBeforeActing } from '../approvals'
+import { launchAsks } from '../approvals'
 import { acpMcpServers, applyNativeAcpUpdate } from '../../protocol/acp/events'
 import type { ManagedCodingAgentRun } from './run-manager'
 import type { NativeTurnHost } from './turn-host'
@@ -17,7 +17,7 @@ export function startAcpChatTurn(definition: { name: string; acpArgs: readonly s
   let denied = false
   connection = new NativeAcpTurn(child, {
     session, permissionRequired: run.launch.approvalRequired,
-    ...(host.askApproval && (run.launch.approvalRequired || agentAsksBeforeActing(run.launch.agentId))
+    ...(host.askApproval && launchAsks(run.launch)
       ? { askPermission: (params: any) => answerAcpPermission(params, definition.name, async request => {
           const choice = await host.askApproval!(request)
           if (choice === 'deny') denied = true

@@ -636,6 +636,8 @@ export default {
   },
 
   chat: {
+    cleanRoom: 'Temiz oda',
+    cleanRoomHint: 'Bu sohbetin ajanı kendi konteynerinde çalışır: orada sormadan her şeyi yapabilir, yalnızca bu sohbetin klasörünü görür ve yalnızca Studio\'ya ve izin verilen sunuculara erişir.',
     selectMessages: "Mesajları seç",
     messagesSelected: "{count} seçildi",
     deleteSelectedMessages: "Seçilenleri sil",

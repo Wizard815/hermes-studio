@@ -1,4 +1,4 @@
-import { agentAsksBeforeActing } from '../approvals'
+import { launchAsks } from '../approvals'
 import { StringDecoder } from 'node:string_decoder'
 import type { ManagedCodingAgentRun } from '../runtime/run-manager'
 import type { NativeTurnHost } from '../runtime/turn-host'
@@ -13,7 +13,7 @@ const WINDOWS_PROMPT_BRIDGE = "let input='';process.stdin.setEncoding('utf8');pr
 
 export function startZcodeChatTurn(definition: { name: string }, run: ManagedCodingAgentRun, input: string, systemPrompt: string, host: NativeTurnHost, images: CodingAgentImageInput[] = []) {
   const bridge = process.platform === 'win32' && run.launch.command === process.execPath && /\.cjs$/i.test(run.launch.args[0] || '')
-  const baseArgs = [...run.launch.args, '--output-format', 'stream-json', '--mode', run.launch.approvalRequired || agentAsksBeforeActing('zcode') ? 'plan' : 'yolo',
+  const baseArgs = [...run.launch.args, '--output-format', 'stream-json', '--mode', launchAsks(run.launch) ? 'plan' : 'yolo',
     ...(run.nativeResumeReady && run.launch.agentNativeSessionId ? ['--resume', run.launch.agentNativeSessionId] : []),
     ...images.flatMap(image => ['--attach', image.path])]
   let prepared: ReturnType<typeof prepareZcodePrompt> | undefined

@@ -1127,6 +1127,8 @@ export default {
 
   // チャット
   chat: {
+    cleanRoom: 'クリーンルーム',
+    cleanRoomHint: 'このチャットのエージェントは専用コンテナで動きます。中では確認なしで何でもでき、見えるのはこのチャットのフォルダだけ、接続できるのは Studio と許可されたホストだけです。',
     selectMessages: "メッセージを選択",
     messagesSelected: "{count} 件選択中",
     deleteSelectedMessages: "選択項目を削除",
@@ -1244,6 +1246,7 @@ export default {
       title: 'このセッション名を変更',
       compress: 'アイドル時にコンテキスト圧縮を実行',
       compact: 'ネイティブ CLI /compact で現在の会話を圧縮',
+      cleanroom: 'このチャットのエージェントを専用コンテナで実行（中では全権限、外には出られない）',
       steer: '実行中の Bridge に誘導テキストを送信',
       destroy: 'このセッションの Bridge Agent を解放',
       reloadMcp: 'MCP サーバーを再読み込み',

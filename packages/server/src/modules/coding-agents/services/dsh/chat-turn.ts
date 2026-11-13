@@ -1,5 +1,5 @@
 import { answerAcpPermission } from '../../protocol/acp/permission'
-import { agentAsksBeforeActing } from '../approvals'
+import { launchAsks } from '../approvals'
 import type { ChildProcess } from 'node:child_process'
 import type { ManagedCodingAgentRun } from '../runtime/run-manager'
 import type { CodingAgentImageInput } from '../../protocol/types'
@@ -55,7 +55,7 @@ export function startDshChatTurn(run: ManagedCodingAgentRun, input: string, syst
   run.currentChild = child
   const turn = new DshAcpTurn(child, {
     permissionRequired: run.launch.approvalRequired,
-    ...(host.askApproval && (run.launch.approvalRequired || agentAsksBeforeActing('dsh'))
+    ...(host.askApproval && launchAsks(run.launch)
       ? { askPermission: (params: any) => answerAcpPermission(params, 'DSH', host.askApproval!) } : {}),
     usage: event => {
       // Scoped calls are already owned by the provider proxy ledger.

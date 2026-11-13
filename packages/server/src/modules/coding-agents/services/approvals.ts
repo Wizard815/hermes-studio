@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { getWebUiHome } from '../../studio/public/config'
+import { parseCleanRoomCommand } from './cleanroom'
 
 /**
  * Whether coding agents ask before they act in Studio chats. Each agent's own
@@ -82,3 +83,12 @@ export function withApprovalsEnv(agentId: string, env: Record<string, string>): 
   return env
 }
 
+
+/**
+ * Whether this run's agent asks before acting. A clean room never asks: the
+ * agent has full permission inside its container (the container is the limit).
+ */
+export function launchAsks(launch: { agentId: string; command: string; approvalRequired?: boolean }): boolean {
+  if (parseCleanRoomCommand(launch.command)) return false
+  return launch.approvalRequired === true || agentAsksBeforeActing(launch.agentId)
+}

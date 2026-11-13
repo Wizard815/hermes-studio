@@ -71,6 +71,7 @@ import {
   getPrimaryAgentBridgeManager as getAgentBridgeManager,
   handleChatCodingAgentSessionCommand as handleCodingAgentSessionCommand,
   parseChatCodingAgentSessionCommand as parseCodingAgentSessionCommand,
+  enterChatCodingAgentCleanRoom,
   redactPrimaryAgentBridgeError as redactAgentBridgeError,
   respondToChatEkkoClarification as respondToEkkoClarification,
   respondToChatEkkoToolApproval as respondToEkkoToolApproval,
@@ -1146,7 +1147,11 @@ export class ChatRunSocket {
           if (!ekkoExecution && isProviderAgentExecution(source, data)) {
             if (typeof data.input === 'string') {
               const codingAgentCommand = parseCodingAgentSessionCommand(data.input)
-              if (codingAgentCommand) {
+              // "/cleanroom <task>": make the chat a clean room, then run the task in it.
+              if (codingAgentCommand?.name === 'cleanroom' && codingAgentCommand.args && data.session_id) {
+                await enterChatCodingAgentCleanRoom(String(data.session_id))
+                data.input = codingAgentCommand.args
+              } else if (codingAgentCommand) {
                 await handleCodingAgentSessionCommand(this.nsp, socket, data, codingAgentCommand, runProfile, this.sessionMap)
                 return
               }

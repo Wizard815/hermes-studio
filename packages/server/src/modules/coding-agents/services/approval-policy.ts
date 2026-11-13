@@ -110,6 +110,37 @@ function base(word: string): string {
   return word.split('/').pop() || word
 }
 
+/**
+ * Docker in guarded mode: building, running, inspecting and removing the
+ * chat's containers is fine; reaching the host through them or wiping shared
+ * Docker data asks.
+ */
+function dangerousContainerCommand(args: string[], folder: string): string | null {
+  const sub = args.find(word => !word.startsWith('-')) || ''
+  const rest = args.slice(args.indexOf(sub) + 1)
+  if (sub === 'system' && rest.includes('prune')) return 'prunes Docker data'
+  if (['volume', 'network', 'image'].includes(sub) && rest.some(word => ['rm', 'remove', 'prune'].includes(word))) return `removes Docker ${sub}s`
+  if (sub === 'rmi') return 'removes Docker images'
+  // Removing or stopping "everything" hides its targets in $(...): ask.
+  if (['rm', 'kill', 'stop'].includes(sub) && !rest.some(word => !word.startsWith('-'))) return `${sub}s containers it does not name`
+  if (sub === 'run' || sub === 'create' || (sub === 'compose' && rest.includes('run'))) {
+    for (let index = 0; index < rest.length; index += 1) {
+      const word = rest[index]
+      if (word === '--privileged') return 'runs a privileged container'
+      if (/^--(pid|network|net|ipc|uts|userns)=host$/.test(word) || (/^--(pid|network|net|ipc|uts|userns)$/.test(word) && rest[index + 1] === 'host')) return 'shares the host with a container'
+      if (word.startsWith('--cap-add') || word.startsWith('--device')) return 'gives a container host powers'
+      let spec = ''
+      if (word === '-v' || word === '--volume' || word === '--mount') spec = rest[index + 1] || ''
+      else if (word.startsWith('--volume=') || word.startsWith('--mount=') || /^-v./.test(word)) spec = word.replace(/^(--volume=|--mount=|-v)/, '')
+      if (!spec) continue
+      const source = spec.includes('source=') || spec.includes('src=') ? (/(?:source|src)=([^,]+)/.exec(spec)?.[1] || '') : spec.split(':')[0]
+      if (source.includes('docker.sock')) return 'gives a container the Docker socket'
+      if ((source.startsWith('/') || source.startsWith('~') || source.startsWith('.') || source.includes('$')) && (source.includes('$') || !insideFolder(source, folder))) return `mounts ${source} into a container`
+    }
+  }
+  return null
+}
+
 /** A dangerous command: what guarded mode still asks about. */
 export function dangerousCommand(command: string, folder: string, depth = 0): string | null {
   const parts = segments(command)
@@ -155,6 +186,11 @@ export function dangerousCommand(command: string, folder: string, depth = 0): st
     if (name === 'find' && (plain.includes('-delete') || plain.includes('-exec'))) {
       const start = targets[0] || '.'
       if (!insideFolder(start, folder) || plain.includes('-exec') && plain.some(word => base(word) === 'rm') && !insideFolder(start, folder)) return `deletes under ${start}`
+      continue
+    }
+    if (name === 'docker' || name === 'podman') {
+      const reason = dangerousContainerCommand(plain, folder)
+      if (reason) return reason
       continue
     }
     if (name === 'git') {

@@ -276,7 +276,7 @@ const voiceInput = useComposerVoiceInput({
   insertTranscript: insertVoiceTranscriptIntoInput,
 })
 
-const CODING_AGENT_SLASH_COMMANDS = ['context', 'compact', 'usage', 'status']
+const CODING_AGENT_SLASH_COMMANDS = ['context', 'compact', 'usage', 'status', 'cleanroom']
 
 const bridgeCommands = computed<SlashCommandOption[]>(() =>
   BRIDGE_SESSION_COMMAND_DEFINITIONS.map(command => ({
@@ -343,7 +343,8 @@ const filteredBridgeCommands = computed(() => {
   const commands = /^person-(main|task)-/.test(composerSession.value?.id || '') ? [] : isEkkoSession.value
     ? EKKO_SESSION_COMMAND_DEFINITIONS.map(command => ({ ...command, args: command.args || '', description: t(command.descriptionKey) }))
     : isBridgeSession.value
-    ? bridgeCommands.value
+    // Clean rooms are for coding agents (their agent runs in a container).
+    ? bridgeCommands.value.filter(command => command.name !== 'cleanroom')
     : isCodingAgentSession.value
       ? bridgeCommands.value.filter(command => CODING_AGENT_SLASH_COMMANDS.includes(command.name)
         && !(command.name === 'context' && isCursorSession.value)

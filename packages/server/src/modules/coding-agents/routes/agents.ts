@@ -22,6 +22,11 @@ codingAgentRoutes.post('/api/coding-agents/dsh/web-plugins', requireSuperAdmin, 
 codingAgentRoutes.post('/api/coding-agents/dsh/ui-session', requireSuperAdmin, plugins.openUi)
 codingAgentRoutes.delete('/api/coding-agents/dsh/ui-session/:id', requireSuperAdmin, plugins.closeUi)
 
+codingAgentRoutes.get('/api/coding-agents/cleanroom/settings', requireAdmin, ctrl.cleanRoomSettings)
+codingAgentRoutes.put('/api/coding-agents/cleanroom/settings', requireSuperAdmin, ctrl.setCleanRoomSettings)
+codingAgentRoutes.get('/api/coding-agents/cleanroom/sessions/:sessionId', ctrl.cleanRoomStatus)
+codingAgentRoutes.post('/api/coding-agents/cleanroom/sessions/:sessionId', requireSuperAdmin, ctrl.startCleanRoom)
+codingAgentRoutes.delete('/api/coding-agents/cleanroom/sessions/:sessionId/container', requireSuperAdmin, ctrl.resetCleanRoom)
 codingAgentRoutes.get('/api/coding-agents/approvals', requireAdmin, ctrl.approvals)
 codingAgentRoutes.put('/api/coding-agents/approvals', requireSuperAdmin, ctrl.setApprovals)
 codingAgentRoutes.get('/api/coding-agents/update-policies', requireAdmin, ctrl.updatePolicies)

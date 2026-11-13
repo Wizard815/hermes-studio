@@ -6,10 +6,11 @@ import { calcAndUpdateUsage, getOrCreateSession } from '../../studio/public/run-
 import { getUsage } from '../../studio/public/usage'
 import type { SessionState } from '../../studio/contracts/runs/session'
 import { codingAgentRunManager } from './runtime/run-manager'
+import { markCleanRoom } from './cleanroom'
 import { compactStoredCodingAgentSession, startCodingAgentRun } from './index'
 import { isContextWindowExceededError, nativeContextRecoveryMessage, resetNativeSessionAfterContextOverflow } from './context-recovery'
 
-export type CodingAgentCommandName = 'context' | 'compact' | 'usage' | 'status'
+export type CodingAgentCommandName = 'context' | 'compact' | 'usage' | 'status' | 'cleanroom'
 
 export interface ParsedCodingAgentCommand {
   name: CodingAgentCommandName
@@ -28,6 +29,8 @@ const CODING_AGENT_COMMAND_ALIASES: Record<string, CodingAgentCommandName> = {
   compact: 'compact',
   usage: 'usage',
   status: 'status',
+  cleanroom: 'cleanroom',
+  'clean-room': 'cleanroom',
 }
 
 export function parseCodingAgentSessionCommand(input: string): ParsedCodingAgentCommand | null {
@@ -39,6 +42,18 @@ export function parseCodingAgentSessionCommand(input: string): ParsedCodingAgent
   const name = CODING_AGENT_COMMAND_ALIASES[rawName]
   if (!name) return null
   return { name, rawName, args: match[2]?.trim() || '' }
+}
+
+export const CLEAN_ROOM_MESSAGE = 'Clean room on: this chat\'s agent now runs inside its own container. It can do anything there without asking, sees only this chat\'s folder, and can only reach Studio and the allowed hosts.'
+
+/**
+ * Make this chat a clean room: its agent runs inside its own container from
+ * the next turn on (a run already going outside is stopped first).
+ */
+export async function enterCleanRoom(sessionId: string): Promise<void> {
+  if (process.platform === 'win32') throw new Error('clean rooms need Docker on Linux or macOS')
+  markCleanRoom(sessionId)
+  if (codingAgentRunManager.hasSession(sessionId)) codingAgentRunManager.stop(sessionId, { reportClosed: false })
 }
 
 export function isCodingAgentSessionCommand(input: string): boolean {
@@ -180,6 +195,16 @@ export async function handleCodingAgentSessionCommand(
         terminal: !state.isWorking,
         message: `${command.name === 'context' ? 'Context' : 'Usage'} lookup failed: ${err instanceof Error ? err.message : String(err)}`,
       })
+    }
+    return
+  }
+
+  if (command.name === 'cleanroom') {
+    try {
+      await enterCleanRoom(sessionId)
+      emitCommand({ action: 'cleanroom', terminal: true, message: CLEAN_ROOM_MESSAGE })
+    } catch (error) {
+      emitCommand({ action: 'cleanroom', terminal: true, ok: false, message: `Could not make a clean room: ${error instanceof Error ? error.message : String(error)}` })
     }
     return
   }

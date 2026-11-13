@@ -1127,6 +1127,8 @@ export default {
 
   // Chat
   chat: {
+    cleanRoom: 'Sala limpa',
+    cleanRoomHint: 'O agente desta conversa roda no próprio contêiner: lá pode fazer tudo sem perguntar, vê só a pasta desta conversa e só alcança o Studio e os hosts permitidos.',
     selectMessages: "Selecionar mensagens",
     messagesSelected: "{count} selecionados",
     deleteSelectedMessages: "Excluir seleção",
@@ -1244,6 +1246,7 @@ export default {
       title: 'Renomear esta sessão',
       compress: 'Executar compressão de contexto quando ocioso',
       compact: 'Compactar a conversa atual com o /compact do CLI',
+      cleanroom: 'Executar o agente desta conversa no próprio contêiner (acesso total dentro, sem saída)',
       steer: 'Enviar texto de orientação para a execução ativa do Bridge',
       destroy: 'Liberar o Bridge Agent desta sessão',
       reloadMcp: 'Recarregar servidores MCP',

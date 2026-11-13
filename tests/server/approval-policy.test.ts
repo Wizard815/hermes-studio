@@ -65,4 +65,17 @@ describe('which agent requests Studio shows you', () => {
     expect(acpAction({ kind: 'edit', locations: [{ path: '/p/a.ts' }] })).toEqual({ kind: 'write', paths: ['/p/a.ts'] })
     expect(acpAction({ kind: 'read', rawInput: { file_path: '/etc/hosts' } })).toEqual({ kind: 'read', paths: ['/etc/hosts'] })
   })
+
+  it('guarded: the chat may work with containers, but not reach the host through them', () => {
+    expect(dangerousCommand('docker build -t app . && docker run --rm -v ./src:/app/src app npm test', folder)).toBeNull()
+    expect(dangerousCommand('docker run -d --name test-db -v data:/var/lib/postgresql postgres', folder)).toBeNull()
+    expect(dangerousCommand('docker logs test-db && docker rm -f test-db', folder)).toBeNull()
+    expect(dangerousCommand('docker run -v /:/host alpine', folder)).toMatch(/mounts \//)
+    expect(dangerousCommand('docker run -v /var/run/docker.sock:/var/run/docker.sock x', folder)).toMatch(/socket/)
+    expect(dangerousCommand('docker run --privileged x', folder)).toMatch(/privileged/)
+    expect(dangerousCommand('docker run --network host x', folder)).toMatch(/host/)
+    expect(dangerousCommand('docker system prune -af', folder)).toMatch(/prune/)
+    expect(dangerousCommand('docker volume rm pgdata', folder)).toMatch(/volume/)
+    expect(dangerousCommand('docker rm -f $(docker ps -aq)', folder)).toMatch(/does not name/)
+  })
 })

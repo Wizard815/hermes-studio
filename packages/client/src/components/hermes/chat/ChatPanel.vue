@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getCleanRoomStatus } from '@/api/coding-agents'
 import { agentMetadata, isNativeCodingAgent, isGlobalOnlyCodingAgent } from '@/utils/agent-catalog'
 import { herdrCanHost } from '@/mission/useFolders'
 import SessionListSidebar from "./SessionListSidebar.vue"
@@ -2663,6 +2664,16 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
 watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
   if (empty && !showNewChatPage.value) void openNewChatPage({ preserveSidebar: true });
 }, { immediate: true, flush: "post" });
+
+/** A clean-room chat runs its coding agent in its own container (shown next to the title). */
+const cleanRoom = ref(false)
+watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.messages?.length || 0}`, async (_key, previous) => {
+  const id = chatStore.activeSession?.id || ''
+  if (!id) { cleanRoom.value = false; return }
+  // Check again when the chat changes, or after a message (e.g. "/cleanroom").
+  if (previous && previous.split('|')[0] === id && cleanRoom.value) return
+  try { cleanRoom.value = (await getCleanRoomStatus(id)).cleanRoom } catch { cleanRoom.value = false }
+}, { immediate: true })
 </script>
 
 <template>
@@ -3197,6 +3208,10 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
             @toggle="showSessions = !showSessions"
           />
           <span class="header-session-title" dir="auto">{{ headerTitle }}</span>
+          <NTooltip v-if="cleanRoom" trigger="hover">
+            <template #trigger><span class="header-cleanroom-badge" data-testid="chat-cleanroom-badge">{{ t('chat.cleanRoom') }}</span></template>
+            {{ t('chat.cleanRoomHint') }}
+          </NTooltip>
         </div>
         <div class="header-actions">
           <NTooltip v-if="chatStore.runtimeMode === 'default'" trigger="hover">
@@ -3938,6 +3953,16 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
       background: rgba(var(--accent-primary-rgb), 0.12);
     }
   }
+}
+
+.header-cleanroom-badge {
+  margin-inline-start: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  border: var(--border-width, 1px) solid currentColor;
+  opacity: 0.8;
 }
 
 .chat-header {

@@ -6,6 +6,7 @@ import { redactAgentBridgeError } from '../modules/hermes/services/bridge/redact
 import { codingAgentRunManager } from '../modules/coding-agents/services/runtime/run-manager'
 import { sendCodingAgentRunInput, startCodingAgentRun } from '../modules/coding-agents'
 import {
+  enterCleanRoom,
   handleCodingAgentSessionCommand,
   parseCodingAgentSessionCommand,
 } from '../modules/coding-agents/services/session-command'
@@ -42,6 +43,7 @@ configureChatAgentRuntime({
   startCodingAgentRun,
   handleCodingAgentSessionCommand,
   parseCodingAgentSessionCommand,
+  enterCleanRoom,
   getEkkoAgent: getGlobalEkkoAgent,
   abortEkkoBackgroundTasks: abortGlobalEkkoBackgroundTasks,
   hasEkkoBackgroundTasks: hasGlobalEkkoBackgroundTasks,

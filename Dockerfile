@@ -26,6 +26,15 @@ RUN ARCH=$(dpkg --print-architecture) \
     && node --version \
     && npm --version
 
+# Docker command-line client only (no daemon): clean-room chats run their agent in a
+# container on the host's Docker, reached through the mounted /var/run/docker.sock.
+ARG DOCKER_CLI_VERSION=27.5.1
+RUN ARCH=$(uname -m) \
+    && curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_CLI_VERSION}.tgz" -o /tmp/docker.tgz \
+    && tar -xzf /tmp/docker.tgz -C /usr/local/bin --strip-components=1 docker/docker \
+    && rm -f /tmp/docker.tgz \
+    && docker --version
+
 WORKDIR /app
 
 COPY package*.json ./

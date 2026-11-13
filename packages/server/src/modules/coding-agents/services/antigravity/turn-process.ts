@@ -1,3 +1,4 @@
+import { spawnInCleanRoom } from '../cleanroom'
 import { spawn, type ChildProcess } from 'child_process'
 import { StringDecoder } from 'node:string_decoder'
 import type { CodingAgentImageInput } from '../../protocol/types'
@@ -76,6 +77,8 @@ export function createAntigravityStdoutReader(): { push(chunk: Buffer): string[]
 }
 
 function spawnAntigravity(command: string, args: string[], input: AntigravityTurnProcessInput): ChildProcess {
+  const inRoom = spawnInCleanRoom(command, args, { cwd: input.workspaceDir, env: input.env })
+  if (inRoom) return inRoom
   const normalizedCommand = process.platform === 'win32' ? normalizeWindowsCommandPath(command) : command
   if (process.platform === 'win32' && windowsCommandNeedsShell(command)) {
     const execution = windowsCmdShimExecution(normalizedCommand, args)

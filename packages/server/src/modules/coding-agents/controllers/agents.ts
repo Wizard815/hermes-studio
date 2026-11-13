@@ -1,6 +1,8 @@
 import { getAgentUpdateManager, checkAgentUpdateAndPublish, installAgentAndPublish } from '../services/update-manager'
 import type { Context } from 'koa'
 import { readAgentApprovalSettings, writeAgentApprovalSettings } from '../services/approvals'
+import { containerName, isCleanRoom, readCleanRoomSettings, removeCleanRoomContainer, writeCleanRoomSettings } from '../services/cleanroom'
+import { enterCleanRoom } from '../services/session-command'
 import {
   deleteCodingAgent,
   getCodingAgentsStatus,
@@ -266,4 +268,35 @@ export async function setApprovals(ctx: Context) {
     ctx.status = err?.status || 500
     ctx.body = { error: err?.message || 'Failed to save approval settings' }
   }
+}
+
+/** Clean rooms: a chat's coding agent runs inside its own container. */
+export async function cleanRoomSettings(ctx: Context) {
+  ctx.body = readCleanRoomSettings()
+}
+
+export async function setCleanRoomSettings(ctx: Context) {
+  ctx.body = writeCleanRoomSettings(ctx.request.body)
+}
+
+export async function cleanRoomStatus(ctx: Context) {
+  const sessionId = String(ctx.params.sessionId || '')
+  ctx.body = { cleanRoom: isCleanRoom(sessionId), container: isCleanRoom(sessionId) ? containerName(sessionId) : null }
+}
+
+export async function startCleanRoom(ctx: Context) {
+  try {
+    const sessionId = String(ctx.params.sessionId || '')
+    await enterCleanRoom(sessionId)
+    ctx.body = { cleanRoom: true, container: containerName(sessionId) }
+  } catch (err: any) {
+    ctx.status = err?.status || 500
+    ctx.body = { error: err?.message || 'Failed to make a clean room' }
+  }
+}
+
+/** Throw away the chat's container (the next turn starts a fresh one; the chat's folder stays). */
+export async function resetCleanRoom(ctx: Context) {
+  await removeCleanRoomContainer(String(ctx.params.sessionId || ''))
+  ctx.body = { ok: true }
 }

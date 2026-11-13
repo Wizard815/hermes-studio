@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { agentApprovalMode, agentAsksBeforeActing, withApprovals } from '../approvals'
+import { agentApprovalMode, launchAsks, withApprovals } from '../approvals'
 import { needsApproval, type AgentAction } from '../approval-policy'
 import { CodexAppServerTurn } from '../codex/app-server-turn'
+import { parseCleanRoomCommand, spawnInCleanRoom } from '../cleanroom'
 import { startAcpChatTurn } from './acp-chat-turn'
 import type { NativeTurnHost } from './turn-host'
 import { codingAgentWorkingDirectory } from './workspace'
@@ -558,6 +559,9 @@ function spawnCodingAgentChild(command: string, args: string[], options: {
   env: NodeJS.ProcessEnv
   pipeStdin?: boolean
 }): ChildProcess {
+  // A clean-room chat: the agent runs inside its container (docker exec), with only Studio's env for it.
+  const inRoom = spawnInCleanRoom(command, args, { ...options, pipeStdin: !!options.pipeStdin })
+  if (inRoom) return inRoom
   const normalizedCommand = process.platform === 'win32' ? normalizeWindowsCommandPath(command) : command
   if (process.platform === 'win32' && windowsCommandNeedsShell(command)) {
     const execution = windowsCmdShimExecution(normalizedCommand, args)
@@ -1212,6 +1216,8 @@ export class CodingAgentRunManager {
    */
   askApproval(run: ManagedCodingAgentRun, request: AgentApprovalRequest): Promise<AgentApprovalChoice> {
     const sessionId = run.launch.sessionId
+    // In a clean room the agent may do anything inside its container.
+    if (parseCleanRoomCommand(run.launch.command)) return Promise.resolve('once')
     // Studio's rules answer what this agent's mode does not ask you about.
     // A workflow step that requires approval always asks, whatever the agent's mode.
     const mode = agentApprovalMode(run.launch.agentId)
@@ -1757,7 +1763,7 @@ export class CodingAgentRunManager {
 
   private startPiRpcProcess(run: ManagedCodingAgentRun) {
     // Studio's Pi extension asks before commands and file writes (Studio's approval card).
-    if (run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId)) {
+    if (launchAsks(run.launch)) {
       run.launch.env = { ...(run.launch.env || {}), HERMES_PI_ASK: '1' }
     }
     const child = spawnCodingAgentChild(run.launch.command, run.launch.args, {
@@ -2258,7 +2264,7 @@ export class CodingAgentRunManager {
       : normalizeCliPromptArgument(systemPrompt)
     // Claude asks Studio before it acts (its own permission rules decide when):
     // it sends can_use_tool requests on its control channel and waits.
-    const asks = run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId)
+    const asks = launchAsks(run.launch)
     const inputFormat = asks || images.length > 0 ? 'stream-json' : 'text'
     const stdinInput = inputFormat === 'stream-json' ? buildClaudeStreamJsonInput(input, images) : input
     const args = [
@@ -2922,7 +2928,7 @@ export class CodingAgentRunManager {
   ) {
     if (childIsRunning(run.currentChild)) throw new Error('Grok is still processing the previous input')
     // Grok asks before acting over its ACP mode (`grok agent stdio`); keep only the agent's options.
-    if ((run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId)) && !input.startsWith('/compact')) {
+    if (launchAsks(run.launch) && !input.startsWith('/compact')) {
       startAcpChatTurn({ name: 'Grok', acpArgs: ['stdio'], baseArgs: ['agent', ...grokAgentOptions(run.launch.args)] }, run, input, systemPrompt, this.nativeTurnHost(run), images)
       return
     }
@@ -3089,7 +3095,7 @@ export class CodingAgentRunManager {
     const child = startAntigravityTurnProcess({
       command: run.launch.command,
       baseArgs: run.launch.args,
-      asks: run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId),
+      asks: launchAsks(run.launch),
       workspaceDir,
       env: run.launch.mode === 'global'
         ? { ...process.env, ...(run.launch.env || {}) }
@@ -3208,7 +3214,7 @@ export class CodingAgentRunManager {
     const child = startCursorTurnProcess({
       command: run.launch.command,
       baseArgs: run.launch.args,
-      asks: run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId),
+      asks: launchAsks(run.launch),
       workspaceDir,
       env: run.launch.mode === 'global'
         ? { ...process.env, ...(run.launch.env || {}) }
@@ -3317,7 +3323,7 @@ export class CodingAgentRunManager {
   private startOpenCodeTurn(run: ManagedCodingAgentRun, input: string, systemPrompt = '', images: CodingAgentImageInput[] = []) {
     // OpenCode asks only over ACP (`run` can only auto-approve). Its Studio
     // config allows every tool; commands, edits and paths outside the folder ask.
-    if (run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId)) {
+    if (launchAsks(run.launch)) {
       // `opencode acp` takes no run flags: the model goes into its config instead.
       const args = [...run.launch.args]
       const modelAt = args.indexOf('--model')
@@ -3379,7 +3385,7 @@ export class CodingAgentRunManager {
       ? ''
       : normalizeCliPromptArgument(systemPrompt)
     // Codex asks before acting only on its app-server protocol (`exec` cannot ask).
-    if (run.launch.approvalRequired === true || agentAsksBeforeActing(run.launch.agentId)) {
+    if (launchAsks(run.launch)) {
       this.startCodexAppServerTurn(run, input, promptArgument, images)
       return
     }
