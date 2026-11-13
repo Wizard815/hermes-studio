@@ -103,6 +103,11 @@ export interface HerdrBridgeDeps {
    * run fields that keep the chat's agent, model and folder.
    */
   chatAccess?: (sessionId: string) => Promise<StudioChatAccess>
+  /**
+   * The chat so far, for an agent that starts a fresh session on an old chat
+   * (no saved agent session to resume). Empty when there is nothing to tell.
+   */
+  chatRecap?: (sessionId: string) => Promise<string>
   /** A chat's newest messages for its card in herdr. */
   chatPreview?: (sessionId: string) => Promise<Array<{ role: string; text: string }>>
   /**
@@ -678,7 +683,28 @@ export class HerdrBridge {
     const launch = await this.deps.prepareSessionLaunch(sessionId)
     this.pending.set(paneId, { sessionId, agentId: launch.agentId, provider: launch.provider, model: launch.model, title: row.title || '' })
     this.scheduleRefresh(500)
+    // No agent session to resume (an old chat): the fresh session starts from the chat so far.
+    if (!row.agent_native_session_id && this.deps.chatRecap) {
+      void this.deps.chatRecap(sessionId).then(recap => recap ? this.promptWhenAgentStarted(paneId, recap) : false)
+        .catch(error => this.log('warn', '[herdr] could not give the agent the chat so far', { sessionId, error: String(error) }))
+    }
     return launch
+  }
+
+  /**
+   * Prompt the agent once it has started in the pane: it has reported its own
+   * session (a chat's waiting pane reports an idle agent without one).
+   */
+  async promptWhenAgentStarted(paneId: string, text: string, timeoutMs = 90000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline && !this.stopped) {
+      const pane = this.panes.find(entry => entry.pane_id === paneId)
+      if (pane?.nativeSessionId && (pane.agent_status === 'idle' || pane.agent_status === 'done')) return this.promptWhenReady(paneId, text, 15000)
+      await new Promise(resolve => setTimeout(resolve, 500))
+      this.scheduleRefresh(0)
+    }
+    this.log('warn', '[herdr] agent did not start in time for the chat so far', { paneId })
+    return false
   }
 
   /** Wake a sleeping chat: it gets its herdr space now and stays awake for the awake window. */

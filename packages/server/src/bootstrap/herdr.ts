@@ -143,6 +143,7 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
       const name = stored === 'ekko-agent' || stored === 'ekko' ? 'Ekko' : !stored || stored === 'hermes' ? 'Hermes' : getCodingAgentDefinition(stored)?.name || stored
       return { token, profile: row.profile || 'default', run: chatRunFields(row), agent: chatAgentLabel(stored), name }
     },
+    chatRecap: async sessionId => chatRecap(getSession(sessionId)?.title || '', getRecentSessionMessages(sessionId, 50).map(message => ({ role: message.role, text: messageText(message.content) }))),
     chatPreview: async sessionId => getRecentSessionMessages(sessionId, 6).map(message => ({ role: message.role, text: messageText(message.content) })).filter(message => message.text),
     chatPane: () => herdrManager.chatPaneSetup(),
     // Agents in herdr act for the Studio admin using herdr (herdr routes are
@@ -213,6 +214,33 @@ function messageText(content: unknown): string {
  * its herdr space. Chats herdr cannot run (Ekko) still get a space that shows
  * the chat and points to Studio.
  */
+/** The longest recap handed to a fresh agent session (the newest messages win). */
+const RECAP_LIMIT = 16_000
+
+/**
+ * The chat so far, for an agent starting a fresh session on an old chat: its
+ * earlier agent session could not be resumed, so it reads the conversation
+ * first. Newest messages are kept when the chat is long.
+ */
+export function chatRecap(title: string, messages: Array<{ role: string; text: string }>): string {
+  const lines = messages.filter(message => message.text.trim())
+    .map(message => `${message.role === 'user' ? 'User' : 'Assistant'}: ${message.text.trim().slice(0, 3000)}`)
+  if (!lines.length) return ''
+  const kept: string[] = []
+  let size = 0
+  for (const line of [...lines].reverse()) {
+    if (size + line.length > RECAP_LIMIT && kept.length) break
+    kept.unshift(line)
+    size += line.length + 2
+  }
+  return [
+    `This continues an earlier Studio chat${title ? ` ("${title}")` : ''}. Its previous agent session could not be restored, so here is the conversation so far${kept.length < lines.length ? ' (newest part)' : ''}.`,
+    'Read it, briefly confirm where things stand, and wait for the next request. Do not act on it yet.',
+    '',
+    ...kept.join('\n\n').split('\n'),
+  ].join('\n')
+}
+
 /** Studio stores chat times in seconds; herdr's chat spaces work in milliseconds. */
 export function toMs(time: number): number {
   return time > 0 && time < 1e12 ? time * 1000 : time

@@ -43,6 +43,11 @@ stay separate apps; this integration links them.
   reports its own command as its resume command, so a herdr restart brings it
   back; one that still goes silent for 20 s is rebuilt. Renames, folder
   moves and deletes in Studio follow within seconds.
+- **Old chats without an agent session.** A coding-agent chat with no saved
+  agent session (it never ran, or predates session ids) starts a fresh
+  session in herdr; once that agent reports its session, the bridge sends it
+  the chat so far (`chatRecap` in `bootstrap/herdr.ts`, newest 16k
+  characters; `promptWhenAgentStarted`), so it continues the conversation.
 - **One writer per conversation.** While a chat is live in a pane, Studio's chat
   box sends to the pane (`agent.prompt`); replies return through the transcript
   mirror. A blocked agent (approval/question on screen) is never typed into.
