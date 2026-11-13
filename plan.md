@@ -25,6 +25,15 @@ Open:
 
 - Approvals (done): agents in herdr panes ask before acting; Ekko's
   approvals tested in herdr (deny, once, asks again).
+- Approval modes (done): ask (default: reading anywhere and writing in the
+  chat's folder go ahead, commands ask), guarded (yolo, but dangerous
+  actions ask), auto (yolo). Tested with Claude Code, Codex, Qwen, Pi,
+  OpenCode, Grok, DSH.
+- Old chats without an agent session (done): the fresh agent session gets
+  the chat so far.
+- Later: test approvals with Kimi, Copilot, Qoder and CodeBuddy on a setup
+  where they are logged in; Cursor, Antigravity and Zcode can only refuse
+  (not ask) until they offer a way to ask from a headless run.
 - Check approvals on a real setup with a real model.
 - Sleep mode (done): chats used in the last 7 days (setting) are awake in
   herdr; older ones sleep with no process and wake when opened or messaged.
