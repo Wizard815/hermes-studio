@@ -37,6 +37,7 @@ function herdrHostableAgentId(agent: string | null | undefined): string | null {
 }
 import { herdrChatMode, herdrKindForStudioAgent } from '../modules/coding-agents/services/herdr/protocol'
 import { locateTranscript } from '../modules/coding-agents/services/herdr/transcript'
+import { cleanRoomHomes } from '../modules/coding-agents/services/cleanroom'
 import type { HerdrBridgeDeps, HerdrSessionRef, HerdrWorkRef } from '../modules/coding-agents/services/herdr/bridge'
 import { setupHerdrSocket } from '../modules/coding-agents/sockets/herdr'
 import { getOrbClient } from '../modules/studio/services/orb/client'
@@ -109,7 +110,7 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     },
     setLink: (sessionId, link) => setSessionHerdrLink(sessionId, link),
     notifyUpdated: sessionId => notifySessionListChanged({ type: 'updated', sessionId }),
-    locateTranscript: (agent, nativeId) => locateTranscript(agent, nativeId),
+    locateTranscript: (agent, nativeId) => findChatTranscript(agent, nativeId),
     // Hermes chats resume as `hermes chat` panes (herdr has a hermes
     // integration); everything else goes through the coding-agent launcher.
     prepareSessionLaunch: async sessionId => {
@@ -239,6 +240,20 @@ export function chatRecap(title: string, messages: Array<{ role: string; text: s
     '',
     ...kept.join('\n\n').split('\n'),
   ].join('\n')
+}
+
+/**
+ * A chat agent's transcript: in Studio's own agent folders, else in a clean
+ * room's home folder (a clean-room agent writes there, see cleanRoomHome).
+ */
+export async function findChatTranscript(agent: string, nativeId: string, homes: () => string[] = cleanRoomHomes): Promise<string | null> {
+  const own = await locateTranscript(agent, nativeId)
+  if (own) return own
+  for (const home of homes()) {
+    const found = await locateTranscript(agent, nativeId, {}, home)
+    if (found) return found
+  }
+  return null
 }
 
 /** Studio stores chat times in seconds; herdr's chat spaces work in milliseconds. */

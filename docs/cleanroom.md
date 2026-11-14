@@ -17,6 +17,7 @@ clean rooms yet.
 | The chat's folder | read-write, at the same path |
 | The agent program | read-only (its install folder) |
 | The agent's Studio config folder | read-write (`coding-agent/model/<profile>/<provider>/<agent>`) |
+| The room's own home folder | read-write at `/root` (`coding-agent/cleanroom/homes/<hash>`) |
 | Studio | only its model proxies (`/api/codex-proxy/…`, `/api/claude-code-proxy/…`), through a tunnel |
 | Internet | none directly (`--network none`); HTTPS through an allowlist proxy (`HTTPS_PROXY`) |
 | Environment | only what Studio sets for the agent, never Studio's own (no host tokens) |
@@ -55,6 +56,15 @@ their model through Studio; agents on their own logins need their API host in
   follows its status from the screen. The agent's own herdr hooks cannot reach
   herdr from the container, so Studio reports the session it resumes and
   types the chat so far into a fresh one (`HerdrBridge.followCleanRoom`).
+  A fresh session is found by its transcript in the room's home folder and
+  recorded as the chat's agent session (and reported to herdr), so the next
+  resume uses `--resume <id>` and a Studio restart finds the pane live.
+- Each room has a home folder on the host, mounted at `/root`
+  (`coding-agent/cleanroom/homes/<hash>`, `cleanRoomHome`): the agent's
+  sessions and any login made inside survive a new container, and herdr's
+  transcript mirror reads the agent's transcripts there (`findChatTranscript`
+  in `bootstrap/herdr.ts`). Rooms made before it get their `/root` copied in
+  once. Deleting the chat deletes it; throwing the container away keeps it.
 - `launchAsks()` is false in a clean room: agents run in their yolo mode.
 - Deleting the chat removes its container (`bootstrap/cleanroom.ts`);
   `DELETE /api/coding-agents/cleanroom/sessions/:id/container` throws the

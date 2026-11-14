@@ -12,7 +12,7 @@ import {
   type HerdrSnapshot,
 } from './protocol'
 import { HerdrRequestError, HerdrSocketClient } from './socket-client'
-import { readTranscriptFrom, type TranscriptMessage } from './transcript'
+import { newTranscriptSince, readTranscriptFrom, type TranscriptMessage } from './transcript'
 import type { HerdrSettings } from './runtime'
 
 import { awakeChats, chatAgentLabel, chatSpaceLabel, keptWakeUps, planChatSpaces, type ChatSpaceChat, type ChatSpaceRecord } from './chat-spaces'
@@ -38,6 +38,8 @@ export interface HerdrInteractiveLaunch {
   model: string
   /** The agent runs in the chat's clean-room container (the pane runs the docker client). */
   cleanRoom?: boolean
+  /** Host folder that is the agent's home inside its clean room (its transcripts land there). */
+  agentHome?: string
 }
 
 export interface HerdrLinkInfo {
@@ -726,7 +728,7 @@ export class HerdrBridge {
     const needsRecap = !row.agent_native_session_id && launch.agentId !== 'hermes' && row.agent !== 'hermes' && !!this.deps.chatRecap
     if (launch.cleanRoom) {
       // The agent's own herdr hooks cannot reach herdr from inside its container.
-      void this.followCleanRoom(paneId, launch, row.agent_native_session_id || '', needsRecap ? sessionId : '')
+      void this.followCleanRoom(paneId, launch, { sessionId, nativeId: row.agent_native_session_id || '', recap: needsRecap })
     } else if (needsRecap) {
       void this.deps.chatRecap!(sessionId).then(recap => recap ? this.promptWhenAgentStarted(paneId, recap) : false)
         .catch(error => this.log('warn', '[herdr] could not give the agent the chat so far', { sessionId, error: String(error) }))
@@ -738,12 +740,16 @@ export class HerdrBridge {
    * A clean-room agent runs inside its container, out of reach of herdr's own
    * agent hooks: herdr sees it by the docker client's name (see
    * `cleanRoomTerminalDocker`), Studio reports the session it resumes, and the
-   * chat so far is typed once the agent is up (there is no session report to wait for).
+   * chat so far is typed once the agent is up (there is no session report to
+   * wait for). A fresh session is found by its transcript in the room's home
+   * folder, recorded as the chat's agent session and reported to herdr, so the
+   * next resume continues it and a Studio restart finds the pane live.
    */
-  async followCleanRoom(paneId: string, launch: HerdrInteractiveLaunch, nativeId: string, recapFor: string, timeoutMs = 60000): Promise<boolean> {
+  async followCleanRoom(paneId: string, launch: HerdrInteractiveLaunch, chat: { sessionId: string; nativeId: string; recap: boolean }, options: { startMs?: number; sessionMs?: number } = {}): Promise<boolean> {
+    const since = Date.now()
     try {
       const client = this.requireClient()
-      const deadline = Date.now() + timeoutMs
+      const deadline = Date.now() + (options.startMs ?? 60000)
       let running = false
       while (!running && Date.now() < deadline && !this.stopped) {
         const info = await client.request<any>('pane.process_info', { pane_id: paneId }).catch(() => null)
@@ -756,20 +762,37 @@ export class HerdrBridge {
         return false
       }
       const agent = this.deps.herdrKindFor(launch.agentId)
-      if (agent && nativeId) {
+      const report = (agentSessionId: string) => agent
         // As the agent's own herdr integration would (herdr keeps sessions only from it).
-        await client.request('pane.report_agent_session', { pane_id: paneId, source: `herdr:${agent}`, agent, agent_session_id: nativeId })
+        ? client.request('pane.report_agent_session', { pane_id: paneId, source: `herdr:${agent}`, agent, agent_session_id: agentSessionId })
           .catch(error => this.log('warn', '[herdr] could not report the clean-room session', { paneId, error: String(error) }))
-      }
+        : Promise.resolve()
+      if (chat.nativeId) await report(chat.nativeId)
       await this.refresh()
-      if (!recapFor || !this.deps.chatRecap) return true
-      const recap = await this.deps.chatRecap(recapFor)
-      return recap ? this.promptWhenReady(paneId, recap) : true
+      if (chat.recap && this.deps.chatRecap) {
+        const recap = await this.deps.chatRecap(chat.sessionId)
+        if (recap) await this.promptWhenReady(paneId, recap)
+      }
+      if (chat.nativeId || !launch.agentHome) return true
+      // A fresh session: its transcript appears once it has its first turn.
+      const watchUntil = Date.now() + (options.sessionMs ?? 30 * 60 * 1000)
+      while (Date.now() < watchUntil && !this.stopped && this.snapshot.panes.some(pane => pane.pane_id === paneId)) {
+        const found = await newTranscriptSince(launch.agentId, launch.agentHome, since)
+        if (found && !this.deps.findSessionByNativeId(found.id)) {
+          this.deps.updateNativeSessionId(chat.sessionId, found.id)
+          await report(found.id)
+          this.scheduleRefresh(0)
+          return true
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+      return true
     } catch (error) {
       this.log('warn', '[herdr] could not follow the clean-room agent', { paneId, error: String(error) })
       return false
     }
   }
+
 
   /**
    * Prompt the agent once it has started in the pane: it has reported its own
@@ -1019,7 +1042,7 @@ export class HerdrBridge {
       model: launch.model,
       title: row.title || '',
     })
-    if (launch.cleanRoom) void this.followCleanRoom(link.paneId, launch, row.agent_native_session_id || '', '')
+    if (launch.cleanRoom) void this.followCleanRoom(link.paneId, launch, { sessionId, nativeId: row.agent_native_session_id || '', recap: false })
     return link
   }
 

@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { HerdrSocketClient } from '../../packages/server/src/modules/coding-agents/services/herdr/socket-client'
 import { cleanRoomTerminalDocker } from '../../packages/server/src/modules/coding-agents/services/cleanroom'
-import { chatSpaceRows } from '../../packages/server/src/bootstrap/herdr'
+import { chatSpaceRows, findChatTranscript } from '../../packages/server/src/bootstrap/herdr'
+import { newTranscriptSince } from '../../packages/server/src/modules/coding-agents/services/herdr/transcript'
 
 describe('herdr subscriptions', () => {
   let dir: string
@@ -75,5 +76,32 @@ describe('chats for herdr spaces', () => {
     const rows = chatSpaceRows((limit, offset) => { pages.push([limit, offset]); return all.slice(offset, offset + limit) }, 5)
     expect(pages).toEqual([[5, 0], [5, 5], [5, 10]])
     expect(rows.map(row => row.id)).toEqual(['c0', 'c1', 'c2', 'c6', 'c7', 'c8', 'c9', 'c10', 'c11'])
+  })
+})
+
+describe('clean-room transcripts', () => {
+  let dir: string
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'herdr-room-home-')) })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
+
+  it('mirrors a clean-room agent\'s transcript from the room\'s home folder', async () => {
+    const id = '56565656-2222-3333-4444-555555555555'
+    const home = join(dir, 'homes', 'abc')
+    mkdirSync(join(home, '.claude', 'projects', '-work'), { recursive: true })
+    writeFileSync(join(home, '.claude', 'projects', '-work', `${id}.jsonl`), '{}\n')
+    await expect(findChatTranscript('claude-code', id, () => [join(dir, 'homes', 'empty'), home])).resolves.toBe(join(home, '.claude', 'projects', '-work', `${id}.jsonl`))
+    await expect(findChatTranscript('claude-code', '78787878-2222-3333-4444-555555555555', () => [home])).resolves.toBeNull()
+  })
+
+  it('finds the session an agent started in a home folder after a launch, not older ones', async () => {
+    const old = '11111111-2222-3333-4444-555555555555'
+    const fresh = '22222222-2222-3333-4444-555555555555'
+    mkdirSync(join(dir, '.codex', 'sessions', '2026', '11', '14'), { recursive: true })
+    writeFileSync(join(dir, '.codex', 'sessions', '2026', '11', '14', `rollout-2026-11-14T10-00-00-${old}.jsonl`), '{}\n')
+    await new Promise(resolve => setTimeout(resolve, 1100))
+    const since = Date.now()
+    await expect(newTranscriptSince('codex', dir, since)).resolves.toBeNull()
+    writeFileSync(join(dir, '.codex', 'sessions', '2026', '11', '14', `rollout-2026-11-14T10-05-00-${fresh}.jsonl`), '{}\n')
+    await expect(newTranscriptSince('codex', dir, since)).resolves.toMatchObject({ id: fresh })
   })
 })

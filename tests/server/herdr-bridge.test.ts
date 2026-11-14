@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createServer, type Server, type Socket } from 'node:net'
-import { mkdtemp, rm, writeFile, appendFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile, appendFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { HerdrBridge, herdrChatId, type HerdrBridgeDeps, type HerdrSessionRef, type HerdrLinkInfo } from '../../packages/server/src/modules/coding-agents/services/herdr/bridge'
@@ -445,15 +445,35 @@ describe('herdr bridge', () => {
     herdr.panes.push({ pane_id: 'w1:p3', workspace_id: 'w1', agent_status: 'unknown' })
     // The docker client under the agent's name starts in the pane.
     setTimeout(() => { herdr.processes['w1:p3'] = [{ argv: [launch.command, 'exec', '-it', 'room'] }] }, 300)
-    await expect(bridge!.followCleanRoom('w1:p3', launch, nativeId, '')).resolves.toBe(true)
+    await expect(bridge!.followCleanRoom('w1:p3', launch, { sessionId: 'chat-1', nativeId, recap: false })).resolves.toBe(true)
     expect(herdr.requests.find(r => r.method === 'pane.report_agent_session')?.params).toEqual({ pane_id: 'w1:p3', source: 'herdr:claude', agent: 'claude', agent_session_id: nativeId })
     // A fresh session (no agent session yet) gets the chat so far once herdr sees the agent idle.
     Object.assign(herdr.panes.find(p => p.pane_id === 'w1:p3'), { agent: 'claude', agent_status: 'idle' })
-    await expect(bridge!.followCleanRoom('w1:p3', launch, '', 'chat-1')).resolves.toBe(true)
+    await expect(bridge!.followCleanRoom('w1:p3', launch, { sessionId: 'chat-1', nativeId: '', recap: true })).resolves.toBe(true)
     expect(herdr.requests.filter(r => r.method === 'pane.report_agent_session')).toHaveLength(1)
     expect(herdr.requests.find(r => r.method === 'agent.prompt')?.params).toEqual({ target: 'w1:p3', text: 'The chat so far: fix the login' })
     // An agent that never starts gives up instead of waiting forever.
-    await expect(bridge!.followCleanRoom('w1:p9', launch, nativeId, '', 600)).resolves.toBe(false)
+    await expect(bridge!.followCleanRoom('w1:p9', launch, { sessionId: 'chat-1', nativeId, recap: false }, { startMs: 600 })).resolves.toBe(false)
+  })
+
+  it('records a fresh clean-room session from its transcript in the room\'s home, and tells herdr', async () => {
+    const { deps, sessions } = makeDeps(dir)
+    sessions.set('chat-r', { id: 'chat-r', agent: 'claude-code', title: 'Room', workspace: dir, agent_native_session_id: '' })
+    await startBridge(deps)
+    const home = join(dir, 'room-home')
+    const launch = { agentId: 'claude-code', command: '/studio/coding-agent/cleanroom/bin/claude', args: [], env: {}, workspaceDir: dir, provider: 'global', model: '', cleanRoom: true, agentHome: home }
+    herdr.panes.push({ pane_id: 'w1:p4', workspace_id: 'w1', agent: 'claude', agent_status: 'idle' })
+    herdr.processes['w1:p4'] = [{ argv: [launch.command] }]
+    await bridge!.refresh()
+    const following = bridge!.followCleanRoom('w1:p4', launch, { sessionId: 'chat-r', nativeId: '', recap: false }, { sessionMs: 10000 })
+    // The agent writes its transcript once it has its first turn.
+    await new Promise(resolve => setTimeout(resolve, 600))
+    const id = '34343434-2222-3333-4444-555555555555'
+    await mkdir(join(home, '.claude', 'projects', '-work'), { recursive: true })
+    await writeFile(join(home, '.claude', 'projects', '-work', `${id}.jsonl`), claudeLine('user', 'hi'))
+    await expect(following).resolves.toBe(true)
+    expect(sessions.get('chat-r')?.agent_native_session_id).toBe(id)
+    expect(herdr.requests.find(r => r.method === 'pane.report_agent_session')?.params).toEqual({ pane_id: 'w1:p4', source: 'herdr:claude', agent: 'claude', agent_session_id: id })
   })
 
   it('sends messages through Studio while the chat only has its waiting pane', async () => {

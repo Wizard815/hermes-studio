@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { createConnection, createServer, type Server, type Socket } from 'node:net'
 import { delimiter, dirname, join, resolve } from 'node:path'
@@ -170,6 +170,21 @@ function socketDir(sessionId: string): string {
   return join(home(), 'r', createHash('sha1').update(sessionId).digest('hex').slice(0, 12))
 }
 
+/**
+ * The room's home folder (`/root` inside): the agent's sessions, transcripts
+ * and any login made inside outlive the container, and Studio reads the
+ * transcripts from here (herdr's transcript mirror, the agent's session id).
+ */
+export function cleanRoomHome(sessionId: string): string {
+  return join(home(), 'homes', createHash('sha1').update(sessionId).digest('hex').slice(0, 12))
+}
+
+/** Every clean room's home folder. */
+export function cleanRoomHomes(): string[] {
+  const dir = join(home(), 'homes')
+  try { return readdirSync(dir, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => join(dir, entry.name)) } catch { return [] }
+}
+
 /** Host side of the tunnel: Studio's port, and a proxy that only lets allowed hosts out. */
 function listenSockets(sessionId: string): void {
   if (sockets.has(sessionId)) return
@@ -312,10 +327,15 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
   const name = containerName(sessionId)
   listenSockets(sessionId)
   writeFileSync(join(socketDir(sessionId), 'tunnel.mjs'), FORWARDER)
-  const paths = [mounts.workspace, ...(mounts.configs || []), mounts.program].filter(Boolean).join('|')
+  const roomHome = cleanRoomHome(sessionId)
+  const homeIsNew = !existsSync(roomHome) || !readdirSync(roomHome).length
+  mkdirSync(roomHome, { recursive: true })
+  const paths = [mounts.workspace, ...(mounts.configs || []), mounts.program, `home:${roomHome}`].filter(Boolean).join('|')
   let existing: any = null
   try { existing = (await dockerJson(['inspect', name]))[0] } catch { existing = null }
   if (existing && existing.Config?.Labels?.['studio.cleanroom.paths'] !== paths) {
+    // A room from before its home folder: keep what the agent kept in /root (its sessions).
+    if (homeIsNew) await run('docker', ['cp', `${name}:/root/.`, roomHome], { timeout: 120000 }).catch(() => undefined)
     // The chat's folder or agent changed: make the room again (its folder stays on the host).
     await run('docker', ['rm', '-f', name], { timeout: 30000 }).catch(() => undefined)
     existing = null
@@ -343,6 +363,7 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
     ...(await Promise.all((mounts.configs || []).map(async dir => volume(`${await hostPath(dir)}:${dir}`, 'rw')))).flat(),
     ...(mounts.program ? volume(`${await hostPath(mounts.program)}:${mounts.program}`, 'ro') : []),
     ...volume(`${await hostPath(socketDir(sessionId))}:${SOCKET_DIR_IN_CONTAINER}`, 'rw'),
+    ...volume(`${await hostPath(roomHome)}:/root`, 'rw'),
     '-w', mounts.workspace,
     settings.image,
     'node', `${SOCKET_DIR_IN_CONTAINER}/tunnel.mjs`,
@@ -362,6 +383,7 @@ export async function removeCleanRoomContainer(sessionId: string): Promise<void>
 export async function removeCleanRoom(sessionId: string): Promise<void> {
   await removeCleanRoomContainer(sessionId)
   rmSync(socketDir(sessionId), { recursive: true, force: true })
+  rmSync(cleanRoomHome(sessionId), { recursive: true, force: true })
   const chats = readJson<Record<string, CleanRoomRecord>>(chatsFile(), {})
   if (chats[sessionId]) { delete chats[sessionId]; writeJson(chatsFile(), chats) }
 }

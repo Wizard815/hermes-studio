@@ -119,10 +119,25 @@ async function findFile(root: string, match: (name: string) => boolean, depth: n
   return null
 }
 
-/** Locate a transcript when herdr only reported a session id. */
-export async function locateTranscript(agent: string, sessionId: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+/** Where an agent keeps its transcripts under a home folder (or its config env), and how their names carry the session id. */
+function transcriptLayout(agent: string, home: string, env: NodeJS.ProcessEnv): { root: string; depth: number; id: (name: string) => string | null } | null {
+  if (agent === 'claude-code') {
+    const root = env.CLAUDE_CONFIG_DIR ? join(env.CLAUDE_CONFIG_DIR, 'projects') : join(home, '.claude', 'projects')
+    return { root, depth: 1, id: name => name.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i)?.[1] ?? null }
+  }
+  if (agent === 'codex') {
+    const root = join(env.CODEX_HOME || join(home, '.codex'), 'sessions')
+    return { root, depth: 3, id: name => name.match(/^rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i)?.[1] ?? null }
+  }
+  return null
+}
+
+/**
+ * Locate a transcript when herdr only reported a session id. `home` is the
+ * agent's home folder: Studio's own, or a clean room's (see cleanRoomHome).
+ */
+export async function locateTranscript(agent: string, sessionId: string, env: NodeJS.ProcessEnv = process.env, home = homedir()): Promise<string | null> {
   if (!/^[A-Za-z0-9_-]{6,128}$/.test(sessionId)) return null
-  const home = homedir()
   if (agent === 'claude-code') {
     const root = env.CLAUDE_CONFIG_DIR ? join(env.CLAUDE_CONFIG_DIR, 'projects') : join(home, '.claude', 'projects')
     return findFile(root, name => name === `${sessionId}.jsonl`, 1)
@@ -132,4 +147,33 @@ export async function locateTranscript(agent: string, sessionId: string, env: No
     return findFile(root, name => name.startsWith('rollout-') && name.endsWith(`-${sessionId}.jsonl`), 3)
   }
   return null
+}
+
+/**
+ * The agent session started in a home folder since `since` (ms): the oldest
+ * transcript created after it, so a session the agent started for this launch
+ * wins over later ones. Used where the agent cannot report its session
+ * (a clean room's agent cannot reach herdr).
+ */
+export async function newTranscriptSince(agent: string, home: string, since: number, env: NodeJS.ProcessEnv = {}): Promise<{ id: string; path: string } | null> {
+  const layout = transcriptLayout(agent, home, env)
+  if (!layout) return null
+  const found: Array<{ id: string; path: string; at: number }> = []
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (depth < 0) return
+    let entries
+    try { entries = await readdir(dir, { withFileTypes: true }) } catch { return }
+    for (const entry of entries) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) { await walk(path, depth - 1); continue }
+      const id = entry.isFile() ? layout.id(entry.name) : null
+      if (!id) continue
+      const info = await stat(path).catch(() => null)
+      const at = info ? (info.birthtimeMs || info.mtimeMs) : 0
+      if (info && info.mtimeMs >= since && at >= since - 1000) found.push({ id, path, at })
+    }
+  }
+  await walk(layout.root, layout.depth)
+  found.sort((a, b) => a.at - b.at)
+  return found[0] ? { id: found[0].id, path: found[0].path } : null
 }
