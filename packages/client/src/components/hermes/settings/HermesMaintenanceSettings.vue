@@ -7,7 +7,7 @@ import HermesActionLog from './HermesActionLog.vue'
 import { useHermesAction } from './useHermesAction'
 import {
   addHook, checkForUpdate, deleteHook, downloadBackup, formatBytes, listCheckpoints, listHooks, pruneCheckpoints,
-  runBackup, runDoctor, runImport, runPromptSize, runSecurityAudit,
+  runBackup, runDoctor, runImport, uploadBackup, runPromptSize, runSecurityAudit,
   type HermesHook, type UpdateCheck,
 } from '@/api/hermes/agent-tools'
 
@@ -25,6 +25,20 @@ const backupArchive = ref('')
 const restore = useHermesAction('import')
 const restorePath = ref('')
 const restoreForce = ref(true)
+const uploadInput = ref<HTMLInputElement | null>(null)
+
+function pickUpload() {
+  uploadInput.value?.click()
+}
+
+async function onUploadPicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!window.confirm(t('hermesTools.maintenance.restoreConfirm'))) return
+  await restore.run(() => uploadBackup(file, restoreForce.value))
+}
 
 async function startBackup() {
   backupArchive.value = ''
@@ -160,6 +174,8 @@ onMounted(() => {
           </template>
           {{ t('hermesTools.maintenance.restoreConfirm') }}
         </NPopconfirm>
+        <NButton size="small" :loading="restore.running.value" @click="pickUpload">{{ t('hermesTools.maintenance.uploadBackup') }}</NButton>
+        <input ref="uploadInput" type="file" accept=".zip,application/zip" style="display: none" @change="onUploadPicked">
       </div>
     </SettingRow>
     <HermesActionLog :lines="restore.lines.value" :running="restore.running.value" :exit-code="restore.exitCode.value" :finished="restore.finished.value" :error="restore.error.value" />

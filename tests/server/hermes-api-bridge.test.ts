@@ -25,3 +25,29 @@ describe("Studio's private Hermes Agent API", () => {
     expect(JSON.parse(calls[1].init.body)).toEqual({ name: 'honcho' })
   })
 })
+
+describe("Hermes's errors and uploads through Studio", () => {
+  it('points "the dashboard" at Studio in error text', async () => {
+    const { studioWording } = await import('../../packages/server/src/modules/hermes/controllers/hermes-api')
+    expect(studioWording(Buffer.from('{"detail":"Mem0 is not ready. Configure it in the dashboard first."}')).toString()).toBe('{"detail":"Mem0 is not ready. Configure it in Studio first."}')
+    const plain = Buffer.from('{"detail":"nope"}')
+    expect(studioWording(plain)).toBe(plain)
+  })
+
+  it('streams an upload with its own content type instead of JSON', async () => {
+    const calls: Array<{ url: string; init: any }> = []
+    const fetcher = vi.fn(async (url: any, init?: any) => {
+      calls.push({ url: String(url), init })
+      return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch
+    const bridge = new HermesApiBridge(fetcher)
+    ;(bridge as any).child = { exitCode: null }
+    ;(bridge as any).port = 1234
+    ;(bridge as any).token = 't'
+    const { Readable } = await import('node:stream')
+    await bridge.request('POST', 'ops/import-upload', new URLSearchParams(), undefined, 'work', { stream: Readable.from([Buffer.from('zipdata')]), contentType: 'multipart/form-data; boundary=x', length: '7' })
+    expect(calls[0].init.headers['Content-Type']).toBe('multipart/form-data; boundary=x')
+    expect(calls[0].init.duplex).toBe('half')
+    expect(calls[0].init.body).toBeDefined()
+  })
+})

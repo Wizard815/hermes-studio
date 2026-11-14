@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { createServer } from 'node:net'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { Readable } from 'node:stream'
 import { findHermesCli } from '../herdr-launch'
 
 /**
@@ -132,18 +133,26 @@ export class HermesApiBridge {
    * One call to Hermes's API (`path` starts after /api/). Studio's active
    * profile is added unless the caller names one.
    */
-  async request(method: string, path: string, query: URLSearchParams, body: unknown, profile?: string): Promise<{ status: number; contentType: string; body: Buffer }> {
+  async request(method: string, path: string, query: URLSearchParams, body: unknown, profile?: string, upload?: { stream: NodeJS.ReadableStream; contentType: string; length?: string }): Promise<{ status: number; contentType: string; body: Buffer }> {
     await this.ensureRunning()
     this.lastUse = Date.now()
     const params = new URLSearchParams(query)
     if (profile && !params.has('profile')) params.set('profile', profile)
     const search = params.toString()
     const url = `http://127.0.0.1:${this.port}/api/${path}${search ? `?${search}` : ''}`
-    const hasBody = !['GET', 'HEAD'].includes(method) && body !== undefined
+    const hasBody = !upload && !['GET', 'HEAD'].includes(method) && body !== undefined
+    const headers: Record<string, string> = { 'X-Hermes-Session-Token': this.token, Accept: 'application/json' }
+    if (hasBody) headers['Content-Type'] = 'application/json'
+    if (upload) {
+      // A file upload (e.g. restoring a backup): passed through unchanged.
+      headers['Content-Type'] = upload.contentType
+      if (upload.length) headers['Content-Length'] = upload.length
+    }
     const response = await this.fetcher(url, {
       method,
-      headers: { 'X-Hermes-Session-Token': this.token, Accept: 'application/json', ...(hasBody ? { 'Content-Type': 'application/json' } : {}) },
+      headers,
       ...(hasBody ? { body: JSON.stringify(body) } : {}),
+      ...(upload ? { body: Readable.toWeb(upload.stream as Readable) as any, duplex: 'half' } as any : {}),
       signal: AbortSignal.timeout(Number(process.env.STUDIO_HERMES_API_TIMEOUT_MS || 120_000)),
     })
     return {

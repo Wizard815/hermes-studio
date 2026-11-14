@@ -1,4 +1,4 @@
-import { getApiKey, getBaseUrlValue } from '../client'
+import { getActiveProfileName, getApiKey, getBaseUrlValue } from '../client'
 import { hermesAgent } from './agent-api'
 
 /*
@@ -192,6 +192,26 @@ export interface UpdateCheck { install_method: string; current_version: string; 
 export const checkForUpdate = (force = false) => hermesAgent<UpdateCheck>('hermes/update/check', { query: { force: force || undefined } })
 
 /** Downloads a backup archive Hermes wrote (through Studio, with the signed-in user's token). */
+/** Restore from a backup zip picked on this computer (uploaded to the Hermes machine). */
+export async function uploadBackup(file: File, force: boolean): Promise<{ ok?: boolean; pid?: number; name?: string; archive?: string }> {
+  const headers: Record<string, string> = {}
+  const token = getApiKey()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const profile = getActiveProfileName()
+  if (profile) headers['X-Hermes-Profile'] = profile
+  const form = new FormData()
+  form.append('file', file)
+  form.append('force', force ? 'true' : 'false')
+  const res = await fetch(`${getBaseUrlValue()}/api/hermes-agent/ops/import-upload`, { method: 'POST', headers, body: form })
+  const text = await res.text().catch(() => '')
+  if (!res.ok) {
+    let detail = text
+    try { const parsed = JSON.parse(text); detail = parsed.detail || parsed.error || text } catch { /* plain text */ }
+    throw new Error(`${res.status} ${detail}`.trim())
+  }
+  return text ? JSON.parse(text) : {}
+}
+
 export async function downloadBackup(archive: string): Promise<void> {
   const headers: Record<string, string> = {}
   const token = getApiKey()
