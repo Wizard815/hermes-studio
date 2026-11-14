@@ -1,3 +1,4 @@
+import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
@@ -42,6 +43,7 @@ export default {
   },
   person: personMessages['tr'],
   ...herdrMessages['tr'],
+  ...vscodeMessages['tr'],
   ...androidMessages['tr'],
   ...orbMessages['tr'],
   ...systemMessages['tr'],

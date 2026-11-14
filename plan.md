@@ -39,6 +39,14 @@ Open:
   herdr; older ones sleep with no process and wake when opened or messaged.
   With 304 chats herdr uses about 4% CPU (all awake: 41%).
 
+- VS Code (done): the chat header's Chat / herdr / Code switch. Code shows VS
+  Code (code-server, installed by Studio into its data folder) on the chat's
+  folder with the chat beside it; it follows the agent's edits. See
+  `docs/vscode.md`.
+- Clean rooms (done): `/cleanroom` runs a chat's agent in its own container.
+- Next: LLM wiki memory provider (Wizard815/LLM-will-remember-this on Unraid),
+  once its container is ready.
+
 ## Later (parked until the UI goal is finished)
 
 - **Folder suggestions.** Studio or herdr suggests a folder (or subfolder) for

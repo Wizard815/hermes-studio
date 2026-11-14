@@ -70,6 +70,7 @@ import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
+import VsCodeCenter from "./VsCodeCenter.vue";
 import ListActionsMenu from "@/components/layout/ListActionsMenu.vue";
 import OutlinePanel from "./OutlinePanel.vue";
 import ChatToolsPanel from "./ChatToolsPanel.vue";
@@ -155,13 +156,15 @@ const herdrEligible = computed(() => herdrChatState.value === 'eligible')
 // header and tool panel stay. Both stay mounted once opened, so swapping is instant.
 // Declared before the herdr center state, which reads it during setup (phones read it at once).
 const showNewChatPage = ref(false);
-type ChatCenter = 'chat' | 'herdr'
-const centerMode = ref<ChatCenter>((() => { try { return localStorage.getItem('studio_chat_center') === 'herdr' ? 'herdr' : 'chat' } catch { return 'chat' } })())
+type ChatCenter = 'chat' | 'herdr' | 'code'
+const centerMode = ref<ChatCenter>((() => {
+  try { const saved = localStorage.getItem('studio_chat_center'); return saved === 'herdr' || saved === 'code' ? saved : 'chat' } catch { return 'chat' }
+})())
 watch(centerMode, value => { try { localStorage.setItem('studio_chat_center', value) } catch { /* private mode */ } })
 // Old /herdr links land here (?center=herdr, optionally &pane=<herdr pane>): herdr mode, on that pane's chat.
 const herdrStore = useHerdrStore()
 watch(() => [route.query.center, route.query.pane] as const, async ([center, pane]) => {
-  if (center !== 'herdr' && center !== 'chat') return
+  if (center !== 'herdr' && center !== 'chat' && center !== 'code') return
   centerMode.value = center
   const { center: _center, pane: _pane, ...rest } = route.query
   void router.replace({ query: rest })
@@ -194,6 +197,16 @@ function selectCenter(mode: ChatCenter) {
 }
 const showHerdrCenter = computed(() => centerMode.value === 'herdr' && herdrCenterAvailable.value && !showNewChatPage.value)
 watch(showHerdrCenter, value => { if (value) herdrCenterMounted.value = true })
+// Code: VS Code on the chat's folder with the chat beside it (super admins, not on phones).
+const codeCenterAvailable = computed(() => !props.standalone && isSuperAdmin.value && !isMobile.value)
+const showCodeCenter = computed(() => centerMode.value === 'code' && codeCenterAvailable.value && !showNewChatPage.value)
+const codeCenterMounted = ref(false)
+watch(showCodeCenter, value => { if (value) codeCenterMounted.value = true })
+const centerModes = computed<ChatCenter[]>(() => [
+  'chat',
+  ...(herdrCenterAvailable.value ? ['herdr' as const] : []),
+  ...(codeCenterAvailable.value ? ['code' as const] : []),
+])
 
 const showOutline = ref(false);
 const ACTIVE_SESSION_MENU_ID = "active-session-actions-menu";
@@ -3239,7 +3252,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             </template>
           </NButton>
           <div
-            v-if="herdrCenterAvailable"
+            v-if="centerModes.length > 1"
             class="header-center-switch"
             role="radiogroup"
             :aria-label="t('herdr.centerSwitch')"
@@ -3247,7 +3260,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             data-testid="chat-center-switch"
           >
             <button
-              v-for="mode in (['chat', 'herdr'] as const)"
+              v-for="mode in centerModes"
               :key="mode"
               type="button"
               role="radio"
@@ -3255,7 +3268,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :class="{ active: centerMode === mode }"
               :data-testid="`chat-center-${mode}`"
               @click="selectCenter(mode)"
-            >{{ mode === 'chat' ? t('herdr.centerChat') : t('herdr.centerHerdr') }}</button>
+            >{{ mode === 'chat' ? t('herdr.centerChat') : mode === 'herdr' ? t('herdr.centerHerdr') : t('vscode.centerCode') }}</button>
           </div>
           <HerdrOpenButton
             v-if="isSuperAdmin && !showNewChatPage && chatStore.activeSessionId && herdrEligible"
@@ -3320,7 +3333,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           @dragleave="handleChatDragLeave"
           @drop="handleChatDrop"
         >
-          <div ref="chatMainContentRef" class="chat-main-content" data-agent-deployment-surface
+          <div ref="chatMainContentRef" class="chat-main-content" :class="{ 'chat-main-content--code': showCodeCenter }" data-agent-deployment-surface
             :data-agent-deployment-session="chatStore.activeSessionId || ''"
             :data-agent-deployment-active="currentMode === 'chat' && !showNewChatPage"
             :data-agent-deployment-status-session="chatStore.activeSessionId || ''"
@@ -3413,6 +3426,13 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               @open-chat="sessionId => handleSessionClick(sessionId)"
               @open-studio-chat="sessionId => { centerMode = 'chat'; void handleSessionClick(sessionId) }"
               @new-chat="openNewChatPage()"
+            />
+            <VsCodeCenter
+              v-if="codeCenterMounted || showCodeCenter"
+              v-show="showCodeCenter"
+              class="code-center"
+              :folder="activeWorkspacePath"
+              :active="showCodeCenter"
             />
             <MessageList
               v-show="!showHerdrCenter"
@@ -3931,6 +3951,16 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
   flex-direction: column;
   min-width: 0;
   background-color: var(--theme-content-bg, $bg-main-surface);
+}
+
+// Code: VS Code on the left, the chat on the right.
+.chat-main-content--code {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 32%, 460px);
+  grid-template-rows: minmax(0, 1fr) auto;
+
+  > .code-center { grid-column: 1; grid-row: 1 / span 2; }
+  > :not(.code-center) { grid-column: 2; min-width: 0; min-height: 0; }
 }
 
 .header-center-switch {

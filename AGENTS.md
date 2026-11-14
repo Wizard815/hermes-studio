@@ -16,6 +16,7 @@ and keep this file small enough to fit into every task context.
 - `docs/harness/frontend-ui.md` - required theme surfaces, UI exceptions and automatic checks.
 - `docs/harness/herdr.md` - herdr integration: chat linking, status, plugin and how to test it.
 - `docs/cleanroom.md` - clean-room chats: a chat's coding agent runs in its own container.
+- `docs/vscode.md` - VS Code (code-server) inside Studio: the Code view on a chat's folder.
 - `docs/android-devices.md` - Android page: adb devices, emulator stream, BlueStacks, phones, Termux bridge in the Android app.
 - `docs/pondering-orb.md` - Pondering Orb: Connections tab, Orb tools for Studio agents, and Orb sending work to Studio chats.
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.

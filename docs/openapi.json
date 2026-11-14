@@ -1289,6 +1289,233 @@
         }
       }
     },
+    "/api/coding-agents/approvals": {
+      "get": {
+        "tags": [
+          "Coding Agents"
+        ],
+        "summary": "Get approvals",
+        "description": "GET /api/coding-agents/approvals",
+        "operationId": "approvals",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Coding Agents"
+        ],
+        "summary": "Update approvals",
+        "description": "PUT /api/coding-agents/approvals",
+        "operationId": "setApprovals",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/coding-agents/cleanroom/sessions/{sessionId}": {
+      "get": {
+        "tags": [
+          "Coding Agents"
+        ],
+        "summary": "Get :sessionId",
+        "description": "GET /api/coding-agents/cleanroom/sessions/:sessionId",
+        "operationId": "cleanRoomStatus",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Coding Agents"
+        ],
+        "summary": "Create :sessionId",
+        "description": "POST /api/coding-agents/cleanroom/sessions/:sessionId",
+        "operationId": "startCleanRoom",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/coding-agents/cleanroom/sessions/{sessionId}/container": {
+      "delete": {
+        "tags": [
+          "Coding Agents"
+        ],
+        "summary": "Delete container",
+        "description": "DELETE /api/coding-agents/cleanroom/sessions/:sessionId/container",
+        "operationId": "resetCleanRoom",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/coding-agents/cleanroom/settings": {
+      "get": {
+        "tags": [
+          "Coding Agents"
+        ],
+        "summary": "Get settings",
+        "description": "GET /api/coding-agents/cleanroom/settings",
+        "operationId": "cleanRoomSettings",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Coding Agents"
+        ],
+        "summary": "Update settings",
+        "description": "PUT /api/coding-agents/cleanroom/settings",
+        "operationId": "setCleanRoomSettings",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/coding-agents/dsh/agent-presets": {
       "get": {
         "security": [

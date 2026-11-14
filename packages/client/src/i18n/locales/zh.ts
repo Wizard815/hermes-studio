@@ -1,3 +1,4 @@
+import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
@@ -11,6 +12,7 @@ import { socialMessagesZh } from '../social-messages'
 export default {
   person: personMessages['zh'],
   ...herdrMessages['zh'],
+  ...vscodeMessages['zh'],
   ...androidMessages['zh'],
   ...orbMessages['zh'],
   ...systemMessages['zh'],

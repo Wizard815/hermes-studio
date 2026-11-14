@@ -21,6 +21,7 @@ import { setupKanbanEventsWebSocket } from '../modules/hermes/sockets/kanban-eve
 import { startVersionCheck } from './health'
 import { registerRoutes } from './routes'
 import { dshPluginUi } from '../modules/coding-agents/services'
+import { vscodeGateway, vscodeManager } from '../modules/studio/services/vscode'
 import './chat-agent-runtime-adapter'
 import './skill-files-adapter'
 import { setGroupChatServer } from '../modules/studio/routes/group-chat'
@@ -516,6 +517,9 @@ export async function bootstrap() {
   // before dispatching to any provider API mode.
   app.use(createCodexProxyRequestBodyParser(isAuthorizedCodexProxyRequest))
   app.use(dshPluginUi.middleware)
+  // VS Code (code-server) at /vscode/<ticket>/, before the body parser so
+  // uploads stream through untouched.
+  app.use(vscodeGateway.middleware)
   // Raise body limits above the default 1mb: profile avatars and MiMo voice-clone
   // reference audio are posted as base64 data URLs before reaching handlers.
   app.use(createRequestBodyParser())
@@ -589,6 +593,8 @@ export async function bootstrap() {
 
   const closeDshPluginUi = dshPluginUi.attach(servers)
   additionalShutdownSteps.push({ name: 'DSH plugin UI transport', close: closeDshPluginUi })
+  const closeVsCodeGateway = vscodeGateway.attach(servers)
+  additionalShutdownSteps.push({ name: 'VS Code', close: () => { closeVsCodeGateway(); vscodeManager.close() } })
   const terminalWebSocket = setupTerminalWebSocket(servers)
   if (terminalWebSocket) {
     additionalShutdownSteps.push({
@@ -732,7 +738,7 @@ export async function bootstrap() {
         writeBadUpgradeRequest(socket)
         return
       }
-      if (!dshPluginUi.handlesUpgrade(req) &&
+      if (!dshPluginUi.handlesUpgrade(req) && !vscodeGateway.handlesUpgrade(req) &&
         url.pathname !== '/api/hermes/terminal' &&
         url.pathname !== '/api/hermes/kanban/events' &&
         !url.pathname.startsWith('/socket.io/')) {
