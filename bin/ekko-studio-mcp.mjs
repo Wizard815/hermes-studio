@@ -728,12 +728,20 @@ async function browserApprovalGate(args, actions, snapshotId, signal) {
   if (!mayNeedApproval(actions)) return null
   let nodes = []
   let url = ''
+  // Refs the actions name must be found in the agent's snapshot (read by its id, page by page).
+  const wanted = new Set(actions.flatMap(action => [action?.ref, action?.target_ref]).filter(Boolean))
+  let unreadable = false
   if (snapshotId) {
     try {
-      const envelope = await browserRequest('snapshot', { tab_id: args.tab_id, snapshot_id: snapshotId, offset: 0, limit: 500 }, signal)
-      nodes = Array.isArray(envelope?.result?.nodes) ? envelope.result.nodes : []
-      url = String(envelope?.result?.url || '')
-    } catch { /* judged by the address only */ }
+      for (let offset = 0, page = 0; page < 10; page++) {
+        const envelope = await browserRequest('snapshot', { tab_id: args.tab_id, snapshot_id: snapshotId, offset, limit: 300 }, signal)
+        const result = envelope?.result || {}
+        if (Array.isArray(result.nodes)) nodes.push(...result.nodes)
+        url ||= String(result.url || '')
+        if (![...wanted].some(ref => !nodes.some(node => node.ref === ref)) || !result.hasMore) break
+        offset = Number(result.nextOffset) || offset + 300
+      }
+    } catch { unreadable = wanted.size > 0 }
   }
   if (!url) {
     try {
@@ -743,7 +751,11 @@ async function browserApprovalGate(args, actions, snapshotId, signal) {
       url = String((tabs.find(tab => tab.id === args.tab_id) || tabs.find(tab => tab.id === state.activeTabId))?.url || '')
     } catch { /* unknown page */ }
   }
-  const risk = classifyBrowserActions(actions, nodes, url)
+  let risk = classifyBrowserActions(actions, nodes, url)
+  // Fail closed: when the target cannot be seen, typing or clicking may be a sign-in or a payment.
+  if (!risk && unreadable && actions.some(action => ['type', 'select', 'click', 'double_click'].includes(String(action?.action)))) {
+    risk = { kind: 'login', what: 'act on a page element Studio could not check (it may be a sign-in or payment)' }
+  }
   if (!risk) return null
   return browserApprovalGateFor(args, risk, url, signal)
 }

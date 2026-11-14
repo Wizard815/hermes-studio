@@ -157,6 +157,8 @@ const herdrEligible = computed(() => herdrChatState.value === 'eligible')
 // header and tool panel stay. Both stay mounted once opened, so swapping is instant.
 // Declared before the herdr center state, which reads it during setup (phones read it at once).
 const showNewChatPage = ref(false);
+// Declared before the center modes, which read isMobile during setup.
+const { expanded: showSessions, isMobile } = usePageSidebarState(!props.standalone)
 type ChatCenter = 'chat' | 'herdr' | 'code' | 'screen'
 const centerMode = ref<ChatCenter>((() => {
   try { const saved = localStorage.getItem('studio_chat_center'); return saved === 'herdr' || saved === 'code' || saved === 'screen' ? saved : 'chat' } catch { return 'chat' }
@@ -277,7 +279,6 @@ const selectedSessionKeys = ref<Set<string>>(new Set());
 const showBatchDeleteConfirm = ref(false);
 const isBatchDeleting = ref(false);
 
-const { expanded: showSessions, isMobile } = usePageSidebarState(!props.standalone)
 /** herdr mode swaps the chat list for its spaces panel; phones have no room for that panel and keep the drawer. */
 const herdrOwnsSidebar = computed(() => showHerdrCenter.value && !isMobile.value)
 

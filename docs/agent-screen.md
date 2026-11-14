@@ -56,9 +56,49 @@ Both were tested with the real images: the screen starts, its browser
   already publishes a live one, and `/api/studio/desktop-browser/request` uses it
   for super administrators with no Desktop app connected.
 
-## Next
+## Purchases and sign-ins
 
-- Ekko's own (Hermes) browser tools and Studio's share this Chrome; nothing yet
-  coordinates two agents on the same tab beyond the Broker's per-tab lease.
-- Approvals before purchases, logins and form submits; a recording of what the
-  agent did; Hermes's credential vault.
+Before an agent's browser tool clicks, types, selects or presses Enter,
+`bin/browser/risk.mjs` checks the agent's own snapshot (read by its id, so the
+agent's refs stay valid) and the page address:
+
+- purchases: card or bank fields, "Place order", "Pay", "Buy", "Checkout",
+  paid subscriptions (not newsletters);
+- sign-ins: password and one-time-code fields, "Sign in" on a login form,
+  filling a saved login.
+
+A coding-agent run asks the person through Studio's question prompt
+(Allow / Don't allow; an Allow covers that site and kind for 10 minutes). A run
+that cannot ask (no run credential: Hermes, Ekko) stops and tells the agent to
+ask the person to take over the Screen. When the target cannot be read, the
+check asks rather than lets it through. Hermes's own browser tools in Hermes
+chats follow Hermes's rules, not these.
+
+## Activity
+
+Each browser action (pages, clicks, typing without the text, batches,
+uploads, downloads, dialogs, tabs) and each approval is recorded:
+`POST /api/studio/screen/activity` from the tools,
+`GET /api/studio/screen/activity` for the Screen view's Activity panel.
+`<Studio data>/screen/activity/YYYY-MM-DD.jsonl`, 14 days; addresses without
+query strings.
+
+## Saved logins
+
+Hermes's encrypted vault (`hermes vault`). The Screen view's Saved logins
+panel lists, adds and removes logins (`GET/POST /api/studio/screen/vault`,
+`DELETE …/vault/:id`); passwords go to the helper on stdin. Agents use
+`ekko_studio_browser_vault`: `list` shows sites and usernames only; `fill`
+asks first (a sign-in), then `bot-screen-bridge.py vault fill` writes the
+password into the page with Hermes's login-form classifier and origin-checked
+fill script, only on the exact site it was saved for. The result carries
+counts, never the password.
+
+## Tested
+
+In the Hermes image (Studio running inside it): an agent's tool process opened
+a tab on the screen's Chrome, read the login form and typed the email; typing
+the password, pressing Sign in and filling the saved login all stopped for the
+person; the Activity panel listed each step; a saved login filled on its own
+site and was refused elsewhere. Not tested live: the Allow answer in a real
+coding-agent chat (the prompt itself is Studio's existing clarification).

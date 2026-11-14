@@ -15,6 +15,16 @@ type PlaywrightChromium = typeof ChromiumType
 
 // Loaded lazily: playwright is an optional runtime dependency and its internal
 // dynamic requires must not be pulled into the esbuild server bundle.
+/** A Chrome/Chromium already on this machine, for when Playwright's own is not installed. */
+function systemChromium(): string | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { existsSync, readFileSync } = require('node:fs') as typeof import('node:fs')
+  const candidates = [process.env.STUDIO_BROWSER_EXECUTABLE, process.env.AGENT_BROWSER_EXECUTABLE_PATH]
+  try { candidates.push(readFileSync('/etc/hermes/chromium-executable-path', 'utf8').trim()) } catch { /* not Hermes's image */ }
+  candidates.push('/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/opt/pw-browsers/chromium/chrome-linux/chrome')
+  return candidates.find(path => !!path && !/headless/i.test(path) && existsSync(path))
+}
+
 function requirePlaywrightChromium(): PlaywrightChromium {
   // playwright-core ships with Studio (no bundled browsers); playwright is the dev install.
   for (const name of ['playwright-core', 'playwright']) {
@@ -354,7 +364,7 @@ export class HeadlessBrowserService {
       return this.descriptor
     }
 
-    this.browser = await chromium.launch({
+    const launchOptions = {
       headless: true,
       args: [
         '--no-sandbox',
@@ -362,7 +372,16 @@ export class HeadlessBrowserService {
         '--disable-dev-shm-usage',
         '--disable-gpu',
       ],
-    })
+    }
+    try {
+      this.browser = await chromium.launch(launchOptions)
+    } catch (error) {
+      // Studio ships playwright-core without browsers: use the Chrome on the
+      // machine (Hermes's image records its own in /etc/hermes).
+      const executablePath = systemChromium()
+      if (!executablePath) throw error
+      this.browser = await chromium.launch({ ...launchOptions, executablePath })
+    }
 
     this.context = await this.browser.newContext({
       viewport: { width: 1280, height: 720 },
