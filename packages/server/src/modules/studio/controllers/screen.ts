@@ -56,3 +56,19 @@ export async function control(ctx: Context) {
     ctx.body = { lease, youHaveControl: lease.holder === 'human' && lease.viewer_hash === viewerHash(viewer) }
   } catch (error) { fail(ctx, error) }
 }
+
+/** An agent's browser action (sent by Studio's browser tools). */
+export async function recordActivity(ctx: Context) {
+  const { browserActivity, cleanActivity } = await import('../services/screen/activity')
+  const entry = cleanActivity((ctx.request.body || {}) as Record<string, unknown>, ctx.state.runBinding || {})
+  if (!entry) { ctx.status = 400; ctx.body = { error: 'kind and summary are required' }; return }
+  browserActivity.add(entry)
+  ctx.status = 204
+}
+
+/** Recent browser activity, optionally for one chat. */
+export async function listActivity(ctx: Context) {
+  const { browserActivity } = await import('../services/screen/activity')
+  const sessionId = typeof ctx.query.sessionId === 'string' && ctx.query.sessionId ? ctx.query.sessionId : undefined
+  ctx.body = { activity: browserActivity.list({ limit: Number(ctx.query.limit) || 100, sessionId }) }
+}

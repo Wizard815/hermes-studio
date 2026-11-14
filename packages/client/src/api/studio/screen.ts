@@ -31,6 +31,18 @@ const base = '/api/studio/screen'
 const post = <T>(path: string, body: Record<string, unknown> = {}) =>
   request<T>(`${base}${path}`, { method: 'POST', body: JSON.stringify({ clientId: screenClientId(), ...body }) })
 
+export interface BrowserActivity {
+  at: number
+  kind: string
+  summary: string
+  url?: string
+  outcome: 'done' | 'failed' | 'asked' | 'allowed' | 'refused' | 'stopped'
+  sessionId?: string
+  agentId?: string
+  error?: string
+}
+
+export const getBrowserActivity = (limit = 100) => request<{ activity: BrowserActivity[] }>(`${base}/activity?limit=${limit}`)
 export const getScreenStatus = () => request<ScreenStatus>(`${base}?clientId=${encodeURIComponent(screenClientId())}`)
 export const installScreen = () => post<ScreenStatus>('/install')
 export const startScreen = () => post<ScreenStatus>('/start')

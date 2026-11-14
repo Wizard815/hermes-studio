@@ -14,3 +14,6 @@ screenRoutes.post('/api/studio/screen/start', requireSuperAdmin, ctrl.start)
 screenRoutes.post('/api/studio/screen/stop', requireSuperAdmin, ctrl.stop)
 screenRoutes.post('/api/studio/screen/ticket', requireSuperAdmin, ctrl.ticket)
 screenRoutes.post('/api/studio/screen/control', requireSuperAdmin, ctrl.control)
+// Agents record their browser actions with their own run credentials.
+screenRoutes.post('/api/studio/screen/activity', ctrl.recordActivity)
+screenRoutes.get('/api/studio/screen/activity', requireSuperAdmin, ctrl.listActivity)

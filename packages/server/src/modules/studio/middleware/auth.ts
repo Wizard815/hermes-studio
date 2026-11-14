@@ -441,6 +441,8 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
       return
     }
     ctx.state.profile = { name: binding.profile }
+    // Which chat and agent made the request (activity records name them).
+    ctx.state.runBinding = { sessionId: binding.sessionId, agentId: binding.agentId }
     await next()
     return
   }

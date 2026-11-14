@@ -2,6 +2,9 @@
 export const screenMessages = {
   "en": {
     "screen": {
+      "activity": "Activity",
+      "activityEmpty": "No browser activity yet. Agents' clicks, pages and approvals show here.",
+      "outcome": {"done": "Done", "failed": "Failed", "asked": "Asked", "allowed": "Allowed", "refused": "Refused", "stopped": "Stopped"},
       "centerScreen": "Screen",
       "title": "Agents' screen",
       "agentControls": "Agent is in control",
@@ -25,6 +28,9 @@ export const screenMessages = {
   },
   "zh": {
     "screen": {
+      "activity": "活动",
+      "activityEmpty": "暂无浏览器活动。代理的点击、页面和审批会显示在这里。",
+      "outcome": {"done": "完成", "failed": "失败", "asked": "已询问", "allowed": "已允许", "refused": "已拒绝", "stopped": "已停止"},
       "centerScreen": "屏幕",
       "title": "代理屏幕",
       "agentControls": "代理正在控制",
@@ -48,6 +54,9 @@ export const screenMessages = {
   },
   "zh-TW": {
     "screen": {
+      "activity": "活動",
+      "activityEmpty": "尚無瀏覽器活動。代理的點擊、頁面和核准會顯示在這裡。",
+      "outcome": {"done": "完成", "failed": "失敗", "asked": "已詢問", "allowed": "已允許", "refused": "已拒絕", "stopped": "已停止"},
       "centerScreen": "螢幕",
       "title": "代理螢幕",
       "agentControls": "代理正在控制",
@@ -71,6 +80,9 @@ export const screenMessages = {
   },
   "ja": {
     "screen": {
+      "activity": "アクティビティ",
+      "activityEmpty": "ブラウザーのアクティビティはまだありません。エージェントのクリック、ページ、承認がここに表示されます。",
+      "outcome": {"done": "完了", "failed": "失敗", "asked": "確認中", "allowed": "許可", "refused": "拒否", "stopped": "停止"},
       "centerScreen": "画面",
       "title": "エージェントの画面",
       "agentControls": "エージェントが操作中",
@@ -94,6 +106,9 @@ export const screenMessages = {
   },
   "ko": {
     "screen": {
+      "activity": "활동",
+      "activityEmpty": "아직 브라우저 활동이 없습니다. 에이전트의 클릭, 페이지, 승인이 여기에 표시됩니다.",
+      "outcome": {"done": "완료", "failed": "실패", "asked": "요청함", "allowed": "허용됨", "refused": "거부됨", "stopped": "중지됨"},
       "centerScreen": "화면",
       "title": "에이전트 화면",
       "agentControls": "에이전트가 제어 중",
@@ -117,6 +132,9 @@ export const screenMessages = {
   },
   "de": {
     "screen": {
+      "activity": "Aktivität",
+      "activityEmpty": "Noch keine Browser-Aktivität. Klicks, Seiten und Freigaben der Agenten erscheinen hier.",
+      "outcome": {"done": "Erledigt", "failed": "Fehlgeschlagen", "asked": "Gefragt", "allowed": "Erlaubt", "refused": "Abgelehnt", "stopped": "Gestoppt"},
       "centerScreen": "Bildschirm",
       "title": "Bildschirm der Agenten",
       "agentControls": "Der Agent steuert",
@@ -140,6 +158,9 @@ export const screenMessages = {
   },
   "es": {
     "screen": {
+      "activity": "Actividad",
+      "activityEmpty": "Aún no hay actividad del navegador. Aquí aparecen los clics, páginas y aprobaciones de los agentes.",
+      "outcome": {"done": "Hecho", "failed": "Falló", "asked": "Preguntado", "allowed": "Permitido", "refused": "Rechazado", "stopped": "Detenido"},
       "centerScreen": "Pantalla",
       "title": "Pantalla de los agentes",
       "agentControls": "El agente tiene el control",
@@ -163,6 +184,9 @@ export const screenMessages = {
   },
   "fr": {
     "screen": {
+      "activity": "Activité",
+      "activityEmpty": "Pas encore d'activité du navigateur. Les clics, pages et autorisations des agents s'affichent ici.",
+      "outcome": {"done": "Fait", "failed": "Échec", "asked": "Demandé", "allowed": "Autorisé", "refused": "Refusé", "stopped": "Arrêté"},
       "centerScreen": "Écran",
       "title": "Écran des agents",
       "agentControls": "L'agent a la main",
@@ -186,6 +210,9 @@ export const screenMessages = {
   },
   "pt": {
     "screen": {
+      "activity": "Atividade",
+      "activityEmpty": "Ainda não há atividade do navegador. Cliques, páginas e aprovações dos agentes aparecem aqui.",
+      "outcome": {"done": "Feito", "failed": "Falhou", "asked": "Perguntado", "allowed": "Permitido", "refused": "Recusado", "stopped": "Parado"},
       "centerScreen": "Tela",
       "title": "Tela dos agentes",
       "agentControls": "O agente está no controle",
@@ -209,6 +236,9 @@ export const screenMessages = {
   },
   "ru": {
     "screen": {
+      "activity": "Активность",
+      "activityEmpty": "Пока нет действий в браузере. Здесь появятся клики, страницы и разрешения агентов.",
+      "outcome": {"done": "Готово", "failed": "Ошибка", "asked": "Запрошено", "allowed": "Разрешено", "refused": "Отклонено", "stopped": "Остановлено"},
       "centerScreen": "Экран",
       "title": "Экран агентов",
       "agentControls": "Управляет агент",
@@ -232,6 +262,9 @@ export const screenMessages = {
   },
   "tr": {
     "screen": {
+      "activity": "Etkinlik",
+      "activityEmpty": "Henüz tarayıcı etkinliği yok. Ajanların tıklamaları, sayfaları ve onayları burada görünür.",
+      "outcome": {"done": "Tamam", "failed": "Başarısız", "asked": "Soruldu", "allowed": "İzin verildi", "refused": "Reddedildi", "stopped": "Durduruldu"},
       "centerScreen": "Ekran",
       "title": "Ajanların ekranı",
       "agentControls": "Kontrol ajanda",
@@ -255,6 +288,9 @@ export const screenMessages = {
   },
   "ar": {
     "screen": {
+      "activity": "النشاط",
+      "activityEmpty": "لا يوجد نشاط للمتصفح بعد. تظهر هنا نقرات الوكلاء وصفحاتهم والموافقات.",
+      "outcome": {"done": "تم", "failed": "فشل", "asked": "تم السؤال", "allowed": "مسموح", "refused": "مرفوض", "stopped": "متوقف"},
       "centerScreen": "الشاشة",
       "title": "شاشة الوكلاء",
       "agentControls": "الوكيل يتحكم",

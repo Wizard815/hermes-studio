@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { NButton } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { getScreenStatus, installScreen, screenControl, screenSocketUrl, startScreen, stopScreen, type ScreenStatus } from '@/api/studio/screen'
+import { getBrowserActivity, getScreenStatus, installScreen, screenControl, screenSocketUrl, startScreen, stopScreen, type BrowserActivity, type ScreenStatus } from '@/api/studio/screen'
 
 /**
  * The agents' screen (Hermes Bot Screen): a desktop with a real browser that
@@ -21,6 +21,26 @@ let rfb: any = null
 let poll: ReturnType<typeof setTimeout> | null = null
 let reconnect: ReturnType<typeof setTimeout> | null = null
 let disposed = false
+const showActivity = ref(false)
+const activity = ref<BrowserActivity[]>([])
+
+async function loadActivity() {
+  try { activity.value = (await getBrowserActivity(100)).activity.slice().reverse() } catch { /* keep the last list */ }
+}
+
+function toggleActivity() {
+  showActivity.value = !showActivity.value
+  if (showActivity.value) void loadActivity()
+}
+
+function timeOf(at: number): string {
+  return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function hostOf(url?: string): string {
+  if (!url) return ''
+  try { return new URL(url).host } catch { return '' }
+}
 
 const running = computed(() => !!status.value?.running)
 const lease = computed(() => status.value?.lease)
@@ -43,6 +63,7 @@ async function refresh() {
   if (rfb) rfb.viewOnly = !youHaveControl.value
   if (running.value && props.active && !rfb) void connect()
   if (!running.value && rfb) disconnect()
+  if (showActivity.value) void loadActivity()
   if (!disposed && props.active) poll = setTimeout(() => void refresh(), status.value?.installing || status.value?.starting ? 2000 : 4000)
 }
 
@@ -114,6 +135,7 @@ onBeforeUnmount(() => {
         <span v-if="lease?.reason" class="screen-reason" :title="lease.reason">{{ lease.reason }}</span>
       </template>
       <span class="screen-spacer" />
+      <NButton size="tiny" quaternary :type="showActivity ? 'primary' : 'default'" data-testid="screen-activity-toggle" @click="toggleActivity">{{ t('screen.activity') }}</NButton>
       <template v-if="running">
         <NButton v-if="!youHaveControl" size="tiny" type="error" :loading="busy === 'take'" data-testid="screen-take" @click="takeOver">{{ t('screen.takeOver') }}</NButton>
         <NButton v-else size="tiny" type="primary" :loading="busy === 'release'" data-testid="screen-handback" @click="handBack">{{ t('screen.handBack') }}</NButton>
@@ -121,7 +143,22 @@ onBeforeUnmount(() => {
         <NButton size="tiny" quaternary :loading="busy === 'stop'" :disabled="lease?.holder === 'human'" data-testid="screen-stop" @click="stop">{{ t('screen.stop') }}</NButton>
       </template>
     </div>
-    <div v-show="running" ref="viewer" class="screen-viewer" data-testid="screen-viewer" />
+    <div class="screen-body">
+      <div v-show="running" ref="viewer" class="screen-viewer" data-testid="screen-viewer" />
+      <aside v-if="showActivity" class="screen-activity" data-testid="screen-activity">
+        <p v-if="!activity.length" class="screen-hint">{{ t('screen.activityEmpty') }}</p>
+        <div v-for="(item, index) in activity" :key="`${item.at}-${index}`" class="activity-item" :data-outcome="item.outcome">
+          <div class="activity-line">
+            <span class="activity-time">{{ timeOf(item.at) }}</span>
+            <span class="activity-outcome">{{ t(`screen.outcome.${item.outcome}`) }}</span>
+            <span v-if="item.agentId" class="activity-agent">{{ item.agentId }}</span>
+          </div>
+          <div class="activity-summary">{{ item.summary }}</div>
+          <div v-if="hostOf(item.url)" class="activity-url" :title="item.url">{{ hostOf(item.url) }}</div>
+          <div v-if="item.error" class="activity-error">{{ item.error }}</div>
+        </div>
+      </aside>
+    </div>
     <div v-if="!running" class="screen-state">
       <template v-if="status && !status.available">
         <p class="screen-headline">{{ t('screen.unavailable') }}</p>
@@ -195,8 +232,41 @@ onBeforeUnmount(() => {
   max-width: 40%;
 }
 
+.screen-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
+.screen-activity {
+  width: 280px;
+  flex-shrink: 0;
+  overflow: auto;
+  padding: 8px;
+  font-size: 12px;
+  border-left: var(--border-width, 1px) solid $border-light;
+}
+
+.activity-item {
+  padding: 6px 4px;
+  border-bottom: var(--border-width, 1px) solid $border-light;
+
+  &[data-outcome='failed'] .activity-outcome,
+  &[data-outcome='refused'] .activity-outcome,
+  &[data-outcome='stopped'] .activity-outcome { color: $error; }
+  &[data-outcome='allowed'] .activity-outcome { color: $warning; }
+}
+
+.activity-line { display: flex; gap: 6px; opacity: 0.75; font-size: 11px; }
+.activity-outcome { font-weight: 600; }
+.activity-summary { margin-top: 2px; word-break: break-word; }
+.activity-url { opacity: 0.6; font-size: 11px; }
+.activity-error { color: $error; font-size: 11px; word-break: break-word; }
+
 .screen-viewer {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   background: #111;
   overflow: hidden;

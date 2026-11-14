@@ -713,6 +713,11 @@ async function browserRequest(method, params = {}, signal) {
 
 const browserApprovals = new BrowserApprovals()
 
+/** An error result the activity list already explains (no second "failed" line). */
+function stoppedResult(message) {
+  return { ...errorText(message), browserGateStopped: true }
+}
+
 /**
  * Purchases and sign-ins need the person's OK. Reads the agent's own snapshot
  * (by its id, so the agent's refs stay valid) and the page address; asks
@@ -745,7 +750,8 @@ async function browserApprovalGate(args, actions, snapshotId, signal) {
   try { credential = readRunCredential(profile, undefined) } catch { credential = null }
   if (credential?.context_id && browserApprovals.has(credential.context_id, risk, url)) return null
   if (!credential?.context_id) {
-    return errorText(`Stopped before you ${risk.what} on ${hostOf(url)}: purchases and sign-ins need the person's OK. Tell them what you need and ask them to take over the agents' Screen in Studio and do this step themselves, then continue after they hand it back.`)
+    recordBrowserActivity(args, { kind: 'approval', summary: `Stopped before: ${risk.what} (${risk.kind})`, url, outcome: 'stopped' })
+    return stoppedResult(`Stopped before you ${risk.what} on ${hostOf(url)}: purchases and sign-ins need the person's OK. Tell them what you need and ask them to take over the agents' Screen in Studio and do this step themselves, then continue after they hand it back.`)
   }
   const answer = await request('/api/studio/clarifications/request', withAuthArgs(args, {
     method: 'POST',
@@ -754,10 +760,12 @@ async function browserApprovalGate(args, actions, snapshotId, signal) {
   }))
   if (answer?.reason === 'response' && String(answer.response || '').trim() === ALLOW_CHOICE) {
     browserApprovals.grant(credential.context_id, risk, url)
+    recordBrowserActivity(args, { kind: 'approval', summary: `Allowed: ${risk.what} (${risk.kind})`, url, outcome: 'allowed' })
     return null
   }
   const why = answer?.reason === 'response' ? 'said no' : answer?.reason === 'timeout' ? 'did not answer in time' : 'did not allow it'
-  return errorText(`Not done: the person ${why} when asked to let you ${risk.what} on ${hostOf(url)}. Do not try again unless they ask you to; they can take over the agents' Screen in Studio to do it themselves.`)
+  recordBrowserActivity(args, { kind: 'approval', summary: `Refused: ${risk.what} (${risk.kind}); the person ${why}`, url, outcome: 'refused' })
+  return stoppedResult(`Not done: the person ${why} when asked to let you ${risk.what} on ${hostOf(url)}. Do not try again unless they ask you to; they can take over the agents' Screen in Studio to do it themselves.`)
 }
 
 function browserScreenshotContent(envelope) {
@@ -2064,7 +2072,53 @@ async function callCategoryToolset(args = {}, signal) {
 }
 
 async function callTool(name, args = {}, signal) {
-  return browserCallContext.run({ ...(browserCallContext.getStore() || {}), ...(args.profile ? { profile: args.profile } : {}), ...(args.token ? { token: args.token } : {}) }, () => callToolInner(name, args, signal))
+  return browserCallContext.run({ ...(browserCallContext.getStore() || {}), ...(args.profile ? { profile: args.profile } : {}), ...(args.token ? { token: args.token } : {}) }, async () => {
+    const activity = browserActivityFor(name, args)
+    try {
+      const result = await callToolInner(name, args, signal)
+      if (activity && !result?.browserGateStopped) recordBrowserActivity(args, { ...activity, outcome: result?.isError ? 'failed' : 'done', ...(result?.isError ? { error: resultText(result) } : {}) })
+      if (result && 'browserGateStopped' in result) delete result.browserGateStopped
+      return result
+    } catch (error) {
+      if (activity) recordBrowserActivity(args, { ...activity, outcome: 'failed', error: error instanceof Error ? error.message : String(error) })
+      throw error
+    }
+  })
+}
+
+function resultText(result) {
+  return (Array.isArray(result?.content) ? result.content.map(item => item?.text || '').join(' ') : '').slice(0, 300)
+}
+
+/** What a browser tool call did, for the Screen's activity list (never what was typed). */
+function browserActivityFor(name, args) {
+  const ref = args.ref ? ` ${args.ref}` : ''
+  switch (name) {
+    case 'ekko_studio_browser_navigate':
+      return (args.action || 'open') === 'open' ? { kind: 'navigate', summary: `Opened ${args.url || 'a page'}`, url: args.url } : { kind: 'navigate', summary: `Went ${args.action}` }
+    case 'ekko_studio_browser_interact': {
+      const action = String(args.action || 'interact')
+      const extra = action === 'type' ? ` (typed ${String(args.text || '').length} characters)` : action === 'press' ? ` ${args.key || ''}` : action === 'select' ? ' (chose an option)' : ''
+      return { kind: action, summary: `${action.replace('_', ' ')}${ref}${extra}`.trim() }
+    }
+    case 'ekko_studio_browser_batch':
+      return { kind: 'batch', summary: `Ran ${Array.isArray(args.actions) ? args.actions.length : 0} actions (${(args.actions || []).map(item => item?.action).filter(Boolean).slice(0, 6).join(', ')})` }
+    case 'ekko_studio_browser_upload':
+      return { kind: 'upload', summary: `Uploaded ${Array.isArray(args.files) ? args.files.length : 0} file(s)${ref}` }
+    case 'ekko_studio_browser_download':
+      return { kind: 'download', summary: `Downloaded ${args.url || `from${ref}`}`, url: args.url }
+    case 'ekko_studio_browser_dialog':
+      return args.action && args.action !== 'status' ? { kind: 'dialog', summary: `${args.action === 'accept' ? 'Accepted' : 'Dismissed'} a page dialog` } : null
+    case 'ekko_studio_browser_tabs':
+      return args.action === 'create' ? { kind: 'tab', summary: `Opened a tab${args.url ? ` on ${args.url}` : ''}`, url: args.url } : args.action === 'close' ? { kind: 'tab', summary: 'Closed a tab' } : null
+    default:
+      return null
+  }
+}
+
+/** Sends an activity line to Studio; never blocks or fails the tool. */
+function recordBrowserActivity(args, entry) {
+  void request('/api/studio/screen/activity', withAuthArgs(args, { method: 'POST', body: entry })).catch(() => undefined)
 }
 
 async function callToolInner(name, args = {}, signal) {
