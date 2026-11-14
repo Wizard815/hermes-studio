@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { answerAcpPermission } from '../../packages/server/src/modules/coding-agents/protocol/acp/permission'
-import { codexApprovalRequest, codexApprovalResponse } from '../../packages/server/src/modules/coding-agents/services/codex/app-server-turn'
+import { codexApprovalRequest, codexApprovalResponse, codexToolApprovalRequest, codexToolApprovalResponse, isCodexToolApproval } from '../../packages/server/src/modules/coding-agents/services/codex/app-server-turn'
 import { buildCursorTurnArgs } from '../../packages/server/src/modules/coding-agents/services/cursor/turn-process'
 import { buildAntigravityTurnArgs } from '../../packages/server/src/modules/coding-agents/services/antigravity/turn-process'
 import { agentAsksBeforeActing, readAgentApprovalSettings, writeAgentApprovalSettings } from '../../packages/server/src/modules/coding-agents/services/approvals'
@@ -52,3 +52,28 @@ describe('agents ask in Studio before acting', () => {
     expect(() => writeAgentApprovalSettings({ agents: { codex: 'yolo' } }, file)).toThrow()
   })
 })
+
+describe('Codex asks before MCP tool calls', () => {
+  const params = {
+    serverName: 'ekko-studio-browser',
+    mode: 'form',
+    message: 'Allow the ekko-studio-browser MCP server to run tool "ekko_studio_browser_toolset"?',
+    requestedSchema: { type: 'object', properties: {} },
+    _meta: { codex_approval_kind: 'mcp_tool_call', persist: ['session', 'always'], tool_name: 'ekko_studio_browser_toolset', tool_params: { action: 'call', tool: 'ekko_studio_browser_tabs', arguments: { action: 'create', url: 'https://a.test/' } } },
+  }
+
+  it('turns the elicitation into a Studio approval naming the inner tool', () => {
+    expect(isCodexToolApproval(params)).toBe(true)
+    expect(isCodexToolApproval({ ...params, _meta: {} })).toBe(false)
+    const request = codexToolApprovalRequest(params)
+    expect(request).toMatchObject({ key: 'mcp:ekko-studio-browser:ekko_studio_browser_toolset', action: { kind: 'other' } })
+    expect(request.description).toContain('ekko_studio_browser_tabs')
+  })
+
+  it('answers accept, accept for the session, or decline', () => {
+    expect(codexToolApprovalResponse('once')).toEqual({ action: 'accept', content: {} })
+    expect(codexToolApprovalResponse('session')).toEqual({ action: 'accept', content: {}, _meta: { persist: 'session' } })
+    expect(codexToolApprovalResponse('deny')).toEqual({ action: 'decline' })
+  })
+})
+

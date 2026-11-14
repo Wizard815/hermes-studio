@@ -47,6 +47,33 @@ export function codexApprovalResponse(method: string, choice: AgentApprovalChoic
   return { decision: choice === 'deny' ? 'decline' : choice === 'session' ? 'acceptForSession' : 'accept' }
 }
 
+/** Codex's approval for an MCP tool call arrives as an MCP elicitation marked mcp_tool_call. */
+export function isCodexToolApproval(params: any): boolean {
+  return params?._meta?.codex_approval_kind === 'mcp_tool_call'
+}
+
+export function codexToolApprovalRequest(params: any): AgentApprovalRequest {
+  const meta = params?._meta || {}
+  const server = String(params?.serverName || 'mcp')
+  const tool = String(meta.tool_name || 'a tool')
+  const args = meta.tool_params && typeof meta.tool_params === 'object' ? meta.tool_params : {}
+  // Studio's toolsets name the operation they run inside (action=call, tool=...).
+  const inner = typeof args.tool === 'string' && args.tool ? `${args.tool}${args.arguments ? ` ${JSON.stringify(args.arguments)}` : ''}` : JSON.stringify(args)
+  return {
+    key: `mcp:${server}:${tool}`,
+    action: { kind: 'other' },
+    title: `Codex wants to use ${server}`,
+    description: `${tool}: ${inner}`.slice(0, 600),
+    command: inner.slice(0, 4000),
+  }
+}
+
+/** Accept (once, or for the rest of the Codex session) or decline the tool call. */
+export function codexToolApprovalResponse(choice: AgentApprovalChoice): any {
+  if (choice === 'deny') return { action: 'decline' }
+  return { action: 'accept', content: {}, ...(choice === 'session' ? { _meta: { persist: 'session' } } : {}) }
+}
+
 const APPROVAL_METHODS = new Set(['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'execCommandApproval', 'applyPatchApproval'])
 
 export class CodexAppServerTurn {
@@ -101,6 +128,15 @@ export class CodexAppServerTurn {
         void this.handlers.ask(codexApprovalRequest(method, params, this.itemPaths.get(String(params?.itemId || '')) || []))
           .then(choice => this.write({ id, result: codexApprovalResponse(method, choice) }))
           .catch(() => this.write({ id, result: codexApprovalResponse(method, 'deny') }))
+      } else if (message.method === 'mcpServer/elicitation/request' && isCodexToolApproval(message.params)) {
+        // Codex asks before an MCP tool call (Studio's own tools included).
+        const { id, params } = message
+        void this.handlers.ask(codexToolApprovalRequest(params))
+          .then(choice => this.write({ id, result: codexToolApprovalResponse(choice) }))
+          .catch(() => this.write({ id, result: codexToolApprovalResponse('deny') }))
+      } else if (message.method === 'mcpServer/elicitation/request') {
+        // Other MCP questions (forms, links) have no place in Studio yet.
+        this.write({ id: message.id, result: { action: 'decline' } })
       } else {
         this.write({ id: message.id, error: { code: -32601, message: 'Studio does not handle this request' } })
       }

@@ -67,10 +67,12 @@ agent's refs stay valid) and the page address:
 - sign-ins: password and one-time-code fields, "Sign in" on a login form,
   filling a saved login.
 
-A coding-agent run asks the person through Studio's question prompt
-(Allow / Don't allow; an Allow covers that site and kind for 10 minutes). A run
-that cannot ask (no run credential: Hermes, Ekko) stops and tells the agent to
-ask the person to take over the Screen. When the target cannot be read, the
+Studio asks the person through its question prompt in the chat (Allow /
+Don't allow; an Allow covers that site and kind for 10 minutes). The tools
+find the chat from the run credential, or from the turn's interaction
+`context_id` (every interactive turn has one in Studio's instructions): without
+either, the tool tells the agent to call again with `context_id`, or to ask the
+person to take over the Screen when it has none (Hermes, Ekko). When the target cannot be read, the
 check asks rather than lets it through. Hermes's own browser tools in Hermes
 chats follow Hermes's rules, not these.
 
@@ -94,11 +96,26 @@ password into the page with Hermes's login-form classifier and origin-checked
 fill script, only on the exact site it was saved for. The result carries
 counts, never the password.
 
+## Codex and MCP tools
+
+Codex (app-server) asks before every MCP tool call with an
+`mcpServer/elicitation/request` marked `codex_approval_kind: mcp_tool_call`.
+Studio answers it like Codex's other approvals (`codex/app-server-turn.ts`):
+in "ask" mode you see "Codex wants to use <server>" with the inner tool and
+arguments (Allow for the session covers that tool), "guarded" and "auto" let
+it through. Before this, every MCP call from Codex in "ask" mode was refused.
+
 ## Tested
 
 In the Hermes image (Studio running inside it): an agent's tool process opened
 a tab on the screen's Chrome, read the login form and typed the email; typing
 the password, pressing Sign in and filling the saved login all stopped for the
 person; the Activity panel listed each step; a saved login filled on its own
-site and was refused elsewhere. Not tested live: the Allow answer in a real
-coding-agent chat (the prompt itself is Studio's existing clarification).
+site and was refused elsewhere; a saved card filled number, expiry and CVC on
+a checkout page.
+
+With a real Codex chat (Studio's provider, a scripted stand-in model): Codex
+found the browser tools, opened the login page on the screen's Chrome, typed
+the email, was asked to pass the turn's context_id for the password, and
+Studio asked the person. Allow: the password was typed. Don't allow: it was not,
+and the agent was told not to retry.

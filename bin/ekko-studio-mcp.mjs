@@ -765,18 +765,19 @@ async function browserApprovalGateFor(args, risk, url, signal) {
   const profile = (typeof args.profile === 'string' && args.profile.trim()) || browserCallContext.getStore()?.profile || defaultProfile()
   let credential = null
   try { credential = readRunCredential(profile, undefined) } catch { credential = null }
-  if (credential?.context_id && browserApprovals.has(credential.context_id, risk, url)) return null
-  if (!credential?.context_id) {
-    recordBrowserActivity(args, { kind: 'approval', summary: `Stopped before: ${risk.what} (${risk.kind})`, url, outcome: 'stopped' })
-    return stoppedResult(`Stopped before you ${risk.what} on ${hostOf(url)}: purchases and sign-ins need the person's OK. Tell them what you need and ask them to take over the agents' Screen in Studio and do this step themselves, then continue after they hand it back.`)
+  const contextId = credential?.context_id || (typeof args.context_id === 'string' ? args.context_id.trim() : '')
+  if (contextId && browserApprovals.has(contextId, risk, url)) return null
+  if (!contextId) {
+    recordBrowserActivity(args, { kind: 'approval', summary: `Needs the person's OK: ${risk.what} (${risk.kind})`, url, outcome: 'asked' })
+    return stoppedResult(`Not done yet: to ${risk.what} on ${hostOf(url)} Studio must ask the person first (purchases and sign-ins). Call this tool again with the same arguments plus context_id set to the current turn's interaction context_id from Studio's instructions, and Studio will ask them in this chat. If you have no context_id, ask them to take over the agents' Screen in Studio and do this step themselves.`)
   }
   const answer = await request('/api/studio/clarifications/request', withAuthArgs(args, {
     method: 'POST',
-    body: { context_id: credential.context_id, question: approvalQuestion(risk, url), choices: [ALLOW_CHOICE, DENY_CHOICE] },
+    body: { context_id: contextId, question: approvalQuestion(risk, url), choices: [ALLOW_CHOICE, DENY_CHOICE] },
     signal,
   }))
   if (answer?.reason === 'response' && String(answer.response || '').trim() === ALLOW_CHOICE) {
-    browserApprovals.grant(credential.context_id, risk, url)
+    browserApprovals.grant(contextId, risk, url)
     recordBrowserActivity(args, { kind: 'approval', summary: `Allowed: ${risk.what} (${risk.kind})`, url, outcome: 'allowed' })
     return null
   }
@@ -1118,6 +1119,7 @@ const tools = [
     inputSchema: browserInputSchema({
       tab_id: { type: 'string' },
       expectation: { type: 'string', minLength: 1, maxLength: 2000, description: 'Expected visible outcome to judge after the action, when enabled in Models > JEV.' },
+      context_id: { type: 'string', maxLength: 200, description: "The current turn's interaction context_id from Studio's instructions. Pass it when a step may be a purchase or sign-in, so Studio can ask the person in this chat." },
       include_text: { type: 'boolean', description: 'Include the duplicate text rendering alongside snapshot nodes. Defaults to false.' },
       action: { type: 'string', enum: ['click', 'double_click', 'right_click', 'type', 'hover', 'select', 'drag', 'press', 'scroll', 'click_at', 'drag_at'] },
       ref: { type: 'string' }, snapshot_id: { type: 'string' }, text: { type: 'string' }, key: { type: 'string' },
@@ -1141,6 +1143,7 @@ const tools = [
       snapshot_id: { type: 'string', description: 'Current snapshot used by all refs; optional for a batch without ref actions.' },
       include_text: { type: 'boolean', description: 'Include the duplicate text rendering alongside final snapshot nodes. Defaults to false.' },
       expectation: { type: 'string', minLength: 1, maxLength: 2000, description: 'Expected visible outcome after all actions finish. Prefer one batch assessment over assessing every intermediate click.' },
+      context_id: { type: 'string', maxLength: 200, description: "The current turn's interaction context_id from Studio's instructions. Pass it when a step may be a purchase or sign-in, so Studio can ask the person in this chat." },
       actions: {
         type: 'array', minItems: 1, maxItems: 50,
         items: {
@@ -1232,6 +1235,7 @@ const tools = [
     inputSchema: browserInputSchema({
       action: { type: 'string', enum: ['list', 'fill'] },
       handle: { type: 'string', maxLength: 200, description: 'For fill: the id from list.' },
+      context_id: { type: 'string', maxLength: 200, description: "The current turn's interaction context_id from Studio's instructions. Pass it when a step may be a purchase or sign-in, so Studio can ask the person in this chat." },
       tab_id: { type: 'string' },
     }, ['action']),
   },
