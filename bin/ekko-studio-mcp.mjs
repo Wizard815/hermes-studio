@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { browserIntent, matchBrowserSnapshot, verifyBrowserResult } from './browser/jev.mjs'
-import { validateBrowserArguments } from './browser/arguments.mjs'
+import { validateBrowserArguments, validateToolArguments } from './browser/arguments.mjs'
 import { browserOutput } from './browser/output.mjs'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
@@ -1243,6 +1243,7 @@ const tools = [
       explanation: { type: 'string', maxLength: 1000, description: 'Brief explanation in the user\'s conversation language unless they explicitly request another language.' },
       plan: {
         type: 'array', minItems: 1, maxItems: 30,
+        description: 'The full ordered plan, 1-30 items of {id, step, status}. Send every item each time, not only the changed ones.',
         items: {
           type: 'object', additionalProperties: false, required: ['id', 'step', 'status'],
           properties: {
@@ -1268,8 +1269,8 @@ const tools = [
     description: 'Persist changed/new goals worth tracking: independent deliverables, ongoing follow-up or explicit user-requested tracking. Skip simple questions, one-off lookups and trivial edits without lasting tracking value. Keep one goal per user outcome: reuse its id for follow-ups, refinements, corrections, constraints and reopening. Create distinct goals before execution; save changed progress and verified completion before the final response. Use concise outcome titles and one or two short summary sentences about results and remaining blockers; keep implementation and test logs in the conversation, verification in completion_evidence. Omitted goals remain; unchanged ledgers need no write. Use the latest revision; reread on conflict. open includes blocked/interrupted work. Closed goals were closed by the user. Leave them unchanged; only the user can reopen them from the task list. Turn end or finished plan steps never proves goal completion. Independent of ekko_studio_update_plan; no page card. The server binds the session through the latest context_id.',
     inputSchema: inputSchema({
       context_id: { type: 'string', description: 'Current turn context supplied by Studio.' },
-      revision: { type: 'integer', minimum: 0 },
-      changes: { type: 'array', minItems: 1, maxItems: 30, items: {
+      revision: { type: 'integer', minimum: 0, description: 'The revision ekko_studio_list_session_tasks returned. A stale one is refused; reread and retry.' },
+      changes: { type: 'array', minItems: 1, maxItems: 30, description: 'Only the new or changed goals, 1-30. Goals left out stay as they are.', items: {
         type: 'object', additionalProperties: false, required: ['title', 'summary', 'status'], properties: {
           id: { type: 'string', minLength: 1, maxLength: 100 },
           title: { type: 'string', minLength: 1, maxLength: 200, description: 'Concise user outcome; reuse the existing goal for refinements and corrections.' },
@@ -1372,27 +1373,39 @@ const tools = [
   {
     name: 'ekko_studio_use_orb_read',
     toolset: 'use',
-    description: 'Read the Pondering Orb homelab dashboard connected to Studio: tasks (plans and to-dos), projects, logs, chores, ideas (idea board cards), upkeep-repos, upkeep-requests, uptime or system. Use it when the user asks about their plans, tasks, projects, ideas or homelab upkeep.',
+    description: 'Read the Pondering Orb homelab dashboard connected to Studio: tasks (plans and to-dos, with ids, soonest due first), lists (the task lists and whether each syncs to Vikunja), projects, logs, chores, ideas (idea board cards), upkeep-repos, upkeep-requests, uptime or system. Use it when the user asks about their plans, tasks, projects, ideas or homelab upkeep; for overdue tasks pass due_on_or_before with yesterday\'s date.',
     inputSchema: inputSchema({
         kind: {
           type: 'string',
-          enum: ['tasks', 'projects', 'logs', 'chores', 'ideas', 'upkeep-repos', 'upkeep-requests', 'uptime', 'system'],
+          enum: ['tasks', 'lists', 'projects', 'logs', 'chores', 'ideas', 'upkeep-repos', 'upkeep-requests', 'uptime', 'system'],
           description: 'Which Orb data to read.',
         },
         list: {
           type: 'string',
-          description: 'For tasks: only this list (a project uses its own name).',
+          description: 'For tasks: only this list (a project uses its own name). kind=lists shows the names.',
         },
         openOnly: {
           type: 'boolean',
           description: 'For tasks: only open tasks (default true).',
+        },
+        due_on_or_before: {
+          type: 'string',
+          description: 'For tasks: only tasks due on or before this day, YYYY-MM-DD (yesterday = overdue).',
+        },
+        due_on_or_after: {
+          type: 'string',
+          description: 'For tasks: only tasks due on or after this day, YYYY-MM-DD.',
+        },
+        limit: {
+          type: 'integer', minimum: 1, maximum: 500,
+          description: 'For tasks: at most this many (default 100).',
         },
       }, ['kind']),
   },
   {
     name: 'ekko_studio_use_orb_update',
     toolset: 'use',
-    description: 'Change the Pondering Orb dashboard when the user asks: add_task (title, list, due YYYY-MM-DD, priority), start_task (title, list: mark it in progress), complete_task (title, list), add_log (text, project), move_project (name, status: next, active, blocked, paused, shipped), set_task_priority (title, priority) or chore_done (name).',
+    description: 'Change the Pondering Orb dashboard when the user asks: add_task (title, list, due YYYY-MM-DD, priority none/low/medium/high/urgent/do_now), start_task, complete_task and set_task_priority (id from ekko_studio_use_orb_read kind=tasks, or title + list; set_task_priority also takes priority), add_log (text, project), move_project (name, status: next, active, blocked, paused, shipped) or chore_done (name). Orb refuses bad dates, lists and priorities with a message saying what to send.',
     inputSchema: inputSchema({
         action: {
           type: 'string',
@@ -1401,7 +1414,7 @@ const tools = [
         },
         arguments: {
           type: 'object',
-          description: 'The fields for that action, as listed in the description.',
+          description: 'The fields for that action, as listed in the description, e.g. {"id": "..."} for complete_task.',
         },
       }, ['action']),
   },
@@ -1947,7 +1960,7 @@ function categoryToolCatalog(query = '') {
   const normalizedQuery = String(query || '').trim().toLowerCase()
   return activeToolsetTools()
     .filter(tool => !normalizedQuery || `${tool.name} ${tool.description}`.toLowerCase().includes(normalizedQuery))
-    .map(tool => ({ name: tool.name, description: tool.description }))
+    .map(tool => ({ name: tool.name, description: tool.description, ...(DESTRUCTIVE_TOOLS.has(tool.name) ? { destructive: true } : READ_ONLY_TOOLS.has(tool.name) ? { read_only: true } : {}) }))
 }
 
 function categoryToolByName(name) {
@@ -1969,11 +1982,43 @@ function serverInstructions() {
   return category ? `${category.description} Coverage: ${category.coverage}` : ''
 }
 
+/** A required id or name that is an empty string still builds a broken request path. */
+function emptyIdError(tool, args) {
+  for (const key of tool.inputSchema?.required || []) {
+    if ((key === 'id' || key === 'name' || key.endsWith('_id')) && typeof args[key] === 'string' && !args[key].trim()) return `arguments.${key} is empty`
+  }
+}
+
+// MCP tool annotations. Deletes are destructive; everything that only reads says so,
+// so clients can skip confirmation for reads and insist on it for deletes.
+const DESTRUCTIVE_TOOLS = new Set([
+  'ekko_studio_use_session_delete', 'ekko_studio_use_provider_delete',
+  'ekko_studio_use_workflow_delete', 'ekko_studio_use_workflow_run_delete',
+])
+const READ_ONLY_TOOLS = new Set([
+  'ekko_studio_api_openapi_get', 'ekko_studio_list_session_tasks', 'ekko_studio_use_orb_read',
+  'ekko_studio_use_sessions_list', 'ekko_studio_use_sessions_count', 'ekko_studio_use_usage_stats',
+  'ekko_studio_use_session_get', 'ekko_studio_use_session_messages', 'ekko_studio_use_session_context',
+  'ekko_studio_use_profiles_list', 'ekko_studio_use_available_models', 'ekko_studio_use_model_provider_get',
+  'ekko_studio_use_worker_status', 'ekko_studio_use_workflows_list', 'ekko_studio_use_workflow_get',
+  'ekko_studio_use_workflow_runs_list', 'ekko_studio_browser_snapshot', 'ekko_studio_browser_read_text',
+  'ekko_studio_browser_screenshot', 'ekko_studio_browser_console', 'ekko_studio_browser_network',
+])
+function annotationsFor(name) {
+  if (DESTRUCTIVE_TOOLS.has(name)) return { readOnlyHint: false, destructiveHint: true }
+  if (READ_ONLY_TOOLS.has(name)) return { readOnlyHint: true }
+  return undefined
+}
+const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
+
 function visibleTools() {
   const categoryToolset = categoryToolsetDefinition(ACTIVE_TOOLSET)
   if (categoryToolset) return [categoryToolset]
   const visible = activeToolsetTools()
-  return visible.map(({ toolset, ...tool }) => tool)
+  return visible.map(({ toolset, ...tool }) => {
+    const annotations = annotationsFor(tool.name)
+    return annotations ? { ...tool, annotations } : tool
+  })
 }
 
 function isToolCallable(name) {
@@ -2004,6 +2049,7 @@ async function callCategoryToolset(args = {}, signal) {
       name: target.name,
       description: target.description,
       inputSchema: target.inputSchema,
+      ...(annotationsFor(target.name) ? { annotations: annotationsFor(target.name) } : {}),
     })
   }
   if (args.action === 'call') {
@@ -2028,6 +2074,11 @@ async function callToolInner(name, args = {}, signal) {
   if (browserTool) {
     const error = validateBrowserArguments(browserTool, args)
     if (error) return errorText(`${error}. Use ekko_studio_browser_toolset action=describe tool=${resolvedName} for the schema.`)
+  } else {
+    // Without this a missing session_id reached Studio as DELETE /api/studio/sessions/undefined.
+    const tool = tools.find(item => item.name === resolvedName)
+    const error = tool && (validateToolArguments(tool, args) || emptyIdError(tool, args))
+    if (error) return errorText(`${error}. Nothing was sent to Studio.${categoryToolset ? ` Use ${categoryToolset.name} action=describe tool=${resolvedName} for the schema.` : ''}`)
   }
   switch (resolvedName) {
     case 'ekko_studio_browser_tabs': {
@@ -2172,8 +2223,11 @@ async function callToolInner(name, args = {}, signal) {
       if (args.kind === 'tasks') {
         return jsonText(await request('/api/studio/orb/tools/orb_list_tasks', withAuthArgs(args, {
           method: 'POST',
-          body: pickDefined(args, ['list', 'openOnly']),
+          body: pickDefined(args, ['list', 'openOnly', 'due_on_or_before', 'due_on_or_after', 'limit']),
         })))
+      }
+      if (args.kind === 'lists') {
+        return jsonText(await request('/api/studio/orb/tools/orb_list_lists', withAuthArgs(args, { method: 'POST', body: {} })))
       }
       if (args.kind === 'projects') {
         return jsonText(await request('/api/studio/orb/tools/orb_list_projects', withAuthArgs(args, { method: 'POST', body: {} })))
@@ -2372,7 +2426,8 @@ async function handle(message) {
           jsonrpc: '2.0',
           id: message.id,
           result: {
-            protocolVersion: message.params?.protocolVersion || '2024-11-05',
+            // Answer with the client's version when supported, else our newest (the spec's negotiation).
+            protocolVersion: SUPPORTED_PROTOCOL_VERSIONS.includes(message.params?.protocolVersion) ? message.params.protocolVersion : SUPPORTED_PROTOCOL_VERSIONS[0],
             capabilities: { tools: {} },
             serverInfo: { name: SERVER_NAME, version: VERSION, toolset: ACTIVE_TOOLSET },
             instructions: serverInstructions(),

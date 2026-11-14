@@ -1,5 +1,17 @@
 // Validate against the published browser schema before acquiring a tab or dispatching any action.
+const isType = (type, value) => type === 'integer' ? Number.isInteger(value)
+  : type === 'null' ? value === null
+    : type === 'array' ? Array.isArray(value)
+      : type === 'object' ? !!value && typeof value === 'object' && !Array.isArray(value)
+        : typeof value === type
+
 function validate(schema, value, path) {
+  // A union such as ['string', 'null']: the type is the check; its members carry no nested schema here.
+  if (Array.isArray(schema.type)) {
+    if (!schema.type.some(type => isType(type, value))) return `${path} must be ${schema.type.join(' or ')}`
+    if (schema.enum && !schema.enum.includes(value)) return `${path} must be one of: ${schema.enum.join(', ')}`
+    return
+  }
   if (schema.oneOf) {
     const variant = schema.oneOf.find(item => item.properties?.action?.const === value?.action)
     return variant ? validate(variant, value, path) : `${path}.action must be click, double_click, right_click, type, hover, select, drag, press, scroll, click_at or drag_at (use "action", not "type")`
@@ -23,7 +35,7 @@ function validate(schema, value, path) {
       const error = validate(schema.items, value[i], `${path}[${i}]`)
       if (error) return error
     }
-  } else if (schema.type && typeof value !== schema.type) return `${path} must be ${schema.type}`
+  } else if (schema.type && !isType(schema.type, value)) return `${path} must be ${schema.type === 'integer' ? 'a whole number' : schema.type}`
   if (schema.enum && !schema.enum.includes(value)) return `${path} must be one of: ${schema.enum.join(', ')}`
   if (schema.const !== undefined && value !== schema.const) return `${path} must be ${schema.const}`
   if (typeof value === 'string' && (value.length < (schema.minLength || 0) || value.length > (schema.maxLength ?? Infinity))) return `${path} has an invalid length`
@@ -31,6 +43,12 @@ function validate(schema, value, path) {
 }
 
 const isRef = value => typeof value === 'string' && /^@e[1-9]\d*$/.test(value) && value.length <= 32
+
+/** Any tool's arguments against its published inputSchema: required keys, types, enums,
+ *  ranges and unknown keys. Returns an error message, or undefined when they fit. */
+export function validateToolArguments(tool, args) {
+  return validate(tool.inputSchema, args, 'arguments')
+}
 
 export function validateBrowserArguments(tool, args) {
   const error = validate(tool.inputSchema, args, 'arguments')
