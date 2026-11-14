@@ -2,10 +2,11 @@
 import PageLoading from '@/components/common/PageLoading.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { computed, ref, watch } from 'vue'
-import { NAlert, NButton, NEmpty, NInput, NSelect, NTag, useMessage } from 'naive-ui'
+import { NAlert, NButton, NEmpty, NInput, NSelect, NTabPane, NTabs, NTag, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { fetchPlugins, setPluginEnabled, type HermesPluginInfo, type HermesPluginsMetadata } from '@/api/hermes/plugins'
 import { useProfilesStore } from '@/stores/hermes/profiles'
+import PluginsHubPanel from '@/components/hermes/plugins/PluginsHubPanel.vue'
 
 const { t, te } = useI18n()
 const message = useMessage()
@@ -19,6 +20,7 @@ const error = ref('')
 const actionLoading = ref<Record<string, boolean>>({})
 
 const searchQuery = ref('')
+const activeTab = ref<'installed' | 'browse'>('installed')
 const sourceFilter = ref<string | null>(null)
 const kindFilter = ref<string | null>(null)
 const statusFilter = ref<string | null>(null)
@@ -148,6 +150,8 @@ watch(() => profilesStore.activeProfileName || 'default', () => {
 
       </div>
       <template v-else>
+        <NTabs v-model:value="activeTab" type="line" animated class="plugins-tabs">
+          <NTabPane name="installed" :tab="t('hermesExtensions.pluginTabs.installed')">
         <NAlert type="info" :bordered="false" class="plugins-notice">
           {{ t('plugins.notice') }}
         </NAlert>
@@ -255,6 +259,11 @@ watch(() => profilesStore.activeProfileName || 'default', () => {
           <span>{{ t('plugins.metadata.scanCwd') }}: <code>{{ metadata.cwd }}</code></span>
           <span>{{ t('plugins.metadata.projectPlugins') }}: <code>{{ metadata.projectPluginsEnabled ? t('plugins.enabled') : t('plugins.disabled') }}</code></span>
         </div>
+          </NTabPane>
+          <NTabPane name="browse" :tab="t('hermesExtensions.pluginTabs.browse')" display-directive="show:lazy">
+            <PluginsHubPanel @changed="loadPlugins" />
+          </NTabPane>
+        </NTabs>
       </template>
     </div>
   </PageLoading>
@@ -263,4 +272,6 @@ watch(() => profilesStore.activeProfileName || 'default', () => {
 <style scoped lang="scss">
 @use '@/styles/plugins-page' as plugins-page;
 @include plugins-page.layout;
+
+.plugins-tabs :deep(.n-tab-pane) { padding-top: calc(14px * var(--spacing-scale, 1)); }
 </style>
