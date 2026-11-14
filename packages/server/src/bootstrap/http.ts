@@ -23,6 +23,7 @@ import { registerRoutes } from './routes'
 import { dshPluginUi } from '../modules/coding-agents/services'
 import { vscodeGateway, vscodeManager } from '../modules/studio/services/vscode'
 import { screenGateway, screenManager } from '../modules/studio/services/screen'
+import { hermesApi } from '../modules/hermes/services/hermes-api'
 import { startScreenBrowser } from '../modules/studio/services/screen-browser'
 import './chat-agent-runtime-adapter'
 import './skill-files-adapter'
@@ -595,6 +596,7 @@ export async function bootstrap() {
 
   const closeDshPluginUi = dshPluginUi.attach(servers)
   additionalShutdownSteps.push({ name: 'DSH plugin UI transport', close: closeDshPluginUi })
+  additionalShutdownSteps.push({ name: 'Hermes Agent API', close: () => hermesApi.close() })
   const closeScreenGateway = screenGateway.attach(servers)
   additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })
   // A screen installed before this container was rebuilt is installed again.

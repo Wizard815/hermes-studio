@@ -39,6 +39,7 @@ import { profileRoutes } from '../modules/hermes/routes/profiles'
 import { skillRoutes } from '../modules/hermes/routes/skills'
 import { skillBundleRoutes } from '../modules/hermes/routes/skill-bundles'
 import { pluginRoutes } from '../modules/hermes/routes/plugins'
+import { hermesApiRoutes } from '../modules/hermes/routes/hermes-api'
 import { memoryRoutes } from '../modules/hermes/routes/memory'
 import { modelRoutes } from '../modules/hermes/routes/models'
 import { providerRoutes } from '../modules/hermes/routes/providers'
@@ -134,6 +135,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(orbRoutes.routes())
   app.use(vscodeRoutes.routes())
   app.use(screenRoutes.routes())
+  app.use(hermesApiRoutes.routes())
   app.use(modelApiRoutes.routes())
   app.use(personRoutes.routes())
   app.use(sessionShareRoutes.routes())
