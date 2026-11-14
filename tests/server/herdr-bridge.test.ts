@@ -15,6 +15,7 @@ class FakeHerdr {
   panes: any[] = []
   workspaces: any[] = [{ workspace_id: 'w1', label: 'demo', agent_status: 'idle' }]
   promptError: { code: string; message: string } | null = null
+  created = 0
 
   constructor(readonly path: string) {
     this.server = createServer(socket => {
@@ -61,12 +62,17 @@ class FakeHerdr {
       case 'agent.prompt':
         if (this.promptError) return socket.write(`${JSON.stringify({ id: request.id, error: this.promptError })}\n`)
         return reply({ type: 'agent_prompt' })
-      case 'workspace.create':
-        this.workspaces.push({ workspace_id: 'w9', label: request.params.label })
-        return reply({ type: 'workspace_created', workspace: { workspace_id: 'w9' }, tab: { tab_id: 'w9:t1' }, root_pane: { pane_id: 'w9:p1' } })
-      case 'layout.apply':
-        this.panes.push({ pane_id: 'w9:p2', workspace_id: 'w9', agent_status: 'unknown', cwd: request.params.root.cwd })
-        return reply({ type: 'layout_apply', layout: { focused_pane_id: 'w9:p2', root: { type: 'pane', pane_id: 'w9:p2' } } })
+      case 'workspace.create': {
+        this.created += 1
+        const id = this.created === 1 ? 'w9' : `w9x${this.created}`
+        this.workspaces.push({ workspace_id: id, label: request.params.label })
+        return reply({ type: 'workspace_created', workspace: { workspace_id: id }, tab: { tab_id: `${id}:t1` }, root_pane: { pane_id: `${id}:p1` } })
+      }
+      case 'layout.apply': {
+        const id = request.params.tab_id.split(':')[0]
+        this.panes.push({ pane_id: `${id}:p2`, workspace_id: id, agent_status: 'unknown', cwd: request.params.root.cwd })
+        return reply({ type: 'layout_apply', layout: { focused_pane_id: `${id}:p2`, root: { type: 'pane', pane_id: `${id}:p2` } } })
+      }
       case 'pane.focus':
         return reply({ type: 'pane_info', pane: { pane_id: request.params.pane_id } })
       default:
@@ -382,5 +388,26 @@ describe('herdr bridge', () => {
     await new Promise(resolve => setTimeout(resolve, 200))
     expect(sessions.has(id)).toBe(false)
     expect(links.get(id)).toBeNull()
+  })
+
+  it('makes one space per chat even when syncs follow each other before herdr is looked at again', async () => {
+    const { deps } = makeDeps(dir)
+    const chats = ['a', 'b', 'c'].map(id => ({ id, title: `Chat ${id}`, folderPath: [], agent: 'claude-code', hostable: true, workspace: dir, lastActive: Date.now() }))
+    deps.listChatSpaces = async () => chats
+    deps.chatPane = async () => ({ script: join(dir, 'studio-chat.sh'), env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
+    await startBridge(deps, { ...DEFAULT_HERDR_SETTINGS, chatSpaces: true } as any)
+    const sync = () => (bridge as any).runChatSync()
+    await sync()
+    await sync()
+    await Promise.all([sync(), bridge!.wakeChat('a')])
+    expect(herdr.requests.filter(r => r.method === 'workspace.create')).toHaveLength(3)
+  })
+
+  it('sends messages through Studio while the chat only has its waiting pane', async () => {
+    const { deps } = makeDeps(dir)
+    await startBridge(deps)
+    ;(bridge as any).links.set('chat-1', { paneId: 'w1:p1', workspaceId: 'w1', status: 'idle', waiting: true })
+    await expect(bridge!.promptSession('chat-1', 'hello')).rejects.toMatchObject({ code: 'agent_not_running', status: 409 })
+    expect(herdr.requests.some(r => r.method === 'agent.prompt')).toBe(false)
   })
 })

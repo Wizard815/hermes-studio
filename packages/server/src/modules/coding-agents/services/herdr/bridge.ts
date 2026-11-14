@@ -42,6 +42,8 @@ export interface HerdrLinkInfo {
   paneId: string
   workspaceId: string
   status: HerdrAgentStatus
+  /** The chat's waiting pane (no agent running there yet). */
+  waiting?: boolean
 }
 
 /** Everything the bridge needs from Studio, injected so it stays testable. */
@@ -219,6 +221,9 @@ export class HerdrBridge {
   private chatSync: Promise<void> | null = null
   private chatSyncAgain = false
   private chatSyncTimer: ReturnType<typeof setTimeout> | null = null
+  private reconcileRetry: ReturnType<typeof setTimeout> | null = null
+  /** Spaces this bridge just made, by workspace id: a snapshot taken a moment earlier may not show them yet. */
+  private recentChatSpaces = new Map<string, { at: number; stubPaneId: string }>()
   /** What each chat card was last written from, so unchanged cards are not rewritten. */
   private cards = new Map<string, string>()
 
@@ -274,7 +279,9 @@ export class HerdrBridge {
     if (this.refreshTimer) clearTimeout(this.refreshTimer)
     if (this.mirrorTimer) clearInterval(this.mirrorTimer)
     if (this.retryTimer) clearTimeout(this.retryTimer)
-    this.refreshTimer = this.mirrorTimer = this.retryTimer = null
+    if (this.chatSyncTimer) clearTimeout(this.chatSyncTimer)
+    if (this.reconcileRetry) clearTimeout(this.reconcileRetry)
+    this.refreshTimer = this.mirrorTimer = this.retryTimer = this.chatSyncTimer = this.reconcileRetry = null
     for (const sessionId of this.links.keys()) this.deps.setLink(sessionId, null)
     this.links.clear()
     this.panes = []
@@ -359,7 +366,10 @@ export class HerdrBridge {
           this.log('warn', '[herdr] reconcile failed', { error: String(error) })
           // A busy server can time out a snapshot; try again shortly instead of
           // waiting for the next event, which may never come for an idle pane.
-          if (!this.stopped) setTimeout(() => this.scheduleRefresh(0), 1000)
+          if (!this.stopped && !this.reconcileRetry) {
+            this.reconcileRetry = setTimeout(() => { this.reconcileRetry = null; this.scheduleRefresh(0) }, 1000)
+            this.reconcileRetry.unref?.()
+          }
         }
       } while (this.refreshAgain && !this.stopped)
     })()
@@ -447,11 +457,12 @@ export class HerdrBridge {
       // The chat's own agent runs here (a waiting pane has no agent session of its own).
       if (sessionId && (nativeId || pending)) liveChats.set(sessionId, pane.workspace_id)
       // A chat's waiting pane stands for its chat until its agent resumes.
-      if (!sessionId && stubOwner.has(pane.pane_id)) sessionId = stubOwner.get(pane.pane_id)!
+      let waiting = false
+      if (!sessionId && stubOwner.has(pane.pane_id)) { sessionId = stubOwner.get(pane.pane_id)!; waiting = true }
 
       if (sessionId) {
         seen.add(sessionId)
-        const link: HerdrLinkInfo = { paneId: pane.pane_id, workspaceId: pane.workspace_id, status }
+        const link: HerdrLinkInfo = { paneId: pane.pane_id, workspaceId: pane.workspace_id, status, ...(waiting ? { waiting: true } : {}) }
         const previous = this.links.get(sessionId)
         this.links.set(sessionId, link)
         this.deps.setLink(sessionId, link)
@@ -486,14 +497,21 @@ export class HerdrBridge {
     this.chatSyncTimer = setTimeout(() => {
       this.chatSyncTimer = null
       if (this.chatSync) { this.chatSyncAgain = true; return }
-      this.chatSync = this.syncChatSpaces()
-        .catch(error => this.log('warn', '[herdr] could not sync chat spaces', { error: String(error) }))
-        .finally(() => {
-          this.chatSync = null
-          if (this.chatSyncAgain) { this.chatSyncAgain = false; this.scheduleChatSync(0) }
-        })
+      void this.runChatSync()
     }, delayMs)
     this.chatSyncTimer.unref?.()
+  }
+
+  /** One chat sync now; a sync asked for while it ran follows it. */
+  private runChatSync(): Promise<void> {
+    const run = this.syncChatSpaces()
+      .catch(error => this.log('warn', '[herdr] could not sync chat spaces', { error: String(error) }))
+      .finally(() => {
+        if (this.chatSync === run) this.chatSync = null
+        if (this.chatSyncAgain) { this.chatSyncAgain = false; this.scheduleChatSync(0) }
+      })
+    this.chatSync = run
+    return run
   }
 
   /**
@@ -505,7 +523,14 @@ export class HerdrBridge {
     const client = this.client
     if (!client || !this.deps.listChatSpaces || !this.deps.chatPane) return
     const records = { ...(this.persisted.chatSpaces || {}) }
-    const workspaces = new Set(this.snapshot.workspaces.map(workspace => workspace.workspace_id))
+    // A fresh look at herdr: the last snapshot can be older than spaces an
+    // earlier sync just made, and planning from it would make them again.
+    const snapshot = normalizeSnapshot(await client.request('session.snapshot', {}, 15000))
+    if (this.stopped || client !== this.client) return
+    const now = Date.now()
+    for (const [id, made] of this.recentChatSpaces) if (now - made.at > 30_000) this.recentChatSpaces.delete(id)
+    const workspaces = new Set(snapshot.workspaces.map(workspace => workspace.workspace_id))
+    for (const id of this.recentChatSpaces.keys()) workspaces.add(id)
     if (this.settings.chatSpaces === false) {
       // Turned off: waiting spaces go; spaces with a running agent stay.
       for (const [sessionId, record] of Object.entries(records)) {
@@ -549,7 +574,8 @@ export class HerdrBridge {
       delete records[sessionId]
       changed = true
     }
-    const panes = new Map(this.snapshot.panes.map(item => [item.pane_id, item.workspace_id]))
+    const panes = new Map(snapshot.panes.map(item => [item.pane_id, item.workspace_id]))
+    for (const [id, made] of this.recentChatSpaces) if (made.stubPaneId && !panes.has(made.stubPaneId)) panes.set(made.stubPaneId, id)
     const plan = planChatSpaces({ chats, records, workspaces, panes, live: this.liveChats })
     for (const sessionId of plan.forget) { delete records[sessionId]; changed = true }
     for (const { sessionId, workspaceId } of plan.close) {
@@ -590,13 +616,14 @@ export class HerdrBridge {
       })
       if (!record) continue
       records[chat.id] = record
+      this.recentChatSpaces.set(record.workspaceId, { at: Date.now(), stubPaneId: record.stubPaneId })
       created.push(record.workspaceId)
       changed = true
     }
     const order = [...plan.order, ...created]
     if (order.length > 1) {
       // herdr's sidebar keeps Studio's folder order; other spaces stay above.
-      const current = this.snapshot.workspaces.map(workspace => workspace.workspace_id).filter(id => order.includes(id))
+      const current = snapshot.workspaces.map(workspace => workspace.workspace_id).filter(id => order.includes(id))
       if (created.length || current.join(',') !== plan.order.join(',')) {
         await client.request('workspace.move_block', { workspace_ids: order }).catch(() => undefined)
       }
@@ -684,7 +711,8 @@ export class HerdrBridge {
     this.pending.set(paneId, { sessionId, agentId: launch.agentId, provider: launch.provider, model: launch.model, title: row.title || '' })
     this.scheduleRefresh(500)
     // No agent session to resume (an old chat): the fresh session starts from the chat so far.
-    if (!row.agent_native_session_id && this.deps.chatRecap) {
+    // Hermes resumes the whole conversation by Studio's session id, so it needs no recap.
+    if (!row.agent_native_session_id && launch.agentId !== 'hermes' && row.agent !== 'hermes' && this.deps.chatRecap) {
       void this.deps.chatRecap(sessionId).then(recap => recap ? this.promptWhenAgentStarted(paneId, recap) : false)
         .catch(error => this.log('warn', '[herdr] could not give the agent the chat so far', { sessionId, error: String(error) }))
     }
@@ -713,8 +741,7 @@ export class HerdrBridge {
     await this.savePersisted()
     // Run the sync now (after one already running), not on the usual delay.
     while (this.chatSync) await this.chatSync.catch(() => undefined)
-    this.chatSync = this.syncChatSpaces().finally(() => { this.chatSync = null })
-    await this.chatSync
+    await this.runChatSync()
     return this.persisted.chatSpaces?.[sessionId] ?? null
   }
 
@@ -1041,6 +1068,7 @@ export class HerdrBridge {
   async promptSession(sessionId: string, text: string): Promise<{ paneId: string }> {
     const link = this.links.get(sessionId)
     if (!link) throw Object.assign(new Error('Chat is not open in herdr'), { status: 409 })
+    if (link.waiting) throw Object.assign(new Error('The chat\'s agent is not running in herdr'), { status: 409, code: 'agent_not_running' })
     const body = String(text || '')
     if (!body.trim()) throw Object.assign(new Error('Message is empty'), { status: 400 })
     try {

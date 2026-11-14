@@ -51,6 +51,13 @@ stay separate apps; this integration links them.
 - **One writer per conversation.** While a chat is live in a pane, Studio's chat
   box sends to the pane (`agent.prompt`); replies return through the transcript
   mirror. A blocked agent (approval/question on screen) is never typed into.
+  A chat whose space only has its waiting pane (link `waiting: true`) has no
+  agent there, so its messages run through Studio as usual.
+- **One space per chat.** Each chat sync reads a fresh `session.snapshot`
+  and remembers the spaces it just made for 30 s, so syncs that follow each
+  other (a wake-up right after a sync) never make a chat's space twice.
+- Hermes chats resume the whole conversation by Studio's session id, so they
+  get no "chat so far" recap.
 - **Status.** Chat rows use herdr's glyphs (`◐ × ✓ ○ ·`, see
   `components/common/AgentStatusIcon.vue`); `packages/shared/session-state.ts`
   merges Studio run state, pending approvals and herdr pane status.
@@ -337,8 +344,8 @@ Rules that keep it safe:
 - Unit: `tests/server/herdr-client-view.test.ts` (Studio's own herdr client preferences),
   `tests/client/mission-folders.test.ts` (tree and space placement),
   `tests/client/herdr-keys.test.ts` (key buttons).
-- Browser: `tests/e2e/herdr-view.spec.ts`, `tests/e2e/mission.spec.ts`,
-  `tests/e2e/herdr-center.spec.ts`, `tests/e2e/herdr-spaces.spec.ts` (mocked API).
+- Browser: `tests/e2e/herdr-center.spec.ts`, `tests/e2e/herdr-settings.spec.ts`,
+  `tests/e2e/mission.spec.ts` (mocked API).
 - Live: build herdr (`cargo build --release`, needs Zig 0.16), run Studio with an
   isolated `HERMES_WEB_UI_HOME` and `CLAUDE_CONFIG_DIR`, enable herdr with a named
   session, and drive agents with herdr's CLI (`pane run`, `send-text`). Keep the

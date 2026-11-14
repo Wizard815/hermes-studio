@@ -15,6 +15,8 @@ export interface SessionHerdrLink {
   paneId: string
   workspaceId?: string
   status: AgentDisplayStatus
+  /** The pane is the chat's waiting pane: its agent is not running, so messages go through Studio. */
+  waiting?: boolean
 }
 
 /** Account-specific read cursor and live execution state, independent of open tabs. */

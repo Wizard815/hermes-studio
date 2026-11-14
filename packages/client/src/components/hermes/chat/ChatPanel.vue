@@ -202,6 +202,8 @@ const codeCenterAvailable = computed(() => !props.standalone && isSuperAdmin.val
 const showCodeCenter = computed(() => centerMode.value === 'code' && codeCenterAvailable.value && !showNewChatPage.value)
 const codeCenterMounted = ref(false)
 watch(showCodeCenter, value => { if (value) codeCenterMounted.value = true })
+/** The view on screen (a saved mode this screen cannot show falls back to Chat). */
+const shownCenter = computed<ChatCenter>(() => showCodeCenter.value ? 'code' : showHerdrCenter.value ? 'herdr' : 'chat')
 const centerModes = computed<ChatCenter[]>(() => [
   'chat',
   ...(herdrCenterAvailable.value ? ['herdr' as const] : []),
@@ -3264,8 +3266,8 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :key="mode"
               type="button"
               role="radio"
-              :aria-checked="centerMode === mode"
-              :class="{ active: centerMode === mode }"
+              :aria-checked="shownCenter === mode"
+              :class="{ active: shownCenter === mode }"
               :data-testid="`chat-center-${mode}`"
               @click="selectCenter(mode)"
             >{{ mode === 'chat' ? t('herdr.centerChat') : mode === 'herdr' ? t('herdr.centerHerdr') : t('vscode.centerCode') }}</button>

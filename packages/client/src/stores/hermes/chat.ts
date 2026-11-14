@@ -3805,8 +3805,9 @@ function createChatState(scopedSessionId?: string) {
 
     // A chat open in a live herdr pane takes input there: one process owns the
     // conversation, and the reply comes back through the transcript mirror.
+    // A waiting pane has no agent running: the message goes through Studio as usual.
     const herdrLink = !attachments?.length && trimmedContent ? useSessionStateStore().herdrLink(sid) : undefined
-    if (herdrLink) {
+    if (herdrLink && !herdrLink.waiting) {
       try {
         await promptHerdrSession(sid, trimmedContent)
         addMessage(sid, {
