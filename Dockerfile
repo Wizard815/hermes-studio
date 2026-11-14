@@ -1,3 +1,5 @@
+# nousresearch/hermes-agent:latest-desktop also works: it already has the agents'
+# screen (TigerVNC + Xfce, about 0.85 GB more); with :latest, Studio installs it on demand.
 ARG BASE_IMAGE=nousresearch/hermes-agent:latest
 FROM ${BASE_IMAGE}
 

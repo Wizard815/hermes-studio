@@ -22,6 +22,7 @@ import { startVersionCheck } from './health'
 import { registerRoutes } from './routes'
 import { dshPluginUi } from '../modules/coding-agents/services'
 import { vscodeGateway, vscodeManager } from '../modules/studio/services/vscode'
+import { screenGateway, screenManager } from '../modules/studio/services/screen'
 import './chat-agent-runtime-adapter'
 import './skill-files-adapter'
 import { setGroupChatServer } from '../modules/studio/routes/group-chat'
@@ -593,6 +594,10 @@ export async function bootstrap() {
 
   const closeDshPluginUi = dshPluginUi.attach(servers)
   additionalShutdownSteps.push({ name: 'DSH plugin UI transport', close: closeDshPluginUi })
+  const closeScreenGateway = screenGateway.attach(servers)
+  additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })
+  // A screen installed before this container was rebuilt is installed again.
+  void screenManager.restoreAfterRebuild().catch(() => undefined)
   const closeVsCodeGateway = vscodeGateway.attach(servers)
   additionalShutdownSteps.push({ name: 'VS Code', close: () => { closeVsCodeGateway(); vscodeManager.close() } })
   const terminalWebSocket = setupTerminalWebSocket(servers)
@@ -738,7 +743,7 @@ export async function bootstrap() {
         writeBadUpgradeRequest(socket)
         return
       }
-      if (!dshPluginUi.handlesUpgrade(req) && !vscodeGateway.handlesUpgrade(req) &&
+      if (!dshPluginUi.handlesUpgrade(req) && !vscodeGateway.handlesUpgrade(req) && !screenGateway.handlesUpgrade(req) &&
         url.pathname !== '/api/hermes/terminal' &&
         url.pathname !== '/api/hermes/kanban/events' &&
         !url.pathname.startsWith('/socket.io/')) {

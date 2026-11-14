@@ -71,6 +71,7 @@ import SessionListItem from "./SessionListItem.vue";
 import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
 import VsCodeCenter from "./VsCodeCenter.vue";
+import ScreenCenter from "./ScreenCenter.vue";
 import ListActionsMenu from "@/components/layout/ListActionsMenu.vue";
 import OutlinePanel from "./OutlinePanel.vue";
 import ChatToolsPanel from "./ChatToolsPanel.vue";
@@ -156,15 +157,15 @@ const herdrEligible = computed(() => herdrChatState.value === 'eligible')
 // header and tool panel stay. Both stay mounted once opened, so swapping is instant.
 // Declared before the herdr center state, which reads it during setup (phones read it at once).
 const showNewChatPage = ref(false);
-type ChatCenter = 'chat' | 'herdr' | 'code'
+type ChatCenter = 'chat' | 'herdr' | 'code' | 'screen'
 const centerMode = ref<ChatCenter>((() => {
-  try { const saved = localStorage.getItem('studio_chat_center'); return saved === 'herdr' || saved === 'code' ? saved : 'chat' } catch { return 'chat' }
+  try { const saved = localStorage.getItem('studio_chat_center'); return saved === 'herdr' || saved === 'code' || saved === 'screen' ? saved : 'chat' } catch { return 'chat' }
 })())
 watch(centerMode, value => { try { localStorage.setItem('studio_chat_center', value) } catch { /* private mode */ } })
 // Old /herdr links land here (?center=herdr, optionally &pane=<herdr pane>): herdr mode, on that pane's chat.
 const herdrStore = useHerdrStore()
 watch(() => [route.query.center, route.query.pane] as const, async ([center, pane]) => {
-  if (center !== 'herdr' && center !== 'chat' && center !== 'code') return
+  if (center !== 'herdr' && center !== 'chat' && center !== 'code' && center !== 'screen') return
   centerMode.value = center
   const { center: _center, pane: _pane, ...rest } = route.query
   void router.replace({ query: rest })
@@ -202,12 +203,17 @@ const codeCenterAvailable = computed(() => !props.standalone && isSuperAdmin.val
 const showCodeCenter = computed(() => centerMode.value === 'code' && codeCenterAvailable.value && !showNewChatPage.value)
 const codeCenterMounted = ref(false)
 watch(showCodeCenter, value => { if (value) codeCenterMounted.value = true })
+// Screen: the agents' screen (Hermes Bot Screen) with the chat beside it; same rules as Code.
+const showScreenCenter = computed(() => centerMode.value === 'screen' && codeCenterAvailable.value && !showNewChatPage.value)
+const screenCenterMounted = ref(false)
+watch(showScreenCenter, value => { if (value) screenCenterMounted.value = true })
+const showSplitCenter = computed(() => showCodeCenter.value || showScreenCenter.value)
 /** The view on screen (a saved mode this screen cannot show falls back to Chat). */
-const shownCenter = computed<ChatCenter>(() => showCodeCenter.value ? 'code' : showHerdrCenter.value ? 'herdr' : 'chat')
+const shownCenter = computed<ChatCenter>(() => showScreenCenter.value ? 'screen' : showCodeCenter.value ? 'code' : showHerdrCenter.value ? 'herdr' : 'chat')
 const centerModes = computed<ChatCenter[]>(() => [
   'chat',
   ...(herdrCenterAvailable.value ? ['herdr' as const] : []),
-  ...(codeCenterAvailable.value ? ['code' as const] : []),
+  ...(codeCenterAvailable.value ? ['code' as const, 'screen' as const] : []),
 ])
 
 const showOutline = ref(false);
@@ -3270,7 +3276,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :class="{ active: shownCenter === mode }"
               :data-testid="`chat-center-${mode}`"
               @click="selectCenter(mode)"
-            >{{ mode === 'chat' ? t('herdr.centerChat') : mode === 'herdr' ? t('herdr.centerHerdr') : t('vscode.centerCode') }}</button>
+            >{{ mode === 'chat' ? t('herdr.centerChat') : mode === 'herdr' ? t('herdr.centerHerdr') : mode === 'code' ? t('vscode.centerCode') : t('screen.centerScreen') }}</button>
           </div>
           <HerdrOpenButton
             v-if="isSuperAdmin && !showNewChatPage && chatStore.activeSessionId && herdrEligible"
@@ -3335,7 +3341,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           @dragleave="handleChatDragLeave"
           @drop="handleChatDrop"
         >
-          <div ref="chatMainContentRef" class="chat-main-content" :class="{ 'chat-main-content--code': showCodeCenter }" data-agent-deployment-surface
+          <div ref="chatMainContentRef" class="chat-main-content" :class="{ 'chat-main-content--code': showSplitCenter }" data-agent-deployment-surface
             :data-agent-deployment-session="chatStore.activeSessionId || ''"
             :data-agent-deployment-active="currentMode === 'chat' && !showNewChatPage"
             :data-agent-deployment-status-session="chatStore.activeSessionId || ''"
@@ -3435,6 +3441,12 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               class="code-center"
               :folder="activeWorkspacePath"
               :active="showCodeCenter"
+            />
+            <ScreenCenter
+              v-if="screenCenterMounted || showScreenCenter"
+              v-show="showScreenCenter"
+              class="code-center"
+              :active="showScreenCenter"
             />
             <MessageList
               v-show="!showHerdrCenter"

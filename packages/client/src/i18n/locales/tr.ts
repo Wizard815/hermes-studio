@@ -1,3 +1,4 @@
+import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
 import { androidMessages } from '../android-messages'
@@ -44,6 +45,7 @@ export default {
   person: personMessages['tr'],
   ...herdrMessages['tr'],
   ...vscodeMessages['tr'],
+  ...screenMessages['tr'],
   ...androidMessages['tr'],
   ...orbMessages['tr'],
   ...systemMessages['tr'],
