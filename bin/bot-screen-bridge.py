@@ -8,6 +8,10 @@ drives the screen.
 
   bot-screen-bridge.py lease get|take|release|force [viewer_id] [reason]
       Prints the lease as JSON (``lease.public_view``).
+  bot-screen-bridge.py browser
+      Makes sure the screen's browser (Hermes's own: same Chrome, same
+      profile and logins as the agent's browser tools) runs on the screen and
+      prints {"port": <DevTools port>}. Exit 42: a person holds control.
   bot-screen-bridge.py bridge <viewer_id>
       Pipes the screen's RFB stream: stdin (from the viewer) -> filter -> Xvnc,
       Xvnc -> stdout. Keyboard, mouse, clipboard and resizes only pass while
@@ -60,6 +64,65 @@ def _lease_cmd(argv: list[str]) -> int:
     else:
         current = lease.get(profile_key=home)
     print(json.dumps(lease.public_view(current)))
+    return 0
+
+
+def _cdp_port(profile: str):
+    """DevTools port of a Chrome running on ``profile`` (Chrome writes it to DevToolsActivePort; the
+    file outlives a closed Chrome, so the owner pid must be alive and the port must answer)."""
+    try:
+        with open(os.path.join(profile, "DevToolsActivePort"), encoding="utf-8") as fh:
+            port_line = fh.readline().strip()
+        target = os.readlink(os.path.join(profile, "SingletonLock"))
+    except OSError:
+        return None
+    pid_text = target.rpartition("-")[2]
+    if not (port_line.isdigit() and pid_text.isdigit()):
+        return None
+    try:
+        os.kill(int(pid_text), 0)
+    except OSError:
+        return None
+    try:
+        with socket.create_connection(("127.0.0.1", int(port_line)), timeout=0.5):
+            pass
+    except OSError:
+        return None
+    return int(port_line)
+
+
+def _browser_cmd() -> int:
+    os.environ["HERMES_HOME"] = _home()
+    from tools.bot_desktop import browser, lease, runtime
+
+    if lease.human_holds(profile_key=_home()):
+        print(json.dumps({"error": "A person has taken over the screen; wait until they hand it back."}))
+        return 42
+    launch = browser.dock_launch()
+    if not launch:
+        print(json.dumps({"error": "No Chromium for the screen"}))
+        return 3
+    exe, profile = launch
+    port = _cdp_port(profile)
+    if port is None:
+        env = runtime.desktop_env()
+        if not env.get("DISPLAY"):
+            print(json.dumps({"error": "The screen is not running"}))
+            return EXIT_SCREEN_GONE
+        Path(profile).mkdir(parents=True, exist_ok=True)
+        import subprocess
+        subprocess.Popen(browser.dock_argv(exe, profile), env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        deadline = time.monotonic() + 20
+        while port is None and time.monotonic() < deadline:
+            time.sleep(0.25)
+            port = _cdp_port(profile)
+        if port is None:
+            print(json.dumps({"error": "The screen's browser did not start"}))
+            return 3
+    if hasattr(runtime, "touch_activity"):
+        runtime.touch_activity()
+    print(json.dumps({"port": port, "profile": profile}))
     return 0
 
 
@@ -151,6 +214,8 @@ def main() -> int:
     command, rest = sys.argv[1], sys.argv[2:]
     if command == "lease":
         return _lease_cmd(rest)
+    if command == "browser":
+        return _browser_cmd()
     if command == "bridge" and rest:
         return _bridge(rest[0])
     sys.stderr.write(__doc__ or "")

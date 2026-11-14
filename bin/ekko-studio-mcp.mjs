@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { browserIntent, matchBrowserSnapshot, verifyBrowserResult } from './browser/jev.mjs'
 import { validateBrowserArguments } from './browser/arguments.mjs'
 import { browserOutput } from './browser/output.mjs'
+import { ALLOW_CHOICE, BrowserApprovals, DENY_CHOICE, approvalQuestion, classifyBrowserActions, hostOf, mayNeedApproval } from './browser/risk.mjs'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { createInterface } from 'node:readline'
@@ -708,6 +709,55 @@ async function browserRequest(method, params = {}, signal) {
   const payload = await response.json().catch(() => null)
   if (!response.ok) throw new Error(payload?.error || `Browser Broker HTTP ${response.status}`)
   return payload
+}
+
+const browserApprovals = new BrowserApprovals()
+
+/**
+ * Purchases and sign-ins need the person's OK. Reads the agent's own snapshot
+ * (by its id, so the agent's refs stay valid) and the page address; asks
+ * through Studio's question prompt when this run can ask, otherwise stops.
+ * Returns an error result to send back, or null to go ahead.
+ */
+async function browserApprovalGate(args, actions, snapshotId, signal) {
+  if (!mayNeedApproval(actions)) return null
+  let nodes = []
+  let url = ''
+  if (snapshotId) {
+    try {
+      const envelope = await browserRequest('snapshot', { tab_id: args.tab_id, snapshot_id: snapshotId, offset: 0, limit: 500 }, signal)
+      nodes = Array.isArray(envelope?.result?.nodes) ? envelope.result.nodes : []
+      url = String(envelope?.result?.url || '')
+    } catch { /* judged by the address only */ }
+  }
+  if (!url) {
+    try {
+      const envelope = await browserRequest('state', {}, signal)
+      const state = envelope?.result || envelope || {}
+      const tabs = Array.isArray(state.tabs) ? state.tabs : []
+      url = String((tabs.find(tab => tab.id === args.tab_id) || tabs.find(tab => tab.id === state.activeTabId))?.url || '')
+    } catch { /* unknown page */ }
+  }
+  const risk = classifyBrowserActions(actions, nodes, url)
+  if (!risk) return null
+  const profile = (typeof args.profile === 'string' && args.profile.trim()) || browserCallContext.getStore()?.profile || defaultProfile()
+  let credential = null
+  try { credential = readRunCredential(profile, undefined) } catch { credential = null }
+  if (credential?.context_id && browserApprovals.has(credential.context_id, risk, url)) return null
+  if (!credential?.context_id) {
+    return errorText(`Stopped before you ${risk.what} on ${hostOf(url)}: purchases and sign-ins need the person's OK. Tell them what you need and ask them to take over the agents' Screen in Studio and do this step themselves, then continue after they hand it back.`)
+  }
+  const answer = await request('/api/studio/clarifications/request', withAuthArgs(args, {
+    method: 'POST',
+    body: { context_id: credential.context_id, question: approvalQuestion(risk, url), choices: [ALLOW_CHOICE, DENY_CHOICE] },
+    signal,
+  }))
+  if (answer?.reason === 'response' && String(answer.response || '').trim() === ALLOW_CHOICE) {
+    browserApprovals.grant(credential.context_id, risk, url)
+    return null
+  }
+  const why = answer?.reason === 'response' ? 'said no' : answer?.reason === 'timeout' ? 'did not answer in time' : 'did not allow it'
+  return errorText(`Not done: the person ${why} when asked to let you ${risk.what} on ${hostOf(url)}. Do not try again unless they ask you to; they can take over the agents' Screen in Studio to do it themselves.`)
 }
 
 function browserScreenshotContent(envelope) {
@@ -2070,11 +2120,15 @@ async function callToolInner(name, args = {}, signal) {
       for (const key of ['ref', 'snapshot_id', 'text', 'key', 'direction', 'pixels', 'value', 'target_ref', 'x', 'y', 'to_x', 'to_y', 'button', 'click_count']) {
         if (args[key] !== undefined) action[key] = args[key]
       }
+      const blocked = await browserApprovalGate(args, [action], args.snapshot_id, signal)
+      if (blocked) return blocked
       const envelope = await browserRequest('interact', { tab_id: args.tab_id, action }, signal)
       return browserOutput(await verifyBrowserResult(request, envelope, expectation, () => browserRequest('snapshot', { tab_id: args.tab_id }, signal), signal), args.include_text)
     }
     case 'ekko_studio_browser_batch': {
       const expectation = browserIntent(args.expectation, 'expectation')
+      const blocked = await browserApprovalGate(args, Array.isArray(args.actions) ? args.actions : [], args.snapshot_id, signal)
+      if (blocked) return blocked
       const executed = await browserRequest('interact.batch', { tab_id: args.tab_id, snapshot_id: args.snapshot_id, actions: args.actions }, signal)
       const envelope = await verifyBrowserResult(request, executed, expectation, () => browserRequest('snapshot', { tab_id: args.tab_id }, signal), signal)
       return { ...browserOutput(envelope, args.include_text), ...(envelope.result?.completed < envelope.result?.total ? { isError: true } : {}) }

@@ -16,8 +16,14 @@ type PlaywrightChromium = typeof ChromiumType
 // Loaded lazily: playwright is an optional runtime dependency and its internal
 // dynamic requires must not be pulled into the esbuild server bundle.
 function requirePlaywrightChromium(): PlaywrightChromium {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return (require('playwright') as { chromium: PlaywrightChromium }).chromium
+  // playwright-core ships with Studio (no bundled browsers); playwright is the dev install.
+  for (const name of ['playwright-core', 'playwright']) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return (require(name) as { chromium: PlaywrightChromium }).chromium
+    } catch { /* try the next */ }
+  }
+  throw new Error('Playwright is not installed')
 }
 
 // ---------------------------------------------------------------------------
@@ -295,8 +301,24 @@ export class HeadlessBrowserService {
   private brokerRoot: string
   private onScreenshotCapture?: (base64: string, tabId: string) => void
 
-  constructor(options?: { brokerRoot?: string }) {
+  /**
+   * When set, the service drives an existing Chrome over CDP (the agents'
+   * screen browser: same profile and logins as Hermes's own browser tools)
+   * instead of launching a headless one. Returns the CDP http endpoint.
+   */
+  private readonly cdpEndpoint?: () => Promise<string>
+  /** Attached to someone else's browser: never close its pages or the browser. */
+  readonly attached: boolean
+
+  constructor(options?: { brokerRoot?: string; cdpEndpoint?: () => Promise<string> }) {
     this.brokerRoot = options?.brokerRoot || join(process.env.HOME || '/home/codebox', '.hermes-web-ui', 'desktop-browser')
+    this.cdpEndpoint = options?.cdpEndpoint
+    this.attached = !!options?.cdpEndpoint
+  }
+
+  /** Whether a browser is connected (an attached browser can go away underneath). */
+  get connected(): boolean {
+    return !!this.browser && this.browser.isConnected()
   }
 
   setOnScreenshotCapture(fn: (base64: string, tabId: string) => void): void {
@@ -309,6 +331,28 @@ export class HeadlessBrowserService {
     const chromium = requirePlaywrightChromium()
     this.masterToken = randomBytes(32).toString('base64url')
     this.instanceId = randomUUID()
+
+    if (this.cdpEndpoint) {
+      const browser = await chromium.connectOverCDP(await this.cdpEndpoint(), { timeout: 20_000 })
+      this.browser = browser
+      // The browser's own (persistent) profile: its cookies and logins are the screen's.
+      this.context = browser.contexts()[0] || await browser.newContext()
+      for (const page of this.context.pages()) this._registerPage(page, false)
+      // Tabs a person opens on the screen become tabs here too.
+      this.context.on('page', page => { if (!this.tabFor(page)) this._registerPage(page, false) })
+      browser.on('disconnected', () => {
+        if (this.browser !== browser) return
+        this.browser = null
+        this.context = null
+        this.tabs.clear()
+        this.activeTabId = null
+      })
+      const first = this.getAllTabs()[0]
+      if (first) { this.activeTabId = first.id; await refreshTabMeta(first) }
+      else await refreshTabMeta(await this._createTab(null, true))
+      await this._writeDescriptor()
+      return this.descriptor
+    }
 
     this.browser = await chromium.launch({
       headless: true,
@@ -341,14 +385,17 @@ export class HeadlessBrowserService {
     this.leases.clear()
     this.clients.clear()
 
-    for (const tab of this.tabs.values()) {
-      await tab.page.close().catch(() => {})
+    // An attached browser belongs to the screen: leave its tabs open.
+    if (!this.attached) {
+      for (const tab of this.tabs.values()) {
+        await tab.page.close().catch(() => {})
+      }
     }
     this.tabs.clear()
     this.activeTabId = null
 
     if (this.context) {
-      await this.context.close().catch(() => {})
+      if (!this.attached) await this.context.close().catch(() => {})
       this.context = null
     }
     if (this.browser) {
@@ -783,9 +830,27 @@ export class HeadlessBrowserService {
       }
     }
 
-    const tabId = randomUUID()
     const page = await this.context.newPage()
+    const tab = this.tabFor(page) || this._registerPage(page, activate)
+    if (activate) this.activeTabId = tab.id
 
+    if (url) {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {})
+    }
+    await refreshTabMeta(tab)
+
+    return tab
+  }
+
+  /** The tab of a page, if it has one. */
+  tabFor(page: Page): BrowserTab | undefined {
+    for (const tab of this.tabs.values()) if (tab.page === page) return tab
+    return undefined
+  }
+
+  /** Make a page a tab (pages Studio opens, and pages already open in an attached browser). */
+  _registerPage(page: Page, activate: boolean): BrowserTab {
+    const tabId = randomUUID()
     page.on('console', msg => {
       if (!this.consoleEntries.has(tabId)) {
         this.consoleEntries.set(tabId, [])
@@ -817,15 +882,15 @@ export class HeadlessBrowserService {
     }
 
     this.tabs.set(tabId, tab)
-    if (activate) {
+    if (activate || !this.activeTabId) {
       this.activeTabId = tabId
     }
-
-    if (url) {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {})
-    }
-    await refreshTabMeta(tab)
-
+    page.on('close', () => {
+      if (this.tabs.get(tabId)?.page !== page) return
+      this.tabs.delete(tabId)
+      this.consoleEntries.delete(tabId)
+      if (this.activeTabId === tabId) this.activeTabId = this.getAllTabs().at(-1)?.id ?? null
+    })
     return tab
   }
 
