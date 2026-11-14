@@ -89,6 +89,8 @@ const PI_PROXY_TARGET_LEGACY_AAD = Buffer.from('hermes-studio/pi-proxy-target/v1
 const CODEX_TOOL_SEARCH_MIN_VERSION = '0.128.0'
 const CODEX_TOOL_SEARCH_ALWAYS_DEFER_REMOVED_VERSION = '0.142.0'
 const CODEX_VERSION_CACHE_TTL_MS = 5 * 60 * 1000
+/** How long a launch waits for the agent's model list (it only picks a default effort). */
+const LAUNCH_MODEL_LOOKUP_MS = 3000
 const HERMES_MCP_SERVERS: ReadonlyArray<{ name: string; toolset: string }> = [
   { name: 'ekko-studio-api', toolset: 'api' },
   { name: 'ekko-studio-browser', toolset: 'browser' },
@@ -3080,12 +3082,16 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       throw Object.assign(new Error('Native model ID and reasoning effort must select the same variant'), { status: 400 })
     }
     if (!reasoningEffort && !variant) {
-      const catalog = (await getCodingAgentModels({ agent: tool.id })).agents[0]
+      // Only picks a default effort: never hold a launch on a slow or offline CLI.
+      const catalog = (await Promise.race([
+        getCodingAgentModels({ agent: tool.id }).catch(() => null),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), LAUNCH_MODEL_LOOKUP_MS).unref?.()),
+      ]))?.agents[0]
       const selected = catalog?.models.find(entry => !entry.hidden && (model ? entry.id === model : entry.isDefault))
       // Native CLIs have their own capabilities; never guess unsupported CLI flags.
       reasoningEffort = lowestReasoningEffort(selected?.reasoningEfforts || []) || ''
       if (selected?.modelFamily && reasoningEffort) {
-        const target = catalog.models.find(entry => !entry.hidden && entry.provider === selected.provider
+        const target = catalog?.models.find(entry => !entry.hidden && entry.provider === selected.provider
           && entry.modelFamily === selected.modelFamily && entry.reasoningEffort === reasoningEffort)
         if (target) model = target.id
         else reasoningEffort = ''
