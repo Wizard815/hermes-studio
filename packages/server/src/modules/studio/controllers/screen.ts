@@ -72,3 +72,80 @@ export async function listActivity(ctx: Context) {
   const sessionId = typeof ctx.query.sessionId === 'string' && ctx.query.sessionId ? ctx.query.sessionId : undefined
   ctx.body = { activity: browserActivity.list({ limit: Number(ctx.query.limit) || 100, sessionId }) }
 }
+
+// ── Saved logins (Hermes's encrypted vault) ───────────────────────────────
+
+async function vault(args: string[], input?: string): Promise<{ status: number; body: any }> {
+  const { bridgeScript } = await import('../services/screen/manager')
+  const python = screenManager.python
+  if (!python) return { status: 503, body: { error: 'Hermes is not installed here' } }
+  const result = await runWithInput(python, [bridgeScript(), 'vault', ...args], input)
+  let body: any
+  try { body = JSON.parse(result.stdout.trim().split(/\r?\n/).pop() || '{}') } catch { body = { error: 'The vault did not answer' } }
+  return { status: body.error ? 400 : 200, body }
+}
+
+function runWithInput(command: string, args: string[], input?: string): Promise<{ code: number | null; stdout: string }> {
+  return new Promise((resolve) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { spawn } = require('node:child_process') as typeof import('node:child_process')
+    const child = spawn(command, args, { env: { ...process.env, HERMES_HOME: screenManager.home, STUDIO_SCREEN_HOME: screenManager.home }, stdio: ['pipe', 'pipe', 'ignore'] })
+    let stdout = ''
+    const timer = setTimeout(() => child.kill('SIGTERM'), 60_000)
+    child.stdout.on('data', (chunk) => { stdout += chunk })
+    child.once('error', () => { clearTimeout(timer); resolve({ code: -1, stdout }) })
+    child.once('close', (code) => { clearTimeout(timer); resolve({ code, stdout }) })
+    child.stdin.end(input || '')
+  })
+}
+
+/** Saved logins: what they are and where they work, never their passwords. */
+export async function listVault(ctx: Context) {
+  const out = await vault(['list'])
+  ctx.status = out.status
+  ctx.body = out.body
+}
+
+/** Save a login (the password goes to the helper on stdin, encrypted at rest by Hermes). */
+export async function addVaultItem(ctx: Context) {
+  const body = (ctx.request.body || {}) as Record<string, unknown>
+  const item = {
+    kind: 'login',
+    label: String(body.label || '').slice(0, 200),
+    origin: String(body.origin || '').slice(0, 500),
+    identifier_type: ['email', 'phone', 'username'].includes(String(body.identifierType)) ? String(body.identifierType) : 'username',
+    identifier: String(body.identifier || '').slice(0, 500),
+    password: String(body.password || ''),
+    ...(body.otpSecret ? { otp_secret: String(body.otpSecret).slice(0, 200) } : {}),
+  }
+  const out = await vault(['add'], JSON.stringify(item))
+  ctx.status = out.status
+  ctx.body = out.body
+}
+
+export async function removeVaultItem(ctx: Context) {
+  const out = await vault(['rm', String(ctx.params.id || '')])
+  ctx.status = out.status
+  ctx.body = out.body
+}
+
+/** An agent fills a saved login into the screen's browser (only on its own site). */
+export async function fillVaultItem(ctx: Context) {
+  const body = (ctx.request.body || {}) as Record<string, unknown>
+  const handle = String(body.handle || '')
+  if (!handle) { ctx.status = 400; ctx.body = { error: 'handle is required' }; return }
+  const { bridgeScript } = await import('../services/screen/manager')
+  const python = screenManager.python
+  if (!python) { ctx.status = 503; ctx.body = { error: 'Hermes is not installed here' }; return }
+  const browser = await screenManager.run(python, [bridgeScript(), 'browser'], 60_000)
+  let port = 0
+  try { port = Number(JSON.parse(browser.stdout.trim().split(/\r?\n/).pop() || '{}').port) || 0 } catch { port = 0 }
+  if (!port) {
+    ctx.status = 409
+    ctx.body = { error: browser.code === 42 ? 'A person has taken over the screen; wait until they hand it back.' : "The agents' screen browser is not running" }
+    return
+  }
+  const out = await vault(['fill', handle, String(port), String(body.tabId || '')])
+  ctx.status = out.status
+  ctx.body = out.body
+}

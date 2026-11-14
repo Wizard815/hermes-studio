@@ -42,6 +42,12 @@ export interface BrowserActivity {
   error?: string
 }
 
+export interface SavedLogin { id: string; kind: string; label: string; origin: string | null; identifier?: string; identifier_type?: string; has_otp?: boolean; created_at: string }
+export interface SavedLoginInput { label: string; origin: string; identifierType: 'email' | 'username' | 'phone'; identifier: string; password: string; otpSecret?: string }
+
+export const listSavedLogins = () => request<{ items: SavedLogin[] }>(`${base}/vault`)
+export const addSavedLogin = (input: SavedLoginInput) => request<{ item: SavedLogin }>(`${base}/vault`, { method: 'POST', body: JSON.stringify(input) })
+export const removeSavedLogin = (id: string) => request<{ removed: boolean }>(`${base}/vault/${encodeURIComponent(id)}`, { method: 'DELETE' })
 export const getBrowserActivity = (limit = 100) => request<{ activity: BrowserActivity[] }>(`${base}/activity?limit=${limit}`)
 export const getScreenStatus = () => request<ScreenStatus>(`${base}?clientId=${encodeURIComponent(screenClientId())}`)
 export const installScreen = () => post<ScreenStatus>('/install')

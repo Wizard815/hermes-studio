@@ -745,6 +745,11 @@ async function browserApprovalGate(args, actions, snapshotId, signal) {
   }
   const risk = classifyBrowserActions(actions, nodes, url)
   if (!risk) return null
+  return browserApprovalGateFor(args, risk, url, signal)
+}
+
+/** Ask the person about one purchase or sign-in (or stop when this run cannot ask). */
+async function browserApprovalGateFor(args, risk, url, signal) {
   const profile = (typeof args.profile === 'string' && args.profile.trim()) || browserCallContext.getStore()?.profile || defaultProfile()
   let credential = null
   try { credential = readRunCredential(profile, undefined) } catch { credential = null }
@@ -1207,6 +1212,16 @@ const tools = [
       prompt_text: { type: 'string', maxLength: 10000 },
       include_text: { type: 'boolean', description: 'Include the duplicate text rendering alongside snapshot nodes. Defaults to false.' },
     }, ['tab_id', 'action']),
+  },
+  {
+    name: 'ekko_studio_browser_vault',
+    toolset: 'browser',
+    description: "The person's saved logins (Hermes's encrypted vault), for the agents' screen browser. list: saved logins with their site and username (never passwords). fill: write a saved login's password into the current page of the screen browser; it only works on the exact site the login was saved for, and the password never reaches you. The person is asked first, like any sign-in. Type the username yourself, then submit. When there is no saved login, ask the person to add one (Screen → Saved logins) or to take over the Screen and sign in themselves.",
+    inputSchema: browserInputSchema({
+      action: { type: 'string', enum: ['list', 'fill'] },
+      handle: { type: 'string', maxLength: 200, description: 'For fill: the id from list.' },
+      tab_id: { type: 'string' },
+    }, ['action']),
   },
   {
     name: 'ekko_studio_browser_network',
@@ -2107,6 +2122,8 @@ function browserActivityFor(name, args) {
       return { kind: 'upload', summary: `Uploaded ${Array.isArray(args.files) ? args.files.length : 0} file(s)${ref}` }
     case 'ekko_studio_browser_download':
       return { kind: 'download', summary: `Downloaded ${args.url || `from${ref}`}`, url: args.url }
+    case 'ekko_studio_browser_vault':
+      return args.action === 'fill' ? { kind: 'vault', summary: `Filled a saved login (${args.handle || ''})` } : null
     case 'ekko_studio_browser_dialog':
       return args.action && args.action !== 'status' ? { kind: 'dialog', summary: `${args.action === 'accept' ? 'Accepted' : 'Dismissed'} a page dialog` } : null
     case 'ekko_studio_browser_tabs':
@@ -2212,6 +2229,17 @@ async function callToolInner(name, args = {}, signal) {
     case 'ekko_studio_browser_dialog': {
       const envelope = await browserRequest('dialog', pickDefined(args, ['tab_id', 'action', 'prompt_text']), signal)
       return args.action === 'status' ? jsonText(envelope) : browserOutput(envelope, args.include_text)
+    }
+    case 'ekko_studio_browser_vault': {
+      if (args.action === 'list') return jsonText(await request('/api/studio/screen/vault', withAuthArgs(args)))
+      if (!args.handle) return errorText('handle is required for fill; call list first')
+      const saved = await request('/api/studio/screen/vault', withAuthArgs(args)).catch(() => ({ items: [] }))
+      const item = (saved?.items || []).find(entry => entry.id === args.handle)
+      if (!item) return errorText(`No saved login ${args.handle}; call list`)
+      const risk = { kind: 'login', what: `fill the saved password "${item.label}"` }
+      const blocked = await browserApprovalGateFor(args, risk, item.origin || '', signal)
+      if (blocked) return blocked
+      return jsonText(await request('/api/studio/screen/vault/fill', withAuthArgs(args, { method: 'POST', body: { handle: args.handle, tabId: args.tab_id }, signal })))
     }
     case 'ekko_studio_browser_network':
       return jsonText(await browserRequest(args.action === 'clear' ? 'network.clear' : 'network.read',

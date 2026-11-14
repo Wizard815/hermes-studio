@@ -17,3 +17,8 @@ screenRoutes.post('/api/studio/screen/control', requireSuperAdmin, ctrl.control)
 // Agents record their browser actions with their own run credentials.
 screenRoutes.post('/api/studio/screen/activity', ctrl.recordActivity)
 screenRoutes.get('/api/studio/screen/activity', requireSuperAdmin, ctrl.listActivity)
+// Saved logins (Hermes's vault): manage them, and let agents fill them.
+screenRoutes.get('/api/studio/screen/vault', requireSuperAdmin, ctrl.listVault)
+screenRoutes.post('/api/studio/screen/vault', requireSuperAdmin, ctrl.addVaultItem)
+screenRoutes.delete('/api/studio/screen/vault/:id', requireSuperAdmin, ctrl.removeVaultItem)
+screenRoutes.post('/api/studio/screen/vault/fill', requireSuperAdmin, ctrl.fillVaultItem)

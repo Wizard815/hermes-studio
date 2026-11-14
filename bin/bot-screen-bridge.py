@@ -12,6 +12,13 @@ drives the screen.
       Makes sure the screen's browser (Hermes's own: same Chrome, same
       profile and logins as the agent's browser tools) runs on the screen and
       prints {"port": <DevTools port>}. Exit 42: a person holds control.
+  bot-screen-bridge.py vault list | add | rm <id> | fill <id> <port> [tab]
+      Hermes's encrypted login vault. ``add`` reads the item as JSON on stdin
+      (never argv). ``fill`` writes a saved login's password into the screen
+      browser's page (DevTools port, optional tab target id) with Hermes's own
+      login-form classifier and origin-checked fill script: only on the exact
+      site the login was saved for, and the password never leaves this
+      process (the result carries counts only).
   bot-screen-bridge.py bridge <viewer_id>
       Pipes the screen's RFB stream: stdin (from the viewer) -> filter -> Xvnc,
       Xvnc -> stdout. Keyboard, mouse, clipboard and resizes only pass while
@@ -126,6 +133,118 @@ def _browser_cmd() -> int:
     return 0
 
 
+def _cdp_eval(ws, expression: str, ids: list) -> dict:
+    ids[0] += 1
+    ws.send(json.dumps({"id": ids[0], "method": "Runtime.evaluate",
+                        "params": {"expression": expression, "returnByValue": True, "awaitPromise": True}}))
+    while True:
+        message = json.loads(ws.recv(timeout=20))
+        if message.get("id") == ids[0]:
+            break
+    result = (message.get("result") or {})
+    if message.get("error") or result.get("exceptionDetails"):
+        return {"success": False, "error": "page script failed"}
+    return {"success": True, "result": (result.get("result") or {}).get("value")}
+
+
+def _page_target(port: int, tab: str):
+    import urllib.request
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=5) as response:
+        targets = [item for item in json.load(response) if item.get("type") == "page"]
+    if tab:
+        targets = [item for item in targets if item.get("id") == tab]
+    return targets[0] if targets else None
+
+
+def _vault_fill(handle: str, port: int, tab: str) -> dict:
+    import secrets as _secrets
+    from agent.vault_backends import backend_for_handle
+    from agent.vault_login_classifier import LoginControl, build_fill_js, build_inspection_js, classify_login_control, select_password_fill
+    from agent.vault_store import normalize_origin, scrub_secret_from_text
+    from websockets.sync.client import connect
+
+    backend = backend_for_handle(handle)
+    meta = backend.get_meta(handle) if backend is not None else None
+    if meta is None:
+        return {"success": False, "error": f"No saved login {handle!r}."}
+    if meta.kind != "login":
+        return {"success": False, "error": "Only saved logins can be filled by agents."}
+    allowed = {normalize_origin(origin) for origin in (meta.allowed_origins or (meta.origin,)) if origin}
+    target = _page_target(port, tab)
+    if not target:
+        return {"success": False, "error": "No browser tab to fill."}
+    ids = [0]
+    with connect(target["webSocketDebuggerUrl"], max_size=8 * 1024 * 1024, open_timeout=10) as ws:
+        origin = _cdp_eval(ws, "location.origin", ids)
+        try:
+            page_origin = normalize_origin(str(origin.get("result") or "")) if origin.get("success") else ""
+        except Exception:
+            page_origin = ""
+        if page_origin not in allowed:
+            return {"success": False, "error_type": "origin_mismatch",
+                    "error": f"This login is saved for {', '.join(sorted(allowed))}, not {page_origin or 'this page'}. Nothing was filled."}
+        nonce = _secrets.token_hex(8)
+        inspect = _cdp_eval(ws, build_inspection_js(nonce), ids)
+        raw = inspect.get("result")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except ValueError:
+                raw = None
+        if not isinstance(raw, list):
+            return {"success": False, "error": "Could not read the page's form fields."}
+        classified = [item for item in (classify_login_control(LoginControl.from_dict(row)) for row in raw if isinstance(row, dict)) if item]
+        if not classified:
+            return {"success": False, "error": "No login form fields were found on this page."}
+        secret = {"password": backend.resolve_password(handle)}
+        try:
+            fills = select_password_fill(classified, secret["password"])
+            if not fills:
+                return {"success": False, "error": "No password field matched on this page."}
+            done = _cdp_eval(ws, build_fill_js(fills, expected_origin=page_origin, nonce=nonce), ids)
+        except Exception as exc:  # never let the password reach the output
+            return {"success": False, "error": scrub_secret_from_text(str(exc), secret)}
+        finally:
+            secret.clear()
+    value = done.get("result")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            value = None
+    if isinstance(value, dict) and value.get("refused"):
+        return {"success": False, "error_type": "origin_changed", "error": "The page changed site before the fill; nothing was written."}
+    filled = int(value.get("filled", 0)) if isinstance(value, dict) else 0
+    return {"success": bool(filled), "filled_fields": filled, "origin": page_origin,
+            "identifier": meta.identifier, "next": "Type the username yourself if it is empty, then submit."}
+
+
+def _vault_cmd(argv: list[str]) -> int:
+    os.environ["HERMES_HOME"] = _home()
+    from agent.vault_store import VaultError, get_vault_store
+
+    action = argv[0] if argv else "list"
+    try:
+        if action == "list":
+            out = {"items": [item.to_dict() for item in get_vault_store().list_items()]}
+        elif action == "add":
+            data = json.loads(sys.stdin.read() or "{}")
+            kind = str(data.get("kind") or "login")
+            secret = {key: value for key, value in data.items() if key not in ("kind", "label", "origin")}
+            meta = get_vault_store().add_item(kind, str(data.get("label") or ""), secret, data.get("origin") or None)
+            out = {"item": meta.to_dict()}
+        elif action == "rm" and len(argv) > 1:
+            out = {"removed": get_vault_store().remove_item(argv[1])}
+        elif action == "fill" and len(argv) > 2:
+            out = _vault_fill(argv[1], int(argv[2]), argv[3] if len(argv) > 3 else "")
+        else:
+            out = {"error": "usage: vault list | add | rm <id> | fill <id> <port> [tab]"}
+    except (VaultError, ValueError) as exc:
+        out = {"error": str(exc)}
+    print(json.dumps(out))
+    return 0 if "error" not in out else 1
+
+
 def _write_all(fd: int, data: bytes) -> None:
     view = memoryview(data)
     while view:
@@ -214,6 +333,8 @@ def main() -> int:
     command, rest = sys.argv[1], sys.argv[2:]
     if command == "lease":
         return _lease_cmd(rest)
+    if command == "vault":
+        return _vault_cmd(rest)
     if command == "browser":
         return _browser_cmd()
     if command == "bridge" and rest:

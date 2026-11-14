@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { NButton } from 'naive-ui'
+import { NButton, NInput, NSelect, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { getBrowserActivity, getScreenStatus, installScreen, screenControl, screenSocketUrl, startScreen, stopScreen, type BrowserActivity, type ScreenStatus } from '@/api/studio/screen'
+import { addSavedLogin, listSavedLogins, removeSavedLogin, type SavedLogin, getBrowserActivity, getScreenStatus, installScreen, screenControl, screenSocketUrl, startScreen, stopScreen, type BrowserActivity, type ScreenStatus } from '@/api/studio/screen'
 
 /**
  * The agents' screen (Hermes Bot Screen): a desktop with a real browser that
@@ -22,6 +22,40 @@ let poll: ReturnType<typeof setTimeout> | null = null
 let reconnect: ReturnType<typeof setTimeout> | null = null
 let disposed = false
 const showActivity = ref(false)
+const showLogins = ref(false)
+const logins = ref<SavedLogin[]>([])
+const loginForm = ref({ label: '', origin: '', identifierType: 'email' as 'email' | 'username' | 'phone', identifier: '', password: '', otpSecret: '' })
+const savingLogin = ref(false)
+const toast = useMessage()
+const identifierTypes = computed(() => (['email', 'username', 'phone'] as const).map(value => ({ value, label: t(`screen.identifier.${value}`) })))
+
+async function loadLogins() {
+  try { logins.value = (await listSavedLogins()).items } catch (error) { failure.value = errorText(error) }
+}
+
+function toggleLogins() {
+  showLogins.value = !showLogins.value
+  if (showLogins.value) { showActivity.value = false; void loadLogins() }
+}
+
+async function saveLogin() {
+  savingLogin.value = true
+  try {
+    const form = loginForm.value
+    await addSavedLogin({ ...form, origin: form.origin.trim(), otpSecret: form.otpSecret.trim() || undefined })
+    loginForm.value = { label: '', origin: '', identifierType: form.identifierType, identifier: '', password: '', otpSecret: '' }
+    toast.success(t('screen.loginSaved'))
+    await loadLogins()
+  } catch (error) {
+    toast.error(errorText(error))
+  } finally {
+    savingLogin.value = false
+  }
+}
+
+async function removeLogin(item: SavedLogin) {
+  try { await removeSavedLogin(item.id); await loadLogins() } catch (error) { toast.error(errorText(error)) }
+}
 const activity = ref<BrowserActivity[]>([])
 
 async function loadActivity() {
@@ -30,6 +64,7 @@ async function loadActivity() {
 
 function toggleActivity() {
   showActivity.value = !showActivity.value
+  if (showActivity.value) showLogins.value = false
   if (showActivity.value) void loadActivity()
 }
 
@@ -136,6 +171,7 @@ onBeforeUnmount(() => {
       </template>
       <span class="screen-spacer" />
       <NButton size="tiny" quaternary :type="showActivity ? 'primary' : 'default'" data-testid="screen-activity-toggle" @click="toggleActivity">{{ t('screen.activity') }}</NButton>
+      <NButton size="tiny" quaternary :type="showLogins ? 'primary' : 'default'" data-testid="screen-logins-toggle" @click="toggleLogins">{{ t('screen.logins') }}</NButton>
       <template v-if="running">
         <NButton v-if="!youHaveControl" size="tiny" type="error" :loading="busy === 'take'" data-testid="screen-take" @click="takeOver">{{ t('screen.takeOver') }}</NButton>
         <NButton v-else size="tiny" type="primary" :loading="busy === 'release'" data-testid="screen-handback" @click="handBack">{{ t('screen.handBack') }}</NButton>
@@ -157,6 +193,25 @@ onBeforeUnmount(() => {
           <div v-if="hostOf(item.url)" class="activity-url" :title="item.url">{{ hostOf(item.url) }}</div>
           <div v-if="item.error" class="activity-error">{{ item.error }}</div>
         </div>
+      </aside>
+      <aside v-if="showLogins" class="screen-activity" data-testid="screen-logins">
+        <p class="screen-hint">{{ t('screen.loginsHint') }}</p>
+        <div v-for="item in logins" :key="item.id" class="activity-item login-item">
+          <div class="activity-summary"><strong>{{ item.label }}</strong></div>
+          <div class="activity-url">{{ item.origin }}</div>
+          <div class="activity-line">{{ item.identifier }}<span v-if="item.has_otp"> · 2FA</span></div>
+          <button type="button" class="login-remove" @click="removeLogin(item)">{{ t('screen.remove') }}</button>
+        </div>
+        <p v-if="!logins.length" class="screen-hint">{{ t('screen.loginsEmpty') }}</p>
+        <form class="login-form" autocomplete="off" @submit.prevent="saveLogin">
+          <NInput v-model:value="loginForm.origin" size="small" :placeholder="t('screen.site')" data-testid="login-origin" />
+          <NInput v-model:value="loginForm.label" size="small" :placeholder="t('screen.loginLabel')" data-testid="login-label" />
+          <NSelect v-model:value="loginForm.identifierType" size="small" :options="identifierTypes" />
+          <NInput v-model:value="loginForm.identifier" size="small" :placeholder="t(`screen.identifier.${loginForm.identifierType}`)" data-testid="login-identifier" />
+          <NInput v-model:value="loginForm.password" size="small" type="password" show-password-on="click" :input-props="{ autocomplete: 'new-password' }" :placeholder="t('screen.password')" data-testid="login-password" />
+          <NInput v-model:value="loginForm.otpSecret" size="small" type="password" :input-props="{ autocomplete: 'off' }" :placeholder="t('screen.otpSecret')" />
+          <NButton size="small" type="primary" attr-type="submit" :loading="savingLogin" :disabled="!loginForm.origin || !loginForm.label || !loginForm.identifier || !loginForm.password" data-testid="login-save">{{ t('screen.saveLogin') }}</NButton>
+        </form>
       </aside>
     </div>
     <div v-if="!running" class="screen-state">
@@ -263,6 +318,26 @@ onBeforeUnmount(() => {
 .activity-summary { margin-top: 2px; word-break: break-word; }
 .activity-url { opacity: 0.6; font-size: 11px; }
 .activity-error { color: $error; font-size: 11px; word-break: break-word; }
+
+.login-item { position: relative; }
+
+.login-remove {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  border: 0;
+  background: none;
+  color: $error;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
 
 .screen-viewer {
   flex: 1;
