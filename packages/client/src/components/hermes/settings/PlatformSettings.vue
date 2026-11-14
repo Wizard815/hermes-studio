@@ -7,6 +7,11 @@ import { clearCredentials as clearCredsApi, saveCredentials as saveCredsApi, fet
 import PlatformCard from './PlatformCard.vue'
 import SettingRow from './SettingRow.vue'
 
+const props = defineProps<{
+  /** Optional live state per platform key (from Hermes Agent), shown in each card header. */
+  statuses?: Record<string, { label: string; type: 'success' | 'warning' | 'error' | 'info' | 'default' }>
+}>()
+
 const settingsStore = useSettingsStore()
 const message = useMessage()
 const dialog = useDialog()
@@ -313,7 +318,11 @@ watch(
       :exclusive="p.exclusive"
       :config="settingsStore[p.key as keyof typeof settingsStore] as Record<string, any>"
       :credentials="getCreds(p.key)"
+      :status-label="props.statuses?.[p.key]?.label"
+      :status-type="props.statuses?.[p.key]?.type"
+      :default-expanded="props.statuses ? props.statuses[p.key]?.type === 'success' : undefined"
     >
+      <slot name="platform-extra" :platform-key="p.key" />
       <!-- Telegram -->
       <template v-if="p.key === 'telegram'">
         <SettingRow :label="t('platform.botToken')" :hint="t('platform.botTokenHint')">

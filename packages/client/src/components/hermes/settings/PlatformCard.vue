@@ -10,12 +10,17 @@ const props = defineProps<{
   config: Record<string, any>
   credentials?: Record<string, any>
   exclusive?: boolean
+  /** Hermes Agent's live state for this channel; replaces the configured tag when given. */
+  statusLabel?: string
+  statusType?: 'success' | 'warning' | 'error' | 'info' | 'default'
+  defaultExpanded?: boolean
 }>()
 
-const expanded = ref(true)
+const expanded = ref(props.defaultExpanded ?? true)
 const { t } = useI18n()
 
 const configured = computed(() => {
+  if (props.statusType) return props.statusType === 'success'
   const creds = props.credentials
   if (!creds) return false
   if (props.platformKey === 'matrix') {
@@ -44,7 +49,8 @@ const configured = computed(() => {
       <div class="platform-info">
         <span class="platform-icon" v-html="icon" />
         <span class="platform-name">{{ name }}</span>
-        <NTag :type="configured ? 'success' : 'default'" size="small" round>
+        <NTag v-if="statusLabel" :type="statusType || 'default'" size="small" round>{{ statusLabel }}</NTag>
+        <NTag v-else :type="configured ? 'success' : 'default'" size="small" round>
           {{ configured ? t('common.configured') : t('common.notConfigured') }}
         </NTag>
       </div>
