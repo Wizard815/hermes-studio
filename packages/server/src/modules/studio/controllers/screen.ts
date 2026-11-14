@@ -106,17 +106,30 @@ export async function listVault(ctx: Context) {
   ctx.body = out.body
 }
 
-/** Save a login (the password goes to the helper on stdin, encrypted at rest by Hermes). */
+/** Save a login, card or address (secrets go to the helper on stdin, encrypted at rest by Hermes). */
 export async function addVaultItem(ctx: Context) {
   const body = (ctx.request.body || {}) as Record<string, unknown>
-  const item = {
-    kind: 'login',
-    label: String(body.label || '').slice(0, 200),
-    origin: String(body.origin || '').slice(0, 500),
-    identifier_type: ['email', 'phone', 'username'].includes(String(body.identifierType)) ? String(body.identifierType) : 'username',
-    identifier: String(body.identifier || '').slice(0, 500),
-    password: String(body.password || ''),
-    ...(body.otpSecret ? { otp_secret: String(body.otpSecret).slice(0, 200) } : {}),
+  const text = (key: string, max = 500) => String(body[key] ?? '').trim().slice(0, max)
+  const kind = ['login', 'payment', 'address'].includes(String(body.kind)) ? String(body.kind) : 'login'
+  let item: Record<string, string>
+  if (kind === 'login') {
+    item = {
+      kind, label: text('label', 200), origin: text('origin'),
+      identifier_type: ['email', 'phone', 'username'].includes(String(body.identifierType)) ? String(body.identifierType) : 'username',
+      identifier: text('identifier'), password: String(body.password || ''),
+      ...(body.otpSecret ? { otp_secret: text('otpSecret', 200) } : {}),
+    }
+  } else if (kind === 'payment') {
+    item = {
+      kind, label: text('label', 200), ...(body.origin ? { origin: text('origin') } : {}),
+      card_number: text('cardNumber', 40).replace(/[\s-]/g, ''), exp_month: text('expMonth', 2), exp_year: text('expYear', 4),
+      cvc: text('cvc', 4), cardholder_name: text('cardholderName', 200), billing_postal_code: text('postalCode', 20),
+    }
+  } else {
+    item = {
+      kind, label: text('label', 200), address_line1: text('addressLine1'), address_line2: text('addressLine2'),
+      city: text('city', 200), state: text('state', 200), postal_code: text('postalCode', 20), country: text('country', 100),
+    }
   }
   const out = await vault(['add'], JSON.stringify(item))
   ctx.status = out.status

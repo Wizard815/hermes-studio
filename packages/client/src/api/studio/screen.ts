@@ -43,7 +43,9 @@ export interface BrowserActivity {
 }
 
 export interface SavedLogin { id: string; kind: string; label: string; origin: string | null; identifier?: string; identifier_type?: string; has_otp?: boolean; created_at: string }
-export interface SavedLoginInput { label: string; origin: string; identifierType: 'email' | 'username' | 'phone'; identifier: string; password: string; otpSecret?: string }
+export type SavedItemKind = 'login' | 'payment' | 'address'
+/** A login, card or address to save (fields depend on kind; secrets are never sent back). */
+export type SavedLoginInput = { kind: SavedItemKind; label: string } & Record<string, string | undefined>
 
 export const listSavedLogins = () => request<{ items: SavedLogin[] }>(`${base}/vault`)
 export const addSavedLogin = (input: SavedLoginInput) => request<{ item: SavedLogin }>(`${base}/vault`, { method: 'POST', body: JSON.stringify(input) })

@@ -2,6 +2,10 @@
 export const screenMessages = {
   "en": {
     "screen": {
+      "kind": {"login": "Login", "payment": "Card", "address": "Address"},
+      "siteOptional": "Site (optional)",
+      "card": {"number": "Card number", "month": "MM", "year": "YYYY", "cvc": "CVC", "name": "Name on card"},
+      "address": {"line1": "Address", "line2": "Apartment, suite (optional)", "city": "City", "state": "State / region", "postalCode": "Postal code", "country": "Country"},
       "logins": "Saved logins",
       "loginsHint": "Agents can fill these on the exact site they're saved for. Passwords stay encrypted (Hermes's vault) and never reach the agent or the chat; you're asked before each sign-in.",
       "loginsEmpty": "No saved logins yet.",
@@ -9,7 +13,7 @@ export const screenMessages = {
       "loginLabel": "Name",
       "password": "Password",
       "otpSecret": "2FA key (optional)",
-      "saveLogin": "Save login",
+      "saveLogin": "Save",
       "remove": "Remove",
       "loginSaved": "Login saved",
       "identifier": {"email": "Email", "username": "Username", "phone": "Phone"},
@@ -39,6 +43,10 @@ export const screenMessages = {
   },
   "zh": {
     "screen": {
+      "kind": {"login": "登录", "payment": "银行卡", "address": "地址"},
+      "siteOptional": "网站（可选）",
+      "card": {"number": "卡号", "month": "月", "year": "年", "cvc": "安全码", "name": "持卡人"},
+      "address": {"line1": "地址", "line2": "门牌/单元（可选）", "city": "城市", "state": "省/地区", "postalCode": "邮编", "country": "国家"},
       "logins": "已保存的登录",
       "loginsHint": "代理只能在保存时对应的网站上填写。密码加密保存（Hermes 保险库），不会发给代理或出现在对话中；每次登录前都会询问你。",
       "loginsEmpty": "还没有保存的登录。",
@@ -46,7 +54,7 @@ export const screenMessages = {
       "loginLabel": "名称",
       "password": "密码",
       "otpSecret": "两步验证密钥（可选）",
-      "saveLogin": "保存登录",
+      "saveLogin": "保存",
       "remove": "删除",
       "loginSaved": "已保存登录",
       "identifier": {"email": "邮箱", "username": "用户名", "phone": "手机号"},
@@ -76,6 +84,10 @@ export const screenMessages = {
   },
   "zh-TW": {
     "screen": {
+      "kind": {"login": "登入", "payment": "信用卡", "address": "地址"},
+      "siteOptional": "網站（選填）",
+      "card": {"number": "卡號", "month": "月", "year": "年", "cvc": "安全碼", "name": "持卡人"},
+      "address": {"line1": "地址", "line2": "門牌/單位（選填）", "city": "城市", "state": "州/地區", "postalCode": "郵遞區號", "country": "國家"},
       "logins": "已儲存的登入",
       "loginsHint": "代理只能在儲存時對應的網站上填寫。密碼加密保存（Hermes 保險庫），不會傳給代理或出現在對話中；每次登入前都會詢問你。",
       "loginsEmpty": "尚無儲存的登入。",
@@ -83,7 +95,7 @@ export const screenMessages = {
       "loginLabel": "名稱",
       "password": "密碼",
       "otpSecret": "兩步驟驗證金鑰（選填）",
-      "saveLogin": "儲存登入",
+      "saveLogin": "儲存",
       "remove": "移除",
       "loginSaved": "已儲存登入",
       "identifier": {"email": "電子郵件", "username": "使用者名稱", "phone": "電話"},
@@ -113,6 +125,10 @@ export const screenMessages = {
   },
   "ja": {
     "screen": {
+      "kind": {"login": "ログイン", "payment": "カード", "address": "住所"},
+      "siteOptional": "サイト（任意）",
+      "card": {"number": "カード番号", "month": "月", "year": "年", "cvc": "セキュリティコード", "name": "カード名義"},
+      "address": {"line1": "住所", "line2": "建物名・部屋番号（任意）", "city": "市区町村", "state": "都道府県", "postalCode": "郵便番号", "country": "国"},
       "logins": "保存済みログイン",
       "loginsHint": "エージェントは保存したサイトでのみ入力できます。パスワードは暗号化され（Hermes のボールト）、エージェントやチャットには渡りません。ログインの前に毎回確認されます。",
       "loginsEmpty": "保存済みログインはまだありません。",
@@ -120,7 +136,7 @@ export const screenMessages = {
       "loginLabel": "名前",
       "password": "パスワード",
       "otpSecret": "2FA キー（任意）",
-      "saveLogin": "ログインを保存",
+      "saveLogin": "保存",
       "remove": "削除",
       "loginSaved": "ログインを保存しました",
       "identifier": {"email": "メール", "username": "ユーザー名", "phone": "電話"},
@@ -150,6 +166,10 @@ export const screenMessages = {
   },
   "ko": {
     "screen": {
+      "kind": {"login": "로그인", "payment": "카드", "address": "주소"},
+      "siteOptional": "사이트(선택)",
+      "card": {"number": "카드 번호", "month": "월", "year": "연도", "cvc": "CVC", "name": "카드 소유자"},
+      "address": {"line1": "주소", "line2": "상세 주소(선택)", "city": "도시", "state": "시/도", "postalCode": "우편번호", "country": "국가"},
       "logins": "저장된 로그인",
       "loginsHint": "에이전트는 저장한 사이트에서만 입력할 수 있습니다. 비밀번호는 암호화되어(Hermes 보관함) 에이전트나 채팅에 전달되지 않으며, 로그인 전마다 확인을 요청합니다.",
       "loginsEmpty": "저장된 로그인이 없습니다.",
@@ -157,7 +177,7 @@ export const screenMessages = {
       "loginLabel": "이름",
       "password": "비밀번호",
       "otpSecret": "2FA 키(선택)",
-      "saveLogin": "로그인 저장",
+      "saveLogin": "저장",
       "remove": "삭제",
       "loginSaved": "로그인을 저장했습니다",
       "identifier": {"email": "이메일", "username": "사용자 이름", "phone": "전화"},
@@ -187,6 +207,10 @@ export const screenMessages = {
   },
   "de": {
     "screen": {
+      "kind": {"login": "Login", "payment": "Karte", "address": "Adresse"},
+      "siteOptional": "Website (optional)",
+      "card": {"number": "Kartennummer", "month": "MM", "year": "JJJJ", "cvc": "CVC", "name": "Name auf der Karte"},
+      "address": {"line1": "Adresse", "line2": "Wohnung, Zusatz (optional)", "city": "Stadt", "state": "Bundesland / Region", "postalCode": "Postleitzahl", "country": "Land"},
       "logins": "Gespeicherte Logins",
       "loginsHint": "Agenten können sie nur auf der Website eintragen, für die sie gespeichert sind. Passwörter bleiben verschlüsselt (Hermes-Tresor) und erreichen nie den Agenten oder den Chat; vor jeder Anmeldung wirst du gefragt.",
       "loginsEmpty": "Noch keine gespeicherten Logins.",
@@ -194,7 +218,7 @@ export const screenMessages = {
       "loginLabel": "Name",
       "password": "Passwort",
       "otpSecret": "2FA-Schlüssel (optional)",
-      "saveLogin": "Login speichern",
+      "saveLogin": "Speichern",
       "remove": "Entfernen",
       "loginSaved": "Login gespeichert",
       "identifier": {"email": "E-Mail", "username": "Benutzername", "phone": "Telefon"},
@@ -224,6 +248,10 @@ export const screenMessages = {
   },
   "es": {
     "screen": {
+      "kind": {"login": "Inicio de sesión", "payment": "Tarjeta", "address": "Dirección"},
+      "siteOptional": "Sitio (opcional)",
+      "card": {"number": "Número de tarjeta", "month": "MM", "year": "AAAA", "cvc": "CVC", "name": "Nombre en la tarjeta"},
+      "address": {"line1": "Dirección", "line2": "Piso, puerta (opcional)", "city": "Ciudad", "state": "Provincia / región", "postalCode": "Código postal", "country": "País"},
       "logins": "Inicios de sesión guardados",
       "loginsHint": "Los agentes solo pueden rellenarlos en el sitio exacto para el que se guardaron. Las contraseñas siguen cifradas (bóveda de Hermes) y nunca llegan al agente ni al chat; se te pregunta antes de cada inicio de sesión.",
       "loginsEmpty": "Aún no hay inicios de sesión guardados.",
@@ -231,7 +259,7 @@ export const screenMessages = {
       "loginLabel": "Nombre",
       "password": "Contraseña",
       "otpSecret": "Clave 2FA (opcional)",
-      "saveLogin": "Guardar inicio de sesión",
+      "saveLogin": "Guardar",
       "remove": "Quitar",
       "loginSaved": "Inicio de sesión guardado",
       "identifier": {"email": "Correo", "username": "Usuario", "phone": "Teléfono"},
@@ -261,6 +289,10 @@ export const screenMessages = {
   },
   "fr": {
     "screen": {
+      "kind": {"login": "Identifiant", "payment": "Carte", "address": "Adresse"},
+      "siteOptional": "Site (facultatif)",
+      "card": {"number": "Numéro de carte", "month": "MM", "year": "AAAA", "cvc": "CVC", "name": "Nom sur la carte"},
+      "address": {"line1": "Adresse", "line2": "Appartement, complément (facultatif)", "city": "Ville", "state": "Région", "postalCode": "Code postal", "country": "Pays"},
       "logins": "Identifiants enregistrés",
       "loginsHint": "Les agents ne peuvent les saisir que sur le site exact pour lequel ils sont enregistrés. Les mots de passe restent chiffrés (coffre Hermes) et n'atteignent jamais l'agent ni le chat ; on vous demande avant chaque connexion.",
       "loginsEmpty": "Aucun identifiant enregistré.",
@@ -298,6 +330,10 @@ export const screenMessages = {
   },
   "pt": {
     "screen": {
+      "kind": {"login": "Login", "payment": "Cartão", "address": "Endereço"},
+      "siteOptional": "Site (opcional)",
+      "card": {"number": "Número do cartão", "month": "MM", "year": "AAAA", "cvc": "CVC", "name": "Nome no cartão"},
+      "address": {"line1": "Endereço", "line2": "Complemento (opcional)", "city": "Cidade", "state": "Estado / região", "postalCode": "CEP", "country": "País"},
       "logins": "Logins salvos",
       "loginsHint": "Os agentes só podem preenchê-los no site exato para o qual foram salvos. As senhas ficam criptografadas (cofre do Hermes) e nunca chegam ao agente nem ao chat; você é consultado antes de cada login.",
       "loginsEmpty": "Ainda não há logins salvos.",
@@ -305,7 +341,7 @@ export const screenMessages = {
       "loginLabel": "Nome",
       "password": "Senha",
       "otpSecret": "Chave 2FA (opcional)",
-      "saveLogin": "Salvar login",
+      "saveLogin": "Salvar",
       "remove": "Remover",
       "loginSaved": "Login salvo",
       "identifier": {"email": "E-mail", "username": "Usuário", "phone": "Telefone"},
@@ -335,6 +371,10 @@ export const screenMessages = {
   },
   "ru": {
     "screen": {
+      "kind": {"login": "Вход", "payment": "Карта", "address": "Адрес"},
+      "siteOptional": "Сайт (необязательно)",
+      "card": {"number": "Номер карты", "month": "ММ", "year": "ГГГГ", "cvc": "CVC", "name": "Имя на карте"},
+      "address": {"line1": "Адрес", "line2": "Квартира, офис (необязательно)", "city": "Город", "state": "Регион", "postalCode": "Индекс", "country": "Страна"},
       "logins": "Сохранённые входы",
       "loginsHint": "Агенты могут подставлять их только на том сайте, для которого они сохранены. Пароли хранятся зашифрованными (хранилище Hermes) и не попадают к агенту или в чат; перед каждым входом вас спросят.",
       "loginsEmpty": "Сохранённых входов пока нет.",
@@ -342,7 +382,7 @@ export const screenMessages = {
       "loginLabel": "Название",
       "password": "Пароль",
       "otpSecret": "Ключ 2FA (необязательно)",
-      "saveLogin": "Сохранить вход",
+      "saveLogin": "Сохранить",
       "remove": "Удалить",
       "loginSaved": "Вход сохранён",
       "identifier": {"email": "Эл. почта", "username": "Имя пользователя", "phone": "Телефон"},
@@ -372,6 +412,10 @@ export const screenMessages = {
   },
   "tr": {
     "screen": {
+      "kind": {"login": "Giriş", "payment": "Kart", "address": "Adres"},
+      "siteOptional": "Site (isteğe bağlı)",
+      "card": {"number": "Kart numarası", "month": "AA", "year": "YYYY", "cvc": "CVC", "name": "Kart üzerindeki ad"},
+      "address": {"line1": "Adres", "line2": "Daire, kat (isteğe bağlı)", "city": "Şehir", "state": "İl / bölge", "postalCode": "Posta kodu", "country": "Ülke"},
       "logins": "Kayıtlı girişler",
       "loginsHint": "Ajanlar bunları yalnızca kaydedildikleri sitede doldurabilir. Şifreler şifreli kalır (Hermes kasası) ve asla ajana ya da sohbete ulaşmaz; her girişten önce sana sorulur.",
       "loginsEmpty": "Henüz kayıtlı giriş yok.",
@@ -379,7 +423,7 @@ export const screenMessages = {
       "loginLabel": "Ad",
       "password": "Şifre",
       "otpSecret": "2FA anahtarı (isteğe bağlı)",
-      "saveLogin": "Girişi kaydet",
+      "saveLogin": "Kaydet",
       "remove": "Kaldır",
       "loginSaved": "Giriş kaydedildi",
       "identifier": {"email": "E-posta", "username": "Kullanıcı adı", "phone": "Telefon"},
@@ -409,6 +453,10 @@ export const screenMessages = {
   },
   "ar": {
     "screen": {
+      "kind": {"login": "تسجيل دخول", "payment": "بطاقة", "address": "عنوان"},
+      "siteOptional": "الموقع (اختياري)",
+      "card": {"number": "رقم البطاقة", "month": "شهر", "year": "سنة", "cvc": "رمز الأمان", "name": "الاسم على البطاقة"},
+      "address": {"line1": "العنوان", "line2": "الشقة أو الوحدة (اختياري)", "city": "المدينة", "state": "الولاية / المنطقة", "postalCode": "الرمز البريدي", "country": "الدولة"},
       "logins": "بيانات الدخول المحفوظة",
       "loginsHint": "يمكن للوكلاء إدخالها فقط في الموقع الذي حُفظت له. تبقى كلمات المرور مشفّرة (خزنة Hermes) ولا تصل أبدًا إلى الوكيل أو المحادثة؛ ويُطلب إذنك قبل كل تسجيل دخول.",
       "loginsEmpty": "لا توجد بيانات دخول محفوظة بعد.",
@@ -416,7 +464,7 @@ export const screenMessages = {
       "loginLabel": "الاسم",
       "password": "كلمة المرور",
       "otpSecret": "مفتاح التحقق الثنائي (اختياري)",
-      "saveLogin": "حفظ بيانات الدخول",
+      "saveLogin": "حفظ",
       "remove": "إزالة",
       "loginSaved": "تم حفظ بيانات الدخول",
       "identifier": {"email": "البريد الإلكتروني", "username": "اسم المستخدم", "phone": "الهاتف"},

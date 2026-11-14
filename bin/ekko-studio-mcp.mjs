@@ -1228,7 +1228,7 @@ const tools = [
   {
     name: 'ekko_studio_browser_vault',
     toolset: 'browser',
-    description: "The person's saved logins (Hermes's encrypted vault), for the agents' screen browser. list: saved logins with their site and username (never passwords). fill: write a saved login's password into the current page of the screen browser; it only works on the exact site the login was saved for, and the password never reaches you. The person is asked first, like any sign-in. Type the username yourself, then submit. When there is no saved login, ask the person to add one (Screen → Saved logins) or to take over the Screen and sign in themselves.",
+    description: "The person's saved logins, cards and addresses (Hermes's encrypted vault), for the agents' screen browser. list: what is saved (logins show site and username; never passwords or card numbers). fill: write a saved item into the current page of the screen browser: a login's password (only on the exact site it was saved for), a card's details (asks the person first, as a purchase), or an address. Secrets never reach you. Type a login's username yourself. Never submit a payment unless the person asked you to buy it. When nothing is saved, ask the person to add it (Screen → Saved logins) or to take over the Screen and do it themselves.",
     inputSchema: browserInputSchema({
       action: { type: 'string', enum: ['list', 'fill'] },
       handle: { type: 'string', maxLength: 200, description: 'For fill: the id from list.' },
@@ -2135,7 +2135,7 @@ function browserActivityFor(name, args) {
     case 'ekko_studio_browser_download':
       return { kind: 'download', summary: `Downloaded ${args.url || `from${ref}`}`, url: args.url }
     case 'ekko_studio_browser_vault':
-      return args.action === 'fill' ? { kind: 'vault', summary: `Filled a saved login (${args.handle || ''})` } : null
+      return args.action === 'fill' ? { kind: 'vault', summary: `Filled a saved item (${args.handle || ''})` } : null
     case 'ekko_studio_browser_dialog':
       return args.action && args.action !== 'status' ? { kind: 'dialog', summary: `${args.action === 'accept' ? 'Accepted' : 'Dismissed'} a page dialog` } : null
     case 'ekko_studio_browser_tabs':
@@ -2247,10 +2247,23 @@ async function callToolInner(name, args = {}, signal) {
       if (!args.handle) return errorText('handle is required for fill; call list first')
       const saved = await request('/api/studio/screen/vault', withAuthArgs(args)).catch(() => ({ items: [] }))
       const item = (saved?.items || []).find(entry => entry.id === args.handle)
-      if (!item) return errorText(`No saved login ${args.handle}; call list`)
-      const risk = { kind: 'login', what: `fill the saved password "${item.label}"` }
-      const blocked = await browserApprovalGateFor(args, risk, item.origin || '', signal)
-      if (blocked) return blocked
+      if (!item) return errorText(`No saved item ${args.handle}; call list`)
+      if (item.kind !== 'address') {
+        let url = item.origin || ''
+        if (!url) {
+          try {
+            const envelope = await browserRequest('state', {}, signal)
+            const state = envelope?.result || envelope || {}
+            const tabs = Array.isArray(state.tabs) ? state.tabs : []
+            url = String((tabs.find(tab => tab.id === args.tab_id) || tabs.find(tab => tab.id === state.activeTabId))?.url || '')
+          } catch { /* unknown page */ }
+        }
+        const risk = item.kind === 'payment'
+          ? { kind: 'purchase', what: `fill the saved card "${item.label}"` }
+          : { kind: 'login', what: `fill the saved password "${item.label}"` }
+        const blocked = await browserApprovalGateFor(args, risk, url, signal)
+        if (blocked) return blocked
+      }
       return jsonText(await request('/api/studio/screen/vault/fill', withAuthArgs(args, { method: 'POST', body: { handle: args.handle, tabId: args.tab_id }, signal })))
     }
     case 'ekko_studio_browser_network':

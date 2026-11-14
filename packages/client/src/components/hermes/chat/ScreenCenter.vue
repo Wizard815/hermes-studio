@@ -24,7 +24,20 @@ let disposed = false
 const showActivity = ref(false)
 const showLogins = ref(false)
 const logins = ref<SavedLogin[]>([])
-const loginForm = ref({ label: '', origin: '', identifierType: 'email' as 'email' | 'username' | 'phone', identifier: '', password: '', otpSecret: '' })
+const emptyItem = () => ({
+  kind: 'login' as 'login' | 'payment' | 'address', label: '', origin: '', identifierType: 'email' as 'email' | 'username' | 'phone', identifier: '', password: '', otpSecret: '',
+  cardNumber: '', expMonth: '', expYear: '', cvc: '', cardholderName: '', postalCode: '',
+  addressLine1: '', addressLine2: '', city: '', state: '', country: '',
+})
+const loginForm = ref(emptyItem())
+const itemKinds = computed(() => (['login', 'payment', 'address'] as const).map(value => ({ value, label: t(`screen.kind.${value}`) })))
+const canSaveItem = computed(() => {
+  const form = loginForm.value
+  if (!form.label.trim()) return false
+  if (form.kind === 'login') return !!(form.origin.trim() && form.identifier.trim() && form.password)
+  if (form.kind === 'payment') return !!(form.cardNumber.trim() && form.expMonth.trim() && form.expYear.trim() && form.cvc.trim())
+  return !!(form.addressLine1.trim() && form.city.trim() && form.postalCode.trim() && form.country.trim())
+})
 const savingLogin = ref(false)
 const toast = useMessage()
 const identifierTypes = computed(() => (['email', 'username', 'phone'] as const).map(value => ({ value, label: t(`screen.identifier.${value}`) })))
@@ -42,8 +55,8 @@ async function saveLogin() {
   savingLogin.value = true
   try {
     const form = loginForm.value
-    await addSavedLogin({ ...form, origin: form.origin.trim(), otpSecret: form.otpSecret.trim() || undefined })
-    loginForm.value = { label: '', origin: '', identifierType: form.identifierType, identifier: '', password: '', otpSecret: '' }
+    await addSavedLogin({ ...form, origin: form.origin.trim() || undefined, otpSecret: form.otpSecret.trim() || undefined })
+    loginForm.value = { ...emptyItem(), kind: form.kind, identifierType: form.identifierType }
     toast.success(t('screen.loginSaved'))
     await loadLogins()
   } catch (error) {
@@ -197,20 +210,46 @@ onBeforeUnmount(() => {
       <aside v-if="showLogins" class="screen-activity" data-testid="screen-logins">
         <p class="screen-hint">{{ t('screen.loginsHint') }}</p>
         <div v-for="item in logins" :key="item.id" class="activity-item login-item">
-          <div class="activity-summary"><strong>{{ item.label }}</strong></div>
+          <div class="activity-summary"><strong>{{ item.label }}</strong> <span class="activity-agent">{{ t(`screen.kind.${item.kind}`) }}</span></div>
           <div class="activity-url">{{ item.origin }}</div>
           <div class="activity-line">{{ item.identifier }}<span v-if="item.has_otp"> · 2FA</span></div>
           <button type="button" class="login-remove" @click="removeLogin(item)">{{ t('screen.remove') }}</button>
         </div>
         <p v-if="!logins.length" class="screen-hint">{{ t('screen.loginsEmpty') }}</p>
         <form class="login-form" autocomplete="off" @submit.prevent="saveLogin">
-          <NInput v-model:value="loginForm.origin" size="small" :placeholder="t('screen.site')" data-testid="login-origin" />
+          <NSelect v-model:value="loginForm.kind" size="small" :options="itemKinds" data-testid="login-kind" />
           <NInput v-model:value="loginForm.label" size="small" :placeholder="t('screen.loginLabel')" data-testid="login-label" />
-          <NSelect v-model:value="loginForm.identifierType" size="small" :options="identifierTypes" />
-          <NInput v-model:value="loginForm.identifier" size="small" :placeholder="t(`screen.identifier.${loginForm.identifierType}`)" data-testid="login-identifier" />
-          <NInput v-model:value="loginForm.password" size="small" type="password" show-password-on="click" :input-props="{ autocomplete: 'new-password' }" :placeholder="t('screen.password')" data-testid="login-password" />
-          <NInput v-model:value="loginForm.otpSecret" size="small" type="password" :input-props="{ autocomplete: 'off' }" :placeholder="t('screen.otpSecret')" />
-          <NButton size="small" type="primary" attr-type="submit" :loading="savingLogin" :disabled="!loginForm.origin || !loginForm.label || !loginForm.identifier || !loginForm.password" data-testid="login-save">{{ t('screen.saveLogin') }}</NButton>
+          <template v-if="loginForm.kind === 'login'">
+            <NInput v-model:value="loginForm.origin" size="small" :placeholder="t('screen.site')" data-testid="login-origin" />
+            <NSelect v-model:value="loginForm.identifierType" size="small" :options="identifierTypes" />
+            <NInput v-model:value="loginForm.identifier" size="small" :placeholder="t(`screen.identifier.${loginForm.identifierType}`)" data-testid="login-identifier" />
+            <NInput v-model:value="loginForm.password" size="small" type="password" show-password-on="click" :input-props="{ autocomplete: 'new-password' }" :placeholder="t('screen.password')" data-testid="login-password" />
+            <NInput v-model:value="loginForm.otpSecret" size="small" type="password" :input-props="{ autocomplete: 'off' }" :placeholder="t('screen.otpSecret')" />
+          </template>
+          <template v-else-if="loginForm.kind === 'payment'">
+            <NInput v-model:value="loginForm.cardNumber" size="small" type="password" show-password-on="click" :input-props="{ autocomplete: 'off', inputmode: 'numeric' }" :placeholder="t('screen.card.number')" data-testid="card-number" />
+            <div class="login-row">
+              <NInput v-model:value="loginForm.expMonth" size="small" :input-props="{ inputmode: 'numeric' }" :placeholder="t('screen.card.month')" />
+              <NInput v-model:value="loginForm.expYear" size="small" :input-props="{ inputmode: 'numeric' }" :placeholder="t('screen.card.year')" />
+              <NInput v-model:value="loginForm.cvc" size="small" type="password" :input-props="{ autocomplete: 'off', inputmode: 'numeric' }" :placeholder="t('screen.card.cvc')" />
+            </div>
+            <NInput v-model:value="loginForm.cardholderName" size="small" :placeholder="t('screen.card.name')" />
+            <NInput v-model:value="loginForm.postalCode" size="small" :placeholder="t('screen.address.postalCode')" />
+            <NInput v-model:value="loginForm.origin" size="small" :placeholder="t('screen.siteOptional')" />
+          </template>
+          <template v-else>
+            <NInput v-model:value="loginForm.addressLine1" size="small" :placeholder="t('screen.address.line1')" />
+            <NInput v-model:value="loginForm.addressLine2" size="small" :placeholder="t('screen.address.line2')" />
+            <div class="login-row">
+              <NInput v-model:value="loginForm.city" size="small" :placeholder="t('screen.address.city')" />
+              <NInput v-model:value="loginForm.state" size="small" :placeholder="t('screen.address.state')" />
+            </div>
+            <div class="login-row">
+              <NInput v-model:value="loginForm.postalCode" size="small" :placeholder="t('screen.address.postalCode')" />
+              <NInput v-model:value="loginForm.country" size="small" :placeholder="t('screen.address.country')" />
+            </div>
+          </template>
+          <NButton size="small" type="primary" attr-type="submit" :loading="savingLogin" :disabled="!canSaveItem" data-testid="login-save">{{ t('screen.saveLogin') }}</NButton>
         </form>
       </aside>
     </div>
@@ -331,6 +370,8 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-size: 11px;
 }
+
+.login-row { display: flex; gap: 6px; }
 
 .login-form {
   display: flex;

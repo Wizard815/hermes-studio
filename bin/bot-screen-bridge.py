@@ -159,16 +159,18 @@ def _page_target(port: int, tab: str):
 def _vault_fill(handle: str, port: int, tab: str) -> dict:
     import secrets as _secrets
     from agent.vault_backends import backend_for_handle
-    from agent.vault_login_classifier import LoginControl, build_fill_js, build_inspection_js, classify_login_control, select_password_fill
-    from agent.vault_store import normalize_origin, scrub_secret_from_text
+    from agent.vault_login_classifier import (LoginControl, build_fill_js, build_inspection_js, classify_checkout_control,
+                                              classify_login_control, select_checkout_fills, select_password_fill)
+    from agent.vault_store import ADDRESS_FIELDS, PAYMENT_FIELDS, normalize_origin, scrub_secret_from_text
     from websockets.sync.client import connect
 
     backend = backend_for_handle(handle)
     meta = backend.get_meta(handle) if backend is not None else None
     if meta is None:
         return {"success": False, "error": f"No saved login {handle!r}."}
-    if meta.kind != "login":
-        return {"success": False, "error": "Only saved logins can be filled by agents."}
+    if meta.kind not in ("login", "payment", "address"):
+        return {"success": False, "error": f"Saved {meta.kind} items cannot be filled."}
+    # Logins only on their own site; cards and addresses on their site when one was saved.
     allowed = {normalize_origin(origin) for origin in (meta.allowed_origins or (meta.origin,)) if origin}
     target = _page_target(port, tab)
     if not target:
@@ -180,6 +182,8 @@ def _vault_fill(handle: str, port: int, tab: str) -> dict:
             page_origin = normalize_origin(str(origin.get("result") or "")) if origin.get("success") else ""
         except Exception:
             page_origin = ""
+        if meta.kind != "login" and not allowed and page_origin.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+            allowed = {page_origin}
         if page_origin not in allowed:
             return {"success": False, "error_type": "origin_mismatch",
                     "error": f"This login is saved for {', '.join(sorted(allowed))}, not {page_origin or 'this page'}. Nothing was filled."}
@@ -193,14 +197,19 @@ def _vault_fill(handle: str, port: int, tab: str) -> dict:
                 raw = None
         if not isinstance(raw, list):
             return {"success": False, "error": "Could not read the page's form fields."}
-        classified = [item for item in (classify_login_control(LoginControl.from_dict(row)) for row in raw if isinstance(row, dict)) if item]
+        classify = classify_login_control if meta.kind == "login" else classify_checkout_control
+        classified = [item for item in (classify(LoginControl.from_dict(row)) for row in raw if isinstance(row, dict)) if item]
         if not classified:
-            return {"success": False, "error": "No login form fields were found on this page."}
-        secret = {"password": backend.resolve_password(handle)}
+            return {"success": False, "error": f"No {'login' if meta.kind == 'login' else meta.kind} form fields were found on this page."}
+        secret = {"password": backend.resolve_password(handle)} if meta.kind == "login" else dict(backend.resolve_secret(handle))
         try:
-            fills = select_password_fill(classified, secret["password"])
+            if meta.kind == "login":
+                fills = select_password_fill(classified, secret["password"])
+            else:
+                fills = select_checkout_fills(classified, secret, PAYMENT_FIELDS if meta.kind == "payment" else ADDRESS_FIELDS)
             if not fills:
-                return {"success": False, "error": "No password field matched on this page."}
+                return {"success": False, "error": f"No {'password' if meta.kind == 'login' else meta.kind} field matched on this page."}
+            tokens = sorted(fill["token"] for fill in fills if "token" in fill)
             done = _cdp_eval(ws, build_fill_js(fills, expected_origin=page_origin, nonce=nonce), ids)
         except Exception as exc:  # never let the password reach the output
             return {"success": False, "error": scrub_secret_from_text(str(exc), secret)}
@@ -215,6 +224,9 @@ def _vault_fill(handle: str, port: int, tab: str) -> dict:
     if isinstance(value, dict) and value.get("refused"):
         return {"success": False, "error_type": "origin_changed", "error": "The page changed site before the fill; nothing was written."}
     filled = int(value.get("filled", 0)) if isinstance(value, dict) else 0
+    if meta.kind != "login":
+        return {"success": bool(filled), "filled_fields": filled, "origin": page_origin, "kind": meta.kind, "fields": tokens,
+                "next": "Check the rest of the form, then submit only if the person asked you to complete this purchase."}
     return {"success": bool(filled), "filled_fields": filled, "origin": page_origin,
             "identifier": meta.identifier, "next": "Type the username yourself if it is empty, then submit."}
 
