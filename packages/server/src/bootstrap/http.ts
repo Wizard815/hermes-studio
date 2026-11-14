@@ -23,6 +23,7 @@ import { registerRoutes } from './routes'
 import { dshPluginUi } from '../modules/coding-agents/services'
 import { vscodeGateway, vscodeManager } from '../modules/studio/services/vscode'
 import { screenGateway, screenManager } from '../modules/studio/services/screen'
+import { startScreenBrowser } from '../modules/studio/services/screen-browser'
 import './chat-agent-runtime-adapter'
 import './skill-files-adapter'
 import { setGroupChatServer } from '../modules/studio/routes/group-chat'
@@ -598,6 +599,10 @@ export async function bootstrap() {
   additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })
   // A screen installed before this container was rebuilt is installed again.
   void screenManager.restoreAfterRebuild().catch(() => undefined)
+  // The agents' screen browser behind the Browser Broker protocol (started further below,
+  // after the headless browser service, so its broker.json takes priority).
+  let stopScreenBrowser: (() => Promise<void>) | null = null
+  additionalShutdownSteps.push({ name: "Agents' screen browser", close: () => stopScreenBrowser?.() })
   const closeVsCodeGateway = vscodeGateway.attach(servers)
   additionalShutdownSteps.push({ name: 'VS Code', close: () => { closeVsCodeGateway(); vscodeManager.close() } })
   const terminalWebSocket = setupTerminalWebSocket(servers)
@@ -734,6 +739,7 @@ export async function bootstrap() {
     console.warn('[bootstrap] headless browser service failed:', err.message)
     logger.warn(err, '[bootstrap] headless browser startup failed')
   }
+  stopScreenBrowser = startScreenBrowser()
 
   // Catch-all: destroy upgrade requests not handled by terminal or Socket.IO
   servers.forEach((httpServer) => {

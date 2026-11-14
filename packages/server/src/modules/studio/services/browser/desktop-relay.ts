@@ -69,6 +69,12 @@ export class DesktopBrowserRelayRegistry {
     if (group.ownerId !== id && idle && !owner?.inFlight) { group.ownerId = id; group.epoch++ }
     this.notify(peer.userId, peer.profile)
   }
+  /** Whether a Desktop is connected for this user/profile, or the run is already bound to one. */
+  hasTarget(userId: number, profile: string, bindingId?: string): boolean {
+    if (bindingId && this.group(userId, profile).bindings.has(bindingId)) return true
+    for (const { peer } of this.peers.values()) if (peer.userId === userId && peer.profile === profile) return true
+    return false
+  }
   async request(userId: number, profile: string, input: Record<string, unknown>, bindingId?: string): Promise<unknown> {
     if (typeof input.method !== 'string' || !DESKTOP_BROWSER_METHODS.has(input.method)) throw new Error('Unsupported browser method')
     const limit = input.method === 'upload' ? MAX_UPLOAD_REQUEST_CHARS : MAX_REQUEST_CHARS

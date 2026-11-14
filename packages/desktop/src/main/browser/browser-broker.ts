@@ -2,17 +2,80 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { chmod, mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { BrowserManager } from './browser-manager'
 import {
   DEFAULT_BROWSER_TEXT_READ_LIMIT,
   MAX_BROWSER_TEXT_READ_LIMIT,
+  type BrowserAgentControl,
+  type BrowserBatchResult,
   type BrowserBrokerDescriptor,
+  type BrowserConsoleEntry,
   type BrowserInteractAction,
+  type BrowserInteractionResult,
+  type BrowserNetworkEntry,
+  type BrowserPageDialog,
+  type BrowserReadTextOptions,
+  type BrowserReadTextResult,
+  type BrowserScreenshot,
+  type BrowserSnapshot,
+  type BrowserSnapshotOptions,
   type BrowserTextMode,
+  type BrowserWaitOptions,
+  type BrowserWaitResult,
+  type DesktopBrowserState,
+  type DesktopBrowserTab,
 } from './browser-types'
 import { publicBrowserUrl, redactBrowserText } from './browser-url'
 import { snapshotOptions } from './browser-snapshot'
-import { parseBrowserUploadFiles, parseBrowserUploadMethod } from './browser-files'
+import {
+  parseBrowserUploadFiles,
+  parseBrowserUploadMethod,
+  type BrowserDownloadChunk,
+  type BrowserDownloadInfo,
+  type BrowserUploadFile,
+  type BrowserUploadMethod,
+  type BrowserUploadResult,
+} from './browser-files'
+
+/**
+ * What the Broker needs from a browser. The Desktop app's BrowserManager (Electron tabs)
+ * implements it, and so does Studio's server-side manager for the agents' screen Chrome.
+ */
+export interface BrowserBrokerManager {
+  state(): Pick<DesktopBrowserState, 'activeTabId' | 'maxTabs' | 'tabs'>
+  createTab(url?: string, activate?: boolean): Promise<DesktopBrowserTab>
+  activateTab(tabId: string): unknown
+  closeTab(tabId: string): Promise<unknown>
+  navigate(tabId: string, url: string): Promise<DesktopBrowserTab>
+  navigationAction(tabId: string, action: 'back' | 'forward' | 'reload' | 'stop'): Promise<DesktopBrowserTab>
+  snapshot(tabId: string, options?: BrowserSnapshotOptions): Promise<BrowserSnapshot>
+  readText(tabId: string, options: BrowserReadTextOptions): Promise<BrowserReadTextResult>
+  interact(tabId: string, action: BrowserInteractAction, assertActive?: () => void): Promise<BrowserInteractionResult>
+  interactBatch(tabId: string, input: unknown, snapshotId: unknown, assertControl: () => void): Promise<BrowserBatchResult>
+  upload(
+    tabId: string, snapshotId: string | undefined, ref: string | undefined, files: BrowserUploadFile[], method: BrowserUploadMethod,
+    assertActive?: () => void,
+  ): Promise<BrowserInteractionResult & { upload: BrowserUploadResult }>
+  wait(tabId: string, options: BrowserWaitOptions, assertActive?: () => void): Promise<BrowserWaitResult>
+  downloadStart(tabId: string, source: { url?: string; snapshotId?: string; ref?: string }): Promise<BrowserDownloadInfo>
+  downloadRead(downloadId: string, offset: number): BrowserDownloadChunk
+  screenshot(tabId: string, fullPage?: boolean): Promise<BrowserScreenshot>
+  consoleEntries(tabId: string): BrowserConsoleEntry[]
+  clearConsole(tabId: string): void
+  pageDialog(tabId: string): BrowserPageDialog | undefined
+  handleDialog(tabId: string, accept: boolean, promptText?: string): Promise<BrowserInteractionResult & { dialog: BrowserPageDialog }>
+  networkEntries(tabId: string): BrowserNetworkEntry[]
+  clearNetwork(tabId: string): void
+  setAgentControl(tabId: string, control: BrowserAgentControl, label?: string, action?: string): void
+  revokeAgentControl(tabId: string): void
+  cancelAgentOperation(tabId: string): void
+  /** Optional: runs before every operation (e.g. to connect to the browser first). */
+  beforeOperation?(method: string): Promise<void>
+}
+
+export interface BrowserBrokerOptions {
+  /** Write broker.json for local MCP processes (default true). */
+  publishDescriptor?: boolean
+}
 
 interface BrokerRequest {
   method?: unknown
@@ -77,7 +140,15 @@ export class BrowserBroker {
   private activeOperations = 0
   private readonly capacityWaiters: Array<() => void> = []
 
-  constructor(private readonly manager: BrowserManager, private readonly brokerRoot: string) {}
+  constructor(
+    private readonly manager: BrowserBrokerManager,
+    private readonly brokerRoot: string,
+    private readonly options: BrowserBrokerOptions = {},
+  ) {}
+
+  private get publishes(): boolean {
+    return this.options.publishDescriptor !== false
+  }
 
   async start(): Promise<BrowserBrokerDescriptor> {
     if (this.descriptor) return this.descriptor
@@ -100,14 +171,14 @@ export class BrowserBroker {
         instanceId: randomUUID(),
         createdAt: new Date().toISOString(),
       }
-      await this.writeDescriptor(this.descriptor)
+      if (this.publishes) await this.writeDescriptor(this.descriptor)
       return this.descriptor
     } catch (error) {
       this.server = null
       this.descriptor = null
       this.token = ''
       if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()))
-      await rm(join(this.brokerRoot, 'broker.json'), { force: true }).catch(() => undefined)
+      if (this.publishes) await rm(join(this.brokerRoot, 'broker.json'), { force: true }).catch(() => undefined)
       throw error
     }
   }
@@ -143,7 +214,7 @@ export class BrowserBroker {
       server.close(finish)
       server.closeIdleConnections?.()
     })
-    await rm(join(this.brokerRoot, 'broker.json'), { force: true }).catch(() => undefined)
+    if (this.publishes) await rm(join(this.brokerRoot, 'broker.json'), { force: true }).catch(() => undefined)
   }
 
   revokeTab(tabId: string): void {
@@ -195,21 +266,39 @@ export class BrowserBroker {
       if (!client || !providedToken || !safeEqual(providedToken, client.token)) return this.send(response, 401, { error: 'Unauthorized' })
       client.lastSeenAt = Date.now()
       const body = await this.readBody(request)
-      const method = requiredString(body.method, 'method')
-      const params = asObject(body.params)
-      const operationId = typeof body.operation_id === 'string' && body.operation_id.trim()
-        ? body.operation_id.trim().slice(0, 200)
-        : randomUUID()
-      const tabId = typeof params.tab_id === 'string' ? params.tab_id.trim() : ''
-      const tabGeneration = tabId ? this.tabGenerations.get(tabId) || 0 : 0
-      const result = tabId
-        ? await this.queued(tabId, () => this.execute(clientId, method, params, operationId, tabGeneration))
-        : await this.withCapacity(() => this.execute(clientId, method, params, operationId, tabGeneration))
-      this.send(response, 200, { operation_id: operationId, result })
+      this.send(response, 200, await this.operate(clientId, body))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.send(response, /lease|control|cancel|takeover/i.test(message) ? 409 : 400, { error: message })
     }
+  }
+
+  /**
+   * Runs one operation for an in-process caller (Studio relays MCP requests from other
+   * machines this way) with the same leases, queues and result envelope as HTTP clients.
+   */
+  async localRequest(clientId: string, body: BrokerRequest): Promise<{ operation_id: string; result: unknown }> {
+    if (!this.server) throw new Error('Browser Broker is not running')
+    this.cleanupExpiredLeases()
+    const id = `local:${clientId}`.slice(0, 200)
+    const client = this.clients.get(id)
+    if (client) client.lastSeenAt = Date.now()
+    else this.clients.set(id, { token: randomBytes(32).toString('base64url'), lastSeenAt: Date.now() })
+    return this.operate(id, body)
+  }
+
+  private async operate(clientId: string, body: BrokerRequest): Promise<{ operation_id: string; result: unknown }> {
+    const method = requiredString(body.method, 'method')
+    const params = asObject(body.params)
+    const operationId = typeof body.operation_id === 'string' && body.operation_id.trim()
+      ? body.operation_id.trim().slice(0, 200)
+      : randomUUID()
+    const tabId = typeof params.tab_id === 'string' ? params.tab_id.trim() : ''
+    const tabGeneration = tabId ? this.tabGenerations.get(tabId) || 0 : 0
+    const result = tabId
+      ? await this.queued(tabId, () => this.execute(clientId, method, params, operationId, tabGeneration))
+      : await this.withCapacity(() => this.execute(clientId, method, params, operationId, tabGeneration))
+    return { operation_id: operationId, result }
   }
 
   private async execute(clientId: string, method: string, params: Record<string, unknown>, operationId: string, tabGeneration: number): Promise<unknown> {
@@ -219,6 +308,7 @@ export class BrowserBroker {
     if (tabId && (this.tabGenerations.get(tabId) || 0) !== tabGeneration) {
       throw new Error('Browser operation was cancelled by user takeover')
     }
+    if (this.manager.beforeOperation) await this.manager.beforeOperation(method)
     const mutating = !['state', 'tabs.list', 'console.read', 'network.read', 'download.read'].includes(method)
     if (tabId && mutating) this.claimLease(tabId, clientId, method)
     if (tabId && mutating && method !== 'lease.release') {
@@ -361,7 +451,7 @@ export class BrowserBroker {
     }
   }
 
-  private publicTab(tab: ReturnType<BrowserManager['state']>['tabs'][number]) {
+  private publicTab(tab: DesktopBrowserTab) {
     return {
       id: tab.id,
       title: redactBrowserText(tab.title, 500),

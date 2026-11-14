@@ -206,6 +206,27 @@ export class ScreenManager {
     return `${result.stderr}\n${result.stdout}`.split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.includes('out of sync')).pop() || ''
   }
 
+  /**
+   * The DevTools port of the screen's browser (Hermes's own Chrome, started on the
+   * screen if needed). Fails with `exitCode` 42 while a person holds control and 41
+   * when the screen is not running.
+   */
+  async browserPort(): Promise<{ port: number; profile: string }> {
+    const python = this.python
+    if (!python) throw Object.assign(new Error('Hermes is not installed here'), { exitCode: -1 })
+    const result = await this.run(python, [bridgeScript(), 'browser'], 60_000)
+    const line = result.stdout.trim().split(/\r?\n/).pop() || ''
+    let parsed: { port?: unknown; profile?: unknown; error?: unknown } = {}
+    try { parsed = JSON.parse(line) } catch { /* reported below */ }
+    if (result.code === 0 && typeof parsed.port === 'number' && Number.isInteger(parsed.port) && parsed.port > 0) {
+      return { port: parsed.port, profile: String(parsed.profile || '') }
+    }
+    const message = typeof parsed.error === 'string' && parsed.error
+      ? parsed.error
+      : result.stderr.trim().split(/\r?\n/).pop() || `The screen's browser is unavailable (exit ${result.code})`
+    throw Object.assign(new Error(message), { exitCode: result.code })
+  }
+
   /** Take control, hand it back, or clear a stuck hold, as Hermes's lease. */
   async lease(action: 'get' | 'take' | 'release' | 'force', viewerId = '', reason = ''): Promise<ScreenLease> {
     const python = this.python
