@@ -6,6 +6,8 @@ import { NButton, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { fetchMemory, saveMemory, type MemoryData } from '@/api/hermes/skills'
 import { useProfilesStore } from '@/stores/hermes/profiles'
+import { isStoredSuperAdmin } from '@/api/client'
+import MemoryProviderCard from '@/components/hermes/memory/MemoryProviderCard.vue'
 
 const MarkdownRenderer = defineAsyncComponent(async () => (await import('@/components/hermes/chat/MarkdownRenderer.vue')).default)
 
@@ -17,6 +19,9 @@ const data = ref<MemoryData | null>(null)
 const editingSection = ref<'memory' | 'user' | 'soul' | null>(null)
 const editContent = ref('')
 const saving = ref(false)
+// Hermes's memory providers are configured through Hermes's own API (super administrators only).
+const canManageProvider = isStoredSuperAdmin()
+const providerCard = ref<InstanceType<typeof MemoryProviderCard> | null>(null)
 
 onMounted(loadMemory)
 
@@ -27,6 +32,7 @@ async function loadMemory() {
       await profilesStore.fetchProfiles()
     }
     data.value = await fetchMemory()
+    void providerCard.value?.load()
   } catch (err: any) {
     console.error('Failed to load memory:', err)
     message.error(t('memory.loadFailed'))
@@ -98,6 +104,7 @@ const displaySoul = computed(() => (data.value?.soul || '').replace(/§/g, '\n\n
     </PageHeader>
 
     <div class="memory-content">
+      <MemoryProviderCard v-if="canManageProvider" ref="providerCard" @files-cleared="loadMemory" />
       <div v-if="loading && !data" class="memory-loading"></div>
       <div v-else class="memory-sections">
           <!-- My Notes -->

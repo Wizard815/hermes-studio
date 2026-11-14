@@ -2,7 +2,7 @@
 import PageLoading from '@/components/common/PageLoading.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { NBadge, NButton, NDrawer, NDrawerContent, NInput } from 'naive-ui'
+import { NBadge, NButton, NDrawer, NDrawerContent, NInput, NPopover } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import SkillList from '@/components/hermes/skills/SkillList.vue'
 import SkillDetail from '@/components/hermes/skills/SkillDetail.vue'
@@ -10,6 +10,11 @@ import SkillImportModal from '@/components/hermes/skills/SkillImportModal.vue'
 import SkillExternalDirsModal from '@/components/hermes/skills/SkillExternalDirsModal.vue'
 import SkillSourceLegend from '@/components/hermes/skills/SkillSourceLegend.vue'
 import PendingWriteApprovals from '@/components/hermes/skills/PendingWriteApprovals.vue'
+import CuratorCard from '@/components/hermes/skills/CuratorCard.vue'
+import SkillsHubPanel from '@/components/hermes/skills/SkillsHubPanel.vue'
+import SkillLockToggle from '@/components/hermes/skills/SkillLockToggle.vue'
+import { listHermesSkills } from '@/api/hermes/agent-memory'
+import { isStoredSuperAdmin } from '@/api/client'
 import { deleteSkillApi, importSkill, fetchSkills, type SkillCategory, type SkillSource, type SkillInfo, type SkillTarget } from '@/api/hermes/skills'
 import { fetchPendingWrites } from '@/api/hermes/write-gate'
 import { useProfilesStore } from '@/stores/hermes/profiles'
@@ -41,6 +46,9 @@ const showWriteApprovalDrawer = ref(false)
 const pendingWriteCount = ref(0)
 const writeApprovalSupported = ref(true)
 let mobileQuery: MediaQueryList | null = null
+const showHubDrawer = ref(false)
+/** Skill locks (agent/curator may not change them) live in Hermes; read through its API. */
+const skillLocks = ref<Map<string, boolean>>(new Map())
 
 const selectedSkillData = computed(() => {
   if (!selectedCategory.value || !selectedSkill.value) return null
@@ -52,6 +60,12 @@ const selectedSkillData = computed(() => {
 })
 
 const isHermesTarget = computed(() => skillTarget.value === 'hermes')
+// Hub, curator and locks go through Hermes's own API (super administrators only).
+const hermesAgentTools = computed(() => isHermesTarget.value && isStoredSuperAdmin())
+const selectedLockName = computed(() => {
+  const candidates = [selectedSkillData.value?.name, selectedSkill.value].filter(Boolean) as string[]
+  return candidates.find(name => skillLocks.value.has(name)) ?? null
+})
 const canManageTarget = computed(() => isHermesTarget.value || skillTarget.value === 'dsh' || (skillTarget.value === 'cursor' || skillTarget.value === 'antigravity'))
 const selectedSkillReadonly = computed(() => {
   if (!selectedSkillData.value) return true
@@ -92,11 +106,26 @@ async function loadSkills() {
     categories.value = data.categories
     archived.value = data.archived
     ensureSelectedSkill()
+    void loadSkillLocks()
   } catch (err: any) {
     console.error('Failed to load skills:', err)
   } finally {
     loading.value = false
   }
+}
+
+async function loadSkillLocks() {
+  if (!hermesAgentTools.value) return
+  try {
+    const rows = await listHermesSkills()
+    skillLocks.value = new Map(rows.map(row => [row.name, !!row.locked]))
+  } catch (err) {
+    console.error('Failed to load skill locks:', err)
+  }
+}
+
+function handleLockToggled(name: string, locked: boolean) {
+  skillLocks.value = new Map(skillLocks.value).set(name, locked)
 }
 
 async function loadPendingWriteCount() {
@@ -198,6 +227,36 @@ function handleSkillSaved() {
             {{ t('skills.writeApprovalButton', { count: pendingWriteCount }) }}
           </span>
         </NButton>
+        <NPopover v-if="hermesAgentTools" trigger="click" placement="bottom-end">
+          <template #trigger>
+            <NButton class="header-action-btn" size="small" :title="t('hermesMemory.curator')">
+              <template #icon>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3l1.9 5.8L20 10l-5 3.6L16.5 20 12 16.5 7.5 20 9 13.6 4 10l6.1-1.2z" />
+                </svg>
+              </template>
+              <span class="header-action-label">{{ t('hermesMemory.curator') }}</span>
+            </NButton>
+          </template>
+          <CuratorCard @ran="loadSkills" />
+        </NPopover>
+        <NButton
+          v-if="hermesAgentTools"
+          class="header-action-btn"
+          size="small"
+          :title="t('hermesMemory.hub')"
+          @click="showHubDrawer = true"
+        >
+          <template #icon>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+          </template>
+          <span class="header-action-label">{{ t('hermesMemory.hub') }}</span>
+        </NButton>
         <NButton
           v-if="canManageTarget"
           class="header-action-btn"
@@ -264,6 +323,12 @@ function handleSkillSaved() {
       </NDrawerContent>
     </NDrawer>
 
+    <NDrawer v-if="hermesAgentTools" v-model:show="showHubDrawer" width="var(--studio-drawer-width)" placement="right">
+      <NDrawerContent :title="t('hermesMemory.hubTitle')" closable>
+        <SkillsHubPanel v-if="showHubDrawer" @changed="loadSkills" />
+      </NDrawerContent>
+    </NDrawer>
+
     <div class="skills-content">
       <div v-if="loading && categories.length === 0" class="skills-loading"></div>
       <div v-else class="skills-layout">
@@ -297,7 +362,11 @@ function handleSkillSaved() {
               :can-pin="isHermesTarget"
               @pin-toggled="handlePinToggled"
               @saved="handleSkillSaved"
-            />
+            >
+              <template v-if="hermesAgentTools && selectedLockName" #actions>
+                <SkillLockToggle :name="selectedLockName" :locked="!!skillLocks.get(selectedLockName)" @toggled="handleLockToggled" />
+              </template>
+            </SkillDetail>
             <div v-else class="empty-detail">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.2">
                 <polygon points="12 2 2 7 12 12 22 7 12 2" />

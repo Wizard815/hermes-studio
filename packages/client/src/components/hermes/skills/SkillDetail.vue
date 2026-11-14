@@ -170,6 +170,7 @@ watch(() => `${props.target || 'hermes'}/${props.category}/${props.skill}`, load
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           <span>{{ t('common.cancel') }}</span>
         </button>
+        <slot name="actions" />
         <button v-if="canPin && !readonly" class="pin-toggle" :class="{ active: pinned }" :disabled="pinLoading" :title="pinned ? t('skills.unpin') : t('skills.pin')" @click="handlePinToggle">
           <svg width="16" height="16" viewBox="0 0 24 24" :fill="pinned ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
         </button>
