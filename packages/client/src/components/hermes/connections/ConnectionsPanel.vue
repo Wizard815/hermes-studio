@@ -8,9 +8,10 @@ import AppConnectionsPanel from '@/components/hermes/connections/AppConnectionsP
 import McuDevicesPanel from '@/components/hermes/connections/McuDevicesPanel.vue'
 import RemoteDevicesPanel from '@/components/hermes/connections/RemoteDevicesPanel.vue'
 import OrbConnectionPanel from '@/components/hermes/connections/OrbConnectionPanel.vue'
+import LlmWikiConnectionPanel from '@/components/hermes/connections/LlmWikiConnectionPanel.vue'
 import { desktopBridge } from '@/utils/desktop-bridge'
 
-type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb'
+type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb' | 'llmwiki'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,7 +20,7 @@ const hasRemoteDevices = desktopBridge()?.isDesktop === true && !!desktopBridge(
 
 function normalizeTab(value: unknown): ConnectionTab {
   if (value === 'remote' && hasRemoteDevices) return value
-  if (value === 'mcu' || value === 'orb') return value
+  if (value === 'mcu' || value === 'orb' || value === 'llmwiki') return value
   return 'app'
 }
 
@@ -70,6 +71,9 @@ function updateTab(value: string | number) {
       </NTabPane>
       <NTabPane name="orb" :tab="t('orb.tab')" display-directive="if">
         <OrbConnectionPanel />
+      </NTabPane>
+      <NTabPane name="llmwiki" :tab="t('llmwiki.tab')" display-directive="if">
+        <LlmWikiConnectionPanel />
       </NTabPane>
       <NTabPane v-if="hasRemoteDevices" name="remote" :tab="t('remoteDevices.title')" display-directive="if">
         <RemoteDevicesPanel />

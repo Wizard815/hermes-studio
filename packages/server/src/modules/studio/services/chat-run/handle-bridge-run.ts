@@ -1,3 +1,4 @@
+import { memoryRecallFor, withMemory } from '../llmwiki/memory'
 import { studioSessionAccount } from '../../contracts/runs/usage'
 import { isPrivatePersonSession } from '../../contracts/person-session'
 import { requirePersonWorkspace } from '../person/workspace'
@@ -786,7 +787,9 @@ export async function handleBridgeRun(
     const originalBridgeInput = isContentBlockArray(input)
       ? await convertContentBlocksForAgent(input)
       : input
-    const bridgeInput = withTaskPlanTurnContext(originalBridgeInput, data.task_plan_context_id, !data.background_delegation_id && !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || ''))
+    // LLMWIKI: the first turn of a chat carries the matching wiki notes.
+    const memory = data.background_delegation_id ? '' : await memoryRecallFor(session_id, contentBlocksToString(input as any), data.session_source || data.source)
+    const bridgeInput = withMemory(withTaskPlanTurnContext(originalBridgeInput, data.task_plan_context_id, !data.background_delegation_id && !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || '')) as any, memory) as typeof originalBridgeInput
     const runMetadata: BridgeRunMetadata = {
       autonomous: data.autonomous === true,
       delegationId: data.background_delegation_id,

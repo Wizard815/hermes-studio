@@ -1,3 +1,4 @@
+import { memoryRecallFor } from '../llmwiki/memory'
 import { createPersonDisplayStream } from './person-display'
 import { studioModelReasoningEffort } from '../../public/model-reasoning-effort'
 import { personBackgroundPendingCount } from '../../repositories/person-store'
@@ -1521,6 +1522,11 @@ export async function handleEkkoAgentRun(
     const currentMessage: AgentMessage = {
       role: 'user',
       ...await toUserAgentContent(data.input),
+    }
+    // LLMWIKI: the first turn of a chat carries the matching wiki notes.
+    if (!callbackContext && !isPersonSession(sessionId)) {
+      const memory = await memoryRecallFor(sessionId, inputText, data.session_source || data.source)
+      if (memory) currentMessage.content = `${currentMessage.content}\n\n${memory}`
     }
     const isGroupMemory = data.session_source === 'group_chat' || data.source === 'group_chat'
     const contextScope = {

@@ -2,6 +2,7 @@ import { studioModelReasoningEffort } from '../../public/model-reasoning-effort'
 import { studioSessionAccount } from '../../contracts/runs/usage'
 import { isNativeCodingAgent, isGlobalOnlyCodingAgent } from '../../contracts/agents/native-coding-agents'
 import { codingAgentId } from './types'
+import { memoryRecallFor, withMemory } from '../llmwiki/memory'
 import { studioMcpCapabilities, type StudioMcpCapabilities } from '../../public/runs/mcp-capabilities'
 import { clarificationTurnInstruction } from '../clarification-runs'
 import { withTaskPlanTurnContext } from '../task-plan-runs'
@@ -210,11 +211,13 @@ export async function handleCodingAgentRun(
         : (includeBaseSystemPrompt ? getSystemPrompt(undefined, { source: data.session_source || data.source, mcpCapabilities }) : ''),
       String(data.instructions || '').trim() === groupSystemPrompt ? '' : String(data.instructions || '').trim(),
     ].filter(Boolean).join('\n')
-    const plannedInput = withTaskPlanTurnContext(codingInput.text, taskPlanContext, !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || '')) as string
+    // LLMWIKI: the first turn of a chat carries the matching wiki notes.
+    const memory = await memoryRecallFor(sessionId, codingInput.text, data.session_source || data.source)
+    const plannedInput = withMemory(withTaskPlanTurnContext(codingInput.text, taskPlanContext, !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || '')) as string, memory) as string
     const runtimeInput = interactionContext
       ? `${plannedInput}\n\n${clarificationTurnInstruction(interactionContext)}`
       : plannedInput
-    const sent = await (Array.isArray(data.input) || taskPlanContext || interactionContext
+    const sent = await (Array.isArray(data.input) || taskPlanContext || interactionContext || memory
       ? sendCodingAgentRunInput(
         sessionId,
         runtimeInput,

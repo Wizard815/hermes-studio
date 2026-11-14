@@ -1406,6 +1406,26 @@ const tools = [
       }, ['action']),
   },
   {
+    name: 'ekko_studio_use_memory',
+    toolset: 'use',
+    description: "The user's long-term memory: their LLMWIKI Obsidian vault, connected to Studio. search: semantic search over the wiki (query); read: one wiki page by the path search returned (path); note: add lines to today's daily note, the vault's short-term memory (lines, section: worked, facts or followups). Search it when the user refers to their homelab, projects, past decisions or anything they expect you to remember. Note decisions, facts worth keeping and follow-ups from this chat. Never write passwords, keys or tokens. Notes never go into wiki/ directly; the vault's own workflow promotes them.",
+    inputSchema: inputSchema({
+        action: {
+          type: 'string',
+          enum: ['search', 'read', 'note'],
+          description: 'What to do.',
+        },
+        query: { type: 'string', description: 'For search: a natural-language question.' },
+        path: { type: 'string', description: 'For read: the wiki page path, e.g. wiki/3-resources/RaidLab.md.' },
+        lines: { type: 'array', items: { type: 'string' }, description: 'For note: one short line each.' },
+        section: {
+          type: 'string',
+          enum: ['worked', 'facts', 'followups'],
+          description: 'For note: Worked on, Decisions / facts worth keeping (default), or Follow-ups.',
+        },
+      }, ['action']),
+  },
+  {
     name: 'ekko_studio_use_sessions_list',
     toolset: 'use',
     description: 'List Ekko Studio chat sessions for an explicit user-requested session operation. Do not use this as an internal delegation mechanism.',
@@ -2196,6 +2216,19 @@ async function callToolInner(name, args = {}, signal) {
       if (!tool) throw new Error(`Unknown Orb action: ${args.action}`)
       const fields = args.arguments && typeof args.arguments === 'object' ? args.arguments : {}
       return jsonText(await request(`/api/studio/orb/tools/${tool}`, withAuthArgs(args, { method: 'POST', body: fields })))
+    }
+    case 'ekko_studio_use_memory': {
+      if (args.action === 'search') {
+        return jsonText(await request('/api/studio/llmwiki/search', withAuthArgs(args, { method: 'POST', body: { query: String(args.query || '') } })))
+      }
+      if (args.action === 'read') {
+        return jsonText(await request('/api/studio/llmwiki/read', withAuthArgs(args, { method: 'POST', body: { path: String(args.path || '') } })))
+      }
+      if (args.action === 'note') {
+        const lines = Array.isArray(args.lines) ? args.lines.map(String) : [String(args.text || '')]
+        return jsonText(await request('/api/studio/llmwiki/note', withAuthArgs(args, { method: 'POST', body: { lines, section: args.section || 'facts' } })))
+      }
+      throw new Error(`Unknown memory action: ${args.action}`)
     }
     case 'ekko_studio_use_sessions_list':
       return jsonText(await request('/api/studio/sessions', withAuthArgs(args, {

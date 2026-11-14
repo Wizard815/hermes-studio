@@ -3,6 +3,7 @@ import { setupMobileTerminal } from '../modules/hermes/sockets/mobile-terminal'
 import { startHerdrIntegration } from './herdr'
 import { startAndroidDevices } from './android'
 import { startOrbIntegration } from './orb'
+import { startLlmWikiIntegration } from './llmwiki'
 import { startCleanRoomCleanup } from './cleanroom'
 import { getSessionMetadata as getTerminalSessionMetadata } from '../modules/studio/public/sessions'
 import Koa from 'koa'
@@ -639,6 +640,7 @@ export async function bootstrap() {
   additionalShutdownSteps.push({ name: 'Mobile terminal PTY sessions', close: () => mobileTerminal.close() })
   // Orb first: herdr's bridge reports agent status to the Orb client configured here.
   const orbIntegration = startOrbIntegration()
+  startLlmWikiIntegration()
   startCleanRoomCleanup()
   additionalShutdownSteps.push({ name: 'Pondering Orb work', close: () => orbIntegration.close() })
   const herdrIntegration = startHerdrIntegration(activeGroupChatServer.getIO(), loopbackBaseUrl)

@@ -32,6 +32,7 @@ import { mcuDevicePublicRoutes, mcuDeviceRoutes } from '../modules/studio/routes
 import { sessionRoutes } from '../modules/studio/routes/sessions'
 import { orbRoutes } from '../modules/studio/routes/orb'
 import { vscodeRoutes } from '../modules/studio/routes/vscode'
+import { llmWikiRoutes } from '../modules/studio/routes/llmwiki'
 import { modelApiRoutes } from '../modules/studio/routes/model-api'
 import { sessionSharePublicRoutes, sessionShareRoutes } from '../modules/studio/routes/session-shares'
 import { profileRoutes } from '../modules/hermes/routes/profiles'
@@ -132,6 +133,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(sessionRoutes.routes())
   app.use(orbRoutes.routes())
   app.use(vscodeRoutes.routes())
+  app.use(llmWikiRoutes.routes())
   app.use(modelApiRoutes.routes())
   app.use(personRoutes.routes())
   app.use(sessionShareRoutes.routes())
