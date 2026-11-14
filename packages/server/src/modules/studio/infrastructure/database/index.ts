@@ -3,7 +3,11 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { resolve } from 'path'
 import { config } from '../../public/config'
 
-const isDev = process.env.NODE_ENV !== 'production'
+// An explicitly chosen Web UI home always holds the database, in development too:
+// a test Studio started without NODE_ENV=production must not open the
+// developer database in packages/server/data.
+const explicitHome = !!(process.env.HERMES_WEB_UI_HOME?.trim() || process.env.HERMES_WEBUI_STATE_DIR?.trim())
+const isDev = process.env.NODE_ENV !== 'production' && !explicitHome
 const isTest = process.env.VITEST === 'true' || process.env.NODE_ENV === 'test'
 
 const testDbDirOverride = process.env.HERMES_WEB_UI_TEST_DB_DIR?.trim()

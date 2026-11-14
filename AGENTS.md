@@ -56,6 +56,7 @@ Empty suites are allowed during the reset; this does not waive new-feature tests
 - Keep routes thin: put request handling in controllers and reusable behavior in services.
 - Put new server code under `modules/studio`, `modules/hermes`, `modules/ekko`, or `modules/coding-agents`; compose modules only from `bootstrap`.
 - Keep Web UI state under `HERMES_WEB_UI_HOME` or `HERMES_WEBUI_STATE_DIR`.
+- A test Studio (`node dist/server/index.js`) needs `NODE_ENV=production` for `HERMES_WEB_UI_HOME` to apply; otherwise it opens `packages/server/data/hermes-web-ui.db`. Never run tests against that file.
 - Keep Hermes Agent state separate from Web UI state.
 - Register local API routes before proxy catch-all routes.
 - Use structured APIs and argument arrays instead of shell string construction.

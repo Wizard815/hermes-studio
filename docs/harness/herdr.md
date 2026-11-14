@@ -360,3 +360,6 @@ Rules that keep it safe:
   session, and drive agents with herdr's CLI (`pane run`, `send-text`). Keep the
   test `HOME` short: herdr's Unix socket path must fit in 108 bytes. A real or
   stand-in agent must run in the pane for `agent.prompt` and detection to work.
+  Start the isolated Studio with `NODE_ENV=production` (`node dist/server/index.js`):
+  without it Studio ignores `HERMES_WEB_UI_HOME` and opens the developer
+  database `packages/server/data/hermes-web-ui.db`, which tests must never touch.
