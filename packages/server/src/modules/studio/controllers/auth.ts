@@ -672,7 +672,9 @@ export async function createManagedUser(ctx: Context) {
     defaultProfile: body.defaultProfile,
   })
   ctx.status = 201
-  ctx.body = { user, users: listUsers() }
+  // Never send the password hash back: answer with the same summary the list uses.
+  const users = listUsers()
+  ctx.body = { user: users.find(item => item.id === user?.id) ?? null, users }
 }
 
 /**
@@ -758,7 +760,8 @@ export async function updateManagedUser(ctx: Context) {
     profiles: nextRole === 'super_admin' ? [] : profiles,
     defaultProfile: body.defaultProfile,
   })
-  ctx.body = { user: findUserById(user.id), users: listUsers() }
+  const users = listUsers()
+  ctx.body = { user: users.find(item => item.id === user.id) ?? null, users }
 }
 
 /**
