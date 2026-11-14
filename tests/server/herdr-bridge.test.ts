@@ -16,6 +16,8 @@ class FakeHerdr {
   workspaces: any[] = [{ workspace_id: 'w1', label: 'demo', agent_status: 'idle' }]
   promptError: { code: string; message: string } | null = null
   created = 0
+  /** Each pane's foreground processes (`pane.process_info`). */
+  processes: Record<string, Array<{ argv: string[] }>> = {}
 
   constructor(readonly path: string) {
     this.server = createServer(socket => {
@@ -75,6 +77,13 @@ class FakeHerdr {
       }
       case 'pane.focus':
         return reply({ type: 'pane_info', pane: { pane_id: request.params.pane_id } })
+      case 'pane.send_keys':
+        return reply({ type: 'ok' })
+      case 'pane.report_agent':
+      case 'pane.report_agent_session':
+        return reply({ type: 'ok' })
+      case 'pane.process_info':
+        return reply({ type: 'pane_process_info', process_info: { foreground_processes: this.processes[request.params.pane_id] ?? [] } })
       default:
         return socket.write(`${JSON.stringify({ id: request.id, error: { code: 'unknown_method', message: request.method } })}\n`)
     }
@@ -401,6 +410,50 @@ describe('herdr bridge', () => {
     await sync()
     await Promise.all([sync(), bridge!.wakeChat('a')])
     expect(herdr.requests.filter(r => r.method === 'workspace.create')).toHaveLength(3)
+  })
+
+  it('opening a chat that only has its waiting pane resumes its agent there, once', async () => {
+    const { deps, sessions } = makeDeps(dir)
+    sessions.set('a', { id: 'a', agent: 'claude-code', title: 'Chat a', workspace: dir, agent_native_session_id: '' })
+    deps.listChatSpaces = async () => [{ id: 'a', title: 'Chat a', folderPath: [], agent: 'claude-code', hostable: true, workspace: dir, lastActive: Date.now() }]
+    deps.chatPane = async () => ({ script: join(dir, 'studio-chat.sh'), env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
+    await startBridge(deps, { ...DEFAULT_HERDR_SETTINGS, chatSpaces: true } as any)
+    await (bridge as any).runChatSync()
+    await bridge!.refresh()
+    const stub = bridge!.linkFor('a')
+    expect(stub).toMatchObject({ paneId: 'w9:p2', waiting: true })
+    // The waiting pane shows the chat's card: Enter there resumes the agent (studio-chat.sh).
+    herdr.processes['w9:p2'] = [{ argv: ['sh', join(dir, 'studio-chat.sh'), 'a'] }]
+    await bridge!.openSession('a')
+    const enters = () => herdr.requests.filter(r => r.method === 'pane.send_keys')
+    expect(enters().map(r => r.params)).toEqual([{ pane_id: 'w9:p2', keys: ['Enter'] }])
+    expect(herdr.requests.some(r => r.method === 'pane.focus' && r.params.pane_id === 'w9:p2')).toBe(true)
+    // Already resuming (or talking to Studio): another open only focuses, no Enter into the agent.
+    herdr.processes['w9:p2'].push({ argv: ['node', '/x/bin/herdr-plugin/studio-herdr.mjs', 'resume', 'a'] })
+    await bridge!.openSession('a')
+    expect(enters()).toHaveLength(1)
+    // No second space or pane was made for the chat.
+    expect(herdr.requests.filter(r => r.method === 'layout.apply')).toHaveLength(1)
+  })
+
+  it('shows herdr a clean-room agent and its session, and gives a fresh one the chat so far', async () => {
+    const nativeId = '12121212-2222-3333-4444-555555555555'
+    const { deps } = makeDeps(dir)
+    deps.chatRecap = async () => 'The chat so far: fix the login'
+    await startBridge(deps)
+    const launch = { agentId: 'claude-code', command: '/studio/coding-agent/cleanroom/bin/claude', args: ['exec', '-it', 'room'], env: {}, workspaceDir: dir, provider: 'global', model: '', cleanRoom: true }
+    herdr.panes.push({ pane_id: 'w1:p3', workspace_id: 'w1', agent_status: 'unknown' })
+    // The docker client under the agent's name starts in the pane.
+    setTimeout(() => { herdr.processes['w1:p3'] = [{ argv: [launch.command, 'exec', '-it', 'room'] }] }, 300)
+    await expect(bridge!.followCleanRoom('w1:p3', launch, nativeId, '')).resolves.toBe(true)
+    expect(herdr.requests.find(r => r.method === 'pane.report_agent_session')?.params).toEqual({ pane_id: 'w1:p3', source: 'herdr:claude', agent: 'claude', agent_session_id: nativeId })
+    // A fresh session (no agent session yet) gets the chat so far once herdr sees the agent idle.
+    Object.assign(herdr.panes.find(p => p.pane_id === 'w1:p3'), { agent: 'claude', agent_status: 'idle' })
+    await expect(bridge!.followCleanRoom('w1:p3', launch, '', 'chat-1')).resolves.toBe(true)
+    expect(herdr.requests.filter(r => r.method === 'pane.report_agent_session')).toHaveLength(1)
+    expect(herdr.requests.find(r => r.method === 'agent.prompt')?.params).toEqual({ target: 'w1:p3', text: 'The chat so far: fix the login' })
+    // An agent that never starts gives up instead of waiting forever.
+    await expect(bridge!.followCleanRoom('w1:p9', launch, nativeId, '', 600)).resolves.toBe(false)
   })
 
   it('sends messages through Studio while the chat only has its waiting pane', async () => {

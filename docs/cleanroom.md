@@ -49,7 +49,12 @@ their model through Studio; agents on their own logins need their API host in
   (stopping the run stops the process inside too). Every turn runner uses it
   (run manager, Grok, Cursor, Antigravity, Codex compact).
 - In herdr, a clean-room chat's pane runs `docker exec -it` into the same
-  container.
+  container, through a link to the docker client named after the agent
+  (`coding-agent/cleanroom/bin/claude`, `cleanRoomTerminalDocker`): herdr
+  knows a pane's agent by its foreground process, so it shows the agent and
+  follows its status from the screen. The agent's own herdr hooks cannot reach
+  herdr from the container, so Studio reports the session it resumes and
+  types the chat so far into a fresh one (`HerdrBridge.followCleanRoom`).
 - `launchAsks()` is false in a clean room: agents run in their yolo mode.
 - Deleting the chat removes its container (`bootstrap/cleanroom.ts`);
   `DELETE /api/coding-agents/cleanroom/sessions/:id/container` throws the

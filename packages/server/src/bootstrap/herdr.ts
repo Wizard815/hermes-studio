@@ -260,6 +260,21 @@ export function chatRunFields(row: Pick<HermesSessionRow, 'id' | 'agent' | 'agen
   return { ...fields, source: 'coding_agent', coding_agent_id: agent, mode: row.agent_mode === 'scoped' ? 'scoped' : 'global' }
 }
 
+/**
+ * Every chat that can be a herdr space (not a sub-chat, archived, group chat
+ * or workflow), newest first, read in pages: herdr's awake filter runs on the
+ * whole list, so a chat past any page size keeps its space while awake.
+ */
+export function chatSpaceRows(list: (limit: number, offset: number) => HermesSessionRow[] = (limit, offset) => listSessions(undefined, undefined, limit, { lite: true, offset }), pageSize = 2000, max = 200000): HermesSessionRow[] {
+  const rows: HermesSessionRow[] = []
+  for (let offset = 0; offset < max; offset += pageSize) {
+    const page = list(pageSize, offset)
+    rows.push(...page.filter(row => !row.parent_session_id && !row.is_archived && row.source !== 'group_chat' && row.source !== 'workflow'))
+    if (page.length < pageSize) break
+  }
+  return rows
+}
+
 function listChatSpaces() {
   const categories = listSessionCategories()
   const byId = new Map(categories.map(category => [category.id, category]))
@@ -275,8 +290,7 @@ function listChatSpaces() {
     return names
   }
   const hermesCli = hermesCliAvailable()
-  return listSessions(undefined, undefined, 5000)
-    .filter(row => !row.parent_session_id && !row.is_archived && row.source !== 'group_chat' && row.source !== 'workflow')
+  return chatSpaceRows()
     .map(row => {
       // Hermes runs in herdr through its CLI; without it the chat is talked to through Studio.
       const hostable = herdrHostableAgentId(row.agent) === 'hermes' && !hermesCli ? null : herdrHostableAgentId(row.agent)
@@ -298,8 +312,7 @@ export function herdrPluginDeps(baseUrl: string): HerdrPluginDeps {
     // archived chats, group chats and workflows stay out.
     listChats: (limit, options = {}) => {
       const query = String(options.query || '').trim().toLowerCase()
-      return listSessions(undefined, undefined, 5000, { lite: true })
-        .filter(row => !row.parent_session_id && !row.is_archived && row.source !== 'group_chat' && row.source !== 'workflow')
+      return chatSpaceRows()
         .filter(row => !query || String(row.title || '').toLowerCase().includes(query))
         .slice(options.offset || 0, (options.offset || 0) + limit)
         .map(row => {

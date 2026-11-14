@@ -36,6 +36,8 @@ export interface HerdrInteractiveLaunch {
   workspaceDir: string
   provider: string
   model: string
+  /** The agent runs in the chat's clean-room container (the pane runs the docker client). */
+  cleanRoom?: boolean
 }
 
 export interface HerdrLinkInfo {
@@ -657,6 +659,15 @@ export class HerdrBridge {
     return processes.some(item => (item.argv || []).some(arg => arg.endsWith('studio-chat.sh')))
   }
 
+  /** Whether the waiting pane already left its card (resuming its agent or running Studio's chat client). */
+  private async stubBusy(client: HerdrSocketClient, paneId: string): Promise<boolean> {
+    if (this.pending.has(paneId)) return true
+    const info = await client.request<any>('pane.process_info', { pane_id: paneId }).catch(() => null)
+    const processes: Array<{ argv?: string[] }> = info?.process_info?.foreground_processes || []
+    // studio-herdr.mjs runs while the pane resumes the agent (`resume`) or talks to Studio (`chat`).
+    return processes.some(item => (item.argv || []).some(arg => arg.endsWith('studio-herdr.mjs')))
+  }
+
   private async createChatSpace(client: HerdrSocketClient, chat: ChatSpaceChat, pane: ChatPaneSetup): Promise<ChatSpaceRecord> {
     const label = chatSpaceLabel(chat)
     const cwd = chat.workspace || process.env.HOME || '/'
@@ -712,11 +723,52 @@ export class HerdrBridge {
     this.scheduleRefresh(500)
     // No agent session to resume (an old chat): the fresh session starts from the chat so far.
     // Hermes resumes the whole conversation by Studio's session id, so it needs no recap.
-    if (!row.agent_native_session_id && launch.agentId !== 'hermes' && row.agent !== 'hermes' && this.deps.chatRecap) {
-      void this.deps.chatRecap(sessionId).then(recap => recap ? this.promptWhenAgentStarted(paneId, recap) : false)
+    const needsRecap = !row.agent_native_session_id && launch.agentId !== 'hermes' && row.agent !== 'hermes' && !!this.deps.chatRecap
+    if (launch.cleanRoom) {
+      // The agent's own herdr hooks cannot reach herdr from inside its container.
+      void this.followCleanRoom(paneId, launch, row.agent_native_session_id || '', needsRecap ? sessionId : '')
+    } else if (needsRecap) {
+      void this.deps.chatRecap!(sessionId).then(recap => recap ? this.promptWhenAgentStarted(paneId, recap) : false)
         .catch(error => this.log('warn', '[herdr] could not give the agent the chat so far', { sessionId, error: String(error) }))
     }
     return launch
+  }
+
+  /**
+   * A clean-room agent runs inside its container, out of reach of herdr's own
+   * agent hooks: herdr sees it by the docker client's name (see
+   * `cleanRoomTerminalDocker`), Studio reports the session it resumes, and the
+   * chat so far is typed once the agent is up (there is no session report to wait for).
+   */
+  async followCleanRoom(paneId: string, launch: HerdrInteractiveLaunch, nativeId: string, recapFor: string, timeoutMs = 60000): Promise<boolean> {
+    try {
+      const client = this.requireClient()
+      const deadline = Date.now() + timeoutMs
+      let running = false
+      while (!running && Date.now() < deadline && !this.stopped) {
+        const info = await client.request<any>('pane.process_info', { pane_id: paneId }).catch(() => null)
+        const processes: Array<{ argv?: string[] }> = info?.process_info?.foreground_processes || []
+        running = processes.some(item => item.argv?.[0] === launch.command)
+        if (!running) await new Promise(resolve => setTimeout(resolve, 500))
+      }
+      if (!running) {
+        this.log('warn', '[herdr] clean-room agent did not start', { paneId })
+        return false
+      }
+      const agent = this.deps.herdrKindFor(launch.agentId)
+      if (agent && nativeId) {
+        // As the agent's own herdr integration would (herdr keeps sessions only from it).
+        await client.request('pane.report_agent_session', { pane_id: paneId, source: `herdr:${agent}`, agent, agent_session_id: nativeId })
+          .catch(error => this.log('warn', '[herdr] could not report the clean-room session', { paneId, error: String(error) }))
+      }
+      await this.refresh()
+      if (!recapFor || !this.deps.chatRecap) return true
+      const recap = await this.deps.chatRecap(recapFor)
+      return recap ? this.promptWhenReady(paneId, recap) : true
+    } catch (error) {
+      this.log('warn', '[herdr] could not follow the clean-room agent', { paneId, error: String(error) })
+      return false
+    }
   }
 
   /**
@@ -929,7 +981,8 @@ export class HerdrBridge {
   /** Open (or focus) a Studio chat as a live herdr pane. */
   async openSession(sessionId: string): Promise<HerdrLinkInfo> {
     const existing = this.links.get(sessionId)
-    if (existing) {
+    // A live agent pane is focused; a waiting pane is resumed below (as Enter there does).
+    if (existing && !existing.waiting) {
       await this.focusPane(existing.paneId)
       return existing
     }
@@ -947,21 +1000,27 @@ export class HerdrBridge {
     if (record?.stubPaneId && ready) {
       const client = this.requireClient()
       await this.focusPane(record.stubPaneId).catch(() => undefined)
-      await client.request('pane.send_keys', { pane_id: record.stubPaneId, keys: ['Enter'] })
-      const link: HerdrLinkInfo = { paneId: record.stubPaneId, workspaceId: record.workspaceId, status: 'unknown' }
+      // Enter only while the pane shows the chat's card: once the agent is starting (or
+      // Studio's chat client runs there), Enter would land in it as input.
+      if (!await this.stubBusy(client, record.stubPaneId)) {
+        await client.request('pane.send_keys', { pane_id: record.stubPaneId, keys: ['Enter'] })
+      }
+      const link: HerdrLinkInfo = { paneId: record.stubPaneId, workspaceId: record.workspaceId, status: existing?.status ?? 'unknown', ...(existing?.waiting ? { waiting: true } : {}) }
       this.links.set(sessionId, link)
       this.deps.setLink(sessionId, link)
       return link
     }
     await this.refreshAgentAccess(true)
     const launch = await this.deps.prepareSessionLaunch(sessionId)
-    return this.openLaunch(launch, row.title || this.deps.agentLabel(launch.agentId), {
+    const link = await this.openLaunch(launch, row.title || this.deps.agentLabel(launch.agentId), {
       sessionId,
       agentId: launch.agentId,
       provider: launch.provider,
       model: launch.model,
       title: row.title || '',
     })
+    if (launch.cleanRoom) void this.followCleanRoom(link.paneId, launch, row.agent_native_session_id || '', '')
+    return link
   }
 
   /**

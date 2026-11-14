@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { createConnection, createServer, type Server, type Socket } from 'node:net'
-import { dirname, join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { getWebUiHome } from '../../../studio/public/config'
 import { config } from '../../../studio/public/config'
@@ -162,6 +162,9 @@ setInterval(() => {}, 1 << 30)
 interface RoomSockets { studio: Server; egress: Server }
 const sockets = new Map<string, RoomSockets>()
 
+/** Unix socket paths: 108 bytes on Linux, 104 on macOS, with room for the NUL. */
+const MAX_SOCKET_PATH = 103
+
 /** Short on purpose: Unix socket paths are limited to about 100 characters. */
 function socketDir(sessionId: string): string {
   return join(home(), 'r', createHash('sha1').update(sessionId).digest('hex').slice(0, 12))
@@ -171,11 +174,22 @@ function socketDir(sessionId: string): string {
 function listenSockets(sessionId: string): void {
   if (sockets.has(sessionId)) return
   const dir = socketDir(sessionId)
+  // Longer paths are cut short by the OS, and both sockets would then bind the same name.
+  if (Buffer.byteLength(join(dir, 'studio.sock')) > MAX_SOCKET_PATH) {
+    throw Object.assign(new Error(`The clean room's socket folder is too long for a Unix socket (${dir}): use a shorter HERMES_WEB_UI_HOME`), { status: 500 })
+  }
   mkdirSync(dir, { recursive: true })
   for (const name of ['studio.sock', 'egress.sock']) rmSync(join(dir, name), { force: true })
+  // A socket that cannot listen must not take Studio down; the room just has no tunnel.
+  const failed = (name: string) => (error: Error) => {
+    process.stderr.write(`[cleanroom] ${name} socket for ${sessionId} failed: ${error.message}\n`)
+    if (sockets.get(sessionId)?.studio === studio) sockets.delete(sessionId)
+  }
   const studio = createServer(client => handleStudioTunnel(client))
+  studio.on('error', failed('studio'))
   studio.listen(join(dir, 'studio.sock'))
   const egress = createServer(client => handleProxy(client))
+  egress.on('error', failed('egress'))
   egress.listen(join(dir, 'egress.sock'))
   sockets.set(sessionId, { studio, egress })
 }
@@ -403,6 +417,34 @@ export function cleanRoomExec(container: string, command: string, args: string[]
       container,
       'setsid', '-w', 'sh', '-c', `echo $$ > ${marker}; exec "$@"`, 'studio-run', command, ...args,
     ],
+  }
+}
+
+/**
+ * The docker client under the agent's own name, for a clean-room pane in a
+ * terminal multiplexer (herdr): herdr knows which agent runs in a pane by the
+ * pane's foreground process, which for a clean room is the docker client. A
+ * link named after the agent (`<web ui home>/coding-agent/cleanroom/bin/claude`
+ * → docker) lets herdr see the agent, follow its status from the screen and
+ * resume it after a restart. Plain `docker` when no link can be made.
+ */
+export function cleanRoomTerminalDocker(agentName: string, searchPath = String(process.env.PATH || '')): string {
+  if (process.platform === 'win32' || !/^[a-z][a-z0-9_-]{0,31}$/.test(agentName)) return 'docker'
+  const docker = searchPath.split(delimiter).filter(Boolean).map(dir => join(dir, 'docker')).find(candidate => existsSync(candidate))
+  if (!docker) return 'docker'
+  try {
+    const dir = join(home(), 'bin')
+    mkdirSync(dir, { recursive: true })
+    const link = join(dir, agentName)
+    let current = ''
+    try { current = readlinkSync(link) } catch { /* no link yet */ }
+    if (current !== docker) {
+      rmSync(link, { force: true })
+      symlinkSync(docker, link)
+    }
+    return link
+  } catch {
+    return 'docker'
   }
 }
 

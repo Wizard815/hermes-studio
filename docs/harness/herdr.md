@@ -53,6 +53,15 @@ stay separate apps; this integration links them.
   mirror. A blocked agent (approval/question on screen) is never typed into.
   A chat whose space only has its waiting pane (link `waiting: true`) has no
   agent there, so its messages run through Studio as usual.
+- **Open in herdr resumes.** Opening a chat whose space only has its waiting
+  pane presses Enter there (`openSession`), so its agent resumes in place (or
+  Studio's chat client starts, for Ekko/Hermes without the CLI); not while the
+  pane already runs `studio-herdr.mjs` (resuming or chatting).
+- **Clean rooms in herdr.** See `docs/cleanroom.md`: the pane's docker client
+  runs under the agent's name so herdr detects the agent and its status.
+- **Limits.** The chat-space list reads every chat in pages (`chatSpaceRows`)
+  before the awake filter; a subscription herdr never confirms fails after 5 s
+  (`subscribe_timeout`) and the bridge reconnects.
 - **One space per chat.** Each chat sync reads a fresh `session.snapshot`
   and remembers the spaces it just made for 30 s, so syncs that follow each
   other (a wake-up right after a sync) never make a chat's space twice.

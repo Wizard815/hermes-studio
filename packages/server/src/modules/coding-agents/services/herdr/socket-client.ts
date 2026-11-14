@@ -75,6 +75,7 @@ export class HerdrSocketClient {
     subscriptions: Array<Record<string, unknown>>,
     onEvent: (event: HerdrEvent) => void,
     onClose: (reason: string) => void,
+    readyTimeoutMs = this.timeoutMs,
   ): { close: () => void; ready: Promise<void> } {
     const id = `studio_sub_${randomUUID()}`
     const reader = new NdjsonReader()
@@ -85,9 +86,15 @@ export class HerdrSocketClient {
     ready.catch(() => {})
     const socket: Socket = connect(this.socketPath)
     socket.setEncoding('utf8')
+    // A herdr that accepts the connection but never answers must not leave the
+    // subscriber waiting forever: the subscription ends and the caller retries.
+    let readyTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => { readyTimer = null; end('subscribe_timeout') }, readyTimeoutMs)
+    readyTimer.unref?.()
+    const settleReady = () => { if (readyTimer) { clearTimeout(readyTimer); readyTimer = null } }
     const end = (reason: string) => {
       if (closed) return
       closed = true
+      settleReady()
       socket.destroy()
       readyReject(new HerdrRequestError(reason, 'closed'))
       onClose(reason)
@@ -99,6 +106,7 @@ export class HerdrSocketClient {
       for (const record of reader.push(chunk) as any[]) {
         if (record?.id === id || record?.id === '') {
           if (record.error) { end(record.error.code || 'subscription_error'); return }
+          settleReady()
           readyResolve()
           continue
         }

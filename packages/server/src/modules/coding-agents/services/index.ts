@@ -25,7 +25,8 @@ import { promisify } from 'util'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { getWebUiHome } from '../../studio/public/config'
 import { agentAsksBeforeActing, withApprovals, withApprovalsEnv } from './approvals'
-import { cleanRoomCommand, cleanRoomExec, ensureCleanRoom, isCleanRoom, studioConfigDirs } from './cleanroom'
+import { cleanRoomCommand, cleanRoomExec, cleanRoomTerminalDocker, ensureCleanRoom, isCleanRoom, studioConfigDirs } from './cleanroom'
+import { herdrKindForStudioAgent } from './herdr/protocol'
 export { withApprovals, withApprovalsEnv } from './approvals'
 import { getProfileDir, PROVIDER_ENV_MAP, readConfigYamlForProfile, safeReadFile } from '../../studio/public/profile-config'
 import { getCompatibleCustomProviders } from '../../studio/contracts/provider-compat'
@@ -4068,6 +4069,8 @@ export interface CodingAgentInteractiveLaunch {
   workspaceDir: string
   provider: string
   model: string
+  /** The agent runs in the chat's clean-room container (the command is the docker client). */
+  cleanRoom?: boolean
 }
 
 /**
@@ -4148,7 +4151,10 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
     program: cleanRoomProgramDir(launch.command),
   })
   const exec = cleanRoomExec(container, launch.command, launch.args, launch.workspaceDir, launch.env, { tty: true })
-  return { ...launch, command: exec.command, args: exec.args, env: {} }
+  // The docker client under the agent's name, so herdr sees which agent runs in the pane.
+  const agentName = herdrKindForStudioAgent(launch.agentId)
+  const command = agentName ? cleanRoomTerminalDocker(agentName, String((await commandEnv()).PATH || process.env.PATH || '')) : exec.command
+  return { ...launch, command, args: exec.args, env: {}, cleanRoom: true }
 }
 
 /** Absolute path of a bare command on Studio's command PATH, or the command unchanged. */
