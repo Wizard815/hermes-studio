@@ -15,6 +15,9 @@ import ProviderImportModal from '@/components/hermes/models/ProviderImportModal.
 import { pendingProviderImport, type ProviderImport } from '@/utils/provider-import'
 import ProviderVisibilityModal from '@/components/hermes/models/ProviderVisibilityModal.vue'
 import ModelCatalogNotice from '@/components/hermes/models/ModelCatalogNotice.vue'
+import LocalModelsPanel from '@/components/hermes/models/LocalModelsPanel.vue'
+import CredentialPoolsPanel from '@/components/hermes/models/CredentialPoolsPanel.vue'
+import { isStoredSuperAdmin } from '@/api/client'
 import VoiceSettings from '@/components/hermes/settings/VoiceSettings.vue'
 import { useModelsStore } from '@/stores/hermes/models'
 import { useAppStore } from '@/stores/hermes/app'
@@ -89,9 +92,11 @@ watch(() => route.query.modelProfile, profile => {
   showModal.value = false
   void loadProvidersForProfile()
 })
-type ModelsTab = 'general' | 'auxiliary' | 'combination' | 'stt' | 'tts' | 'jev' | 'api'
+type ModelsTab = 'general' | 'auxiliary' | 'combination' | 'local' | 'keys' | 'stt' | 'tts' | 'jev' | 'api'
 
-const MODELS_TABS = new Set<ModelsTab>(['general', 'auxiliary', 'combination', 'stt', 'tts', 'jev', 'api'])
+// Local models and key pools run through Hermes Agent's own API (super administrators).
+const canUseHermesAgent = isStoredSuperAdmin()
+const MODELS_TABS = new Set<ModelsTab>(['general', 'auxiliary', 'combination', 'stt', 'tts', 'jev', 'api', ...(canUseHermesAgent ? ['local', 'keys'] as const : [])])
 const activeTab = ref<ModelsTab>('general')
 
 function normalizeTab(value: unknown): ModelsTab {
@@ -179,6 +184,11 @@ watch(() => route.query.tab, (tab) => {
 
 function handleModalClose() {
   showModal.value = false
+}
+
+// A local model was downloaded, activated or removed: refresh the provider lists.
+async function reloadModelLists() {
+  await Promise.all([modelsStore.fetchProviders(), appStore.reloadModels({ preserveSelection: true })]).catch(() => undefined)
 }
 
 async function handleSaved(globalModelsAlreadyRefreshed = false) {
@@ -272,6 +282,12 @@ async function handleRefreshModelCache() {
         </NTabPane>
         <NTabPane name="combination" :tab="t('models.combinationTitle')">
           <CombinationModelsPanel />
+        </NTabPane>
+        <NTabPane v-if="canUseHermesAgent" name="local" :tab="t('hermesModels.localTab')">
+          <LocalModelsPanel :profile="selectedProfile" @changed="reloadModelLists" />
+        </NTabPane>
+        <NTabPane v-if="canUseHermesAgent" name="keys" :tab="t('hermesModels.keysTab')">
+          <CredentialPoolsPanel :profile="selectedProfile" />
         </NTabPane>
         <NTabPane name="jev" tab="JEV">
           <JevSettingsPanel />
