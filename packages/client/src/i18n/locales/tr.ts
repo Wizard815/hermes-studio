@@ -1,3 +1,8 @@
+import { hermesModelsMessages } from '../hermes-agent-models-messages'
+import { hermesToolsMessages } from '../hermes-agent-tools-messages'
+import { hermesExtensionsMessages } from '../hermes-agent-extensions-messages'
+import { hermesMemoryMessages } from '../hermes-agent-memory-messages'
+import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
@@ -46,6 +51,11 @@ export default {
   ...herdrMessages['tr'],
   ...vscodeMessages['tr'],
   ...screenMessages['tr'],
+  ...hermesModelsMessages['tr'],
+  ...hermesToolsMessages['tr'],
+  ...hermesExtensionsMessages['tr'],
+  ...hermesMemoryMessages['tr'],
+  ...hermesChannelsMessages['tr'],
   ...androidMessages['tr'],
   ...orbMessages['tr'],
   ...systemMessages['tr'],
