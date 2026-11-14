@@ -168,6 +168,39 @@ interface PersistedState {
   chatSpaces?: Record<string, ChatSpaceRecord>
   /** Sleeping chats woken in herdr, and when (they stay awake for the awake window). */
   wokenChats?: Record<string, number>
+  /** "The chat so far" sent to a fresh agent session: kept out of the mirrored chat, with its reply. */
+  recaps?: Record<string, { text: string; at: number; replying?: boolean }>
+}
+
+const RECAP_MIRROR_WINDOW_MS = 30 * 60 * 1000
+
+/** The agent's own config home from its launch (Studio-provider agents keep sessions there). */
+export function configHomeEnv(env: Record<string, string> | undefined): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = {}
+  if (env?.CODEX_HOME) out.CODEX_HOME = env.CODEX_HOME
+  if (env?.CLAUDE_CONFIG_DIR) out.CLAUDE_CONFIG_DIR = env.CLAUDE_CONFIG_DIR
+  return out
+}
+
+/**
+ * Drops the recap Studio typed into a fresh session (one or more user messages
+ * that are part of it) and the agent's answer to it, up to the next real user
+ * message. Returns the messages to keep and the marker's new state (null: done).
+ */
+export function withoutRecap(messages: TranscriptMessage[], marker: { text: string; replying?: boolean }): { messages: TranscriptMessage[]; marker: { text: string; replying?: boolean } | null } {
+  const recap = marker.text.replace(/\s+/g, ' ').trim()
+  let replying = !!marker.replying
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index]
+    const text = message.content.replace(/\s+/g, ' ').trim()
+    if (message.role === 'user') {
+      if (text && recap.includes(text)) { replying = true; continue }
+      // The person's own next message: everything from here is the real chat.
+      return { messages: messages.slice(index), marker: null }
+    }
+    if (!replying) return { messages: messages.slice(index), marker: null }
+  }
+  return { messages: [], marker: { ...marker, replying } }
 }
 
 interface PendingLaunch {
@@ -730,7 +763,7 @@ export class HerdrBridge {
       // The agent's own herdr hooks cannot reach herdr from inside its container.
       void this.followCleanRoom(paneId, launch, { sessionId, nativeId: row.agent_native_session_id || '', recap: needsRecap })
     } else if (needsRecap) {
-      void this.deps.chatRecap!(sessionId).then(recap => recap ? this.promptWhenAgentStarted(paneId, recap) : false)
+      void this.deps.chatRecap!(sessionId).then(recap => recap ? (this.markRecap(sessionId, recap), this.promptWhenAgentStarted(paneId, recap)) : false)
         .catch(error => this.log('warn', '[herdr] could not give the agent the chat so far', { sessionId, error: String(error) }))
     }
     return launch
@@ -771,13 +804,13 @@ export class HerdrBridge {
       await this.refresh()
       if (chat.recap && this.deps.chatRecap) {
         const recap = await this.deps.chatRecap(chat.sessionId)
-        if (recap) await this.promptWhenReady(paneId, recap)
+        if (recap) { this.markRecap(chat.sessionId, recap); await this.promptWhenReady(paneId, recap) }
       }
       if (chat.nativeId || !launch.agentHome) return true
       // A fresh session: its transcript appears once it has its first turn.
       const watchUntil = Date.now() + (options.sessionMs ?? 30 * 60 * 1000)
       while (Date.now() < watchUntil && !this.stopped && this.snapshot.panes.some(pane => pane.pane_id === paneId)) {
-        const found = await newTranscriptSince(launch.agentId, launch.agentHome, since)
+        const found = await newTranscriptSince(launch.agentId, launch.agentHome, since, configHomeEnv(launch.env))
         if (found && !this.deps.findSessionByNativeId(found.id)) {
           this.deps.updateNativeSessionId(chat.sessionId, found.id)
           await report(found.id)
@@ -793,6 +826,12 @@ export class HerdrBridge {
     }
   }
 
+
+  /** Remember the recap so the transcript mirror leaves it (and its answer) out. */
+  private markRecap(sessionId: string, text: string) {
+    this.persisted.recaps = { ...(this.persisted.recaps || {}), [sessionId]: { text, at: Date.now() } }
+    void this.savePersisted()
+  }
 
   /**
    * Prompt the agent once it has started in the pane: it has reported its own
@@ -885,9 +924,19 @@ export class HerdrBridge {
         entry = { path, offset: startAtEnd ? (await stat(path)).size : 0 }
         this.persisted.offsets[sessionId] = entry
       }
-      const { messages, offset } = await readTranscriptFrom(path, entry.offset)
+      const read = await readTranscriptFrom(path, entry.offset)
+      const offset = read.offset
+      let messages = read.messages
       if (offset === entry.offset) return
       entry.offset = offset
+      const recap = this.persisted.recaps?.[sessionId]
+      if (recap && Date.now() - recap.at > RECAP_MIRROR_WINDOW_MS) delete this.persisted.recaps![sessionId]
+      else if (recap && messages.length) {
+        const kept = withoutRecap(messages, recap)
+        messages = kept.messages
+        if (kept.marker) this.persisted.recaps![sessionId] = { ...recap, ...kept.marker }
+        else delete this.persisted.recaps![sessionId]
+      }
       if (messages.length) {
         this.deps.appendMessages(sessionId, messages)
         this.deps.notifyUpdated(sessionId)
@@ -918,6 +967,7 @@ export class HerdrBridge {
       if (raw?.working && typeof raw.working === 'object') this.persisted.working = raw.working
       if (raw?.chatSpaces && typeof raw.chatSpaces === 'object') this.persisted.chatSpaces = raw.chatSpaces
       if (raw?.wokenChats && typeof raw.wokenChats === 'object') this.persisted.wokenChats = raw.wokenChats
+      if (raw?.recaps && typeof raw.recaps === 'object') this.persisted.recaps = raw.recaps
     } catch { /* fresh state */ }
   }
 

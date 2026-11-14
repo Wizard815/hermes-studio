@@ -67,6 +67,13 @@ stay separate apps; this integration links them.
   other (a wake-up right after a sync) never make a chat's space twice.
 - Hermes chats resume the whole conversation by Studio's session id, so they
   get no "chat so far" recap.
+- The recap Studio types into a fresh session, and the agent's answer to it,
+  stay out of the mirrored chat (`withoutRecap`, marker `recaps` in the bridge
+  state, 30 minutes).
+- Transcripts of agents on Studio's providers live in Studio's config folders
+  (`coding-agent/model/<profile>/<provider>/<agent>[/runs/<id>]`, where
+  `CODEX_HOME` / `CLAUDE_CONFIG_DIR` point); `findChatTranscript` and clean-room
+  session detection look there too.
 - **Status.** Chat rows use herdr's glyphs (`◐ × ✓ ○ ·`, see
   `components/common/AgentStatusIcon.vue`); `packages/shared/session-state.ts`
   merges Studio run state, pending approvals and herdr pane status.

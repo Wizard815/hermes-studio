@@ -105,3 +105,57 @@ describe('clean-room transcripts', () => {
     await expect(newTranscriptSince('codex', dir, since)).resolves.toMatchObject({ id: fresh })
   })
 })
+
+describe('the chat so far stays out of the mirrored chat', async () => {
+  const { withoutRecap } = await import('../../packages/server/src/modules/coding-agents/services/herdr/bridge')
+  const recap = 'Here is our chat so far:\nuser: book a table\nassistant: which day?\nContinue from here.'
+  const m = (role: 'user' | 'assistant', content: string) => ({ role, content, timestamp: 1 })
+
+  it('drops the recap and the answer to it, keeps the next real turn', () => {
+    const out = withoutRecap([m('user', recap), m('assistant', 'Got it, continuing.'), m('user', 'Friday please'), m('assistant', 'Booked.')], { text: recap })
+    expect(out.messages.map(x => x.content)).toEqual(['Friday please', 'Booked.'])
+    expect(out.marker).toBeNull()
+  })
+
+  it('handles a recap typed line by line and an answer split across reads', () => {
+    const first = withoutRecap([m('user', 'Here is our chat so far:'), m('assistant', 'ok'), m('user', 'user: book a table')], { text: recap })
+    expect(first.messages).toEqual([])
+    expect(first.marker).toMatchObject({ replying: true })
+    const second = withoutRecap([m('assistant', 'still reading'), m('user', 'what time?')], first.marker!)
+    expect(second.messages.map(x => x.content)).toEqual(['what time?'])
+    expect(second.marker).toBeNull()
+  })
+
+  it('keeps everything when the first message is not the recap', () => {
+    const out = withoutRecap([m('user', 'hello'), m('assistant', 'hi')], { text: recap })
+    expect(out.messages).toHaveLength(2)
+    expect(out.marker).toBeNull()
+  })
+})
+
+describe("Studio-provider agents' transcripts", async () => {
+  const { findChatTranscript, studioAgentConfigHomes } = await import('../../packages/server/src/bootstrap/herdr')
+  const { configHomeEnv } = await import('../../packages/server/src/modules/coding-agents/services/herdr/bridge')
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+
+  it('finds a Codex session kept in a provider config folder (and its runs)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cfg-'))
+    try {
+      const id = '01a1db8c-a38a-73a3-afb2-dfe9ddc2c776'
+      const sessions = join(root, 'default', 'custom_fake', 'codex', 'runs', 'abc', 'sessions', '2026', '11', '14')
+      mkdirSync(sessions, { recursive: true })
+      writeFileSync(join(sessions, `rollout-2026-11-14T19-33-09-${id}.jsonl`), '{}\n')
+      const homes = studioAgentConfigHomes('codex', root)
+      expect(homes).toContain(join(root, 'default', 'custom_fake', 'codex', 'runs', 'abc'))
+      expect(studioAgentConfigHomes('cursor', root)).toEqual([])
+      await expect(findChatTranscript('codex', id, () => [], () => homes)).resolves.toBe(join(sessions, `rollout-2026-11-14T19-33-09-${id}.jsonl`))
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it("passes only the agent's config home on to session detection", () => {
+    expect(configHomeEnv({ CODEX_HOME: '/c', PATH: '/bin', OPENAI_API_KEY: 'x' })).toEqual({ CODEX_HOME: '/c' })
+    expect(configHomeEnv(undefined)).toEqual({})
+  })
+})

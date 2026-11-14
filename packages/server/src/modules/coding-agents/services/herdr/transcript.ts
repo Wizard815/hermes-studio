@@ -170,7 +170,8 @@ export async function newTranscriptSince(agent: string, home: string, since: num
       if (!id) continue
       const info = await stat(path).catch(() => null)
       const at = info ? (info.birthtimeMs || info.mtimeMs) : 0
-      if (info && info.mtimeMs >= since && at >= since - 1000) found.push({ id, path, at })
+      // File times can trail the clock by a few ms (coarse timestamps): allow a little slack.
+      if (info && info.mtimeMs >= since - 50 && at >= since - 1000) found.push({ id, path, at })
     }
   }
   await walk(layout.root, layout.depth)

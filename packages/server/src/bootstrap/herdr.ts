@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
 import { folderFor } from '../modules/coding-agents/services/herdr/folders'
+import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Server } from 'socket.io'
 import { getWebUiHome } from '../modules/studio/public/config'
@@ -246,14 +247,37 @@ export function chatRecap(title: string, messages: Array<{ role: string; text: s
  * A chat agent's transcript: in Studio's own agent folders, else in a clean
  * room's home folder (a clean-room agent writes there, see cleanRoomHome).
  */
-export async function findChatTranscript(agent: string, nativeId: string, homes: () => string[] = cleanRoomHomes): Promise<string | null> {
+export async function findChatTranscript(agent: string, nativeId: string, homes: () => string[] = cleanRoomHomes, configHomes: (agent: string) => string[] = studioAgentConfigHomes): Promise<string | null> {
   const own = await locateTranscript(agent, nativeId)
   if (own) return own
   for (const home of homes()) {
     const found = await locateTranscript(agent, nativeId, {}, home)
     if (found) return found
   }
+  // Agents on Studio's providers keep their sessions in Studio's config folders
+  // (CODEX_HOME / CLAUDE_CONFIG_DIR point there), in and out of clean rooms.
+  for (const dir of configHomes(agent)) {
+    const env = agent === 'codex' ? { CODEX_HOME: dir } : { CLAUDE_CONFIG_DIR: dir }
+    const found = await locateTranscript(agent, nativeId, env)
+    if (found) return found
+  }
   return null
+}
+
+/** Studio's per-provider config folders for an agent: coding-agent/model/<profile>/<provider>/<agent>[/runs/<id>]. */
+export function studioAgentConfigHomes(agent: string, root = join(getWebUiHome(), 'coding-agent', 'model')): string[] {
+  if (agent !== 'codex' && agent !== 'claude-code') return []
+  const out: string[] = []
+  const dirs = (path: string) => { try { return readdirSync(path, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => join(path, entry.name)) } catch { return [] } }
+  for (const profile of dirs(root)) {
+    for (const provider of dirs(profile)) {
+      const home = join(provider, agent)
+      if (!existsSync(home)) continue
+      out.push(home, ...dirs(join(home, 'runs')))
+      if (out.length > 400) return out
+    }
+  }
+  return out
 }
 
 /** Studio stores chat times in seconds; herdr's chat spaces work in milliseconds. */
