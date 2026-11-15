@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { Socket } from 'socket.io-client'
 import {
@@ -10,6 +10,7 @@ import {
   type HerdrSettings,
   type HerdrStatus,
 } from '@/api/coding-agents/herdr'
+import { useProfilesStore } from './profiles'
 
 /** Live herdr state for the Herdr view and the "open in herdr" actions. */
 export const useHerdrStore = defineStore('herdr', () => {
@@ -35,6 +36,12 @@ export const useHerdrStore = defineStore('herdr', () => {
       loading.value = false
     }
   }
+
+  // herdr follows the profile picked in Studio: the status request carries it
+  // (X-Hermes-Profile), so tell the server as soon as it changes.
+  watch(() => useProfilesStore().activeProfileName, (name, previous) => {
+    if (status.value && name && name !== previous) void refresh()
+  })
 
   function ensureSocket(): Socket {
     if (socket) return socket

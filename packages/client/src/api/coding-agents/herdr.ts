@@ -17,7 +17,10 @@ export interface HerdrSettings {
   chatSpaces?: boolean
   /** Chats used within this many days stay awake in herdr (0: all). */
   chatSpacesAwakeDays?: number
+  /** Studio profile for chats and agents started from herdr; '' follows Studio's profile. */
   profile: string
+  /** The profile last picked in Studio. */
+  studioProfile?: string
 }
 
 export interface HerdrPaneView {

@@ -184,6 +184,15 @@ function applyModelVisibility(groups: AvailableGroup[], visibility: ModelVisibil
     .filter(group => group.models.length > 0)
 }
 
+/** Hermes Agent's own local-model provider, when it is a profile's default. */
+export const HERMES_LOCAL_PROVIDER = 'llamacpp'
+
+/** The group for Hermes's local models when the profile's default model is one of them. */
+export function localModelsGroup(currentDefault: string, currentDefaultProvider: string): { provider: string; label: string; models: string[] } | null {
+  if (currentDefaultProvider !== HERMES_LOCAL_PROVIDER || !currentDefault) return null
+  return { provider: HERMES_LOCAL_PROVIDER, label: 'Local models (Hermes Agent)', models: [currentDefault] }
+}
+
 function resolveVisibleDefault(defaultModel: string, defaultProvider: string, groups: AvailableGroup[]) {
   if (defaultModel) {
     const explicit = groups.find(group => group.provider === defaultProvider && group.models.includes(defaultModel))
@@ -398,6 +407,14 @@ async function isCopilotAuthorized(envContent: string): Promise<boolean> {
  * integrations such as herdr that launch agents outside a browser request.
  */
 export async function listProfileModelGroups(profile: string): Promise<Array<{ provider: string; label: string; models: string[] }>> {
+  return (await listProfileModelChoices(profile)).groups
+}
+
+/** A profile's model groups and its default model (provider keyed as in the groups), as Studio's model picker shows them. */
+export async function listProfileModelChoices(profile: string): Promise<{
+  groups: Array<{ provider: string; label: string; models: string[] }>
+  default: { provider: string; model: string }
+}> {
   const appConfig = await readAppConfig()
   const aliases = normalizeAliases(appConfig.modelAliases)
   const visibility = normalizeModelVisibility(appConfig.modelVisibility)
@@ -406,8 +423,11 @@ export async function listProfileModelGroups(profile: string): Promise<Array<{ p
   )
   const cache = await readProviderModelCatalogCache()
   const result = await buildAvailableForProfile(profile, cache, appConfig, enrich)
-  return applyModelVisibility(applyModelAliases(result.groups, aliases), visibility)
-    .map((group: any) => ({ provider: String(group.provider), label: String(group.label || group.provider), models: (group.models || []).map(String) }))
+  return {
+    groups: applyModelVisibility(applyModelAliases(result.groups, aliases), visibility)
+      .map((group: any) => ({ provider: String(group.provider), label: String(group.label || group.provider), models: (group.models || []).map(String) })),
+    default: { provider: result.default_provider || '', model: result.default || '' },
+  }
 }
 
 async function buildAvailableForProfile(
@@ -593,6 +613,12 @@ async function buildAvailableForProfile(
       { api_mode: 'chat_completions' },
     )
   }
+
+  // Hermes Agent's local models (Models page → Local models → "Make default"):
+  // Hermes serves them itself as provider `llamacpp`, so Studio lists that
+  // default for the profile and its chats run on it through Hermes.
+  const local = localModelsGroup(currentDefault, currentDefaultProvider)
+  if (local) addGroup(local.provider, local.label, '', local.models, '', true)
 
   for (const g of groups) {
     g.models = Array.from(new Set(g.models))

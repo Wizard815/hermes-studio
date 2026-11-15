@@ -27,6 +27,8 @@ export interface HerdrPluginDeps {
   listChats(limit: number, options?: { query?: string; offset?: number }): Array<{ id: string; title: string; agent: string; updatedAt: number }>
   listAgents(): Promise<Array<{ id: string; name: string }>>
   listProviders(profile: string): Promise<Array<{ provider: string; label: string; models: string[] }>>
+  /** A profile's default model (Studio's model settings for that profile). */
+  profileDefault?(profile: string): Promise<{ provider: string; model: string }>
   /** Studio profiles a herdr chat can belong to. */
   listProfiles(): string[]
   /** Loopback URL the plugin uses for API calls. */
@@ -357,6 +359,19 @@ export class HerdrManager {
 
   actingUser(): { id: number; username: string; role: string } | null {
     return this.user
+  }
+
+  /**
+   * Remember the profile picked in Studio (sent with Studio's herdr requests):
+   * herdr chats and agents follow it unless herdr's profile is pinned.
+   */
+  async noteStudioProfile(name: unknown): Promise<void> {
+    const profile = typeof name === 'string' ? name.trim() : ''
+    if (!profile || profile === this.settings.studioProfile || !this.store) return
+    try {
+      if (this.pluginDeps && !this.pluginDeps.listProfiles().includes(profile)) return
+      await this.updateSettings({ studioProfile: profile })
+    } catch { /* a profile hint must never fail a request */ }
   }
 
   private browserOrigins = { public: '', any: '' }

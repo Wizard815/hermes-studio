@@ -28,8 +28,13 @@ export interface HerdrSettings {
    * a waiting pane); older ones sleep until opened or messaged. 0: all awake.
    */
   chatSpacesAwakeDays: number
-  /** Studio profile used for chats created from herdr. */
+  /**
+   * Studio profile for chats and agents started from herdr. Empty: follow
+   * Studio, i.e. the profile last picked in Studio (`studioProfile`).
+   */
   profile: string
+  /** The profile last picked in Studio's profile switcher (Studio tells the server on every herdr status poll). */
+  studioProfile: string
 }
 
 export const DEFAULT_HERDR_SETTINGS: HerdrSettings = {
@@ -43,7 +48,24 @@ export const DEFAULT_HERDR_SETTINGS: HerdrSettings = {
   mirrorTranscripts: true,
   chatSpaces: true,
   chatSpacesAwakeDays: 7,
-  profile: 'default',
+  profile: '',
+  studioProfile: '',
+}
+
+/** The Studio profile new herdr chats and agents use: the pinned one, else Studio's own. */
+export function herdrChatProfile(settings: Pick<HerdrSettings, 'profile' | 'studioProfile'>): string {
+  return settings.profile || settings.studioProfile || 'default'
+}
+
+/**
+ * Settings files from before "follow Studio" always stored `profile:
+ * "default"` (the old default, not a choice): those follow Studio now.
+ */
+export function migrateHerdrSettings(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw
+  const value = raw as Record<string, unknown>
+  if (!('studioProfile' in value) && value.profile === 'default') return { ...value, profile: '', studioProfile: '' }
+  return raw
 }
 
 const SESSION_NAME = /^[A-Za-z0-9_.-]{0,64}$/
@@ -65,7 +87,8 @@ export function sanitizeHerdrSettings(input: Partial<HerdrSettings> | null | und
     if (!SESSION_NAME.test(session)) throw Object.assign(new Error('Invalid herdr session name'), { status: 400 })
     next.session = session
   }
-  if (typeof input.profile === 'string' && input.profile.trim()) next.profile = input.profile.trim().slice(0, 128)
+  if (typeof input.profile === 'string') next.profile = input.profile.trim().slice(0, 128)
+  if (typeof input.studioProfile === 'string') next.studioProfile = input.studioProfile.trim().slice(0, 128)
   return next
 }
 
@@ -78,7 +101,7 @@ export class HerdrSettingsStore {
 
   async load(): Promise<HerdrSettings> {
     try {
-      return sanitizeHerdrSettings(JSON.parse(await readFile(this.file, 'utf8')))
+      return sanitizeHerdrSettings(migrateHerdrSettings(JSON.parse(await readFile(this.file, 'utf8'))) as Partial<HerdrSettings>)
     } catch {
       return { ...DEFAULT_HERDR_SETTINGS }
     }

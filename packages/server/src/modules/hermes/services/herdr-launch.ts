@@ -35,17 +35,52 @@ export function hermesCliAvailable(home = homedir()): boolean {
   return findHermesCli(home) !== null
 }
 
-/** Start a fresh `hermes chat` pane in herdr; herdr's hermes integration
- * reports the new session id, which links (or imports) the Studio chat. */
-export function hermesNewChatLaunch(workspace?: string | null): HermesHerdrLaunch {
+/** Hermes's provider name for a Studio provider key (Studio's Claude sign-in runs as `anthropic`, as in Studio's own Hermes runs). */
+export function hermesProviderFor(provider: string | null | undefined): string {
+  const value = String(provider || '').trim()
+  if (value === 'global') return ''
+  return value === 'claude-oauth' ? 'anthropic' : value
+}
+
+/** `-m <model> [--provider <provider>]` for a chat with its own model; nothing for the profile default. */
+export function hermesModelArgs(model?: string | null, provider?: string | null): string[] {
+  const id = String(model || '').trim()
+  if (!id) return []
+  const route = hermesProviderFor(provider)
+  return ['-m', id, ...(route ? ['--provider', route] : [])]
+}
+
+/**
+ * The pane's Hermes home: the chat's profile folder (as Studio's own Hermes
+ * runs use), so the CLI reads that profile's config (its default model) and
+ * sessions. Empty when no profile resolver is given.
+ */
+function profileEnv(profile: string | null | undefined, profileHome?: (profile: string) => string): Record<string, string> {
+  if (!profileHome) return {}
+  const home = profileHome(String(profile || '').trim() || 'default')
+  return home ? { HERMES_HOME: home } : {}
+}
+
+/**
+ * Start a fresh `hermes chat` pane in herdr; herdr's hermes integration
+ * reports the new session id, which links (or imports) the Studio chat.
+ * It runs in the profile herdr uses (Studio's, unless pinned) on that
+ * profile's default model, unless a model was picked for it.
+ */
+export function hermesNewChatLaunch(workspace?: string | null, options: {
+  profile?: string | null
+  provider?: string | null
+  model?: string | null
+  profileHome?: (profile: string) => string
+} = {}): HermesHerdrLaunch {
   return {
     agentId: 'hermes',
     command: hermesCliPath(),
-    args: ['chat'],
-    env: {},
+    args: ['chat', ...hermesModelArgs(options.model, options.provider)],
+    env: profileEnv(options.profile, options.profileHome),
     workspaceDir: workspace || homedir(),
-    provider: '',
-    model: '',
+    provider: options.model ? String(options.provider || '') : '',
+    model: String(options.model || ''),
   }
 }
 
@@ -55,6 +90,8 @@ export function hermesNewChatLaunch(workspace?: string | null): HermesHerdrLaunc
  * CLI resumes the same conversation; a chat imported from herdr keeps the
  * agent's own session id in `agent_native_session_id`, which wins here.
  * `--create-if-missing` covers a chat whose first run has not happened yet.
+ * The pane runs in the chat's profile and on the chat's model (Studio's model
+ * picker for this chat; none: the profile's default model).
  */
 export function hermesInteractiveLaunch(session: {
   id: string
@@ -62,14 +99,20 @@ export function hermesInteractiveLaunch(session: {
   workspace?: string | null
   provider?: string | null
   model?: string | null
-}): HermesHerdrLaunch {
+  profile?: string | null
+}, profileHome?: (profile: string) => string): HermesHerdrLaunch {
   return {
     agentId: 'hermes',
     command: hermesCliPath(),
-    args: ['chat', '--resume', session.agent_native_session_id || session.id, '--create-if-missing'],
-    env: {},
+    args: ['chat', '--resume', hermesSessionIdFor(session), '--create-if-missing', ...hermesModelArgs(session.model, session.provider)],
+    env: profileEnv(session.profile, profileHome),
     workspaceDir: session.workspace || homedir(),
     provider: session.provider || '',
     model: session.model || '',
   }
+}
+
+/** The Hermes session a Studio Hermes chat runs as. */
+export function hermesSessionIdFor(session: { id: string; agent_native_session_id?: string | null }): string {
+  return session.agent_native_session_id || session.id
 }

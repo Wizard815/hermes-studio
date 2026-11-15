@@ -13,7 +13,7 @@ import {
 } from './protocol'
 import { HerdrRequestError, HerdrSocketClient } from './socket-client'
 import { newTranscriptSince, readTranscriptFrom, type TranscriptMessage } from './transcript'
-import type { HerdrSettings } from './runtime'
+import { herdrChatProfile, type HerdrSettings } from './runtime'
 
 import { awakeChats, chatAgentLabel, chatSpaceLabel, keptWakeUps, planChatSpaces, type ChatSpaceChat, type ChatSpaceRecord } from './chat-spaces'
 
@@ -26,6 +26,8 @@ export interface HerdrSessionRef {
   message_count?: number
   /** Studio chat folder (session category). */
   category_id?: number | null
+  /** The chat's Studio profile. */
+  profile?: string | null
 }
 
 export interface HerdrInteractiveLaunch {
@@ -752,7 +754,7 @@ export class HerdrBridge {
     if (!this.snapshot.panes.some(pane => pane.pane_id === paneId)) throw Object.assign(new Error('No such herdr pane'), { status: 404 })
     const row = this.deps.getSession(sessionId)
     if (!row) throw Object.assign(new Error('Chat not found'), { status: 404 })
-    await this.refreshAgentAccess(true)
+    await this.refreshAgentAccess(true, row.profile)
     const launch = await this.deps.prepareSessionLaunch(sessionId)
     this.pending.set(paneId, { sessionId, agentId: launch.agentId, provider: launch.provider, model: launch.model, title: row.title || '' })
     this.scheduleRefresh(500)
@@ -889,7 +891,7 @@ export class HerdrBridge {
       nativeId,
       title,
       workspace: cwd || null,
-      profile: this.settings.profile || 'default',
+      profile: herdrChatProfile(this.settings),
       provider: pending?.provider,
       model: pending?.model,
       // Chats made in herdr are Studio chats: they go in the space's Studio folder.
@@ -1083,7 +1085,7 @@ export class HerdrBridge {
       this.deps.setLink(sessionId, link)
       return link
     }
-    await this.refreshAgentAccess(true)
+    await this.refreshAgentAccess(true, row.profile)
     const launch = await this.deps.prepareSessionLaunch(sessionId)
     const link = await this.openLaunch(launch, row.title || this.deps.agentLabel(launch.agentId), {
       sessionId,
@@ -1106,7 +1108,7 @@ export class HerdrBridge {
     // Project work starts in the project's folder (its start directory) and files its chat there.
     const folder = input.onWorking ? await this.deps.folderForWork?.(input.onWorking).catch(() => null) ?? null : null
     const workspace = folder?.workspace || input.workspace
-    const launch = await this.deps.prepareAgentLaunch(agentId, { provider: input.provider, model: input.model, workspace, profile: this.settings.profile || 'default' })
+    const launch = await this.deps.prepareAgentLaunch(agentId, { provider: input.provider, model: input.model, workspace, profile: herdrChatProfile(this.settings) })
     const title = input.title?.trim() || this.deps.agentLabel(launch.agentId)
     const link = await this.openLaunch(launch, title, {
       categoryId: folder?.categoryId ?? null,
@@ -1125,9 +1127,10 @@ export class HerdrBridge {
   }
 
   /** The login lasts an hour; refresh it at most every 15 minutes while agents work. */
-  private async refreshAgentAccess(force: boolean): Promise<void> {
+  private async refreshAgentAccess(force: boolean, chatProfile?: string | null): Promise<void> {
     if (!this.deps.grantAgentAccess) return
-    const profile = this.settings.profile || 'default'
+    // A chat's agent acts in the chat's own profile; new agents in herdr's.
+    const profile = chatProfile || herdrChatProfile(this.settings)
     if (!force && Date.now() - (this.accessAt.get(profile) || 0) < 15 * 60 * 1000) return
     this.accessAt.set(profile, Date.now())
     try { await this.deps.grantAgentAccess(profile) } catch (error) {

@@ -17,7 +17,11 @@ const installingHerdr = ref(false)
 const settingUp = ref(false)
 const profiles = ref<string[]>(['default'])
 const form = reactive({ binaryPath: '', session: '', profile: 'default' })
-const profileOptions = computed(() => profiles.value.map(name => ({ label: name, value: name })))
+// '' follows the profile picked in Studio; a name pins herdr to that profile.
+const profileOptions = computed(() => [
+  { label: t('herdr.settings.profileFollow', { name: herdr.status?.settings.studioProfile || 'default' }), value: '' },
+  ...profiles.value.map(name => ({ label: name, value: name })),
+])
 
 onMounted(async () => {
   // Shown on its own (the agents page), so it loads herdr's status itself.
@@ -168,7 +172,7 @@ async function startServer() {
     </label>
     <label class="herdr-settings-row">
       <span>{{ t('herdr.settings.profile') }}</span>
-      <NSelect class="herdr-settings-profile" size="small" :value="settings?.profile || 'default'" :options="profileOptions" data-testid="herdr-profile" @update:value="value => save({ profile: value })" />
+      <NSelect class="herdr-settings-profile" size="small" :value="settings?.profile ?? ''" :options="profileOptions" data-testid="herdr-profile" @update:value="value => save({ profile: value })" />
     </label>
     <label class="herdr-settings-row">
       <span>{{ t('herdr.settings.autoImport') }}</span>

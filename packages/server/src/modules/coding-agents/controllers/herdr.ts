@@ -1,6 +1,7 @@
 import type { Context } from 'koa'
 import { herdrManager, HERDR_INTEGRATIONS } from '../services/herdr/manager'
 import { herdrKindForStudioAgent } from '../services/herdr/protocol'
+import { herdrChatProfile } from '../services/herdr/runtime'
 import { HERDR_PLUGIN_TOKEN_HEADER } from '../services/herdr/plugin'
 import type { HerdrWorkRef } from '../services/herdr/bridge'
 
@@ -28,6 +29,7 @@ export async function status(ctx: Context) {
   try {
     herdrManager.noteBrowserOrigin(browserOrigin(ctx))
     herdrManager.noteUser(ctx.state.user)
+    await herdrManager.noteStudioProfile(ctx.state.profile?.name)
     ctx.body = { ...(await herdrManager.status()), integrations: HERDR_INTEGRATIONS }
   } catch (error) { fail(ctx, error, 'Failed to read herdr status') }
 }
@@ -214,11 +216,14 @@ export async function pluginLink(ctx: Context) {
 export async function pluginAgents(ctx: Context) {
   try {
     const deps = herdrManager.getPluginDeps()
-    const [agents, providers] = await Promise.all([
+    const profile = herdrChatProfile(herdrManager.getSettings())
+    const [agents, providers, profileDefault] = await Promise.all([
       deps.listAgents(),
-      deps.listProviders(herdrManager.getSettings().profile || 'default').catch(() => []),
+      deps.listProviders(profile).catch(() => []),
+      deps.profileDefault?.(profile).catch(() => null) ?? null,
     ])
-    ctx.body = { agents: agents.filter(agent => herdrKindForStudioAgent(agent.id)), providers }
+    // `default`: the profile's default model, the plugin's first choice.
+    ctx.body = { agents: agents.filter(agent => herdrKindForStudioAgent(agent.id)), providers, profile, default: profileDefault?.model ? profileDefault : null }
   } catch (error) { fail(ctx, error, 'Failed to list agents') }
 }
 
@@ -290,7 +295,8 @@ export async function profiles(ctx: Context) {
 export async function pluginSettings(ctx: Context) {
   try {
     const settings = herdrManager.getSettings()
-    ctx.body = { profile: settings.profile, autoImport: settings.autoImport, profiles: herdrManager.getPluginDeps().listProfiles() }
+    // profile: the pinned profile ('' follows Studio); current: the one in use now.
+    ctx.body = { profile: settings.profile, current: herdrChatProfile(settings), studioProfile: settings.studioProfile, autoImport: settings.autoImport, profiles: herdrManager.getPluginDeps().listProfiles() }
   } catch (error) { fail(ctx, error, 'Failed to read settings') }
 }
 
@@ -300,12 +306,13 @@ export async function updatePluginSettings(ctx: Context) {
     const patch: { profile?: string; autoImport?: boolean } = {}
     if (body.profile !== undefined) {
       const profile = String(body.profile)
-      if (!herdrManager.getPluginDeps().listProfiles().includes(profile)) throw Object.assign(new Error(`Profile "${profile}" does not exist`), { status: 400 })
+      // '' follows Studio's profile.
+      if (profile && !herdrManager.getPluginDeps().listProfiles().includes(profile)) throw Object.assign(new Error(`Profile "${profile}" does not exist`), { status: 400 })
       patch.profile = profile
     }
     if (typeof body.autoImport === 'boolean') patch.autoImport = body.autoImport
     const settings = await herdrManager.updateSettings(patch)
-    ctx.body = { profile: settings.profile, autoImport: settings.autoImport }
+    ctx.body = { profile: settings.profile, current: herdrChatProfile(settings), autoImport: settings.autoImport }
   } catch (error) { fail(ctx, error, 'Failed to save settings') }
 }
 

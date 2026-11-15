@@ -12,7 +12,8 @@ stay separate apps; this integration links them.
   once it does something (`herdr-<native id>`); a Studio chat opened in herdr
   resumes the same native session (`claude --resume`, `codex resume`).
 - **Hermes chats too.** A Studio Hermes chat opens in herdr as
-  `hermes chat --resume <session> --create-if-missing`
+  `hermes chat --resume <session> --create-if-missing` (in the chat's
+  profile, on its model: see "Profiles and models")
   (`modules/hermes/services/herdr-launch.ts`, branched in `bootstrap/herdr.ts`):
   Studio drives the Hermes agent with the Studio session id as the agent
   session id, so the pane resumes the same conversation, and herdr's own
@@ -119,6 +120,53 @@ stay separate apps; this integration links them.
   `prepareCodingAgentInteractiveLaunch`, i.e. the same provider routing
   (including custom OpenAI-compatible providers such as llama-swap), MCP
   servers and rules prompt as Studio runs.
+
+## Profiles and models
+
+- **Starting point: the profile and its default model.** A chat keeps the
+  Studio profile it was made in. Opening it in herdr runs its agent in that
+  profile: Hermes chats as `hermes chat --resume <session> --create-if-missing`
+  with `HERMES_HOME=<profile folder>` (`hermesInteractiveLaunch`), so the CLI
+  reads that profile's config and sessions; coding agents through
+  `prepareCodingAgentSessionLaunch` with the chat's profile, provider and
+  model. A chat with no model of its own runs on the profile's default model
+  (`model.default` / `model.provider` in the profile's `config.yaml`, what
+  Studio's Models page sets).
+- **New chats and agents from herdr** use herdr's profile setting
+  (`settings.profile`, `herdrChatProfile`). Empty (the default, and what old
+  settings files with `"default"` move to) means *follow Studio*: the profile
+  last picked in Studio's switcher, which the client sends with every herdr
+  status request (`X-Hermes-Profile` → `noteStudioProfile` →
+  `settings.studioProfile`; the herdr store refreshes when the profile
+  changes). Pin a profile on Agents → herdr, or in herdr with the plugin's
+  settings popup ("Follow Studio" or a profile name). The plugin's "Start
+  agent with Studio" offers the profile's default model first (Enter), then
+  the agent's own configuration, then any Studio model. A new `hermes chat`
+  from herdr runs in that profile on its default model unless a model is picked.
+- **Switching the model.** In Studio, the chat's model picker sets the chat's
+  model (stored on the chat); every later run and every herdr launch uses it
+  (`-m <model> --provider <provider>` for Hermes; Claude Code / Codex get it
+  through Studio's launch). In a herdr pane, the agent's own `/model` works
+  too. Hermes: `/model` is per session in Hermes, and when the pane ends (or
+  before the chat opens in herdr again) Studio takes the Hermes session's model
+  as the chat's model, unless the chat's model was changed in Studio since the
+  pane started (`herdr-model-sync.ts`: launch records in
+  `HERMES_WEB_UI_HOME/herdr/hermes-models.json`, Hermes's model from the
+  profile's `state.db`). `/model … --global` in Hermes also changes the
+  profile's default. Claude Code / Codex: `/model` in the pane lasts for that
+  pane only; the next launch uses the chat's model from Studio, so pick it in
+  Studio to keep it. Nothing else overwrites a chat's model: changing the
+  profile default only affects chats without a model of their own.
+- **Switching the profile.** A chat's profile does not change. To use another
+  profile, switch profiles in Studio's profile switcher and start a new chat there, or
+  pin the profile in herdr's settings and start the agent from herdr.
+- **Local models.** Models page → Local models → "Make default model of
+  <profile>" runs Hermes's local-models activate for the picked profile, which
+  writes `model.default` and `model.provider: llamacpp` to that profile's
+  `config.yaml`: the same profile default as above. Studio lists it under
+  "Local models (Hermes Agent)" (`localModelsGroup` in
+  `hermes/controllers/models.ts`); Hermes chats run it through Hermes. Coding
+  agents cannot reach Hermes's local server through Studio's routing yet.
 
 ## Install, start and setup
 

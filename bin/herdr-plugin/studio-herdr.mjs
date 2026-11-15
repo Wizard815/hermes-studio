@@ -170,19 +170,23 @@ async function launch() {
   const config = loadConfig()
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   try {
-    const { agents, providers } = await api(config, '/agents')
+    const { agents, providers, profile: studioProfile, default: profileDefault } = await api(config, '/agents')
     process.stdout.write('\x1b[2J\x1b[H')
     process.stdout.write('Start an agent with Studio\'s MCP servers, skills and models.  q to cancel\n')
     if (!agents.length) return void await pause(rl, '\nNo herdr-compatible agents are installed in Studio.')
     const agentId = await choose(rl, 'Agent:', agents.map(agent => ({ label: agent.name, value: agent.id })))
     if (!agentId) return
-    const provider = await choose(rl, 'Provider:', [
+    // First (Enter) choice: the Studio profile's default model, as Studio's own new chats use.
+    const provider = await choose(rl, `Model (Studio profile "${studioProfile || 'default'}"):`, [
+      ...(profileDefault?.provider ? [{ label: `Profile default: ${profileDefault.model} (${profileDefault.provider})`, value: '@default' }] : []),
       { label: 'Agent\'s own configuration', value: '' },
       ...providers.map(group => ({ label: `${group.label} (${group.models.length} models)`, value: group.provider })),
     ])
     if (provider === null) return
     let model
-    if (provider) {
+    if (provider === '@default') {
+      model = profileDefault.model
+    } else if (provider) {
       const models = providers.find(group => group.provider === provider)?.models || []
       model = await choose(rl, 'Model:', models.map(id => ({ label: id, value: id })))
       if (model === null) return
@@ -192,7 +196,7 @@ async function launch() {
     const workspace = await ask(rl, `\nFolder [${defaultCwd || 'Studio default'}]: `) || defaultCwd
     const { link } = await api(config, '/launch', {
       method: 'POST',
-      body: JSON.stringify({ agentId, provider: provider || undefined, model, workspace: workspace || undefined }),
+      body: JSON.stringify({ agentId, provider: (provider === '@default' ? profileDefault.provider : provider) || undefined, model, workspace: workspace || undefined }),
     })
     await focusPane(config, link.paneId)
   } catch (error) {
@@ -209,12 +213,18 @@ async function settings() {
     const current = await api(config, '/settings')
     process.stdout.write('\x1b[2J\x1b[H')
     process.stdout.write('Studio settings for herdr  (q to close)\n')
-    process.stdout.write(`\nChats started in herdr go to the Studio profile: ${current.profile}\n`)
-    const profile = await choose(rl, 'Choose a profile:', current.profiles.map(name => ({ label: name === current.profile ? `${name}  (current)` : name, value: name })))
+    const following = !current.profile
+    process.stdout.write(`\nChats and agents started in herdr use the Studio profile: ${current.current || current.profile}${following ? '  (following Studio)' : ''}\n`)
+    process.stdout.write('A chat keeps the profile it was made in; this is for new ones.\n')
+    const profile = await choose(rl, 'Choose a profile:', [
+      { label: `Follow Studio (the profile picked in Studio${current.studioProfile ? `, now ${current.studioProfile}` : ''})${following ? '  (current)' : ''}`, value: '' },
+      ...current.profiles.map(name => ({ label: !following && name === current.profile ? `${name}  (current)` : name, value: name })),
+    ])
     if (profile === null || profile === current.profile) return
     const saved = await api(config, '/settings', { method: 'PUT', body: JSON.stringify({ profile }) })
-    notify('Studio profile for herdr chats', saved.profile)
-    await pause(rl, `\nNew chats from herdr will go to "${saved.profile}".`)
+    const label = saved.profile ? saved.profile : `Studio's profile (${saved.current})`
+    notify('Studio profile for herdr chats', label)
+    await pause(rl, `\nNew chats from herdr will use ${saved.profile ? `"${saved.profile}"` : label}.`)
   } catch (error) {
     await pause(rl, `\nError: ${error.message}`)
   } finally {

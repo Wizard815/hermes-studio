@@ -119,7 +119,10 @@ async function act(key: string, run: () => Promise<unknown>) {
 const installEngine = () => trackJob(() => installLocalRuntime(props.profile), 'engine')
 const quickstart = () => trackJob(() => localQuickstart(props.profile), 'quickstart')
 const download = (model: LocalCatalogModel) => trackJob(() => downloadLocalModel(model.id, props.profile), `dl:${model.id}`)
+// Hermes writes it as the main model of this profile's config.yaml, which is
+// the profile's default model in Studio (new chats, herdr, the model picker).
 const activate = (id: string) => trackJob(() => activateLocalModel(id, props.profile), `act:${id}`)
+const profileName = computed(() => props.profile || 'default')
 const eject = (id: string) => act(`ej:${id}`, () => ejectLocalModel(id, props.profile))
 
 function toggleServer() {
@@ -283,12 +286,12 @@ onUnmounted(() => { alive = false; if (pollTimer) clearTimeout(pollTimer) })
                 <strong dir="auto">{{ model.id }}</strong>
                 <small>{{ model.size_label }}</small>
               </div>
-              <NTag v-if="status.active_model_id === model.id" size="small" type="success" round>{{ t('hermesModels.default') }}</NTag>
+              <NTag v-if="status.active_model_id === model.id" size="small" type="success" round>{{ t('hermesModels.profileDefault', { profile: profileName }) }}</NTag>
               <NTag v-if="modelState(model.id)" size="small" type="info" round>
                 {{ modelState(model.id) === 'loading' ? t('hermesModels.loading') : t('hermesModels.loaded') }}
               </NTag>
               <NButton v-if="status.active_model_id !== model.id" size="tiny" :loading="busy === `act:${model.id}`" @click="activate(model.id)">
-                {{ t('hermesModels.useAsDefault') }}
+                {{ t('hermesModels.makeProfileDefault', { profile: profileName }) }}
               </NButton>
               <NButton v-if="modelState(model.id) === 'loaded'" size="tiny" :loading="busy === `ej:${model.id}`" @click="eject(model.id)">
                 {{ t('hermesModels.eject') }}
@@ -316,7 +319,7 @@ onUnmounted(() => { alive = false; if (pollTimer) clearTimeout(pollTimer) })
               </div>
               <NButton v-if="model.downloaded && model.downloaded_model_id && status.active_model_id !== model.downloaded_model_id" size="tiny"
                 :loading="busy === `act:${model.downloaded_model_id}`" @click="activate(model.downloaded_model_id)">
-                {{ t('hermesModels.useAsDefault') }}
+                {{ t('hermesModels.makeProfileDefault', { profile: profileName }) }}
               </NButton>
               <NButton v-else-if="!model.downloaded" size="tiny" type="primary" :disabled="!model.fits || model.needs_engine"
                 :title="model.fits ? undefined : model.fit_detail" :loading="busy === `dl:${model.id}`" @click="download(model)">

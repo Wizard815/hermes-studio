@@ -27,9 +27,11 @@ import {
   storedAgentIdForCodingAgent,
 } from '../modules/coding-agents/services'
 import { herdrManager, type HerdrPluginDeps } from '../modules/coding-agents/services/herdr/manager'
-import { listProfileModelGroups } from '../modules/hermes/controllers/models'
-import { listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
-import { hermesCliAvailable, hermesInteractiveLaunch, hermesNewChatLaunch } from '../modules/hermes/services/herdr-launch'
+import { listProfileModelChoices, listProfileModelGroups } from '../modules/hermes/controllers/models'
+import { getProfileDir, listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
+import { readProfileDefaultModel } from '../modules/hermes/services/profiles/catalog'
+import { hermesCliAvailable, hermesInteractiveLaunch, hermesNewChatLaunch, hermesSessionIdFor } from '../modules/hermes/services/herdr-launch'
+import { HerdrHermesLaunchStore, herdrModelChange, readHermesSessionRoute } from '../modules/hermes/services/herdr-model-sync'
 
 /** The stored agent id when herdr can host the chat as a pane, else null. */
 function herdrHostableAgentId(agent: string | null | undefined): string | null {
@@ -57,7 +59,53 @@ function toRef(row: HermesSessionRow | null): HerdrSessionRef | null {
     agent_native_session_id: row.agent_native_session_id || '',
     message_count: row.message_count,
     category_id: row.category_id ?? null,
+    profile: row.profile || 'default',
   }
+}
+
+let hermesLaunchStore: HerdrHermesLaunchStore | null = null
+/** Chats whose agent runs in a herdr pane now (not just its waiting pane). */
+const liveChats = new Set<string>()
+function hermesLaunches(): HerdrHermesLaunchStore {
+  if (!hermesLaunchStore) hermesLaunchStore = new HerdrHermesLaunchStore(join(getWebUiHome(), 'herdr', 'hermes-models.json'))
+  return hermesLaunchStore
+}
+
+/**
+ * A Hermes chat's pane is done (or about to start again): keep a model picked
+ * with `/model` in the pane as the chat's model, unless Studio's model picker
+ * changed it since (see `herdr-model-sync.ts`).
+ */
+export async function syncHermesModelFromHerdr(sessionId: string, options: { forget?: boolean } = {}): Promise<HermesSessionRow | null> {
+  const store = hermesLaunches()
+  const record = store.get(sessionId)
+  const row = getSession(sessionId)
+  if (!record || !row || row.agent !== 'hermes') return row
+  const hermesNow = await readHermesSessionRoute(getProfileDir(row.profile || 'default'), hermesSessionIdFor(row))
+  const change = herdrModelChange(record, { model: row.model || '', provider: row.provider || '' }, hermesNow)
+  if (change) {
+    updateSession(sessionId, { model: change.model, provider: change.provider })
+    notifySessionListChanged({ type: 'updated', sessionId })
+    logger.info({ sessionId, model: change.model, provider: change.provider }, '[herdr] chat keeps the model picked in its herdr pane')
+  }
+  if (options.forget) store.delete(sessionId)
+  else if (change) store.set(sessionId, { ...record, studio: change, hermes: hermesNow!, launched: change.model, at: Date.now() })
+  return change ? getSession(sessionId) : row
+}
+
+/** Open a Hermes chat in herdr in its profile, on its model, remembering both for `syncHermesModelFromHerdr`. */
+async function hermesChatLaunch(sessionId: string) {
+  const row = (await syncHermesModelFromHerdr(sessionId))!
+  const profile = row.profile || 'default'
+  const hermes = await readHermesSessionRoute(getProfileDir(profile), hermesSessionIdFor(row)) ?? { model: '', provider: '' }
+  const profileDefault = readProfileDefaultModel(profile)
+  hermesLaunches().set(sessionId, {
+    studio: { model: row.model || '', provider: row.provider || '' },
+    hermes,
+    launched: row.model || (profileDefault === '—' ? '' : profileDefault),
+    at: Date.now(),
+  })
+  return hermesInteractiveLaunch(row, getProfileDir)
 }
 
 const AGENT_LABELS: Record<string, string> = { hermes: 'Hermes Agent' }
@@ -109,17 +157,24 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
       })))
       updateSessionStats(sessionId)
     },
-    setLink: (sessionId, link) => setSessionHerdrLink(sessionId, link),
+    setLink: (sessionId, link) => {
+      setSessionHerdrLink(sessionId, link)
+      if (link && !link.waiting) { liveChats.add(sessionId); return }
+      // The chat's agent left its pane: a model picked there with /model stays the chat's.
+      if (!liveChats.delete(sessionId)) return
+      void syncHermesModelFromHerdr(sessionId, { forget: true }).catch(error => logger.warn({ sessionId, error: String(error) }, '[herdr] could not read the model of a Hermes pane'))
+    },
     notifyUpdated: sessionId => notifySessionListChanged({ type: 'updated', sessionId }),
     locateTranscript: (agent, nativeId) => findChatTranscript(agent, nativeId),
     // Hermes chats resume as `hermes chat` panes (herdr has a hermes
     // integration); everything else goes through the coding-agent launcher.
     prepareSessionLaunch: async sessionId => {
       const session = getSession(sessionId)
-      return session?.agent === 'hermes' ? hermesInteractiveLaunch(session) : prepareCodingAgentSessionLaunch(sessionId)
+      return session?.agent === 'hermes' ? hermesChatLaunch(sessionId) : prepareCodingAgentSessionLaunch(sessionId)
     },
+    // A new Hermes chat runs in herdr's profile (Studio's, unless pinned) on its default model, or the model picked.
     prepareAgentLaunch: async (agentId, input) => agentId === 'hermes'
-      ? hermesNewChatLaunch(input.workspace)
+      ? hermesNewChatLaunch(input.workspace, { profile: input.profile, provider: input.provider, model: input.model, profileHome: getProfileDir })
       : prepareCodingAgentInteractiveLaunch(agentId, {
           profile: input.profile,
           provider: input.provider,
@@ -371,6 +426,7 @@ export function herdrPluginDeps(baseUrl: string): HerdrPluginDeps {
       ...(hermesCliAvailable() ? [{ id: 'hermes', name: AGENT_LABELS.hermes }] : []),
     ],
     listProviders: profile => listProfileModelGroups(profile),
+    profileDefault: async profile => (await listProfileModelChoices(profile)).default,
     listProfiles: () => { try { const names = listProfileNamesFromDisk(); return names.length ? names : ['default'] } catch { return ['default'] } },
     studioUrl: () => baseUrl,
     browserUrl: () => process.env.HERMES_WEB_UI_PUBLIC_URL || baseUrl,
