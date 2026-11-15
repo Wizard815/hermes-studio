@@ -64,6 +64,17 @@ const envPlatformMap: Record<string, [string, string]> = {
   WEIXIN_ACCOUNT_ID: ['weixin', 'extra.account_id'],
   WEIXIN_BASE_URL: ['weixin', 'extra.base_url'],
   WHATSAPP_ENABLED: ['whatsapp', 'enabled'],
+  // Mattermost: only its behaviour settings. The server URL, bot token and allowed users are
+  // edited through Hermes Agent's own messaging API, which never sends a secret back.
+  MATTERMOST_REPLY_MODE: ['mattermost', 'reply_mode'],
+  MATTERMOST_REQUIRE_MENTION: ['mattermost', 'require_mention'],
+  MATTERMOST_FREE_RESPONSE_CHANNELS: ['mattermost', 'free_response_channels'],
+  MATTERMOST_ALLOWED_CHANNELS: ['mattermost', 'allowed_channels'],
+  MATTERMOST_HOME_CHANNEL: ['mattermost', 'home_channel_id'],
+  MATTERMOST_ALLOW_ALL_USERS: ['mattermost', 'allow_all_users'],
+  MATTERMOST_ALLOW_BOTS: ['mattermost', 'allow_bots'],
+  MATTERMOST_BOT_USERS: ['mattermost', 'bot_users'],
+  MATTERMOST_PROXY: ['mattermost', 'proxy'],
 }
 
 const platformEnvMap: Record<string, Record<string, string>> = {}

@@ -8,6 +8,8 @@ export const STUDIO_CARD_ENV_KEYS: Record<string, string[]> = {
   telegram: ['TELEGRAM_BOT_TOKEN'],
   discord: ['DISCORD_BOT_TOKEN'],
   slack: ['SLACK_BOT_TOKEN'],
+  // The Mattermost card edits only behaviour settings; URL, token and allowed users stay in the Hermes panel.
+  mattermost: [],
   whatsapp: ['WHATSAPP_ENABLED'],
   matrix: ['MATRIX_ACCESS_TOKEN', 'MATRIX_HOMESERVER', 'MATRIX_USER_ID', 'MATRIX_PASSWORD'],
   feishu: ['FEISHU_APP_ID', 'FEISHU_APP_SECRET', 'FEISHU_ENCRYPT_KEY', 'FEISHU_VERIFICATION_TOKEN'],
@@ -42,6 +44,11 @@ export function panelFields(p: HermesPlatform, hideStudioKeys: boolean): { basic
     basic: fields.filter(f => !f.advanced && (f.required || f.is_list || !optionalNoise(f))),
     advanced: fields.filter(f => f.advanced || (!f.required && !f.is_list && optionalNoise(f))),
   }
+}
+
+/** Studio's own plain-language label and hint for a Hermes field, when it has one (i18n key prefix). */
+export const FIELD_TEXT_PREFIX: Record<string, string> = {
+  mattermost: 'hermesChannels.mattermost.fields',
 }
 
 /** Optional tuning knobs (ports, hosts, paths, …) go behind "More settings". */

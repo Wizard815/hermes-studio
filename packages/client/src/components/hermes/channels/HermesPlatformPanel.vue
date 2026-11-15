@@ -5,7 +5,8 @@ import { useI18n } from 'vue-i18n'
 import { testHermesPlatform, updateHermesPlatform, type HermesEnvField, type HermesPlatform, type HermesPlatformTest } from '@/api/hermes/channels'
 import SettingRow from '@/components/hermes/settings/SettingRow.vue'
 import HermesOnboarding from './HermesOnboarding.vue'
-import { buildPlatformUpdate, cleanError, hasUpdate, panelFields, stateKey, stateTagType } from './channel-helpers'
+import HermesMattermostGuide from './HermesMattermostGuide.vue'
+import { FIELD_TEXT_PREFIX, buildPlatformUpdate, cleanError, hasUpdate, panelFields, stateKey, stateTagType } from './channel-helpers'
 import { useHermesChannels } from './useHermesChannels'
 
 const props = defineProps<{
@@ -15,7 +16,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ saved: [] }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const message = useMessage()
 const channels = useHermesChannels()
 
@@ -45,19 +46,30 @@ function resetDrafts() {
 }
 watch(() => props.platform, resetDrafts, { immediate: true })
 
+/** Studio's own wording for this field, when it has one; otherwise Hermes's. */
+function studioText(field: HermesEnvField, part: 'label' | 'hint' | 'placeholder'): string {
+  const prefix = FIELD_TEXT_PREFIX[props.platform.id]
+  const key = prefix && `${prefix}.${field.key}.${part}`
+  return key && te(key) ? t(key) : ''
+}
+
 function label(field: HermesEnvField) {
-  return field.prompt || field.key
+  return studioText(field, 'label') || field.prompt || field.key
 }
 
 function hint(field: HermesEnvField) {
-  const text = [field.description, field.help].filter(Boolean).join(' ')
+  const text = studioText(field, 'hint') || [field.description, field.help].filter(Boolean).join(' ')
   return field.required ? `${t('hermesChannels.required')} · ${text}` : text
+}
+
+function fieldPlaceholder(field: HermesEnvField) {
+  return studioText(field, 'placeholder') || field.key
 }
 
 function placeholder(field: HermesEnvField) {
   if (clears.value.includes(field.key)) return t('hermesChannels.willBeRemoved')
   if (field.is_set && !field.is_list) return t('hermesChannels.keepCurrent')
-  return field.key
+  return fieldPlaceholder(field)
 }
 
 function toggleClear(field: HermesEnvField) {
@@ -128,6 +140,7 @@ async function onboarded() {
     <NAlert v-if="testResult" :type="testAlertType" :show-icon="false" class="inline-alert" closable @close="testResult = null">{{ testResult.message }}</NAlert>
 
     <HermesOnboarding v-if="hasOnboarding" :platform="platform" @done="onboarded" />
+    <HermesMattermostGuide v-if="platform.id === 'mattermost'" :configured="platform.configured" />
 
     <template v-for="(group, gi) in [fields.basic, fields.advanced]" :key="gi">
       <NCollapseTransition :show="gi === 0 || showAdvanced">

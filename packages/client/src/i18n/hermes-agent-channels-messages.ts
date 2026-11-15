@@ -99,6 +99,59 @@ export const hermesChannelsMessages = {
         "noApproved": "No one approved yet",
         "failed": "Could not update access"
       },
+      "mattermost": {
+        "guideTitle": "How to connect a Mattermost bot",
+        "showSteps": "Show steps",
+        "hideSteps": "Hide steps",
+        "steps": {
+          "createBot": "In Mattermost open the product menu (grid icon, top left) > Integrations > Bot Accounts > Add Bot Account. Pick a username such as hermes and create it. If Bot Accounts is missing, a system admin turns it on under System Console > Integrations > Bot Accounts.",
+          "copyToken": "Copy the access token Mattermost shows right after you create the bot. It is shown only once; if you lose it, create a new token on the bot's page.",
+          "addToTeam": "Add the bot to your team (team menu > Add members) and to every channel where it should listen. Direct messages work without this.",
+          "fillIn": "Below, paste your server address (for example https://chat.example.com, without /api) and the bot token, and list who may talk to the bot.",
+          "userId": "To find your own user ID: while signed in, open https://your-server/api/v4/users/me in the browser and copy the \"id\" value. Admins also see it under System Console > Users.",
+          "tryIt": "Turn the channel on, save, restart the gateway, then send the bot a direct message. In channels, mention it ({'@'}hermes) unless you change that below."
+        },
+        "channelIds": "Channel IDs: open the channel, click its name > View Info. The ID is at the bottom.",
+        "personalToken": "Bot accounts turned off on your server? A personal access token (Profile > Security > Personal Access Tokens) works too, but the agent then posts as you.",
+        "behaviour": "How the bot behaves",
+        "threads": "Reply in threads",
+        "threadsHint": "On: answers go into a thread under the message. Off (default): answers are posted as normal messages.",
+        "requireMention": "In channels, answer only when mentioned",
+        "requireMentionHint": "On (default): in channels the bot answers only when someone writes {'@'}botname. Direct messages always get an answer.",
+        "freeChannels": "Channels where no mention is needed",
+        "freeChannelsHint": "Channel IDs, comma separated. The bot answers every message there.",
+        "onlyChannels": "Listen only in these channels",
+        "onlyChannelsHint": "Channel IDs, comma separated. When set, the bot ignores every other channel (direct messages still work). Blank: every channel it is in.",
+        "homeChannel": "Home channel for job results",
+        "homeChannelHint": "Channel ID where scheduled jobs and notifications are posted. You can also type /sethome in a Mattermost channel.",
+        "allowBots": "Messages from other bots",
+        "allowBotsHint": "Whether other bots and integrations may talk to the agent. Ignored by default, to avoid bot loops.",
+        "allowBotsNone": "Ignore",
+        "allowBotsMentions": "Allow when they mention the bot",
+        "allowBotsAll": "Allow",
+        "botUsers": "Other bots (user IDs)",
+        "botUsersHint": "Mattermost does not always mark bot accounts. List bot user IDs here so they are treated as bots. Comma separated.",
+        "allowAll": "Let anyone on the server use the bot",
+        "allowAllHint": "Skips the allowed-users list. Only for testing on a private server.",
+        "allowAllWarning": "Everyone who can message the bot can use the agent and its tools.",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "Server address",
+            "hint": "Your Mattermost web address, for example https://chat.example.com (no /api at the end).",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "Bot token",
+            "hint": "The bot account's access token (Integrations > Bot Accounts). It is never shown again after saving.",
+            "placeholder": "Bot access token"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "Allowed user IDs",
+            "hint": "Mattermost user IDs (26 letters and digits, not usernames), comma separated. Without a list, newcomers get a pairing request you approve below.",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
+      },
       "webhooks": {
         "title": "Incoming webhooks",
         "hint": "Let other services (GitHub, Home Assistant, Unraid, …) wake the agent. Each route gets its own URL and secret.",
@@ -232,6 +285,59 @@ export const hermesChannelsMessages = {
         "noPending": "没有等待中的请求。",
         "noApproved": "还没有批准任何人",
         "failed": "无法更新权限"
+      },
+      "mattermost": {
+        "guideTitle": "如何连接 Mattermost 机器人",
+        "showSteps": "显示步骤",
+        "hideSteps": "收起步骤",
+        "steps": {
+          "createBot": "在 Mattermost 中打开产品菜单（左上角九宫格图标）> 集成 > 机器人账号 > 添加机器人账号。填写用户名（例如 hermes）并创建。如果没有“机器人账号”，请系统管理员在 系统控制台 > 集成 > 机器人账号 中开启。",
+          "copyToken": "创建后 Mattermost 会显示访问令牌，请立即复制。它只显示一次；丢失后可在机器人页面创建新令牌。",
+          "addToTeam": "把机器人加入你的团队（团队菜单 > 添加成员），并加入它需要监听的每个频道。私信不需要这一步。",
+          "fillIn": "在下方粘贴服务器地址（例如 https://chat.example.com，不要带 /api）和机器人令牌，并填写允许与机器人对话的人。",
+          "userId": "查找你自己的用户 ID：登录状态下在浏览器打开 https://你的服务器/api/v4/users/me，复制其中的 \"id\" 值。管理员也可以在 系统控制台 > 用户 中查看。",
+          "tryIt": "打开该渠道、保存、重启网关，然后给机器人发一条私信。在频道里需要 {'@'}hermes 提及它，除非你在下面修改。"
+        },
+        "channelIds": "频道 ID：打开频道，点击频道名 > 查看信息，ID 在底部。",
+        "personalToken": "服务器关闭了机器人账号？也可以使用个人访问令牌（个人资料 > 安全 > 个人访问令牌），但智能体会以你的身份发消息。",
+        "behaviour": "机器人行为",
+        "threads": "在主题串中回复",
+        "threadsHint": "开启：回复放在原消息下的主题串里。关闭（默认）：作为普通消息发送。",
+        "requireMention": "频道中仅在被提及时回复",
+        "requireMentionHint": "开启（默认）：在频道里只有有人写 {'@'}机器人名 时才回复。私信总是会回复。",
+        "freeChannels": "无需提及的频道",
+        "freeChannelsHint": "频道 ID，用逗号分隔。机器人会回复其中的每条消息。",
+        "onlyChannels": "只在这些频道监听",
+        "onlyChannelsHint": "频道 ID，用逗号分隔。设置后机器人忽略其他所有频道（私信仍可用）。留空：它所在的所有频道。",
+        "homeChannel": "任务结果的主频道",
+        "homeChannelHint": "定时任务和通知发送到的频道 ID。也可以在 Mattermost 频道中输入 /sethome。",
+        "allowBots": "来自其他机器人的消息",
+        "allowBotsHint": "是否允许其他机器人和集成与智能体对话。默认忽略，以避免机器人互相循环。",
+        "allowBotsNone": "忽略",
+        "allowBotsMentions": "提及机器人时允许",
+        "allowBotsAll": "允许",
+        "botUsers": "其他机器人（用户 ID）",
+        "botUsersHint": "Mattermost 并不总是标记机器人账号。在此列出机器人的用户 ID，使其被当作机器人处理。用逗号分隔。",
+        "allowAll": "允许服务器上任何人使用机器人",
+        "allowAllHint": "跳过允许用户列表。仅用于私有服务器上的测试。",
+        "allowAllWarning": "任何能给机器人发消息的人都可以使用智能体及其工具。",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "服务器地址",
+            "hint": "你的 Mattermost 网址，例如 https://chat.example.com（末尾不要加 /api）。",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "机器人令牌",
+            "hint": "机器人账号的访问令牌（集成 > 机器人账号）。保存后不会再显示。",
+            "placeholder": "机器人访问令牌"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "允许的用户 ID",
+            "hint": "Mattermost 用户 ID（26 位字母和数字，不是用户名），用逗号分隔。不填时，新用户会收到配对请求，由你在下方批准。",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
       },
       "webhooks": {
         "title": "传入 Webhook",
@@ -367,6 +473,59 @@ export const hermesChannelsMessages = {
         "noApproved": "尚未核准任何人",
         "failed": "無法更新權限"
       },
+      "mattermost": {
+        "guideTitle": "如何連接 Mattermost 機器人",
+        "showSteps": "顯示步驟",
+        "hideSteps": "收起步驟",
+        "steps": {
+          "createBot": "在 Mattermost 中開啟產品選單（左上角九宮格圖示）> 整合 > 機器人帳號 > 新增機器人帳號。填寫使用者名稱（例如 hermes）並建立。如果沒有「機器人帳號」，請系統管理員在 系統主控台 > 整合 > 機器人帳號 中開啟。",
+          "copyToken": "建立後 Mattermost 會顯示存取權杖，請立即複製。它只顯示一次；遺失後可在機器人頁面建立新權杖。",
+          "addToTeam": "把機器人加入你的團隊（團隊選單 > 新增成員），並加入它需要監聽的每個頻道。私訊不需要這一步。",
+          "fillIn": "在下方貼上伺服器位址（例如 https://chat.example.com，不要帶 /api）和機器人權杖，並填寫允許與機器人對話的人。",
+          "userId": "查詢你自己的使用者 ID：登入狀態下在瀏覽器開啟 https://你的伺服器/api/v4/users/me，複製其中的 \"id\" 值。管理員也可以在 系統主控台 > 使用者 中查看。",
+          "tryIt": "開啟此頻道、儲存、重新啟動閘道，然後傳一則私訊給機器人。在頻道裡需要 {'@'}hermes 提及它，除非你在下面修改。"
+        },
+        "channelIds": "頻道 ID：開啟頻道，點擊頻道名稱 > 檢視資訊，ID 在底部。",
+        "personalToken": "伺服器關閉了機器人帳號？也可以使用個人存取權杖（個人檔案 > 安全性 > 個人存取權杖），但智慧體會以你的身分發訊息。",
+        "behaviour": "機器人行為",
+        "threads": "在討論串中回覆",
+        "threadsHint": "開啟：回覆放在原訊息下的討論串。關閉（預設）：以一般訊息發送。",
+        "requireMention": "頻道中僅在被提及時回覆",
+        "requireMentionHint": "開啟（預設）：在頻道裡只有有人寫 {'@'}機器人名稱 時才回覆。私訊一律回覆。",
+        "freeChannels": "不需提及的頻道",
+        "freeChannelsHint": "頻道 ID，以逗號分隔。機器人會回覆其中的每則訊息。",
+        "onlyChannels": "只在這些頻道監聽",
+        "onlyChannelsHint": "頻道 ID，以逗號分隔。設定後機器人忽略其他所有頻道（私訊仍可用）。留空：它所在的所有頻道。",
+        "homeChannel": "任務結果的主頻道",
+        "homeChannelHint": "排程任務與通知發送到的頻道 ID。也可以在 Mattermost 頻道中輸入 /sethome。",
+        "allowBots": "來自其他機器人的訊息",
+        "allowBotsHint": "是否允許其他機器人和整合與智慧體對話。預設忽略，以避免機器人互相循環。",
+        "allowBotsNone": "忽略",
+        "allowBotsMentions": "提及機器人時允許",
+        "allowBotsAll": "允許",
+        "botUsers": "其他機器人（使用者 ID）",
+        "botUsersHint": "Mattermost 不一定會標記機器人帳號。在此列出機器人的使用者 ID，讓它們被當作機器人處理。以逗號分隔。",
+        "allowAll": "允許伺服器上任何人使用機器人",
+        "allowAllHint": "略過允許使用者清單。僅用於私人伺服器上的測試。",
+        "allowAllWarning": "任何能傳訊息給機器人的人都能使用智慧體及其工具。",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "伺服器位址",
+            "hint": "你的 Mattermost 網址，例如 https://chat.example.com（結尾不要加 /api）。",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "機器人權杖",
+            "hint": "機器人帳號的存取權杖（整合 > 機器人帳號）。儲存後不會再顯示。",
+            "placeholder": "機器人存取權杖"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "允許的使用者 ID",
+            "hint": "Mattermost 使用者 ID（26 位字母與數字，不是使用者名稱），以逗號分隔。不填時，新使用者會收到配對請求，由你在下方核准。",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
+      },
       "webhooks": {
         "title": "傳入 Webhook",
         "hint": "讓其他服務（GitHub、Home Assistant、Unraid 等）喚醒代理。每條路由都有自己的網址和密鑰。",
@@ -500,6 +659,59 @@ export const hermesChannelsMessages = {
         "noPending": "待機中の人はいません。",
         "noApproved": "まだ誰も承認されていません",
         "failed": "アクセスを更新できませんでした"
+      },
+      "mattermost": {
+        "guideTitle": "Mattermost ボットの接続方法",
+        "showSteps": "手順を表示",
+        "hideSteps": "手順を隠す",
+        "steps": {
+          "createBot": "Mattermost で製品メニュー（左上のグリッドアイコン）> 統合機能 > ボットアカウント > ボットアカウントを追加 を開きます。hermes などのユーザー名を付けて作成します。ボットアカウントが見当たらない場合は、システム管理者が システムコンソール > 統合機能 > ボットアカウント で有効にします。",
+          "copyToken": "ボット作成直後に表示されるアクセストークンをコピーします。表示は一度だけです。紛失したらボットのページで新しいトークンを作成します。",
+          "addToTeam": "ボットをチームに追加し（チームメニュー > メンバーを追加）、待ち受けさせたい各チャンネルにも追加します。ダイレクトメッセージには不要です。",
+          "fillIn": "下にサーバーのアドレス（例: https://chat.example.com、/api は付けない）とボットトークンを貼り付け、ボットと話せる人を入力します。",
+          "userId": "自分のユーザー ID の調べ方: ログインした状態でブラウザから https://あなたのサーバー/api/v4/users/me を開き、\"id\" の値をコピーします。管理者は システムコンソール > ユーザー でも確認できます。",
+          "tryIt": "チャンネルをオンにして保存し、ゲートウェイを再起動してから、ボットにダイレクトメッセージを送ります。チャンネルでは下で変更しない限り {'@'}hermes とメンションします。"
+        },
+        "channelIds": "チャンネル ID: チャンネルを開き、名前をクリック > 情報を表示。ID は一番下にあります。",
+        "personalToken": "サーバーでボットアカウントが無効ですか？個人用アクセストークン（プロフィール > セキュリティ > 個人用アクセストークン）でも動きますが、エージェントはあなたとして投稿します。",
+        "behaviour": "ボットの動作",
+        "threads": "スレッドで返信",
+        "threadsHint": "オン: 返信を元のメッセージのスレッドに入れます。オフ（既定）: 通常のメッセージとして投稿します。",
+        "requireMention": "チャンネルではメンションされたときだけ返信",
+        "requireMentionHint": "オン（既定）: チャンネルでは誰かが {'@'}ボット名 と書いたときだけ返信します。ダイレクトメッセージには常に返信します。",
+        "freeChannels": "メンション不要のチャンネル",
+        "freeChannelsHint": "チャンネル ID をカンマ区切りで。そこではすべてのメッセージに返信します。",
+        "onlyChannels": "これらのチャンネルだけで待ち受け",
+        "onlyChannelsHint": "チャンネル ID をカンマ区切りで。設定すると他のチャンネルはすべて無視します（ダイレクトメッセージは使えます）。空欄: 参加しているすべてのチャンネル。",
+        "homeChannel": "ジョブ結果のホームチャンネル",
+        "homeChannelHint": "定期ジョブと通知を投稿するチャンネル ID。Mattermost のチャンネルで /sethome と入力しても設定できます。",
+        "allowBots": "他のボットからのメッセージ",
+        "allowBotsHint": "他のボットや連携がエージェントと話せるかどうか。ボット同士のループを防ぐため既定では無視します。",
+        "allowBotsNone": "無視",
+        "allowBotsMentions": "ボットにメンションしたときは許可",
+        "allowBotsAll": "許可",
+        "botUsers": "他のボット（ユーザー ID）",
+        "botUsersHint": "Mattermost はボットアカウントを常に区別できるとは限りません。ボットとして扱うユーザー ID をここに列挙します。カンマ区切り。",
+        "allowAll": "サーバー上の誰でもボットを使えるようにする",
+        "allowAllHint": "許可ユーザーのリストを使いません。プライベートサーバーでのテスト専用です。",
+        "allowAllWarning": "ボットにメッセージを送れる人なら誰でも、エージェントとそのツールを使えます。",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "サーバーのアドレス",
+            "hint": "Mattermost の Web アドレス。例: https://chat.example.com（末尾に /api は付けない）。",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "ボットトークン",
+            "hint": "ボットアカウントのアクセストークン（統合機能 > ボットアカウント）。保存後は二度と表示されません。",
+            "placeholder": "ボットのアクセストークン"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "許可するユーザー ID",
+            "hint": "Mattermost のユーザー ID（ユーザー名ではなく 26 文字の英数字）をカンマ区切りで。空欄の場合、新しい人にはペアリング要求が届き、下で承認します。",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
       },
       "webhooks": {
         "title": "受信 Webhook",
@@ -635,6 +847,59 @@ export const hermesChannelsMessages = {
         "noApproved": "아직 승인된 사람이 없습니다",
         "failed": "접근을 변경하지 못했습니다"
       },
+      "mattermost": {
+        "guideTitle": "Mattermost 봇 연결 방법",
+        "showSteps": "단계 보기",
+        "hideSteps": "단계 숨기기",
+        "steps": {
+          "createBot": "Mattermost에서 제품 메뉴(왼쪽 위 격자 아이콘) > 통합 > 봇 계정 > 봇 계정 추가를 엽니다. hermes 같은 사용자 이름으로 만듭니다. 봇 계정이 보이지 않으면 시스템 관리자가 시스템 콘솔 > 통합 > 봇 계정에서 켭니다.",
+          "copyToken": "봇을 만든 직후 표시되는 액세스 토큰을 복사합니다. 한 번만 표시되며, 잃어버리면 봇 페이지에서 새 토큰을 만듭니다.",
+          "addToTeam": "봇을 팀에 추가하고(팀 메뉴 > 멤버 추가) 봇이 들어야 할 각 채널에도 추가합니다. 다이렉트 메시지에는 필요 없습니다.",
+          "fillIn": "아래에 서버 주소(예: https://chat.example.com, /api 없이)와 봇 토큰을 붙여 넣고, 봇과 대화할 수 있는 사람을 입력합니다.",
+          "userId": "내 사용자 ID 찾기: 로그인한 상태로 브라우저에서 https://내-서버/api/v4/users/me 를 열고 \"id\" 값을 복사합니다. 관리자는 시스템 콘솔 > 사용자에서도 볼 수 있습니다.",
+          "tryIt": "채널을 켜고 저장한 뒤 게이트웨이를 다시 시작하고 봇에게 다이렉트 메시지를 보냅니다. 채널에서는 아래에서 바꾸지 않는 한 {'@'}hermes 로 멘션합니다."
+        },
+        "channelIds": "채널 ID: 채널을 열고 이름 클릭 > 정보 보기. ID는 맨 아래에 있습니다.",
+        "personalToken": "서버에서 봇 계정이 꺼져 있나요? 개인 액세스 토큰(프로필 > 보안 > 개인 액세스 토큰)도 되지만, 에이전트가 내 이름으로 글을 올립니다.",
+        "behaviour": "봇 동작",
+        "threads": "스레드로 답장",
+        "threadsHint": "켜기: 원래 메시지 아래 스레드에 답합니다. 끄기(기본): 일반 메시지로 올립니다.",
+        "requireMention": "채널에서는 멘션될 때만 답장",
+        "requireMentionHint": "켜기(기본): 채널에서는 누군가 {'@'}봇이름 을 쓸 때만 답합니다. 다이렉트 메시지에는 항상 답합니다.",
+        "freeChannels": "멘션이 필요 없는 채널",
+        "freeChannelsHint": "채널 ID를 쉼표로 구분. 그 채널의 모든 메시지에 답합니다.",
+        "onlyChannels": "이 채널에서만 듣기",
+        "onlyChannelsHint": "채널 ID를 쉼표로 구분. 설정하면 다른 채널은 모두 무시합니다(다이렉트 메시지는 계속 작동). 비우면 봇이 속한 모든 채널.",
+        "homeChannel": "작업 결과용 홈 채널",
+        "homeChannelHint": "예약 작업과 알림을 올릴 채널 ID. Mattermost 채널에서 /sethome 을 입력해도 됩니다.",
+        "allowBots": "다른 봇의 메시지",
+        "allowBotsHint": "다른 봇과 연동이 에이전트와 대화할 수 있는지. 봇끼리의 루프를 막기 위해 기본은 무시입니다.",
+        "allowBotsNone": "무시",
+        "allowBotsMentions": "봇을 멘션할 때 허용",
+        "allowBotsAll": "허용",
+        "botUsers": "다른 봇(사용자 ID)",
+        "botUsersHint": "Mattermost가 항상 봇 계정을 표시하지는 않습니다. 봇으로 취급할 사용자 ID를 여기에 쉼표로 구분해 적습니다.",
+        "allowAll": "서버의 누구나 봇 사용 허용",
+        "allowAllHint": "허용 사용자 목록을 건너뜁니다. 개인 서버에서 테스트할 때만 쓰세요.",
+        "allowAllWarning": "봇에게 메시지를 보낼 수 있는 누구나 에이전트와 그 도구를 사용할 수 있습니다.",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "서버 주소",
+            "hint": "Mattermost 웹 주소. 예: https://chat.example.com (끝에 /api 없이).",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "봇 토큰",
+            "hint": "봇 계정의 액세스 토큰(통합 > 봇 계정). 저장 후에는 다시 표시되지 않습니다.",
+            "placeholder": "봇 액세스 토큰"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "허용된 사용자 ID",
+            "hint": "Mattermost 사용자 ID(사용자 이름이 아닌 26자 영숫자)를 쉼표로 구분. 비워 두면 새 사용자는 페어링 요청을 보내고 아래에서 승인합니다.",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
+      },
       "webhooks": {
         "title": "수신 웹훅",
         "hint": "다른 서비스(GitHub, Home Assistant, Unraid 등)가 에이전트를 깨울 수 있게 합니다. 경로마다 고유한 URL과 시크릿이 있습니다.",
@@ -768,6 +1033,59 @@ export const hermesChannelsMessages = {
         "noPending": "Niemand wartet.",
         "noApproved": "Noch niemand freigegeben",
         "failed": "Zugriff konnte nicht geändert werden"
+      },
+      "mattermost": {
+        "guideTitle": "So verbinden Sie einen Mattermost-Bot",
+        "showSteps": "Schritte zeigen",
+        "hideSteps": "Schritte ausblenden",
+        "steps": {
+          "createBot": "Öffnen Sie in Mattermost das Produktmenü (Raster-Symbol oben links) > Integrationen > Bot-Konten > Bot-Konto hinzufügen. Wählen Sie einen Benutzernamen wie hermes und legen Sie ihn an. Fehlt „Bot-Konten“, schaltet ein Systemadministrator es unter Systemkonsole > Integrationen > Bot-Konten ein.",
+          "copyToken": "Kopieren Sie das Zugriffstoken, das Mattermost direkt nach dem Anlegen zeigt. Es erscheint nur einmal; wenn es verloren geht, erstellen Sie auf der Seite des Bots ein neues.",
+          "addToTeam": "Fügen Sie den Bot Ihrem Team hinzu (Teammenü > Mitglieder hinzufügen) und jedem Kanal, in dem er zuhören soll. Für Direktnachrichten ist das nicht nötig.",
+          "fillIn": "Tragen Sie unten die Serveradresse ein (z. B. https://chat.example.com, ohne /api) sowie das Bot-Token, und wer mit dem Bot sprechen darf.",
+          "userId": "Ihre eigene Benutzer-ID: angemeldet im Browser https://ihr-server/api/v4/users/me öffnen und den Wert \"id\" kopieren. Admins sehen sie auch unter Systemkonsole > Benutzer.",
+          "tryIt": "Kanal einschalten, speichern, Gateway neu starten und dem Bot eine Direktnachricht schicken. In Kanälen erwähnen Sie ihn ({'@'}hermes), außer Sie ändern das unten."
+        },
+        "channelIds": "Kanal-IDs: Kanal öffnen, auf den Namen klicken > Info anzeigen. Die ID steht ganz unten.",
+        "personalToken": "Bot-Konten auf Ihrem Server abgeschaltet? Ein persönliches Zugriffstoken (Profil > Sicherheit > Persönliche Zugriffstoken) geht auch, aber dann schreibt der Agent als Sie.",
+        "behaviour": "Verhalten des Bots",
+        "threads": "In Threads antworten",
+        "threadsHint": "An: Antworten landen in einem Thread unter der Nachricht. Aus (Standard): als normale Nachricht.",
+        "requireMention": "In Kanälen nur bei Erwähnung antworten",
+        "requireMentionHint": "An (Standard): In Kanälen antwortet der Bot nur, wenn jemand {'@'}botname schreibt. Direktnachrichten werden immer beantwortet.",
+        "freeChannels": "Kanäle ohne Erwähnung",
+        "freeChannelsHint": "Kanal-IDs, durch Kommas getrennt. Dort antwortet der Bot auf jede Nachricht.",
+        "onlyChannels": "Nur in diesen Kanälen zuhören",
+        "onlyChannelsHint": "Kanal-IDs, durch Kommas getrennt. Wenn gesetzt, ignoriert der Bot alle anderen Kanäle (Direktnachrichten gehen weiter). Leer: alle Kanäle, in denen er ist.",
+        "homeChannel": "Heimkanal für Job-Ergebnisse",
+        "homeChannelHint": "Kanal-ID, in die geplante Jobs und Benachrichtigungen gehen. Alternativ /sethome in einem Mattermost-Kanal eingeben.",
+        "allowBots": "Nachrichten anderer Bots",
+        "allowBotsHint": "Ob andere Bots und Integrationen mit dem Agenten sprechen dürfen. Standardmäßig ignoriert, um Bot-Schleifen zu vermeiden.",
+        "allowBotsNone": "Ignorieren",
+        "allowBotsMentions": "Erlauben, wenn sie den Bot erwähnen",
+        "allowBotsAll": "Erlauben",
+        "botUsers": "Andere Bots (Benutzer-IDs)",
+        "botUsersHint": "Mattermost kennzeichnet Bot-Konten nicht immer. Tragen Sie hier Benutzer-IDs von Bots ein, damit sie als Bots gelten. Durch Kommas getrennt.",
+        "allowAll": "Jeden auf dem Server den Bot nutzen lassen",
+        "allowAllHint": "Überspringt die Liste erlaubter Benutzer. Nur zum Testen auf einem privaten Server.",
+        "allowAllWarning": "Jeder, der dem Bot schreiben kann, kann den Agenten und seine Werkzeuge nutzen.",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "Serveradresse",
+            "hint": "Ihre Mattermost-Webadresse, z. B. https://chat.example.com (ohne /api am Ende).",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "Bot-Token",
+            "hint": "Das Zugriffstoken des Bot-Kontos (Integrationen > Bot-Konten). Nach dem Speichern wird es nie wieder angezeigt.",
+            "placeholder": "Zugriffstoken des Bots"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "Erlaubte Benutzer-IDs",
+            "hint": "Mattermost-Benutzer-IDs (26 Buchstaben und Ziffern, keine Benutzernamen), durch Kommas getrennt. Ohne Liste erhalten neue Personen eine Kopplungsanfrage, die Sie unten freigeben.",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
       },
       "webhooks": {
         "title": "Eingehende Webhooks",
@@ -903,6 +1221,59 @@ export const hermesChannelsMessages = {
         "noApproved": "Nadie aprobado todavía",
         "failed": "No se pudo cambiar el acceso"
       },
+      "mattermost": {
+        "guideTitle": "Cómo conectar un bot de Mattermost",
+        "showSteps": "Ver pasos",
+        "hideSteps": "Ocultar pasos",
+        "steps": {
+          "createBot": "En Mattermost abre el menú de productos (icono de cuadrícula, arriba a la izquierda) > Integraciones > Cuentas de bot > Añadir cuenta de bot. Elige un nombre de usuario como hermes y créala. Si no aparece Cuentas de bot, un administrador la activa en Consola del sistema > Integraciones > Cuentas de bot.",
+          "copyToken": "Copia el token de acceso que Mattermost muestra justo después de crear el bot. Solo se muestra una vez; si lo pierdes, crea uno nuevo en la página del bot.",
+          "addToTeam": "Añade el bot a tu equipo (menú del equipo > Añadir miembros) y a cada canal donde deba escuchar. Para mensajes directos no hace falta.",
+          "fillIn": "Abajo, pega la dirección del servidor (por ejemplo https://chat.example.com, sin /api) y el token del bot, e indica quién puede hablar con él.",
+          "userId": "Para ver tu ID de usuario: con la sesión iniciada abre https://tu-servidor/api/v4/users/me en el navegador y copia el valor \"id\". Los administradores también lo ven en Consola del sistema > Usuarios.",
+          "tryIt": "Activa el canal, guarda, reinicia la pasarela y envía un mensaje directo al bot. En los canales, menciónalo ({'@'}hermes) salvo que lo cambies abajo."
+        },
+        "channelIds": "ID de canal: abre el canal, haz clic en su nombre > Ver información. El ID está al final.",
+        "personalToken": "¿Las cuentas de bot están desactivadas en tu servidor? Un token de acceso personal (Perfil > Seguridad > Tokens de acceso personal) también sirve, pero el agente publicará como tú.",
+        "behaviour": "Comportamiento del bot",
+        "threads": "Responder en hilos",
+        "threadsHint": "Activado: las respuestas van en un hilo bajo el mensaje. Desactivado (predeterminado): se publican como mensajes normales.",
+        "requireMention": "En canales, responder solo si lo mencionan",
+        "requireMentionHint": "Activado (predeterminado): en los canales el bot responde solo cuando alguien escribe {'@'}nombredelbot. Los mensajes directos siempre reciben respuesta.",
+        "freeChannels": "Canales sin necesidad de mención",
+        "freeChannelsHint": "ID de canal separados por comas. Allí el bot responde a todos los mensajes.",
+        "onlyChannels": "Escuchar solo en estos canales",
+        "onlyChannelsHint": "ID de canal separados por comas. Si se indica, el bot ignora los demás canales (los mensajes directos siguen funcionando). En blanco: todos los canales en los que está.",
+        "homeChannel": "Canal principal para resultados de tareas",
+        "homeChannelHint": "ID del canal donde se publican las tareas programadas y avisos. También puedes escribir /sethome en un canal de Mattermost.",
+        "allowBots": "Mensajes de otros bots",
+        "allowBotsHint": "Si otros bots e integraciones pueden hablar con el agente. Se ignoran por defecto para evitar bucles entre bots.",
+        "allowBotsNone": "Ignorar",
+        "allowBotsMentions": "Permitir si mencionan al bot",
+        "allowBotsAll": "Permitir",
+        "botUsers": "Otros bots (ID de usuario)",
+        "botUsersHint": "Mattermost no siempre marca las cuentas de bot. Pon aquí los ID de usuario de bots para tratarlos como bots. Separados por comas.",
+        "allowAll": "Permitir que cualquiera del servidor use el bot",
+        "allowAllHint": "Omite la lista de usuarios permitidos. Solo para pruebas en un servidor privado.",
+        "allowAllWarning": "Cualquiera que pueda escribir al bot podrá usar el agente y sus herramientas.",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "Dirección del servidor",
+            "hint": "La dirección web de Mattermost, por ejemplo https://chat.example.com (sin /api al final).",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "Token del bot",
+            "hint": "El token de acceso de la cuenta de bot (Integraciones > Cuentas de bot). No se vuelve a mostrar después de guardar.",
+            "placeholder": "Token de acceso del bot"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "ID de usuarios permitidos",
+            "hint": "ID de usuario de Mattermost (26 letras y números, no nombres de usuario), separados por comas. Sin lista, los nuevos reciben una solicitud de emparejamiento que apruebas abajo.",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
+      },
       "webhooks": {
         "title": "Webhooks entrantes",
         "hint": "Permite que otros servicios (GitHub, Home Assistant, Unraid, …) activen al agente. Cada ruta tiene su propia URL y secreto.",
@@ -1036,6 +1407,59 @@ export const hermesChannelsMessages = {
         "noPending": "Personne n'attend.",
         "noApproved": "Personne n'est encore approuvé",
         "failed": "Impossible de modifier l'accès"
+      },
+      "mattermost": {
+        "guideTitle": "Connecter un bot Mattermost",
+        "showSteps": "Afficher les étapes",
+        "hideSteps": "Masquer les étapes",
+        "steps": {
+          "createBot": "Dans Mattermost, ouvrez le menu des produits (icône en grille, en haut à gauche) > Intégrations > Comptes de bot > Ajouter un compte de bot. Choisissez un nom d'utilisateur comme hermes et créez-le. Si « Comptes de bot » est absent, un administrateur l'active dans Console système > Intégrations > Comptes de bot.",
+          "copyToken": "Copiez le jeton d'accès affiché juste après la création du bot. Il n'apparaît qu'une fois ; en cas de perte, créez-en un nouveau sur la page du bot.",
+          "addToTeam": "Ajoutez le bot à votre équipe (menu de l'équipe > Ajouter des membres) et à chaque canal où il doit écouter. Inutile pour les messages directs.",
+          "fillIn": "Ci-dessous, collez l'adresse du serveur (par exemple https://chat.example.com, sans /api) et le jeton du bot, et indiquez qui peut lui parler.",
+          "userId": "Pour trouver votre identifiant : connecté, ouvrez https://votre-serveur/api/v4/users/me dans le navigateur et copiez la valeur \"id\". Les administrateurs le voient aussi dans Console système > Utilisateurs.",
+          "tryIt": "Activez le canal, enregistrez, redémarrez la passerelle, puis envoyez un message direct au bot. Dans les canaux, mentionnez-le ({'@'}hermes) sauf si vous changez cela ci-dessous."
+        },
+        "channelIds": "Identifiants de canal : ouvrez le canal, cliquez sur son nom > Voir les infos. L'identifiant est en bas.",
+        "personalToken": "Comptes de bot désactivés sur votre serveur ? Un jeton d'accès personnel (Profil > Sécurité > Jetons d'accès personnels) fonctionne aussi, mais l'agent publie alors en votre nom.",
+        "behaviour": "Comportement du bot",
+        "threads": "Répondre dans des fils",
+        "threadsHint": "Activé : les réponses vont dans un fil sous le message. Désactivé (par défaut) : messages normaux.",
+        "requireMention": "Dans les canaux, répondre seulement si mentionné",
+        "requireMentionHint": "Activé (par défaut) : dans les canaux le bot ne répond que si quelqu'un écrit {'@'}nomdubot. Les messages directs reçoivent toujours une réponse.",
+        "freeChannels": "Canaux sans mention nécessaire",
+        "freeChannelsHint": "Identifiants de canal séparés par des virgules. Le bot y répond à chaque message.",
+        "onlyChannels": "Écouter seulement dans ces canaux",
+        "onlyChannelsHint": "Identifiants de canal séparés par des virgules. Si renseigné, le bot ignore tous les autres canaux (les messages directs restent possibles). Vide : tous les canaux où il se trouve.",
+        "homeChannel": "Canal principal pour les résultats",
+        "homeChannelHint": "Identifiant du canal où sont publiés les tâches planifiées et les notifications. Vous pouvez aussi taper /sethome dans un canal Mattermost.",
+        "allowBots": "Messages d'autres bots",
+        "allowBotsHint": "Si d'autres bots et intégrations peuvent parler à l'agent. Ignorés par défaut pour éviter les boucles entre bots.",
+        "allowBotsNone": "Ignorer",
+        "allowBotsMentions": "Autoriser s'ils mentionnent le bot",
+        "allowBotsAll": "Autoriser",
+        "botUsers": "Autres bots (identifiants)",
+        "botUsersHint": "Mattermost ne marque pas toujours les comptes de bot. Listez ici les identifiants des bots pour qu'ils soient traités comme tels. Séparés par des virgules.",
+        "allowAll": "Laisser tout le monde sur le serveur utiliser le bot",
+        "allowAllHint": "Ignore la liste des utilisateurs autorisés. Uniquement pour des tests sur un serveur privé.",
+        "allowAllWarning": "Toute personne pouvant écrire au bot peut utiliser l'agent et ses outils.",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "Adresse du serveur",
+            "hint": "L'adresse web de Mattermost, par exemple https://chat.example.com (sans /api à la fin).",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "Jeton du bot",
+            "hint": "Le jeton d'accès du compte de bot (Intégrations > Comptes de bot). Il n'est plus jamais affiché après l'enregistrement.",
+            "placeholder": "Jeton d'accès du bot"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "Identifiants autorisés",
+            "hint": "Identifiants d'utilisateur Mattermost (26 lettres et chiffres, pas les noms d'utilisateur), séparés par des virgules. Sans liste, les nouveaux reçoivent une demande d'appairage que vous approuvez ci-dessous.",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
       },
       "webhooks": {
         "title": "Webhooks entrants",
@@ -1171,6 +1595,59 @@ export const hermesChannelsMessages = {
         "noApproved": "Ninguém aprovado ainda",
         "failed": "Não foi possível alterar o acesso"
       },
+      "mattermost": {
+        "guideTitle": "Como conectar um bot do Mattermost",
+        "showSteps": "Mostrar passos",
+        "hideSteps": "Ocultar passos",
+        "steps": {
+          "createBot": "No Mattermost abra o menu de produtos (ícone de grade, canto superior esquerdo) > Integrações > Contas de bot > Adicionar conta de bot. Escolha um nome de usuário como hermes e crie. Se Contas de bot não aparecer, um administrador ativa em Console do sistema > Integrações > Contas de bot.",
+          "copyToken": "Copie o token de acesso que o Mattermost mostra logo após criar o bot. Ele aparece só uma vez; se perder, crie um novo na página do bot.",
+          "addToTeam": "Adicione o bot à sua equipe (menu da equipe > Adicionar membros) e a cada canal onde ele deve ouvir. Para mensagens diretas não é preciso.",
+          "fillIn": "Abaixo, cole o endereço do servidor (por exemplo https://chat.example.com, sem /api) e o token do bot, e informe quem pode falar com ele.",
+          "userId": "Para achar seu ID de usuário: conectado, abra https://seu-servidor/api/v4/users/me no navegador e copie o valor \"id\". Administradores também veem em Console do sistema > Usuários.",
+          "tryIt": "Ative o canal, salve, reinicie o gateway e envie uma mensagem direta ao bot. Nos canais, mencione-o ({'@'}hermes), a menos que mude isso abaixo."
+        },
+        "channelIds": "IDs de canal: abra o canal, clique no nome > Ver informações. O ID fica no fim.",
+        "personalToken": "Contas de bot desativadas no seu servidor? Um token de acesso pessoal (Perfil > Segurança > Tokens de acesso pessoal) também funciona, mas o agente publica como você.",
+        "behaviour": "Comportamento do bot",
+        "threads": "Responder em threads",
+        "threadsHint": "Ativado: as respostas vão para uma thread sob a mensagem. Desativado (padrão): mensagens normais.",
+        "requireMention": "Nos canais, responder só quando mencionado",
+        "requireMentionHint": "Ativado (padrão): nos canais o bot só responde quando alguém escreve {'@'}nomedobot. Mensagens diretas sempre recebem resposta.",
+        "freeChannels": "Canais sem precisar de menção",
+        "freeChannelsHint": "IDs de canal separados por vírgula. Lá o bot responde a todas as mensagens.",
+        "onlyChannels": "Ouvir só nestes canais",
+        "onlyChannelsHint": "IDs de canal separados por vírgula. Se definido, o bot ignora todos os outros canais (mensagens diretas continuam). Em branco: todos os canais em que ele está.",
+        "homeChannel": "Canal principal para resultados",
+        "homeChannelHint": "ID do canal onde tarefas agendadas e notificações são publicadas. Também dá para digitar /sethome num canal do Mattermost.",
+        "allowBots": "Mensagens de outros bots",
+        "allowBotsHint": "Se outros bots e integrações podem falar com o agente. Ignorados por padrão para evitar loops entre bots.",
+        "allowBotsNone": "Ignorar",
+        "allowBotsMentions": "Permitir quando mencionarem o bot",
+        "allowBotsAll": "Permitir",
+        "botUsers": "Outros bots (IDs de usuário)",
+        "botUsersHint": "O Mattermost nem sempre marca contas de bot. Liste aqui IDs de usuário de bots para tratá-los como bots. Separados por vírgula.",
+        "allowAll": "Deixar qualquer pessoa do servidor usar o bot",
+        "allowAllHint": "Ignora a lista de usuários permitidos. Só para testes em servidor privado.",
+        "allowAllWarning": "Qualquer pessoa que puder escrever ao bot poderá usar o agente e suas ferramentas.",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "Endereço do servidor",
+            "hint": "O endereço web do Mattermost, por exemplo https://chat.example.com (sem /api no fim).",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "Token do bot",
+            "hint": "O token de acesso da conta de bot (Integrações > Contas de bot). Nunca mais é mostrado depois de salvar.",
+            "placeholder": "Token de acesso do bot"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "IDs de usuários permitidos",
+            "hint": "IDs de usuário do Mattermost (26 letras e números, não nomes de usuário), separados por vírgula. Sem lista, novas pessoas recebem um pedido de pareamento que você aprova abaixo.",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
+      },
       "webhooks": {
         "title": "Webhooks de entrada",
         "hint": "Deixe outros serviços (GitHub, Home Assistant, Unraid, …) acordarem o agente. Cada rota tem sua própria URL e segredo.",
@@ -1304,6 +1781,59 @@ export const hermesChannelsMessages = {
         "noPending": "Никто не ждёт.",
         "noApproved": "Пока никто не одобрен",
         "failed": "Не удалось изменить доступ"
+      },
+      "mattermost": {
+        "guideTitle": "Как подключить бота Mattermost",
+        "showSteps": "Показать шаги",
+        "hideSteps": "Скрыть шаги",
+        "steps": {
+          "createBot": "В Mattermost откройте меню продуктов (значок сетки слева вверху) > Интеграции > Учётные записи ботов > Добавить учётную запись бота. Задайте имя пользователя, например hermes, и создайте. Если пункта нет, системный администратор включает его в Системная консоль > Интеграции > Учётные записи ботов.",
+          "copyToken": "Скопируйте токен доступа, который Mattermost показывает сразу после создания бота. Он показывается один раз; если потеряли, создайте новый на странице бота.",
+          "addToTeam": "Добавьте бота в свою команду (меню команды > Добавить участников) и в каждый канал, где он должен слушать. Для личных сообщений это не нужно.",
+          "fillIn": "Ниже вставьте адрес сервера (например https://chat.example.com, без /api) и токен бота, и укажите, кто может с ним говорить.",
+          "userId": "Как узнать свой ID: войдя в систему, откройте в браузере https://ваш-сервер/api/v4/users/me и скопируйте значение \"id\". Администраторы видят его и в Системная консоль > Пользователи.",
+          "tryIt": "Включите канал, сохраните, перезапустите шлюз и напишите боту в личные сообщения. В каналах упоминайте его ({'@'}hermes), если не измените это ниже."
+        },
+        "channelIds": "ID канала: откройте канал, нажмите на его название > Просмотр сведений. ID внизу.",
+        "personalToken": "Боты отключены на вашем сервере? Подойдёт и персональный токен доступа (Профиль > Безопасность > Персональные токены доступа), но тогда агент пишет от вашего имени.",
+        "behaviour": "Поведение бота",
+        "threads": "Отвечать в тредах",
+        "threadsHint": "Вкл.: ответы идут в тред под сообщением. Выкл. (по умолчанию): обычными сообщениями.",
+        "requireMention": "В каналах отвечать только на упоминание",
+        "requireMentionHint": "Вкл. (по умолчанию): в каналах бот отвечает, только когда пишут {'@'}имябота. На личные сообщения отвечает всегда.",
+        "freeChannels": "Каналы без упоминания",
+        "freeChannelsHint": "ID каналов через запятую. Там бот отвечает на каждое сообщение.",
+        "onlyChannels": "Слушать только эти каналы",
+        "onlyChannelsHint": "ID каналов через запятую. Если задано, бот игнорирует остальные каналы (личные сообщения работают). Пусто: все каналы, где он есть.",
+        "homeChannel": "Основной канал для результатов задач",
+        "homeChannelHint": "ID канала, куда приходят результаты запланированных задач и уведомления. Можно также ввести /sethome в канале Mattermost.",
+        "allowBots": "Сообщения от других ботов",
+        "allowBotsHint": "Могут ли другие боты и интеграции общаться с агентом. По умолчанию игнорируются, чтобы боты не зациклились.",
+        "allowBotsNone": "Игнорировать",
+        "allowBotsMentions": "Разрешить при упоминании бота",
+        "allowBotsAll": "Разрешить",
+        "botUsers": "Другие боты (ID пользователей)",
+        "botUsersHint": "Mattermost не всегда помечает учётные записи ботов. Перечислите здесь ID ботов, чтобы они считались ботами. Через запятую.",
+        "allowAll": "Разрешить всем на сервере пользоваться ботом",
+        "allowAllHint": "Пропускает список разрешённых пользователей. Только для тестов на частном сервере.",
+        "allowAllWarning": "Любой, кто может написать боту, сможет пользоваться агентом и его инструментами.",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "Адрес сервера",
+            "hint": "Веб-адрес Mattermost, например https://chat.example.com (без /api в конце).",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "Токен бота",
+            "hint": "Токен доступа учётной записи бота (Интеграции > Учётные записи ботов). После сохранения больше не показывается.",
+            "placeholder": "Токен доступа бота"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "Разрешённые ID пользователей",
+            "hint": "ID пользователей Mattermost (26 букв и цифр, не имена пользователей) через запятую. Без списка новые люди получают запрос на сопряжение, который вы одобряете ниже.",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
       },
       "webhooks": {
         "title": "Входящие вебхуки",
@@ -1439,6 +1969,59 @@ export const hermesChannelsMessages = {
         "noApproved": "Henüz kimse onaylanmadı",
         "failed": "Erişim değiştirilemedi"
       },
+      "mattermost": {
+        "guideTitle": "Mattermost botu nasıl bağlanır",
+        "showSteps": "Adımları göster",
+        "hideSteps": "Adımları gizle",
+        "steps": {
+          "createBot": "Mattermost'ta ürün menüsünü (sol üstteki ızgara simgesi) > Entegrasyonlar > Bot Hesapları > Bot Hesabı Ekle yolunu açın. hermes gibi bir kullanıcı adı seçip oluşturun. Bot Hesapları yoksa bir sistem yöneticisi Sistem Konsolu > Entegrasyonlar > Bot Hesapları altında açar.",
+          "copyToken": "Bot oluşturulduktan hemen sonra gösterilen erişim belirtecini kopyalayın. Yalnızca bir kez gösterilir; kaybederseniz botun sayfasında yenisini oluşturun.",
+          "addToTeam": "Botu ekibinize (ekip menüsü > Üye ekle) ve dinlemesi gereken her kanala ekleyin. Doğrudan mesajlar için gerekmez.",
+          "fillIn": "Aşağıya sunucu adresini (ör. https://chat.example.com, /api olmadan) ve bot belirtecini yapıştırın, botla kimlerin konuşabileceğini yazın.",
+          "userId": "Kendi kullanıcı kimliğinizi bulmak için: oturum açıkken tarayıcıda https://sunucunuz/api/v4/users/me adresini açıp \"id\" değerini kopyalayın. Yöneticiler Sistem Konsolu > Kullanıcılar altında da görür.",
+          "tryIt": "Kanalı açın, kaydedin, ağ geçidini yeniden başlatın ve bota doğrudan mesaj gönderin. Kanallarda, aşağıda değiştirmedikçe onu anın ({'@'}hermes)."
+        },
+        "channelIds": "Kanal kimlikleri: kanalı açın, adına tıklayın > Bilgileri Görüntüle. Kimlik en alttadır.",
+        "personalToken": "Sunucunuzda bot hesapları kapalı mı? Kişisel erişim belirteci (Profil > Güvenlik > Kişisel Erişim Belirteçleri) de çalışır, ama ajan sizin adınıza yazar.",
+        "behaviour": "Botun davranışı",
+        "threads": "Konu dizisinde yanıtla",
+        "threadsHint": "Açık: yanıtlar mesajın altındaki dizide olur. Kapalı (varsayılan): normal mesaj olarak gönderilir.",
+        "requireMention": "Kanallarda yalnızca anılınca yanıtla",
+        "requireMentionHint": "Açık (varsayılan): kanallarda bot yalnızca biri {'@'}botadı yazınca yanıt verir. Doğrudan mesajlara her zaman yanıt verir.",
+        "freeChannels": "Anma gerekmeyen kanallar",
+        "freeChannelsHint": "Virgülle ayrılmış kanal kimlikleri. Bot buradaki her mesaja yanıt verir.",
+        "onlyChannels": "Yalnızca bu kanallarda dinle",
+        "onlyChannelsHint": "Virgülle ayrılmış kanal kimlikleri. Ayarlanırsa bot diğer tüm kanalları yok sayar (doğrudan mesajlar çalışır). Boş: bulunduğu tüm kanallar.",
+        "homeChannel": "İş sonuçları için ana kanal",
+        "homeChannelHint": "Zamanlanmış işlerin ve bildirimlerin gönderileceği kanal kimliği. Bir Mattermost kanalında /sethome da yazabilirsiniz.",
+        "allowBots": "Diğer botlardan gelen mesajlar",
+        "allowBotsHint": "Diğer bot ve entegrasyonların ajanla konuşup konuşamayacağı. Bot döngülerini önlemek için varsayılan olarak yok sayılır.",
+        "allowBotsNone": "Yok say",
+        "allowBotsMentions": "Botu anarlarsa izin ver",
+        "allowBotsAll": "İzin ver",
+        "botUsers": "Diğer botlar (kullanıcı kimlikleri)",
+        "botUsersHint": "Mattermost bot hesaplarını her zaman işaretlemez. Bot sayılmaları için bot kullanıcı kimliklerini buraya virgülle ayırarak yazın.",
+        "allowAll": "Sunucudaki herkes botu kullanabilsin",
+        "allowAllHint": "İzinli kullanıcı listesini atlar. Yalnızca özel sunucuda test için.",
+        "allowAllWarning": "Bota mesaj yazabilen herkes ajanı ve araçlarını kullanabilir.",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "Sunucu adresi",
+            "hint": "Mattermost web adresiniz, ör. https://chat.example.com (sonunda /api olmadan).",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "Bot belirteci",
+            "hint": "Bot hesabının erişim belirteci (Entegrasyonlar > Bot Hesapları). Kaydettikten sonra bir daha gösterilmez.",
+            "placeholder": "Bot erişim belirteci"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "İzinli kullanıcı kimlikleri",
+            "hint": "Mattermost kullanıcı kimlikleri (kullanıcı adı değil, 26 harf ve rakam), virgülle ayrılmış. Liste yoksa yeni kişilere aşağıda onaylayacağınız bir eşleştirme isteği gider.",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
+      },
       "webhooks": {
         "title": "Gelen webhook'lar",
         "hint": "Diğer servislerin (GitHub, Home Assistant, Unraid, …) ajanı uyandırmasına izin verin. Her rotanın kendi adresi ve gizli anahtarı vardır.",
@@ -1572,6 +2155,59 @@ export const hermesChannelsMessages = {
         "noPending": "لا أحد بالانتظار.",
         "noApproved": "لم تتم الموافقة على أحد بعد",
         "failed": "تعذر تغيير الوصول"
+      },
+      "mattermost": {
+        "guideTitle": "كيفية ربط بوت Mattermost",
+        "showSteps": "إظهار الخطوات",
+        "hideSteps": "إخفاء الخطوات",
+        "steps": {
+          "createBot": "في Mattermost افتح قائمة المنتجات (أيقونة الشبكة أعلى اليسار) > التكاملات > حسابات البوت > إضافة حساب بوت. اختر اسم مستخدم مثل hermes وأنشئه. إن لم تظهر حسابات البوت، يفعّلها مسؤول النظام من وحدة تحكم النظام > التكاملات > حسابات البوت.",
+          "copyToken": "انسخ رمز الوصول الذي يعرضه Mattermost مباشرة بعد إنشاء البوت. يظهر مرة واحدة فقط؛ إن فقدته فأنشئ رمزًا جديدًا من صفحة البوت.",
+          "addToTeam": "أضف البوت إلى فريقك (قائمة الفريق > إضافة أعضاء) وإلى كل قناة يجب أن يستمع فيها. الرسائل المباشرة لا تحتاج ذلك.",
+          "fillIn": "في الأسفل الصق عنوان الخادم (مثل https://chat.example.com بدون /api) ورمز البوت، واذكر من يُسمح له بالتحدث إليه.",
+          "userId": "لمعرفة معرّف المستخدم الخاص بك: وأنت مسجّل الدخول افتح https://your-server/api/v4/users/me في المتصفح وانسخ قيمة \"id\". يراه المسؤولون أيضًا في وحدة تحكم النظام > المستخدمون.",
+          "tryIt": "فعّل القناة واحفظ وأعد تشغيل البوابة، ثم أرسل للبوت رسالة مباشرة. في القنوات اذكره ({'@'}hermes) ما لم تغيّر ذلك أدناه."
+        },
+        "channelIds": "معرّفات القنوات: افتح القناة وانقر على اسمها > عرض المعلومات. المعرّف في الأسفل.",
+        "personalToken": "حسابات البوت معطّلة على خادمك؟ يعمل رمز الوصول الشخصي أيضًا (الملف الشخصي > الأمان > رموز الوصول الشخصية)، لكن الوكيل سينشر باسمك.",
+        "behaviour": "سلوك البوت",
+        "threads": "الرد في سلاسل",
+        "threadsHint": "تشغيل: تذهب الردود إلى سلسلة تحت الرسالة. إيقاف (افتراضي): تُنشر كرسائل عادية.",
+        "requireMention": "في القنوات، الرد فقط عند الإشارة",
+        "requireMentionHint": "تشغيل (افتراضي): في القنوات لا يرد البوت إلا عندما يكتب أحد {'@'}اسم_البوت. يرد دائمًا على الرسائل المباشرة.",
+        "freeChannels": "قنوات لا تحتاج إشارة",
+        "freeChannelsHint": "معرّفات قنوات مفصولة بفواصل. يرد البوت هناك على كل رسالة.",
+        "onlyChannels": "الاستماع في هذه القنوات فقط",
+        "onlyChannelsHint": "معرّفات قنوات مفصولة بفواصل. عند تعيينها يتجاهل البوت كل القنوات الأخرى (الرسائل المباشرة تبقى). فارغ: كل القنوات التي هو فيها.",
+        "homeChannel": "القناة الرئيسية لنتائج المهام",
+        "homeChannelHint": "معرّف القناة التي تُنشر فيها المهام المجدولة والإشعارات. يمكنك أيضًا كتابة /sethome في قناة Mattermost.",
+        "allowBots": "رسائل البوتات الأخرى",
+        "allowBotsHint": "هل يمكن للبوتات والتكاملات الأخرى التحدث مع الوكيل. تُتجاهل افتراضيًا لتجنب الحلقات بين البوتات.",
+        "allowBotsNone": "تجاهل",
+        "allowBotsMentions": "السماح عند الإشارة إلى البوت",
+        "allowBotsAll": "السماح",
+        "botUsers": "بوتات أخرى (معرّفات المستخدمين)",
+        "botUsersHint": "لا يميّز Mattermost حسابات البوت دائمًا. اكتب هنا معرّفات مستخدمي البوتات لتُعامل كبوتات، مفصولة بفواصل.",
+        "allowAll": "السماح لأي شخص على الخادم باستخدام البوت",
+        "allowAllHint": "يتخطى قائمة المستخدمين المسموح لهم. للاختبار على خادم خاص فقط.",
+        "allowAllWarning": "أي شخص يستطيع مراسلة البوت يمكنه استخدام الوكيل وأدواته.",
+        "fields": {
+          "MATTERMOST_URL": {
+            "label": "عنوان الخادم",
+            "hint": "عنوان Mattermost على الويب، مثل https://chat.example.com (بدون /api في النهاية).",
+            "placeholder": "https://chat.example.com"
+          },
+          "MATTERMOST_TOKEN": {
+            "label": "رمز البوت",
+            "hint": "رمز الوصول لحساب البوت (التكاملات > حسابات البوت). لا يُعرض مرة أخرى بعد الحفظ.",
+            "placeholder": "رمز وصول البوت"
+          },
+          "MATTERMOST_ALLOWED_USERS": {
+            "label": "معرّفات المستخدمين المسموح لهم",
+            "hint": "معرّفات مستخدمي Mattermost (26 حرفًا ورقمًا، وليست أسماء المستخدمين) مفصولة بفواصل. بدون قائمة يتلقى الجدد طلب اقتران توافق عليه أدناه.",
+            "placeholder": "user_id1,user_id2"
+          }
+        }
       },
       "webhooks": {
         "title": "Webhooks الواردة",

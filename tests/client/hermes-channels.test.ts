@@ -59,6 +59,10 @@ describe('channel helpers', () => {
   it('lists every other Hermes platform, active ones first', () => {
     const list = [platform('telegram', []), platform('webhook', []), platform('irc', []), platform('ntfy', [], { enabled: true })]
     expect(extraPlatforms(list).map(p => p.id)).toEqual(['ntfy', 'irc'])
+    // Mattermost has its own card now, so it is not in "More channels"; its Hermes fields all stay in that card.
+    expect(extraPlatforms([platform('mattermost', [])])).toEqual([])
+    const mm = platform('mattermost', [field('MATTERMOST_URL', { required: true }), field('MATTERMOST_TOKEN', { required: true, is_password: true }), field('MATTERMOST_ALLOWED_USERS', { is_list: true })])
+    expect(panelFields(mm, true).basic.map(f => f.key)).toEqual(['MATTERMOST_URL', 'MATTERMOST_TOKEN', 'MATTERMOST_ALLOWED_USERS'])
     expect(deliveryTargets([platform('telegram', [], { configured: true }), platform('irc', [])])).toEqual(['log', 'telegram'])
   })
 
@@ -110,6 +114,31 @@ describe('Hermes platform panel', () => {
     await save.trigger('click')
     await flushPromises()
     expect(updateHermesPlatform).toHaveBeenCalledWith('ntfy', { env: { NTFY_TOKEN: 'tk_replacement' } })
+    wrapper.unmount()
+  })
+
+  it('gives Mattermost plain-language fields and setup steps, and keeps its token hidden', async () => {
+    const { default: HermesPlatformPanel } = await import('@/components/hermes/channels/HermesPlatformPanel.vue')
+    const i18n = createI18n({ legacy: false, locale: 'en', messages: { en: hermesChannelsMessages.en as any } })
+    const p = platform('mattermost', [
+      field('MATTERMOST_URL', { required: true, prompt: 'Mattermost server URL' }),
+      field('MATTERMOST_TOKEN', { required: true, is_password: true, is_set: true, redacted_value: 'abc…xyz' }),
+      field('MATTERMOST_ALLOWED_USERS', { is_list: true }),
+    ], { enabled: true, configured: false, state: 'not_configured' })
+    const Host = defineComponent(() => () => h(NMessageProvider, null, { default: () => h(HermesPlatformPanel, { platform: p, embedded: true }) }))
+    const wrapper = mount(Host, { global: { plugins: [i18n] }, attachTo: document.body })
+    const text = wrapper.text()
+    expect(text).toContain('Server address')
+    expect(text).toContain('Bot token')
+    expect(text).toContain('Allowed user IDs')
+    expect(text).toContain('Add Bot Account')
+    expect(text).toContain('@hermes')
+    expect(wrapper.html()).not.toContain('abc…xyz')
+    expect(wrapper.find('input').attributes('placeholder')).toBe('https://chat.example.com')
+    await wrapper.findAll('input')[0].setValue('https://chat.example.com')
+    await wrapper.findAll('button').find(b => b.text() === 'Save agent settings')!.trigger('click')
+    await flushPromises()
+    expect(updateHermesPlatform).toHaveBeenCalledWith('mattermost', { env: { MATTERMOST_URL: 'https://chat.example.com' } })
     wrapper.unmount()
   })
 })
