@@ -447,7 +447,7 @@ Studio 启动后端聊天能力时，会优先使用包含 `run_agent.py` 的源
 | `HERMES_WEB_UI_MANAGED_GATEWAY` | 默认开启 | 控制 Studio 托管 Hermes Gateway 进程；设为 `0`、`false`、`no` 或 `off` 时改用 `hermes gateway start`。 |
 | `HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART` | 未设置 | 覆盖需手动开启的 Hermes Gateway 自动启动策略。设为 `1`、`true`、`yes` 或 `on` 时，即使设置中已开启，也跳过启动检查和配置驱动的状态协调。 |
 | `HERMES_WEB_UI_DISABLE_SKILL_INJECTION` | 未设置 | 跳过启动时的内置 Skill 注入；如果内置 Skills 由 Studio 外部管理，可设为 `1`、`true`、`yes` 或 `on`。启用注入时，Studio 只更新自己此前安装的 Skills 或内容完全相同的既有内置副本；本地修改和用户拥有的同名 Skills 会跳过。 |
-| `HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | 默认开启 | Studio 关闭时仅停止由当前 Studio 进程启动并登记的 Gateway；设为 `0` 或 `false` 可让它们分离运行。外部探测到的 Gateway 不会被收编或关闭。 |
+| `HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | 默认关闭（桌面版开启） | 默认情况下，Studio 关闭时其监管的 Gateway 继续运行，下一个 Studio 会直接接管而不重启它。设为 `1` 或 `true` 则在关闭时停止它。不是由 Studio 启动的 Gateway 不会被接管或关闭。 |
 | `HERMES_WEB_UI_SHUTDOWN_FORCE_EXIT_MS` | `10000` | Studio 的短暂资源清理窗口；超时后会强制结束自己持有的进程树再退出。 |
 | `HERMES_DESKTOP_STOP_TIMEOUT_MS` | `20000` | Desktop 宿主原有的整树强制结束期限，独立于 Web UI 的 10 秒清理预算。 |
 | `GATEWAY_HOST` | `127.0.0.1` | 旧 gateway 兼容配置中写入 profile 的默认 gateway host。 |

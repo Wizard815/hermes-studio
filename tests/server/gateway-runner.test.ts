@@ -28,10 +28,15 @@ vi.mock('../../packages/server/src/modules/studio/public/logging', () => ({
 }))
 
 import {
+  adoptRunningGateway,
   classifyGatewayExit,
+  detachManagedGatewaysForShutdown,
+  setGatewayPidAliveForTests,
   isManagedGatewaySupervised,
   managedGatewayLaunch,
+  procStatIsZombie,
   recordedLiveGatewayPid,
+  releaseManagedGatewayForStop,
   resetManagedGatewayRunnerForTests,
   setOtherGatewayProbeForTests,
   startGatewayRunManaged,
@@ -171,12 +176,102 @@ describe('managed gateway supervision', () => {
     expect(spawned).toHaveLength(2)
   })
 
+  it('does not respawn a gateway released for a planned stop, and does not warn', async () => {
+    const { logger } = await import('../../packages/server/src/modules/studio/public/logging')
+    vi.mocked(logger.warn).mockClear()
+    startGatewayRunManaged('hermes', { profileDir: HOME })
+    vi.advanceTimersByTime(10_000)
+    expect(releaseManagedGatewayForStop(HOME)).toBe(spawned[0].child.pid)
+    expect(isManagedGatewaySupervised(HOME)).toBe(false)
+    // `hermes gateway stop` takes longer than the respawn delay
+    vi.advanceTimersByTime(5_000)
+    spawned[0].child.emit('exit', 0, null)
+    vi.advanceTimersByTime(60_000)
+    expect(spawned).toHaveLength(1)
+    expect(logger.warn).not.toHaveBeenCalled()
+    // the restart's own start then supervises the new gateway as usual
+    startGatewayRunManaged('hermes', { profileDir: HOME })
+    expect(isManagedGatewaySupervised(HOME)).toBe(true)
+    expect(releaseManagedGatewayForStop('/tmp/other-home')).toBeNull()
+  })
+
   it('a fresh start cancels a pending respawn', () => {
     startGatewayRunManaged('hermes', { profileDir: HOME })
     spawned[0].child.emit('exit', null, 'SIGKILL')
     startGatewayRunManaged('hermes', { profileDir: HOME })
     vi.advanceTimersByTime(10_000)
     expect(spawned).toHaveLength(2)
+  })
+})
+
+describe('a gateway left by an earlier Studio', () => {
+  it('is adopted without a restart and relaunched when it exits', () => {
+    const alive = new Set([4242])
+    setGatewayPidAliveForTests(pid => alive.has(pid))
+    expect(adoptRunningGateway('hermes', HOME, 4242)).toBe(true)
+    expect(adoptRunningGateway('hermes', HOME, 4242)).toBe(true)
+    expect(isManagedGatewaySupervised(HOME)).toBe(true)
+    vi.advanceTimersByTime(30_000)
+    expect(spawned).toHaveLength(0)
+    // Hermes's own restart hands it back by exiting
+    alive.delete(4242)
+    vi.advanceTimersByTime(1_000)
+    expect(spawned).toHaveLength(0)
+    vi.advanceTimersByTime(500)
+    expect(spawned).toHaveLength(1)
+    expect(spawned[0].args).toContain('--replace')
+    vi.advanceTimersByTime(30_000)
+    expect(spawned).toHaveLength(1)
+  })
+
+  it('is not relaunched over a gateway that replaced it', () => {
+    const alive = new Set([4242])
+    setGatewayPidAliveForTests(pid => alive.has(pid))
+    setOtherGatewayProbeForTests(() => 5000)
+    adoptRunningGateway('hermes', HOME, 4242)
+    alive.delete(4242)
+    vi.advanceTimersByTime(10_000)
+    expect(spawned).toHaveLength(0)
+  })
+
+  it('is not adopted when dead, and a planned stop or a fresh start ends the watch', () => {
+    const alive = new Set([4242])
+    setGatewayPidAliveForTests(pid => alive.has(pid))
+    expect(adoptRunningGateway('hermes', HOME, 7)).toBe(false)
+    adoptRunningGateway('hermes', HOME, 4242)
+    expect(releaseManagedGatewayForStop(HOME)).toBe(4242)
+    alive.delete(4242)
+    vi.advanceTimersByTime(10_000)
+    expect(spawned).toHaveLength(0)
+
+    alive.add(4242)
+    adoptRunningGateway('hermes', HOME, 4242)
+    startGatewayRunManaged('hermes', { profileDir: HOME })
+    alive.delete(4242)
+    vi.advanceTimersByTime(10_000)
+    expect(spawned).toHaveLength(1)
+  })
+})
+
+describe('detachManagedGatewaysForShutdown', () => {
+  it('leaves the gateway running and never respawns after shutdown begins', () => {
+    startGatewayRunManaged('hermes', { profileDir: HOME })
+    spawned[0].child.emit('exit', 1, null)
+    startGatewayRunManaged('hermes', { profileDir: HOME })
+    expect(detachManagedGatewaysForShutdown()).toBe(1)
+    expect(spawned[1].child.kill).not.toHaveBeenCalled()
+    spawned[1].child.emit('exit', 75, null)
+    vi.advanceTimersByTime(60_000)
+    expect(spawned).toHaveLength(2)
+    expect(startGatewayRunManaged('hermes', { profileDir: HOME }).pid).toBeNull()
+  })
+})
+
+describe('procStatIsZombie', () => {
+  it('reads the state after the command name, even one with spaces and parens', () => {
+    expect(procStatIsZombie('339177 (hermes) Z 1 339177 339177 0 -1')).toBe(true)
+    expect(procStatIsZombie('339177 (python (x) y) S 1 339177')).toBe(false)
+    expect(procStatIsZombie('')).toBe(false)
   })
 })
 

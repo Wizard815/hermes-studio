@@ -8,7 +8,7 @@ import { logger } from '../../../studio/public/logging'
 import { getHermesBaseDir, getProfileDir, listProfileNamesFromDisk } from '../profiles/profile'
 import { parseGatewayStatusesFromProfileList } from '../profiles/profile-list-parser'
 import { execHermesWithBin } from '../runtime/process'
-import { isManagedGatewaySupervised, retireManagedGatewayForProfile, startGatewayRunManaged } from './runner'
+import { adoptRunningGateway, isManagedGatewaySupervised, pidAlive, releaseManagedGatewayForStop, retireManagedGatewayForProfile, startGatewayRunManaged } from './runner'
 
 const execFileAsync = promisify(execFile)
 const GATEWAY_RUNTIME_FILES = ['gateway.pid', 'gateway.lock', 'gateway_state.json'] as const
@@ -327,13 +327,7 @@ export function gatewayStatusLooksRuntimeLocked(output: string): boolean {
 }
 
 function isProcessAlive(pid: number): boolean {
-  if (!Number.isFinite(pid) || pid <= 0) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (err: any) {
-    return err?.code === 'EPERM'
-  }
+  return pidAlive(pid)
 }
 
 function readJsonPid(path: string): number | null {
@@ -353,16 +347,36 @@ function readJsonPid(path: string): number | null {
  * read from the PID record Hermes writes.
  */
 export function gatewayDeclaresExternalSupervisor(profileDir: string): boolean {
+  return externalSupervisorGatewayPid(profileDir) !== null
+}
+
+/** PID of the profile's live gateway when it was launched for an external supervisor, else null. */
+export function externalSupervisorGatewayPid(profileDir: string, isAlive: (pid: number) => boolean = isProcessAlive): number | null {
   const path = join(profileDir, 'gateway.pid')
-  if (!existsSync(path)) return false
+  if (!existsSync(path)) return null
   try {
     const data = JSON.parse(readFileSync(path, 'utf-8'))
     const pid = typeof data?.pid === 'number' ? data.pid : parseInt(String(data?.pid || ''), 10)
-    if (!isProcessAlive(pid)) return false
-    return Array.isArray(data?.argv) && data.argv.some((arg: unknown) => arg === '--external-supervisor')
+    if (!isAlive(pid)) return null
+    return Array.isArray(data?.argv) && data.argv.some((arg: unknown) => arg === '--external-supervisor') ? pid : null
   } catch {
-    return false
+    return null
   }
+}
+
+/**
+ * Take over supervision of a gateway an earlier Studio launched and left
+ * running (Studio no longer stops its gateway when it shuts down). It keeps
+ * running untouched; this Studio relaunches it when it exits. Returns whether
+ * it was adopted.
+ */
+export function adoptGatewayLeftByEarlierStudio(hermesBin: string, profile: string, profileDir: string): boolean {
+  if (isManagedGatewaySupervised(profileDir)) return false
+  const pid = externalSupervisorGatewayPid(profileDir)
+  if (pid === null) return false
+  if (!adoptRunningGateway(hermesBin, profileDir, pid)) return false
+  logger.info('[gateway-autostart] adopted gateway left by an earlier Studio profile=%s home=%s pid=%s', profile, profileDir, pid)
+  return true
 }
 
 export function gatewayStateLooksRunningForProfile(profileDir: string): boolean {
@@ -451,6 +465,10 @@ async function stopGatewayForProfile(
     } catch (err) {
       logger.warn(err, '[gateway-autostart] failed to retire managed gateway before stop profile=%s home=%s', profile, profileDir)
     }
+  } else {
+    // The stop below is planned: our supervised child must not be respawned
+    // when it exits.
+    releaseManagedGatewayForStop(profileDir)
   }
 
   try {
@@ -752,7 +770,19 @@ async function restartGatewayTarget(target: GatewayRuntimeTarget, profileDir: st
 
 export async function ensureProfileGatewaysRunning(): Promise<void> {
   const { gatewayAutoStart } = await readAppConfig()
-  if (gatewayAutoStart?.enabled !== true) return
+  if (gatewayAutoStart?.enabled !== true) {
+    // Auto-start is off, so nothing new is started; a gateway an earlier
+    // Studio was supervising is still adopted, or its next restart (which
+    // hands it back to its supervisor) would leave the profile without one.
+    if (shouldUseManagedGatewayRunForAutostart()) {
+      const hermesBin = resolveHermesBin()
+      for (const profile of listProfileNamesFromDisk()) {
+        if (isReservedProfileName(profile)) continue
+        adoptGatewayLeftByEarlierStudio(hermesBin, profile, getProfileDir(profile))
+      }
+    }
+    return
+  }
 
   await recoverWindowsDesktopGatewayOrphansOnce()
 
@@ -789,19 +819,11 @@ export async function ensureProfileGatewaysRunning(): Promise<void> {
       : await isGatewayRunningForProfile(hermesBin, profileDir)
     if (running) {
       const managedRun = shouldUseManagedGatewayRunForAutostart()
-      if (managedRun && !isManagedGatewaySupervised(profileDir) && gatewayDeclaresExternalSupervisor(profileDir)) {
-        // A gateway an earlier Studio launched (it was left running across a
-        // Studio restart). It hands every restart back to its supervisor by
-        // exiting, and nobody would relaunch it, so take it over: the managed
-        // `run --replace` replaces it with one this Studio supervises.
-        logger.info('[gateway-autostart] adopting gateway left by an earlier Studio profile=%s home=%s', profile, profileDir)
-        await startGatewayForProfile(hermesBin, profile, profileDir, { managedRun })
-        const ready = await waitForGatewayRunning(hermesBin, profile, profileDir)
-        if (!ready) {
-          logger.warn('[gateway-autostart] adopted gateway did not report running within timeout profile=%s home=%s', profile, profileDir)
-        }
-        continue
-      }
+      // A gateway an earlier Studio launched and left running across the
+      // Studio restart. It hands every restart back to its supervisor by
+      // exiting, so this Studio watches it and relaunches it, without
+      // restarting it now (that dropped in-flight conversations).
+      if (managedRun && adoptGatewayLeftByEarlierStudio(hermesBin, profile, profileDir)) continue
       logger.info('[gateway-autostart] gateway already running profile=%s home=%s status=%s', profile, profileDir, status || 'status-check')
       continue
     }
