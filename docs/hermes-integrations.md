@@ -225,6 +225,31 @@ on your LAN or over HTTPS.
   Home Assistant posted to the webhook and the gateway started a Hermes run
   ("Hermes demo light changed to off"). Wrong or missing token: 401.
 
+#### Home Assistant OS through the SSH add-on (later the same day)
+
+There is no Home Assistant OS VM on the demo box, so an SSH container mimicked the
+add-ons (Alpine, openssh, run as root):
+
+- "Terminal & SSH" 10.x layout: Home Assistant's config mounted at `/homeassistant`,
+  `/config` a link to it, `SUPERVISOR_TOKEN` in `/data/.ssh/environment` (= `~/.ssh/environment`)
+  with `PermitUserEnvironment SUPERVISOR_TOKEN`, and `/etc/profile.d/homeassistant.sh`.
+- Older layout: config mounted at `/config` only, the token only in the login profile (so a
+  plain `ssh host cmd` has no token and the skill must find it).
+- A `ha` shim on the PATH answering `ha core check [--raw-json]` like the Supervisor CLI: it
+  refuses a missing or wrong `SUPERVISOR_TOKEN`, and otherwise runs the real Home Assistant
+  container's config check (through Core's `check_config` API, where the real Supervisor
+  runs `check_config` inside the Core container). Not mimicked: the Supervisor itself,
+  add-on options (the key was written to `authorized_keys` directly) and the VM.
+
+Results against Home Assistant 2026.11 (Docker, host network): the skill found
+`/homeassistant` and `/config` on the two layouts and picked up the token on both; without
+the packages line `status` printed the line to add and `deploy` stopped (configuration.yaml
+untouched); after adding it and one restart, a chat in Studio ("make a script that turns on
+the porch light at sunset") deployed `packages/hermes/porch_light_sunset.yaml` (a script and
+a sunset automation) after the Deploy question, passed `ha core check`, reloaded, and after
+the second question ran the script: `input_boolean.porch_light` went on. A YAML error was
+rolled back with the check's message. The SSH key was Studio's (MCP page → "Use Studio's key").
+
 
 - When Hermes restarts the gateway itself (turning on webhooks, finishing WhatsApp setup),
   it restarts the gateway Studio supervises; Studio's supervisor replaces it with its own.
