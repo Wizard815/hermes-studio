@@ -659,5 +659,11 @@ onBeforeUnmount(() => {
   .android-side {
     width: 100%;
   }
+
+  // Room for the floating menu button (other pages' .page-header leaves the same).
+  .android-side > .android-card:first-child > .android-card-head {
+    padding-left: 44px;
+    min-height: 36px;
+  }
 }
 </style>
