@@ -43,7 +43,7 @@ vi.mock('@/composables/useSpeech', () => ({ useGlobalSpeech: () => ({
   stop: vi.fn(), isPlaying: ref(false), isCustomPlaying: ref(false), isSupported: ref(false),
 }) }))
 vi.mock('@/composables/useBrowserSpeechRecognition', () => ({ useBrowserSpeechRecognition: () => ({
-  transcript: ref(''), partialTranscript: ref(''), error: ref(null), cancel: vi.fn(),
+  transcript: ref(''), partialTranscript: ref(''), error: ref(null), cancel: vi.fn(), clearError: vi.fn(), start: vi.fn(), stop: vi.fn(),
 }) }))
 vi.mock('@/composables/useMicRecorder', () => ({ useMicRecorder: () => ({ cancel: vi.fn() }) }))
 vi.mock('@/composables/usePcmStreamRecorder', () => ({ usePcmStreamRecorder: () => ({
