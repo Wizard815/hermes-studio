@@ -3,6 +3,7 @@ import { chmod } from 'node:fs/promises'
 import { join } from 'node:path'
 import { safeFileStore } from '../../public/safe-file-store'
 import { importAccountProviders, providerAccountHome, providerAccountId } from './account-store'
+import { pooledApiKeyEntries } from './account-pool'
 
 /**
  * API key pools on Studio's account Providers (Models → Key pools).
@@ -29,11 +30,7 @@ const authPath = () => join(providerAccountHome(), 'auth.json')
 const preview = (token: string) => token.length <= 8 ? '••••' : `${token.slice(0, 4)}…${token.slice(-4)}`
 
 /** Pool entries that carry their own API key (OAuth and main-key metadata entries do not). */
-export function pooledKeyEntries(entries: unknown): Array<Record<string, any>> {
-  if (!Array.isArray(entries)) return []
-  return entries.filter((entry): entry is Record<string, any> => !!entry && typeof entry === 'object'
-    && entry.auth_type === 'api_key' && typeof entry.access_token === 'string' && !!entry.access_token.trim())
-}
+export const pooledKeyEntries = pooledApiKeyEntries
 
 async function readAuth(): Promise<Record<string, any>> {
   await importAccountProviders()
@@ -94,6 +91,8 @@ export async function removePoolKey(provider: string, index: number): Promise<vo
 }
 
 const cursors = new Map<string, number>()
+/** The Provider's own key, per account and provider (the gateway passes it on every turn). */
+const mainKeys = new Map<string, string>()
 /** Keys that hit a rate limit rest until this time (ms), per account and provider. */
 const resting = new Map<string, number>()
 const restKey = (account: number, provider: string, key: string) => `${account}:${provider}:${key}`
@@ -114,22 +113,66 @@ async function poolKeys(provider: string, apiKey: string | undefined, profile?: 
   try { auth = JSON.parse(await safeFileStore.readText(join(providerAccountHome(account), 'auth.json')) || '{}') } catch { return null }
   const pooled = pooledKeyEntries(auth.credential_pool?.[provider]).map(entry => String(entry.access_token).trim())
   if (!pooled.length) return null
-  return { account, keys: [...new Set([...(apiKey ? [apiKey] : []), ...pooled])] }
+  // The Provider's own key stays in the pool even when the key that failed was a pooled one.
+  const main = mainKeys.get(`${account}:${provider}`)
+  return { account, keys: [...new Set([...(main ? [main] : []), ...(apiKey ? [apiKey] : []), ...pooled])] }
 }
 
 /**
  * A key hit a rate limit: rest it, and return another pooled key that is not
- * resting (or undefined when the pool has none left), for one retry.
+ * resting and not in `tried` (or undefined when the pool has none left).
  */
-export async function failoverPooledApiKey(provider: string, apiKey: string, profile: string | undefined, retryAfter?: string | null, now = Date.now()): Promise<string | undefined> {
+export async function failoverPooledApiKey(provider: string, apiKey: string, profile: string | undefined, retryAfter?: string | null, now = Date.now(), tried: ReadonlySet<string> = new Set()): Promise<string | undefined> {
   const pool = await poolKeys(provider, apiKey, profile)
   if (!pool) return undefined
   resting.set(restKey(pool.account, provider, apiKey), now + restMs(retryAfter, now))
-  return pool.keys.find(key => key !== apiKey && (resting.get(restKey(pool.account, provider, key)) ?? 0) <= now)
+  return pool.keys.find(key => key !== apiKey && !tried.has(key) && (resting.get(restKey(pool.account, provider, key)) ?? 0) <= now)
+}
+
+/** When the pool's keys are all resting: how many there are and when the first is free again. */
+export async function pooledKeysResting(provider: string, apiKey: string, profile?: string, now = Date.now()): Promise<{ keys: number; freeInMs: number } | null> {
+  const pool = await poolKeys(provider, apiKey, profile)
+  if (!pool) return null
+  const until = pool.keys.map(key => resting.get(restKey(pool.account, provider, key)) ?? 0)
+  return { keys: pool.keys.length, freeInMs: Math.max(0, Math.min(...until) - now) }
+}
+
+/**
+ * Send with the key pool's failover: a 429 rests the key and the request moves
+ * to the next free key, until one answers or every key is resting; then the
+ * caller gets one clear rate-limit error that names the pool.
+ */
+export async function sendWithKeyPool(input: { provider?: string; apiKey?: string; profile?: string }, send: (apiKey: string | undefined) => Promise<Response>, inAccount: <T>(operation: () => Promise<T>) => Promise<T> = operation => operation()): Promise<Response> {
+  let response = await send(input.apiKey)
+  if (response.status !== 429 || !input.apiKey || !input.provider) return response
+  const provider = input.provider
+  let apiKey = input.apiKey
+  const tried = new Set([apiKey])
+  while (response.status === 429) {
+    const retryAfter = response.headers.get('retry-after')
+    const current = apiKey
+    const next = await inAccount(() => failoverPooledApiKey(provider, current, input.profile, retryAfter, Date.now(), tried)).catch(() => undefined)
+    if (!next) {
+      const state = await inAccount(() => pooledKeysResting(provider, current, input.profile)).catch(() => null)
+      if (!state || state.keys < 2) return response
+      await response.body?.cancel().catch(() => undefined)
+      const seconds = Math.max(1, Math.ceil(state.freeInMs / 1000))
+      return new Response(JSON.stringify({ error: {
+        message: `All ${state.keys} API keys for ${provider} are rate-limited (Models → Key pools). The first is free again in ${seconds}s.`,
+        type: 'rate_limit_error', code: 'key_pool_exhausted',
+      } }), { status: 429, headers: { 'content-type': 'application/json', 'retry-after': String(seconds) } })
+    }
+    await response.body?.cancel().catch(() => undefined)
+    tried.add(next)
+    apiKey = next
+    response = await send(next)
+  }
+  return response
 }
 
 /** The key for the next request: the Provider's own key and its pooled keys in turn. */
 export async function nextPooledApiKey(provider: string, apiKey: string | undefined, profile?: string, now = Date.now()): Promise<string | undefined> {
+  try { if (apiKey) mainKeys.set(`${providerAccountId(profile)}:${provider}`, apiKey) } catch {}
   const pool = await poolKeys(provider, apiKey, profile)
   if (!pool) return apiKey
   const { account, keys } = pool

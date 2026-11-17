@@ -21,7 +21,13 @@ export const providerConfigKeys = ['providers', 'custom_providers'] as const
 const oauth = new Set(['openai-codex', 'claude-oauth', 'nous', 'xai-oauth', 'qwen-oauth', 'minimax-oauth', 'copilot'])
 export const providerDigest = (value: string) => createHash('sha256').update(value).digest('hex')
 const slug = (value: string) => value.trim().toLowerCase().replace(/ /g, '-')
-export const compareProviderProfiles = (a: string, b: string) => a === b ? 0 : a === 'default' ? -1 : b === 'default' ? 1 : a.localeCompare(b)
+/** Pool entries that carry their own API key (OAuth and Hermes's config-seeded entries do not). */
+export function pooledApiKeyEntries(entries: unknown): Array<Record<string, any>> {
+  if (!Array.isArray(entries)) return []
+  return entries.filter((entry): entry is Record<string, any> => !!entry && typeof entry === 'object'
+    && entry.auth_type === 'api_key' && typeof entry.access_token === 'string' && !!entry.access_token.trim())
+}
+export const compareProviderProfiles =(a: string, b: string) => a === b ? 0 : a === 'default' ? -1 : b === 'default' ? 1 : a.localeCompare(b)
 
 /** Upgrade the draft pool layout that generated hash-suffixed duplicates. */
 export function coalesceProviderPool(config: Record<string, any>, state: ProviderPoolState): Record<string, string> {
@@ -160,6 +166,24 @@ export function mergeProviderSnapshot(input: {
     if (state.fingerprints[id] === fingerprint) {
       entry.models = { ...(entry.models || {}), ...(raw.models || {}) }
       if (raw.model) entry.models[raw.model] ||= {}
+      // Hermes key pools (extra API keys in auth.json `credential_pool`) move
+      // onto the Provider, where the model gateway rotates them (Models → Key pools).
+      if (!hasAuth) {
+        const pooled = pooledApiKeyEntries(oldNames.flatMap(name => snapshot.auth.credential_pool?.[name] || []))
+          .filter(item => String(item.access_token).trim() !== apiKey)
+        if (pooled.length) {
+          auth.credential_pool ||= {}
+          const current: any[] = Array.isArray(auth.credential_pool[id]) ? auth.credential_pool[id] : []
+          const known = new Set(current.map(item => String(item?.access_token || '').trim()))
+          for (const item of pooled) {
+            const token = String(item.access_token).trim()
+            if (known.has(token)) continue
+            known.add(token)
+            current.push({ ...item, access_token: token })
+          }
+          auth.credential_pool[id] = current
+        }
+      }
     }
     for (const name of oldNames) aliases[name] = id
   }
