@@ -11,10 +11,12 @@ import { useMobileNavigation } from '@/composables/usePageSidebar'
 import { pluginPages, pluginNavigation, usePluginCatalog } from '@/composables/usePluginCatalog'
 import { navigationCatalog, selectedNavigationEntries, type NavigationEntry } from '@/utils/navigation-entries'
 import { useNavigationStore } from '@/stores/navigation'
+import { useAgentWorkBadge } from '@/composables/useAgentWorkBadge'
 
 const route = useRoute(), { t } = useI18n()
 const { snapshot } = usePluginCatalog()
 const navigation = useNavigationStore()
+const waitingApprovals = useAgentWorkBadge()
 onMounted(() => { void navigation.load() })
 const catalog = computed(() => navigationCatalog(snapshot.value.plugins, isStoredSuperAdmin()))
 const entries = computed(() => selectedNavigationEntries(catalog.value, navigation.items))
@@ -49,6 +51,7 @@ function handleNavigate(entry: NavigationEntry) {
         <template #trigger>
           <RouteLinkItem class="studio-navigation-rail__item" :class="{ 'studio-navigation-rail__plugin': entry.plugin }" :data-navigation-id="entry.id" :to="entry.to" :active="active(entry)" :aria-label="title(entry)" @click="handleNavigate(entry)">
             <NavigationEntryIcon :entry="entry" />
+            <span v-if="entry.id === 'connections' && waitingApprovals" class="studio-navigation-rail__badge" data-testid="agent-work-rail-badge">{{ waitingApprovals }}</span>
           </RouteLinkItem>
         </template>
         {{ title(entry) }}
@@ -69,6 +72,21 @@ function handleNavigate(entry: NavigationEntry) {
 
 <style scoped lang="scss">
 @use '@/styles/variables' as *;
+
+.studio-navigation-rail__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: $warning;
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
 
 .studio-navigation-rail {
   position: relative;
@@ -98,6 +116,7 @@ function handleNavigate(entry: NavigationEntry) {
 }
 .studio-navigation-rail__bottom { display: flex; flex-direction: column; gap: calc(8px * var(--spacing-scale, 1)); padding-top: 12px; }
 .studio-navigation-rail__item {
+  position: relative;
   display: grid;
   place-items: center;
   flex: 0 0 44px;

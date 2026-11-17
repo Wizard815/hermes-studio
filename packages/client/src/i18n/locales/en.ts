@@ -8,6 +8,7 @@ import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
+import { agentWorkMessages } from '../agent-work-messages'
 import { systemMessages } from '../system-messages'
 import { navigationMessages } from '../navigation-locales'
 import { personMessages } from '../person-messages'
@@ -32,6 +33,7 @@ export default {
   ...hermesChannelsMessages['en'],
   ...androidMessages['en'],
   ...orbMessages['en'],
+  ...agentWorkMessages.en,
   ...systemMessages['en'],
   sessionTasks: {
       "title": "Tasks",

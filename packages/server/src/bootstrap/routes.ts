@@ -38,6 +38,7 @@ import { mcuDevicePublicRoutes, mcuDeviceRoutes } from '../modules/studio/routes
 
 import { sessionRoutes } from '../modules/studio/routes/sessions'
 import { orbRoutes } from '../modules/studio/routes/orb'
+import { agentWorkPublicRoutes, agentWorkRoutes } from '../modules/studio/routes/agent-work'
 import { vscodeRoutes } from '../modules/studio/routes/vscode'
 import { screenRoutes } from '../modules/studio/routes/screen'
 import { modelApiRoutes } from '../modules/studio/routes/model-api'
@@ -114,6 +115,8 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(sessionSharePublicRoutes.routes())
   app.use(chatWebhookPublicRoutes.routes())
   app.use(browserPublicRoutes.routes())
+  // Mattermost's Approve / Reject buttons carry their own per-item secret.
+  app.use(agentWorkPublicRoutes.routes())
 
   // herdr plugin routes carry their own token and loopback check.
   app.use(herdrPluginRoutes.routes())
@@ -145,6 +148,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(socialMessageRoutes.routes())
   app.use(sessionRoutes.routes())
   app.use(orbRoutes.routes())
+  app.use(agentWorkRoutes.routes())
   app.use(vscodeRoutes.routes())
   app.use(screenRoutes.routes())
   app.use(hermesApiRoutes.routes())

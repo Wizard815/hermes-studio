@@ -8,9 +8,11 @@ import AppConnectionsPanel from '@/components/hermes/connections/AppConnectionsP
 import McuDevicesPanel from '@/components/hermes/connections/McuDevicesPanel.vue'
 import RemoteDevicesPanel from '@/components/hermes/connections/RemoteDevicesPanel.vue'
 import OrbConnectionPanel from '@/components/hermes/connections/OrbConnectionPanel.vue'
+import AgentWorkPanel from '@/components/hermes/connections/AgentWorkPanel.vue'
+import { useAgentWorkBadge } from '@/composables/useAgentWorkBadge'
 import { desktopBridge } from '@/utils/desktop-bridge'
 
-type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb'
+type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb' | 'agent-work'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,10 +21,11 @@ const hasRemoteDevices = desktopBridge()?.isDesktop === true && !!desktopBridge(
 
 function normalizeTab(value: unknown): ConnectionTab {
   if (value === 'remote' && hasRemoteDevices) return value
-  if (value === 'mcu' || value === 'orb') return value
+  if (value === 'mcu' || value === 'orb' || value === 'agent-work') return value
   return 'app'
 }
 
+const waitingApprovals = useAgentWorkBadge()
 const activeTab = ref<ConnectionTab>(normalizeTab(route.query.tab))
 
 watch(
@@ -71,6 +74,12 @@ function updateTab(value: string | number) {
       <NTabPane name="orb" :tab="t('orb.tab')" display-directive="if">
         <OrbConnectionPanel />
       </NTabPane>
+      <NTabPane name="agent-work" display-directive="if">
+        <template #tab>
+          <span class="agent-work-tab" data-testid="agent-work-tab">{{ t('agentWork.tab') }}<span v-if="waitingApprovals" class="agent-work-badge">{{ waitingApprovals }}</span></span>
+        </template>
+        <AgentWorkPanel />
+      </NTabPane>
       <NTabPane v-if="hasRemoteDevices" name="remote" :tab="t('remoteDevices.title')" display-directive="if">
         <RemoteDevicesPanel />
       </NTabPane>
@@ -80,6 +89,23 @@ function updateTab(value: string | number) {
 
 <style scoped lang="scss">
 @use '@/styles/variables' as *;
+
+.agent-work-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-work-badge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: $warning;
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
 
 .connections-panel {
   height: 100%;

@@ -78,7 +78,7 @@ function parseEnv(raw: string): Record<string, string> {
   return env
 }
 
-function readProfileEnv(profile: string): Record<string, string> {
+export function readProfileEnv(profile: string): Record<string, string> {
   const path = join(getProfileDir(profile || 'default'), '.env')
   return existsSync(path) ? parseEnv(readFileSync(path, 'utf-8')) : {}
 }

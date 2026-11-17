@@ -8,6 +8,7 @@ import { isStoredSuperAdmin } from '@/api/client'
 import { useSessionSearch } from '@/composables/useSessionSearch'
 import DesktopUpdateDownloadTab from './DesktopUpdateDownloadTab.vue'
 import { useNavigationRail } from '@/composables/useNavigationRail'
+import { useAgentWorkBadge } from '@/composables/useAgentWorkBadge'
 
 type ActiveSection = 'person' | 'chat' | 'history' | 'connections' | 'agents' | 'models' | 'usage' | 'upstream' | 'group' | 'global' | 'workflow'
 
@@ -25,6 +26,7 @@ const router = useRouter()
 const { openSessionSearch } = useSessionSearch()
 const canManageAgents = computed(() => isStoredSuperAdmin())
 const hasNavigationRail = useNavigationRail()
+const waitingApprovals = useAgentWorkBadge()
 
 const primaryText = computed(() => props.primaryLabel || t('chat.newChat'))
 
@@ -140,6 +142,7 @@ function openUpstream() {
           <path d="M3 4h14a1 1 0 0 1 1 1v4M3 4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h9M7 16v4M5 20h7M15 9h6a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1M17 18h2" />
         </svg>
         <span>{{ t('sidebar.connections') }}</span>
+        <span v-if="waitingApprovals" class="page-sidebar-badge" data-testid="agent-work-badge" :title="t('agentWork.waitingTitle')">{{ waitingApprovals }}</span>
       </button>
       <button
         v-if="canManageAgents && !hasNavigationRail"
@@ -330,6 +333,18 @@ function openUpstream() {
 }
 
 .api-relay-logo { border-radius: var(--radius-component, 4px); }
+
+.page-sidebar-badge {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: $warning;
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
 
 .page-sidebar-tab {
   width: 100%;
