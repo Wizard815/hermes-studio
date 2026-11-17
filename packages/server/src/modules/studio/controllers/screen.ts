@@ -59,6 +59,13 @@ export async function control(ctx: Context) {
 
 /** An agent's browser action (sent by Studio's browser tools). */
 export async function recordActivity(ctx: Context) {
+  // Agents (their run credentials or Studio's own agent token) and the super administrator only:
+  // another signed-in account could fill the super administrator's activity list with made-up entries.
+  if (!ctx.state.runBinding && ctx.state.user && ctx.state.user.role !== 'super_admin') {
+    ctx.status = 403
+    ctx.body = { error: 'Only agent runs can record browser activity' }
+    return
+  }
   const { browserActivity, cleanActivity } = await import('../services/screen/activity')
   const entry = cleanActivity((ctx.request.body || {}) as Record<string, unknown>, ctx.state.runBinding || {})
   if (!entry) { ctx.status = 400; ctx.body = { error: 'kind and summary are required' }; return }
