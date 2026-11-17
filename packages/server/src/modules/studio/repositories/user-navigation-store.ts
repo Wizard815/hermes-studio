@@ -1,15 +1,26 @@
-import { defaultNavigationSettings, validateNavigationSettings, type NavigationSettings } from '../../../../../shared/navigation-settings'
+import { BUILTIN_NAVIGATION_IDS, defaultNavigationSettings, validateNavigationSettings, type NavigationSettings } from '../../../../../shared/navigation-settings'
 import { getDb } from '../infrastructure/database'
 import { USER_NAVIGATION_TABLE } from '../infrastructure/database/schemas'
 
 const NAVIGATION_SCHEMA_VERSION = 1
+
+/** Saved ids this version no longer knows are dropped, keeping the rest of the user's order. */
+function knownItems(raw: unknown): unknown {
+  if (!Array.isArray(raw)) return raw
+  const seen = new Set<string>()
+  return raw.filter(item => {
+    if (typeof item !== 'string' || seen.has(item)) return false
+    seen.add(item)
+    return (BUILTIN_NAVIGATION_IDS as readonly string[]).includes(item) || item.startsWith('plugin:')
+  })
+}
 
 export function getUserNavigation(userId: number): NavigationSettings {
   const db = getDb()
   const row = db?.prepare(`SELECT items_json, schema_version FROM ${USER_NAVIGATION_TABLE} WHERE user_id = ?`).get(userId) as { items_json: string; schema_version: number } | undefined
   if (!row) return defaultNavigationSettings()
   let settings: NavigationSettings
-  try { settings = validateNavigationSettings({ items: JSON.parse(row.items_json) }) }
+  try { settings = validateNavigationSettings({ items: knownItems(JSON.parse(row.items_json)) }) }
   catch { return defaultNavigationSettings() }
   // Early saved lists omitted the built-in plugin center. Repair them once,
   // without resetting other selections or undoing future explicit edits.

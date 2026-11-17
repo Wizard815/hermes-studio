@@ -79,3 +79,9 @@ it('uses the authenticated account and denies unauthenticated or shared-session 
   expect(getUserNavigation(2).items).toEqual(['workflow'])
   expect(getUserNavigation(1).items).not.toEqual(['workflow'])
 })
+
+it('keeps a saved list whose entries this version no longer has, without them', () => {
+  mocks.db.prepare('INSERT INTO user_navigation (user_id, items_json, schema_version, updated_at) VALUES (?, ?, ?, ?)')
+    .run(1, JSON.stringify(['models', 'herdr', 'chat', 'android', 'chat', 42, 'plugin:notes/home']), 1, 1)
+  expect(getUserNavigation(1).items).toEqual(['models', 'chat', 'android', 'plugin:notes/home'])
+})
