@@ -124,7 +124,8 @@ function handleNavClick(event: MouseEvent) {
         :active="activeRoute === 'hermes.plugins'"
       >
         <PluginIcon />
-        <span>{{ t("sidebar.plugins") }}</span>
+        <!-- "Hermes Agent plugins": kept apart from Studio plugins (the plugin center in the main navigation). -->
+        <span>{{ t("plugins.title") }}</span>
       </RouteLinkItem>
       <RouteLinkItem
         class="hermes-config-nav-item"
