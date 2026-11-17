@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkMcpSecrets, testMcpServerLive } from '../../packages/server/src/modules/hermes/controllers/mcp'
+import { checkMcpSecrets, checkMcpUrl, existingMcpServer, testMcpServerLive } from '../../packages/server/src/modules/hermes/controllers/mcp'
 
 const reply = (status: number, body: unknown) => async () => ({ status, contentType: 'application/json', body: Buffer.from(JSON.stringify(body)) })
 
@@ -30,5 +30,23 @@ describe('MCP server secrets', () => {
     expect(checkMcpSecrets(config, { MCP_OTHER_API_KEY: 'x' })).toMatch(/not used/)
     expect(checkMcpSecrets(config, { MCP_HA_API_KEY: 'a\nb' })).toMatch(/single line/)
     expect(checkMcpSecrets(config, ['x'])).toMatch(/object/)
+  })
+})
+
+describe('MCP server add checks', () => {
+  it('takes http(s) addresses, with or without a connect secret, and stdio servers', () => {
+    expect(checkMcpUrl({ url: 'http://tower:8043/mcp' })).toBeNull()
+    expect(checkMcpUrl({ url: 'https://tower:8043/mcp/${MCP_UNRAID_CONNECT_SECRET}' })).toBeNull()
+    expect(checkMcpUrl({ command: 'npx', args: ['x'] })).toBeNull()
+  })
+  it('refuses what is not a web address', () => {
+    expect(checkMcpUrl({ url: 'not a url' })).toMatch(/not a web address/)
+    expect(checkMcpUrl({ url: 'ftp://tower/mcp' })).toMatch(/http/)
+    expect(checkMcpUrl({ url: '' })).toMatch(/not a web address/)
+  })
+  it('finds a taken name whatever its case (their .env secrets share one name)', () => {
+    expect(existingMcpServer({ house: {}, other: {} }, 'House')).toBe('house')
+    expect(existingMcpServer({ house: {} }, 'garden')).toBeNull()
+    expect(existingMcpServer(undefined, 'x')).toBeNull()
   })
 })

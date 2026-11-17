@@ -2,7 +2,7 @@ import { hermesApi } from '../services/hermes-api'
 import type { Context } from 'koa'
 import { bridgeMcpAction } from '../services/mcp/bridge-actions'
 import { getActiveProfileName } from '../services/profiles/profile'
-import { saveEnvValueForProfile } from '../../studio/public/profile-config'
+import { readConfigYamlForProfile, saveEnvValueForProfile } from '../../studio/public/profile-config'
 
 function getProfile(ctx: Context): string | undefined {
   return (ctx.state as any)?.profile?.name || undefined
@@ -44,6 +44,24 @@ export function checkMcpSecrets(config: Record<string, unknown>, secrets: unknow
   return null
 }
 
+/** A remote server's URL must be http(s) with a host; returns an error message or null. */
+export function checkMcpUrl(config: Record<string, unknown>): string | null {
+  if (config.url === undefined) return null
+  const raw = typeof config.url === 'string' ? config.url.trim() : ''
+  let url: URL
+  // `${VAR}` parts (a connect secret) are filled in by Hermes; check the rest.
+  try { url = new URL(raw.replace(/\$\{[A-Z0-9_]+\}/g, 'x')) } catch { return `"${raw}" is not a web address (use http://host:port/path)` }
+  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) return `"${raw}" must start with http:// or https://`
+  return null
+}
+
+/** The server already configured under this name, compared case-insensitively (their secrets share one name in .env). */
+export function existingMcpServer(servers: unknown, name: string): string | null {
+  if (!servers || typeof servers !== 'object') return null
+  const wanted = name.trim().toLowerCase()
+  return Object.keys(servers as Record<string, unknown>).find(key => key.toLowerCase() === wanted) ?? null
+}
+
 export async function addServer(ctx: Context) {
   try {
     const { name, config, secrets } = (ctx.request.body || {}) as Record<string, unknown>
@@ -57,14 +75,21 @@ export async function addServer(ctx: Context) {
       ctx.body = { error: 'config object is required' }
       return
     }
-    const secretError = checkMcpSecrets(config as Record<string, unknown>, secrets)
+    const secretError = checkMcpSecrets(config as Record<string, unknown>, secrets) || checkMcpUrl(config as Record<string, unknown>)
     if (secretError) {
       ctx.status = 400
       ctx.body = { error: secretError }
       return
     }
+    const profile = getProfile(ctx) || getActiveProfileName() || 'default'
+    // Before any secret is written: a second server under a taken name would replace the first one's token.
+    const taken = existingMcpServer((await readConfigYamlForProfile(profile).catch(() => ({} as Record<string, any>))).mcp_servers, name)
+    if (taken) {
+      ctx.status = 409
+      ctx.body = { error: `An MCP server named "${taken}" already exists. Choose another name, or edit that server.` }
+      return
+    }
     if (secrets) {
-      const profile = getProfile(ctx) || getActiveProfileName() || 'default'
       for (const [key, value] of Object.entries(secrets as Record<string, string>)) {
         await saveEnvValueForProfile(profile, key, value.trim())
       }
@@ -88,6 +113,12 @@ export async function updateServer(ctx: Context) {
     if (!config || typeof config !== 'object') {
       ctx.status = 400
       ctx.body = { error: 'config object is required' }
+      return
+    }
+    const urlError = checkMcpUrl(config as Record<string, unknown>)
+    if (urlError) {
+      ctx.status = 400
+      ctx.body = { error: urlError }
       return
     }
     ctx.body = await bridgeMcpAction('mcp_server_update', { name, config }, getProfile(ctx))

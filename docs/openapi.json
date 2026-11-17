@@ -9516,18 +9516,6 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": true
-              }
-            }
-          }
         }
       }
     },
