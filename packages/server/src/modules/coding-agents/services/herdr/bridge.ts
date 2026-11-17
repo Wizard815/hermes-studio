@@ -228,6 +228,12 @@ function titleFromFirstMessage(messages: TranscriptMessage[]): string {
   return first.length > 60 ? `${first.slice(0, 57).trimEnd()}...` : first
 }
 
+/** Hermes's terminal UI is up: its input line ("❯") and status bar ("☤ <model>") are drawn. */
+export function hermesInputReady(screen: string): boolean {
+  const lines = screen.split(/\r?\n/)
+  return lines.some(line => /^\s*❯/.test(line)) && lines.some(line => /^\s*☤\s/.test(line))
+}
+
 export class HerdrBridge {
   private client: HerdrSocketClient | null = null
   private subscription: { close: () => void } | null = null
@@ -1206,15 +1212,82 @@ export class HerdrBridge {
     if (link.waiting) throw Object.assign(new Error('The chat\'s agent is not running in herdr'), { status: 409, code: 'agent_not_running' })
     const body = String(text || '')
     if (!body.trim()) throw Object.assign(new Error('Message is empty'), { status: 400 })
-    try {
-      await this.requireClient().request('agent.prompt', { target: link.paneId, text: body }, 15000)
-    } catch (error) {
-      if (error instanceof HerdrRequestError && error.code === 'agent_blocked') {
-        throw Object.assign(new Error('The agent is waiting on an approval or question in herdr'), { status: 409, code: 'agent_blocked' })
+    const send = async () => {
+      try {
+        await this.requireClient().request('agent.prompt', { target: link.paneId, text: body }, 15000)
+      } catch (error) {
+        if (error instanceof HerdrRequestError && error.code === 'agent_blocked') {
+          throw Object.assign(new Error('The agent is waiting on an approval or question in herdr'), { status: 409, code: 'agent_blocked' })
+        }
+        throw error
       }
-      throw error
+    }
+    // A pane that just started may not be in the last snapshot yet: ask herdr.
+    const agent = this.panes.find(entry => entry.pane_id === link.paneId)?.agent
+      ?? await this.requireClient().request<any>('pane.get', { pane_id: link.paneId }, 5000).then(result => result?.pane?.agent).catch(() => undefined)
+    let before = agent === 'hermes' ? await this.readPane(link.paneId) : null
+    if (before !== null && before && !hermesInputReady(before)) {
+      // herdr reports a resumed Hermes idle before its terminal UI is drawn; what is typed
+      // then never reaches the conversation. Wait for its input line (at most 30 s).
+      const deadline = Date.now() + 30000
+      while (Date.now() < deadline && !this.stopped && !hermesInputReady(before)) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        before = await this.readPane(link.paneId)
+      }
+    }
+    if (before === '') before = null // no screen to check against (older herdr): send once, as before
+    await send()
+    // Hermes's terminal UI drops input in its first seconds, although herdr already reports it
+    // idle: the text can sit in its input line without the Enter, or not arrive at all.
+    if (before !== null) {
+      let resent = false
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const state = await this.promptState(link.paneId, body, before)
+        if (state === 'submitted') break
+        if (state === 'typed') {
+          this.log('warn', '[herdr] Hermes kept the message in its input; pressing Enter', { paneId: link.paneId })
+          await this.requireClient().request('pane.send_keys', { pane_id: link.paneId, keys: ['Enter'] })
+        } else if (!resent) {
+          this.log('warn', '[herdr] Hermes did not take the message; sending it again', { paneId: link.paneId })
+          resent = true
+          await send()
+        } else break
+      }
     }
     return { paneId: link.paneId }
+  }
+
+  private async readPane(paneId: string): Promise<string> {
+    try {
+      const result = await this.requireClient().request<any>('pane.read', { pane_id: paneId, source: 'recent', lines: 120 }, 5000)
+      return String(result?.text ?? result?.read?.text ?? '')
+    } catch { return '' }
+  }
+
+  /**
+   * Where a prompt sent to a pane ended up: submitted (the text shows past its input line),
+   * typed (still in the input line), or missing.
+   */
+  private async promptState(paneId: string, text: string, before: string, timeoutMs = 4000): Promise<'submitted' | 'typed' | 'missing'> {
+    const squash = (value: string) => value.replace(/\s+/g, '')
+    const needle = squash(text).slice(0, 24)
+    const count = (value: string) => squash(value).split(needle).length - 1
+    const seenBefore = count(before)
+    const deadline = Date.now() + timeoutMs
+    let state: 'typed' | 'missing' = 'missing'
+    while (Date.now() < deadline && !this.stopped) {
+      await new Promise(resolve => setTimeout(resolve, 400))
+      // (herdr's own status turns "working" as soon as it types, so only the screen tells.)
+      const now = await this.readPane(paneId)
+      if (!now) return 'submitted' // cannot tell: never risk sending twice
+      if (!hermesInputReady(now)) continue
+      if (count(now) <= seenBefore) { state = 'missing'; continue }
+      // The input line is the last prompt line (Hermes draws it as "❯ ...").
+      const inputLine = now.split(/\r?\n/).filter(line => /^\s*❯/.test(line)).pop() || ''
+      if (!squash(inputLine).includes(needle) || count(now) > seenBefore + 1) return 'submitted'
+      state = 'typed'
+    }
+    return state
   }
 
   async closeSessionPane(sessionId: string): Promise<boolean> {
