@@ -30,6 +30,8 @@ export function canonicalProviderId(profile: string, provider: string): string {
     const cfg = YAML.load(readFileSync(join(home, 'config.yaml'), 'utf8')) as Record<string, any>
     // A current account identity always wins over a legacy Profile alias.
     if (Object.hasOwn(cfg?.providers || {}, provider)) return provider
+    // Chats and jobs saved on Hermes's own llama.cpp provider continue on Studio's "Hermes local".
+    if (['llamacpp', 'llama.cpp', 'llama-cpp'].includes(provider.toLowerCase()) && Object.hasOwn(cfg?.providers || {}, 'custom:hermes-local')) return 'custom:hermes-local'
   }
   catch (error: any) { if (error.code === 'ENOENT') return provider; throw error }
   if (aliases[provider]) return aliases[provider]

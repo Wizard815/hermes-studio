@@ -3,14 +3,22 @@ import { configureProviderHttp, createProviderHttpTransport } from '../modules/s
 import { configureProviderUpstream } from '../modules/studio/public/provider-upstream'
 import { codingModelGatewayAdapters } from '../modules/coding-agents/public/model-gateway'
 import { createEkkoAuthorizedProviderFetch, resolveEkkoProviderRuntimeConfig } from '../modules/ekko/services/provider-runtime'
-import { failoverPooledApiKey, nextPooledApiKey } from '../modules/studio/public/provider-key-pools'
+import { nextPooledApiKey, sendWithKeyPool } from '../modules/studio/public/provider-key-pools'
 import { withProviderAccount } from '../modules/studio/services/providers/account-store'
+import { LocalServerNotRunningError, resolveHermesLocalUpstream } from '../modules/hermes/services/models/local-provider'
+import { ModelApiError } from '../modules/studio/services/model-api/errors'
 import { authorizedModelProviderPreset } from '../../../ekko-agent/src/model/authorized-providers'
 
 configureModelGatewayAdapters(codingModelGatewayAdapters)
 // Key pools (Models → Key pools): the gateway takes the Provider's own key and its pooled keys in turn.
 configureProviderUpstream(async input => {
-  const resolved = await resolveEkkoProviderRuntimeConfig(input)
+  // Hermes local: wherever Hermes's llama-server runs now, with its key (or a clear error when it is off).
+  let resolved = await resolveEkkoProviderRuntimeConfig(input)
+  try { resolved = resolveHermesLocalUpstream(resolved) } catch (error) {
+    // A 4xx the caller shows as it is (Hermes would keep retrying a 5xx).
+    if (error instanceof LocalServerNotRunningError) throw new ModelApiError(error.message, 409, null, 'local_server_not_running')
+    throw error
+  }
   const apiKey = await nextPooledApiKey(resolved.provider, resolved.apiKey, input.profile)
   return apiKey === resolved.apiKey ? resolved : { ...resolved, apiKey }
 })
@@ -18,13 +26,6 @@ const providerTransport = createProviderHttpTransport({
   createFetch: createEkkoAuthorizedProviderFetch,
   headers: (provider, apiKey) => authorizedModelProviderPreset(provider, apiKey)?.headers,
 })
-// A pooled key that hits a rate limit rests, and the request is retried once on the next key.
-configureProviderHttp(async input => {
-  const response = await providerTransport(input)
-  if (response.status !== 429 || !input.apiKey || !input.provider) return response
-  const failover = () => failoverPooledApiKey(input.provider!, input.apiKey, input.profile, response.headers.get('retry-after'))
-  const next = await (input.ownerUserId ? withProviderAccount(input.ownerUserId, failover, input.profile) : failover()).catch(() => undefined)
-  if (!next) return response
-  await response.body?.cancel().catch(() => undefined)
-  return providerTransport({ ...input, apiKey: next })
-})
+// A pooled key that hits a rate limit rests, and the request moves to the next free key.
+configureProviderHttp(input => sendWithKeyPool(input, apiKey => providerTransport(apiKey === input.apiKey ? input : { ...input, apiKey: apiKey! }),
+  operation => input.ownerUserId ? withProviderAccount(input.ownerUserId, operation, input.profile) : operation()))
