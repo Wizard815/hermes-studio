@@ -6,6 +6,7 @@ import { testHermesPlatform, updateHermesPlatform, type HermesEnvField, type Her
 import SettingRow from '@/components/hermes/settings/SettingRow.vue'
 import HermesOnboarding from './HermesOnboarding.vue'
 import HermesMattermostGuide from './HermesMattermostGuide.vue'
+import HermesMattermostSetup from './HermesMattermostSetup.vue'
 import { FIELD_TEXT_PREFIX, buildPlatformUpdate, cleanError, hasUpdate, panelFields, stateKey, stateTagType } from './channel-helpers'
 import { useHermesChannels } from './useHermesChannels'
 
@@ -178,6 +179,8 @@ async function onboarded() {
         <NButton type="primary" size="small" :loading="saving" :disabled="!dirty" @click="save">{{ embedded ? t('hermesChannels.saveAgent') : t('hermesChannels.save') }}</NButton>
       </div>
     </div>
+
+    <HermesMattermostSetup v-if="platform.id === 'mattermost'" :platform="platform" :test-ok="!!testResult?.ok" @done="onboarded" />
   </div>
 </template>
 

@@ -1,3 +1,4 @@
+import { request } from '../client'
 import { hermesAgent } from './agent-api'
 
 /** Hermes Agent's messaging channels, pairing and inbound webhooks (through Studio's passthrough). */
@@ -126,3 +127,35 @@ export const saveHermesWebhook = (body: HermesWebhookCreate) => hermesAgent<Herm
 export const setHermesWebhookEnabled = (name: string, enabled: boolean) =>
   hermesAgent<{ ok: boolean }>(`webhooks/${encodeURIComponent(name)}/enabled`, { method: 'PUT', body: { enabled } })
 export const deleteHermesWebhook = (name: string) => hermesAgent<{ ok: boolean }>(`webhooks/${encodeURIComponent(name)}`, { method: 'DELETE' })
+
+// ── Mattermost: Studio sets up the team's channels for Hermes ─────────────
+export type MattermostChannelRole = 'main' | 'home_alerts' | 'server_alerts'
+export interface MattermostAdminAuth { login_id?: string; password?: string; token?: string }
+export interface MattermostSetupRecord {
+  url: string
+  team: { id: string; name: string; display_name: string }
+  user: { id: string; username: string }
+  bot: { id: string; username: string }
+  channels: Array<{ role: MattermostChannelRole; id: string; name: string; display_name: string }>
+  updated_at: string
+}
+export interface MattermostSetupInfo {
+  url: string
+  bot: { id: string; username: string }
+  using_admin: boolean
+  teams: Array<{ id: string; name: string; display_name: string; bot_member: boolean }>
+  defaults: Record<MattermostChannelRole, string>
+  current: MattermostSetupRecord | null
+}
+export interface MattermostSetupResult extends MattermostSetupRecord {
+  ok: boolean
+  steps: string[]
+  restarted: boolean
+  restart_error: string | null
+}
+/** Studio's own endpoints (not Hermes's): the admin sign-in is used for one request and never stored. */
+export const getMattermostSetup = () => request<{ current: MattermostSetupRecord | null }>('/api/hermes/mattermost/setup')
+export const inspectMattermostSetup = (admin?: MattermostAdminAuth) =>
+  request<MattermostSetupInfo>('/api/hermes/mattermost/setup/inspect', { method: 'POST', body: JSON.stringify({ admin }) })
+export const applyMattermostSetup = (body: { team_id: string; username: string; channels: Record<MattermostChannelRole, string>; admin?: MattermostAdminAuth }) =>
+  request<MattermostSetupResult>('/api/hermes/mattermost/setup/apply', { method: 'POST', body: JSON.stringify(body) })

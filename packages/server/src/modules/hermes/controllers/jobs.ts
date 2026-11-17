@@ -5,6 +5,7 @@ import { readConfigYamlForProfile } from '../../studio/public/profile-config'
 import { getActiveProfileName, getProfileDir } from '../services/profiles/profile'
 import { getHermesBin } from '../services/runtime/path'
 import { execHermesWithBin, spawnHermesWithBin } from '../services/runtime/process'
+import { readSetupRecord } from './mattermost-setup'
 
 const TIMEOUT_MS = 60_000
 
@@ -37,6 +38,25 @@ function getChannelDirectoryPath(profile: string): string {
 }
 
 function readDeliveryTargets(profile: string): { updated_at: string | null; targets: DeliveryTargetRecord[] } {
+  const directory = readDirectoryTargets(profile)
+  return { ...directory, targets: withMattermostSetupTargets(profile, directory.targets) }
+}
+
+/**
+ * Channels Studio's Mattermost setup created (#hermes, #home-alerts, #server-alerts) are delivery
+ * targets even before anyone has talked in them, which is when Hermes's own directory lists a channel.
+ */
+function withMattermostSetupTargets(profile: string, targets: DeliveryTargetRecord[]): DeliveryTargetRecord[] {
+  const record = readSetupRecord(profile)
+  if (!record) return targets
+  const merged = targets.filter((t) => !(t.platform === 'mattermost' && record.channels.some((c) => c.id === t.id)))
+  for (const channel of record.channels) {
+    merged.push({ platform: 'mattermost', id: channel.id, name: `#${channel.name}`, type: 'channel', thread_id: null, value: `mattermost:${channel.id}` })
+  }
+  return merged.sort((a, b) => a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+}
+
+function readDirectoryTargets(profile: string): { updated_at: string | null; targets: DeliveryTargetRecord[] } {
   const directoryPath = getChannelDirectoryPath(profile)
   if (!existsSync(directoryPath)) return { updated_at: null, targets: [] }
 

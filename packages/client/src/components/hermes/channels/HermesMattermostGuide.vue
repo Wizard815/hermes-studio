@@ -8,6 +8,9 @@ const props = defineProps<{ configured: boolean }>()
 const { t } = useI18n()
 const open = ref(!props.configured)
 const steps = ['createBot', 'copyToken', 'addToTeam', 'fillIn', 'userId', 'tryIt'] as const
+/** No Mattermost yet: installing it on Unraid, first admin, bot accounts. */
+const showInstall = ref(false)
+const installSteps = ['apps', 'image', 'firstAdmin', 'siteUrl', 'enableBots', 'then'] as const
 </script>
 
 <template>
@@ -17,6 +20,12 @@ const steps = ['createBot', 'copyToken', 'addToTeam', 'fillIn', 'userId', 'tryIt
       <NButton size="tiny" quaternary @click="open = !open">{{ open ? t('hermesChannels.mattermost.hideSteps') : t('hermesChannels.mattermost.showSteps') }}</NButton>
     </div>
     <NCollapseTransition :show="open">
+      <NButton size="tiny" quaternary class="install-toggle" @click="showInstall = !showInstall">{{ t('hermesChannels.mattermost.unraid.title') }}</NButton>
+      <NCollapseTransition :show="showInstall">
+        <ol class="steps install">
+          <li v-for="step in installSteps" :key="step">{{ t(`hermesChannels.mattermost.unraid.steps.${step}`) }}</li>
+        </ol>
+      </NCollapseTransition>
       <ol class="steps">
         <li v-for="step in steps" :key="step">{{ t(`hermesChannels.mattermost.steps.${step}`) }}</li>
       </ol>
@@ -59,6 +68,15 @@ const steps = ['createBot', 'copyToken', 'addToTeam', 'fillIn', 'userId', 'tryIt
   li + li {
     margin-top: 4px;
   }
+}
+
+.install-toggle {
+  margin-top: 6px;
+}
+
+.install {
+  padding-bottom: 6px;
+  border-bottom: var(--border-width, 1px) dashed $border-light;
 }
 
 .note {

@@ -18,7 +18,22 @@ vi.mock('@/api/hermes/channels', () => ({
   updateHermesPlatform: (...args: unknown[]) => (updateHermesPlatform as any)(...args),
   testHermesPlatform: (...args: unknown[]) => (testHermesPlatform as any)(...args),
   listHermesPlatforms: vi.fn(async () => ({ platforms: [] })),
+  getMattermostSetup: (...args: unknown[]) => (getMattermostSetup as any)(...args),
+  inspectMattermostSetup: (...args: unknown[]) => (inspectMattermostSetup as any)(...args),
+  applyMattermostSetup: (...args: unknown[]) => (applyMattermostSetup as any)(...args),
 }))
+const mmRecord = {
+  url: 'http://mm', team: { id: 't1', name: 'home', display_name: 'Home' }, user: { id: 'u1', username: 'alex' }, bot: { id: 'b1', username: 'hermes' },
+  channels: [{ role: 'main', id: 'c1', name: 'hermes', display_name: 'hermes' }, { role: 'home_alerts', id: 'c2', name: 'home-alerts', display_name: 'home-alerts' }, { role: 'server_alerts', id: 'c3', name: 'server-alerts', display_name: 'server-alerts' }],
+  updated_at: '',
+}
+const getMattermostSetup = vi.fn(async () => ({ current: null }))
+const inspectMattermostSetup = vi.fn(async () => ({
+  url: 'http://mm', bot: { id: 'b1', username: 'hermes' }, using_admin: false, current: null,
+  teams: [{ id: 't1', name: 'home', display_name: 'Home', bot_member: true }],
+  defaults: { main: 'hermes', home_alerts: 'home-alerts', server_alerts: 'server-alerts' },
+}))
+const applyMattermostSetup = vi.fn(async () => ({ ok: true, ...mmRecord, steps: ['created ~hermes'], restarted: true, restart_error: null }))
 vi.mock('@/api/client', () => ({ isStoredSuperAdmin: () => true, request: vi.fn() }))
 vi.mock('@/api/hermes/profiles', () => ({ restartProfileGateway: vi.fn() }))
 vi.mock('@/stores/hermes/profiles', () => ({ useProfilesStore: () => ({ activeProfileName: 'default' }) }))
@@ -139,6 +154,36 @@ describe('Hermes platform panel', () => {
     await wrapper.findAll('button').find(b => b.text() === 'Save agent settings')!.trigger('click')
     await flushPromises()
     expect(updateHermesPlatform).toHaveBeenCalledWith('mattermost', { env: { MATTERMOST_URL: 'https://chat.example.com' } })
+    wrapper.unmount()
+  })
+})
+
+describe('Mattermost setup for Hermes', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('waits for the token and a passing test, then sets up the team in one go', async () => {
+    const { default: HermesPlatformPanel } = await import('@/components/hermes/channels/HermesPlatformPanel.vue')
+    const i18n = createI18n({ legacy: false, locale: 'en', missingWarn: false, fallbackWarn: false, messages: { en: hermesChannelsMessages.en as any } })
+    const mm = (extra: Partial<HermesPlatform>) => platform('mattermost', [field('MATTERMOST_URL'), field('MATTERMOST_TOKEN', { is_password: true })], extra)
+
+    const notYet = mount(defineComponent(() => () => h(NMessageProvider, null, { default: () => h(HermesPlatformPanel, { platform: mm({ state: 'not_configured' }), embedded: true }) })), { global: { plugins: [i18n] } })
+    await flushPromises()
+    expect(notYet.text()).toContain('press Test')
+    expect(notYet.find('[data-testid="mattermost-setup-start"]').exists()).toBe(false)
+    expect(notYet.text()).toContain('Install it on Unraid')
+    notYet.unmount()
+
+    const wrapper = mount(defineComponent(() => () => h(NMessageProvider, null, { default: () => h(HermesPlatformPanel, { platform: mm({ configured: true, enabled: true, state: 'connected' }), embedded: true }) })), { global: { plugins: [i18n] }, attachTo: document.body })
+    await flushPromises()
+    await wrapper.find('[data-testid="mattermost-setup-start"]').trigger('click')
+    await flushPromises()
+    expect(inspectMattermostSetup).toHaveBeenCalledWith(undefined)
+    await wrapper.find('[data-testid="mattermost-setup-username"] input').setValue('alex')
+    await wrapper.find('[data-testid="mattermost-setup-run"]').trigger('click')
+    await flushPromises()
+    expect(applyMattermostSetup).toHaveBeenCalledWith({ team_id: 't1', username: 'alex', channels: { main: 'hermes', home_alerts: 'home-alerts', server_alerts: 'server-alerts' }, admin: undefined })
+    expect(wrapper.text()).toContain('~server-alerts')
+    expect(wrapper.text()).toContain('Unraid server alerts')
     wrapper.unmount()
   })
 })

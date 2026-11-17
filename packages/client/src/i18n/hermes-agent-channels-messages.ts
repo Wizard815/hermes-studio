@@ -134,6 +134,52 @@ export const hermesChannelsMessages = {
         "allowAll": "Let anyone on the server use the bot",
         "allowAllHint": "Skips the allowed-users list. Only for testing on a private server.",
         "allowAllWarning": "Everyone who can message the bot can use the agent and its tools.",
+        "unraid": {
+          "title": "No Mattermost yet? Install it on Unraid",
+          "steps": {
+            "apps": "In Unraid open the Apps tab (Community Applications), search for Mattermost and install it. It needs a PostgreSQL database: install a Postgres app from Apps first (for example postgresql15), create a database called mattermost, and enter its address, user and password in the Mattermost template.",
+            "image": "No template? Under Docker > Add Container use the image mattermost/mattermost-team-edition, map port 8065, keep /mattermost/data and /mattermost/config under /mnt/user/appdata/mattermost, and set MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "Open http://UNRAID-IP:8065. The first account you create becomes the system admin. Then create a team (for example Home).",
+            "siteUrl": "In System Console > Environment > Web Server, set Site URL to the address you open Mattermost with, and save.",
+            "enableBots": "In System Console > Integrations > Bot Accounts, turn on Enable Bot Account Creation and save.",
+            "then": "Then create the bot and its token as described below, paste them here, press Test, and use Set up Mattermost for Hermes."
+          }
+        },
+        "setup": {
+          "title": "Set up Mattermost for Hermes",
+          "intro": "Studio creates the channels, adds you and the bot to them, points Hermes at them and restarts the gateway.",
+          "needsTest": "First save the server address and bot token above and press Test. When the test passes, Studio can do the rest.",
+          "start": "Set up Mattermost",
+          "redo": "Run setup again",
+          "current": "Set up in team {team} for {user}:",
+          "jobsHint": "In Jobs, pick Mattermost · #home-alerts or #server-alerts as where results go. Hermes answers every message in the main channel; in the alert channels, mention it.",
+          "noTeams": "The bot is not in any team yet. Add it to your team in Mattermost (team menu > Add members), or sign in once as an admin below.",
+          "team": "Team",
+          "teamHint": "The team the channels go in. The bot ({bot}) is added to it if needed.",
+          "username": "Your Mattermost username",
+          "usernameHint": "Studio looks up your user ID, adds you to the channels and allows you to talk to Hermes.",
+          "role": {
+            "main": "Main chat",
+            "home_alerts": "Home Assistant alerts",
+            "server_alerts": "Unraid server alerts"
+          },
+          "roleHint": {
+            "main": "Where you talk to Hermes; also its home channel. Created if missing.",
+            "home_alerts": "For Home Assistant alarms. Created if missing.",
+            "server_alerts": "For Unraid server status and job results. Created if missing."
+          },
+          "grant": "To let the bot do this itself: in Mattermost open Integrations > Bot Accounts, press Edit on the bot and set its role to System Admin (or have an admin add it to the team and create the channels). Or sign in once as an admin below; Studio uses that sign-in for this setup only and does not save it.",
+          "admin": "Use an admin account once",
+          "adminHint": "Only needed when the bot may not create channels or add people. Used for this setup only and never saved; a sign-in is logged out right after.",
+          "adminLogin": "Admin username or email",
+          "adminPassword": "Admin password",
+          "adminToken": "Or an admin access token",
+          "reloadTeams": "Load teams with this account",
+          "run": "Set up",
+          "done": "Mattermost is set up and the gateway restarted.",
+          "doneNoRestart": "Mattermost is set up. Restart the gateway to apply it.",
+          "failed": "Setup failed"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "Server address",
@@ -321,6 +367,52 @@ export const hermesChannelsMessages = {
         "allowAll": "允许服务器上任何人使用机器人",
         "allowAllHint": "跳过允许用户列表。仅用于私有服务器上的测试。",
         "allowAllWarning": "任何能给机器人发消息的人都可以使用智能体及其工具。",
+        "unraid": {
+          "title": "还没有 Mattermost？在 Unraid 上安装",
+          "steps": {
+            "apps": "在 Unraid 打开 Apps 标签页（Community Applications），搜索 Mattermost 并安装。它需要 PostgreSQL 数据库：先在 Apps 中安装一个 Postgres 应用（例如 postgresql15），创建名为 mattermost 的数据库，然后在 Mattermost 模板中填写其地址、用户名和密码。",
+            "image": "没有模板？在 Docker > Add Container 中使用镜像 mattermost/mattermost-team-edition，映射端口 8065，把 /mattermost/data 和 /mattermost/config 放在 /mnt/user/appdata/mattermost 下，并设置 MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "打开 http://UNRAID-IP:8065。你创建的第一个账号会成为系统管理员。然后创建一个团队（例如 Home）。",
+            "siteUrl": "在 System Console > Environment > Web Server 中，把 Site URL 设为你访问 Mattermost 的地址并保存。",
+            "enableBots": "在 System Console > Integrations > Bot Accounts 中，打开 Enable Bot Account Creation 并保存。",
+            "then": "然后按下面的步骤创建机器人和令牌，粘贴到这里，点击测试，再使用“为 Hermes 设置 Mattermost”。"
+          }
+        },
+        "setup": {
+          "title": "为 Hermes 设置 Mattermost",
+          "intro": "Studio 会创建频道、把你和机器人加入频道、让 Hermes 使用这些频道并重启网关。",
+          "needsTest": "请先在上方保存服务器地址和机器人令牌，然后点击测试。测试通过后，其余工作由 Studio 完成。",
+          "start": "设置 Mattermost",
+          "redo": "重新运行设置",
+          "current": "已在团队 {team} 中为 {user} 设置：",
+          "jobsHint": "在任务页面中，选择 Mattermost · #home-alerts 或 #server-alerts 作为结果的发送位置。Hermes 会回复主频道中的每条消息；在提醒频道中需要提及它。",
+          "noTeams": "机器人还不在任何团队中。请在 Mattermost 中把它加入你的团队（团队菜单 > 添加成员），或在下方用管理员账号登录一次。",
+          "team": "团队",
+          "teamHint": "频道所在的团队。必要时会把机器人（{bot}）加入其中。",
+          "username": "你的 Mattermost 用户名",
+          "usernameHint": "Studio 会查找你的用户 ID，把你加入频道，并允许你与 Hermes 对话。",
+          "role": {
+            "main": "主聊天",
+            "home_alerts": "Home Assistant 提醒",
+            "server_alerts": "Unraid 服务器提醒"
+          },
+          "roleHint": {
+            "main": "你与 Hermes 对话的地方，也是它的主频道。不存在时会创建。",
+            "home_alerts": "用于 Home Assistant 警报。不存在时会创建。",
+            "server_alerts": "用于 Unraid 服务器状态和任务结果。不存在时会创建。"
+          },
+          "grant": "要让机器人自己完成：在 Mattermost 打开 Integrations > Bot Accounts，点击机器人的 Edit，把角色设为 System Admin（或请管理员把它加入团队并创建频道）。也可以在下方用管理员账号登录一次；Studio 只在本次设置中使用，不会保存。",
+          "admin": "临时使用管理员账号",
+          "adminHint": "仅当机器人无权创建频道或添加成员时需要。只用于本次设置，从不保存；登录会话随后立即注销。",
+          "adminLogin": "管理员用户名或邮箱",
+          "adminPassword": "管理员密码",
+          "adminToken": "或管理员访问令牌",
+          "reloadTeams": "用此账号加载团队",
+          "run": "开始设置",
+          "done": "Mattermost 已设置完成，网关已重启。",
+          "doneNoRestart": "Mattermost 已设置完成。请重启网关以生效。",
+          "failed": "设置失败"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "服务器地址",
@@ -508,6 +600,52 @@ export const hermesChannelsMessages = {
         "allowAll": "允許伺服器上任何人使用機器人",
         "allowAllHint": "略過允許使用者清單。僅用於私人伺服器上的測試。",
         "allowAllWarning": "任何能傳訊息給機器人的人都能使用智慧體及其工具。",
+        "unraid": {
+          "title": "還沒有 Mattermost？在 Unraid 上安裝",
+          "steps": {
+            "apps": "在 Unraid 開啟 Apps 分頁（Community Applications），搜尋 Mattermost 並安裝。它需要 PostgreSQL 資料庫：先從 Apps 安裝一個 Postgres 應用（例如 postgresql15），建立名為 mattermost 的資料庫，再在 Mattermost 範本中填入其位址、使用者與密碼。",
+            "image": "沒有範本？在 Docker > Add Container 中使用映像 mattermost/mattermost-team-edition，對應連接埠 8065，把 /mattermost/data 與 /mattermost/config 放在 /mnt/user/appdata/mattermost 下，並設定 MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "開啟 http://UNRAID-IP:8065。你建立的第一個帳號會成為系統管理員。接著建立一個團隊（例如 Home）。",
+            "siteUrl": "在 System Console > Environment > Web Server 中，把 Site URL 設為你開啟 Mattermost 的位址並儲存。",
+            "enableBots": "在 System Console > Integrations > Bot Accounts 中，開啟 Enable Bot Account Creation 並儲存。",
+            "then": "然後依照下方步驟建立機器人與權杖，貼到這裡，按下測試，再使用「為 Hermes 設定 Mattermost」。"
+          }
+        },
+        "setup": {
+          "title": "為 Hermes 設定 Mattermost",
+          "intro": "Studio 會建立頻道、把你和機器人加入頻道、讓 Hermes 使用這些頻道並重新啟動閘道。",
+          "needsTest": "請先在上方儲存伺服器位址與機器人權杖，然後按下測試。測試通過後，其餘工作由 Studio 完成。",
+          "start": "設定 Mattermost",
+          "redo": "重新執行設定",
+          "current": "已在團隊 {team} 中為 {user} 設定：",
+          "jobsHint": "在排程工作頁面，選擇 Mattermost · #home-alerts 或 #server-alerts 作為結果的傳送位置。Hermes 會回覆主頻道中的每則訊息；在提醒頻道中需要提及它。",
+          "noTeams": "機器人還不在任何團隊中。請在 Mattermost 中把它加入你的團隊（團隊選單 > 新增成員），或在下方用管理員帳號登入一次。",
+          "team": "團隊",
+          "teamHint": "頻道所在的團隊。必要時會把機器人（{bot}）加入其中。",
+          "username": "你的 Mattermost 使用者名稱",
+          "usernameHint": "Studio 會查詢你的使用者 ID，把你加入頻道，並允許你與 Hermes 對話。",
+          "role": {
+            "main": "主要聊天",
+            "home_alerts": "Home Assistant 提醒",
+            "server_alerts": "Unraid 伺服器提醒"
+          },
+          "roleHint": {
+            "main": "你與 Hermes 對話的地方，也是它的主頻道。不存在時會建立。",
+            "home_alerts": "用於 Home Assistant 警報。不存在時會建立。",
+            "server_alerts": "用於 Unraid 伺服器狀態與工作結果。不存在時會建立。"
+          },
+          "grant": "要讓機器人自己完成：在 Mattermost 開啟 Integrations > Bot Accounts，按下機器人的 Edit，把角色設為 System Admin（或請管理員把它加入團隊並建立頻道）。也可以在下方用管理員帳號登入一次；Studio 只在本次設定中使用，不會儲存。",
+          "admin": "暫時使用管理員帳號",
+          "adminHint": "僅在機器人無權建立頻道或新增成員時需要。只用於本次設定，從不儲存；登入工作階段隨即登出。",
+          "adminLogin": "管理員使用者名稱或電子郵件",
+          "adminPassword": "管理員密碼",
+          "adminToken": "或管理員存取權杖",
+          "reloadTeams": "用此帳號載入團隊",
+          "run": "開始設定",
+          "done": "Mattermost 已設定完成，閘道已重新啟動。",
+          "doneNoRestart": "Mattermost 已設定完成。請重新啟動閘道以套用。",
+          "failed": "設定失敗"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "伺服器位址",
@@ -695,6 +833,52 @@ export const hermesChannelsMessages = {
         "allowAll": "サーバー上の誰でもボットを使えるようにする",
         "allowAllHint": "許可ユーザーのリストを使いません。プライベートサーバーでのテスト専用です。",
         "allowAllWarning": "ボットにメッセージを送れる人なら誰でも、エージェントとそのツールを使えます。",
+        "unraid": {
+          "title": "Mattermost がまだない場合: Unraid にインストール",
+          "steps": {
+            "apps": "Unraid の Apps タブ（Community Applications）で Mattermost を検索してインストールします。PostgreSQL データベースが必要です。先に Apps から Postgres アプリ（例: postgresql15）を入れて mattermost という名前のデータベースを作り、そのアドレス、ユーザー、パスワードを Mattermost のテンプレートに入力します。",
+            "image": "テンプレートがない場合は Docker > Add Container でイメージ mattermost/mattermost-team-edition を使い、ポート 8065 を割り当て、/mattermost/data と /mattermost/config を /mnt/user/appdata/mattermost に置き、次を設定します: MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "http://UNRAID-IP:8065 を開きます。最初に作ったアカウントがシステム管理者になります。続いてチーム（例: Home）を作ります。",
+            "siteUrl": "System Console > Environment > Web Server で、Site URL を Mattermost を開くアドレスにして保存します。",
+            "enableBots": "System Console > Integrations > Bot Accounts で Enable Bot Account Creation をオンにして保存します。",
+            "then": "その後、下の手順でボットとトークンを作り、ここに貼り付けてテストを押し、「Hermes 用に Mattermost を設定」を使います。"
+          }
+        },
+        "setup": {
+          "title": "Hermes 用に Mattermost を設定",
+          "intro": "Studio がチャンネルを作成し、あなたとボットを追加し、Hermes をそれらに向けてゲートウェイを再起動します。",
+          "needsTest": "まず上でサーバーアドレスとボットトークンを保存し、テストを押してください。テストに通れば残りは Studio が行います。",
+          "start": "Mattermost を設定",
+          "redo": "もう一度設定する",
+          "current": "チーム {team} で {user} 用に設定済み:",
+          "jobsHint": "ジョブで結果の送信先に Mattermost · #home-alerts または #server-alerts を選べます。Hermes はメインチャンネルのすべてのメッセージに返信します。アラートチャンネルではメンションしてください。",
+          "noTeams": "ボットはまだどのチームにも入っていません。Mattermost でチームに追加する（チームメニュー > メンバーを追加）か、下で一度だけ管理者としてサインインしてください。",
+          "team": "チーム",
+          "teamHint": "チャンネルを作るチーム。必要ならボット（{bot}）を追加します。",
+          "username": "あなたの Mattermost ユーザー名",
+          "usernameHint": "Studio があなたのユーザー ID を調べ、チャンネルに追加し、Hermes と話せるようにします。",
+          "role": {
+            "main": "メインチャット",
+            "home_alerts": "Home Assistant のアラート",
+            "server_alerts": "Unraid サーバーのアラート"
+          },
+          "roleHint": {
+            "main": "Hermes と話す場所で、ホームチャンネルにもなります。なければ作成します。",
+            "home_alerts": "Home Assistant のアラーム用。なければ作成します。",
+            "server_alerts": "Unraid サーバーの状態とジョブ結果用。なければ作成します。"
+          },
+          "grant": "ボット自身に行わせるには: Mattermost で Integrations > Bot Accounts を開き、ボットの Edit でロールを System Admin にします（または管理者にチームへの追加とチャンネル作成を頼みます）。あるいは下で一度だけ管理者としてサインインしてください。Studio はこの設定にだけ使い、保存しません。",
+          "admin": "管理者アカウントを一度だけ使う",
+          "adminHint": "ボットにチャンネル作成やメンバー追加の権限がない場合のみ必要です。この設定にだけ使い、保存しません。サインインはすぐにログアウトされます。",
+          "adminLogin": "管理者のユーザー名またはメール",
+          "adminPassword": "管理者のパスワード",
+          "adminToken": "または管理者のアクセストークン",
+          "reloadTeams": "このアカウントでチームを読み込む",
+          "run": "設定する",
+          "done": "Mattermost を設定し、ゲートウェイを再起動しました。",
+          "doneNoRestart": "Mattermost を設定しました。反映するにはゲートウェイを再起動してください。",
+          "failed": "設定に失敗しました"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "サーバーのアドレス",
@@ -882,6 +1066,52 @@ export const hermesChannelsMessages = {
         "allowAll": "서버의 누구나 봇 사용 허용",
         "allowAllHint": "허용 사용자 목록을 건너뜁니다. 개인 서버에서 테스트할 때만 쓰세요.",
         "allowAllWarning": "봇에게 메시지를 보낼 수 있는 누구나 에이전트와 그 도구를 사용할 수 있습니다.",
+        "unraid": {
+          "title": "아직 Mattermost가 없나요? Unraid에 설치하기",
+          "steps": {
+            "apps": "Unraid에서 Apps 탭(Community Applications)을 열고 Mattermost를 검색해 설치합니다. PostgreSQL 데이터베이스가 필요합니다. 먼저 Apps에서 Postgres 앱(예: postgresql15)을 설치하고 mattermost라는 데이터베이스를 만든 뒤, 주소·사용자·비밀번호를 Mattermost 템플릿에 입력합니다.",
+            "image": "템플릿이 없나요? Docker > Add Container에서 이미지 mattermost/mattermost-team-edition를 사용하고, 포트 8065를 연결하고, /mattermost/data와 /mattermost/config를 /mnt/user/appdata/mattermost 아래에 두고, 다음을 설정합니다: MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "http://UNRAID-IP:8065를 엽니다. 처음 만든 계정이 시스템 관리자가 됩니다. 그런 다음 팀(예: Home)을 만듭니다.",
+            "siteUrl": "System Console > Environment > Web Server에서 Site URL을 Mattermost를 여는 주소로 설정하고 저장합니다.",
+            "enableBots": "System Console > Integrations > Bot Accounts에서 Enable Bot Account Creation을 켜고 저장합니다.",
+            "then": "그다음 아래 단계대로 봇과 토큰을 만들어 여기에 붙여 넣고, 테스트를 누른 뒤 'Hermes용 Mattermost 설정'을 사용합니다."
+          }
+        },
+        "setup": {
+          "title": "Hermes용 Mattermost 설정",
+          "intro": "Studio가 채널을 만들고, 나와 봇을 추가하고, Hermes가 그 채널을 쓰도록 설정한 뒤 게이트웨이를 다시 시작합니다.",
+          "needsTest": "먼저 위에서 서버 주소와 봇 토큰을 저장하고 테스트를 누르세요. 테스트를 통과하면 나머지는 Studio가 합니다.",
+          "start": "Mattermost 설정",
+          "redo": "설정 다시 실행",
+          "current": "팀 {team}에서 {user}용으로 설정됨:",
+          "jobsHint": "작업에서 결과를 보낼 곳으로 Mattermost · #home-alerts 또는 #server-alerts를 고르세요. Hermes는 메인 채널의 모든 메시지에 답하고, 알림 채널에서는 멘션해야 답합니다.",
+          "noTeams": "봇이 아직 어떤 팀에도 없습니다. Mattermost에서 팀에 추가하거나(팀 메뉴 > 멤버 추가) 아래에서 관리자로 한 번 로그인하세요.",
+          "team": "팀",
+          "teamHint": "채널을 만들 팀입니다. 필요하면 봇({bot})을 추가합니다.",
+          "username": "내 Mattermost 사용자 이름",
+          "usernameHint": "Studio가 사용자 ID를 찾아 채널에 추가하고 Hermes와 대화할 수 있게 합니다.",
+          "role": {
+            "main": "메인 채팅",
+            "home_alerts": "Home Assistant 알림",
+            "server_alerts": "Unraid 서버 알림"
+          },
+          "roleHint": {
+            "main": "Hermes와 대화하는 곳이며 홈 채널이기도 합니다. 없으면 만듭니다.",
+            "home_alerts": "Home Assistant 경보용. 없으면 만듭니다.",
+            "server_alerts": "Unraid 서버 상태와 작업 결과용. 없으면 만듭니다."
+          },
+          "grant": "봇이 직접 하게 하려면: Mattermost에서 Integrations > Bot Accounts를 열고 봇의 Edit에서 역할을 System Admin으로 바꾸세요(또는 관리자에게 팀 추가와 채널 생성을 부탁하세요). 아니면 아래에서 관리자로 한 번 로그인하세요. Studio는 이번 설정에만 쓰고 저장하지 않습니다.",
+          "admin": "관리자 계정 한 번 사용",
+          "adminHint": "봇이 채널을 만들거나 사람을 추가할 수 없을 때만 필요합니다. 이번 설정에만 쓰고 저장하지 않으며, 로그인은 바로 로그아웃됩니다.",
+          "adminLogin": "관리자 사용자 이름 또는 이메일",
+          "adminPassword": "관리자 비밀번호",
+          "adminToken": "또는 관리자 액세스 토큰",
+          "reloadTeams": "이 계정으로 팀 불러오기",
+          "run": "설정",
+          "done": "Mattermost 설정을 마치고 게이트웨이를 다시 시작했습니다.",
+          "doneNoRestart": "Mattermost 설정을 마쳤습니다. 적용하려면 게이트웨이를 다시 시작하세요.",
+          "failed": "설정 실패"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "서버 주소",
@@ -1069,6 +1299,52 @@ export const hermesChannelsMessages = {
         "allowAll": "Jeden auf dem Server den Bot nutzen lassen",
         "allowAllHint": "Überspringt die Liste erlaubter Benutzer. Nur zum Testen auf einem privaten Server.",
         "allowAllWarning": "Jeder, der dem Bot schreiben kann, kann den Agenten und seine Werkzeuge nutzen.",
+        "unraid": {
+          "title": "Noch kein Mattermost? Auf Unraid installieren",
+          "steps": {
+            "apps": "Öffne in Unraid den Tab Apps (Community Applications), suche nach Mattermost und installiere es. Es braucht eine PostgreSQL-Datenbank: installiere zuerst eine Postgres-App aus Apps (zum Beispiel postgresql15), lege eine Datenbank namens mattermost an und trage Adresse, Benutzer und Passwort in die Mattermost-Vorlage ein.",
+            "image": "Keine Vorlage? Unter Docker > Add Container das Image mattermost/mattermost-team-edition verwenden, Port 8065 freigeben, /mattermost/data und /mattermost/config unter /mnt/user/appdata/mattermost ablegen und setzen: MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "Öffne http://UNRAID-IP:8065. Das erste Konto, das du anlegst, wird Systemadministrator. Lege dann ein Team an (zum Beispiel Home).",
+            "siteUrl": "Setze unter System Console > Environment > Web Server die Site URL auf die Adresse, mit der du Mattermost öffnest, und speichere.",
+            "enableBots": "Schalte unter System Console > Integrations > Bot Accounts Enable Bot Account Creation ein und speichere.",
+            "then": "Lege dann wie unten beschrieben den Bot und sein Token an, füge sie hier ein, drücke Testen und nutze „Mattermost für Hermes einrichten“."
+          }
+        },
+        "setup": {
+          "title": "Mattermost für Hermes einrichten",
+          "intro": "Studio legt die Kanäle an, fügt dich und den Bot hinzu, richtet Hermes darauf aus und startet das Gateway neu.",
+          "needsTest": "Speichere zuerst oben Serveradresse und Bot-Token und drücke Testen. Wenn der Test klappt, erledigt Studio den Rest.",
+          "start": "Mattermost einrichten",
+          "redo": "Einrichtung erneut ausführen",
+          "current": "Eingerichtet im Team {team} für {user}:",
+          "jobsHint": "In Jobs kannst du Mattermost · #home-alerts oder #server-alerts als Ziel für Ergebnisse wählen. Hermes antwortet auf jede Nachricht im Hauptkanal; in den Alarm-Kanälen erwähne ihn.",
+          "noTeams": "Der Bot ist noch in keinem Team. Füge ihn in Mattermost deinem Team hinzu (Teammenü > Mitglieder hinzufügen) oder melde dich unten einmal als Admin an.",
+          "team": "Team",
+          "teamHint": "Das Team für die Kanäle. Der Bot ({bot}) wird bei Bedarf hinzugefügt.",
+          "username": "Dein Mattermost-Benutzername",
+          "usernameHint": "Studio sucht deine Benutzer-ID, fügt dich den Kanälen hinzu und erlaubt dir, mit Hermes zu sprechen.",
+          "role": {
+            "main": "Haupt-Chat",
+            "home_alerts": "Home-Assistant-Alarme",
+            "server_alerts": "Unraid-Server-Alarme"
+          },
+          "roleHint": {
+            "main": "Hier sprichst du mit Hermes; auch sein Heimatkanal. Wird angelegt, falls er fehlt.",
+            "home_alerts": "Für Home-Assistant-Alarme. Wird angelegt, falls er fehlt.",
+            "server_alerts": "Für Unraid-Serverstatus und Job-Ergebnisse. Wird angelegt, falls er fehlt."
+          },
+          "grant": "Damit der Bot das selbst kann: öffne in Mattermost Integrations > Bot Accounts, klicke beim Bot auf Edit und setze die Rolle auf System Admin (oder lass einen Admin ihn zum Team hinzufügen und die Kanäle anlegen). Oder melde dich unten einmal als Admin an; Studio nutzt diese Anmeldung nur für diese Einrichtung und speichert sie nicht.",
+          "admin": "Einmal ein Admin-Konto verwenden",
+          "adminHint": "Nur nötig, wenn der Bot keine Kanäle anlegen oder Personen hinzufügen darf. Nur für diese Einrichtung, nie gespeichert; eine Anmeldung wird gleich danach abgemeldet.",
+          "adminLogin": "Admin-Benutzername oder E-Mail",
+          "adminPassword": "Admin-Passwort",
+          "adminToken": "Oder ein Admin-Zugriffstoken",
+          "reloadTeams": "Teams mit diesem Konto laden",
+          "run": "Einrichten",
+          "done": "Mattermost ist eingerichtet und das Gateway wurde neu gestartet.",
+          "doneNoRestart": "Mattermost ist eingerichtet. Starte das Gateway neu, damit es wirkt.",
+          "failed": "Einrichtung fehlgeschlagen"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "Serveradresse",
@@ -1256,6 +1532,52 @@ export const hermesChannelsMessages = {
         "allowAll": "Permitir que cualquiera del servidor use el bot",
         "allowAllHint": "Omite la lista de usuarios permitidos. Solo para pruebas en un servidor privado.",
         "allowAllWarning": "Cualquiera que pueda escribir al bot podrá usar el agente y sus herramientas.",
+        "unraid": {
+          "title": "¿Aún no tienes Mattermost? Instálalo en Unraid",
+          "steps": {
+            "apps": "En Unraid abre la pestaña Apps (Community Applications), busca Mattermost e instálalo. Necesita una base de datos PostgreSQL: instala antes una app de Postgres desde Apps (por ejemplo postgresql15), crea una base de datos llamada mattermost e introduce su dirección, usuario y contraseña en la plantilla de Mattermost.",
+            "image": "¿Sin plantilla? En Docker > Add Container usa la imagen mattermost/mattermost-team-edition, asigna el puerto 8065, guarda /mattermost/data y /mattermost/config en /mnt/user/appdata/mattermost y define MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "Abre http://UNRAID-IP:8065. La primera cuenta que crees será la de administrador del sistema. Después crea un equipo (por ejemplo Home).",
+            "siteUrl": "En System Console > Environment > Web Server, pon como Site URL la dirección con la que abres Mattermost y guarda.",
+            "enableBots": "En System Console > Integrations > Bot Accounts, activa Enable Bot Account Creation y guarda.",
+            "then": "Luego crea el bot y su token como se explica abajo, pégalos aquí, pulsa Probar y usa «Configurar Mattermost para Hermes»."
+          }
+        },
+        "setup": {
+          "title": "Configurar Mattermost para Hermes",
+          "intro": "Studio crea los canales, os añade a ti y al bot, dirige a Hermes hacia ellos y reinicia el gateway.",
+          "needsTest": "Primero guarda arriba la dirección del servidor y el token del bot y pulsa Probar. Cuando la prueba pase, Studio hará el resto.",
+          "start": "Configurar Mattermost",
+          "redo": "Volver a configurar",
+          "current": "Configurado en el equipo {team} para {user}:",
+          "jobsHint": "En Tareas, elige Mattermost · #home-alerts o #server-alerts como destino de los resultados. Hermes responde a todos los mensajes del canal principal; en los canales de alertas, menciónalo.",
+          "noTeams": "El bot aún no está en ningún equipo. Añádelo a tu equipo en Mattermost (menú del equipo > Añadir miembros) o inicia sesión una vez como administrador abajo.",
+          "team": "Equipo",
+          "teamHint": "El equipo donde van los canales. Se añade el bot ({bot}) si hace falta.",
+          "username": "Tu nombre de usuario de Mattermost",
+          "usernameHint": "Studio busca tu ID de usuario, te añade a los canales y te permite hablar con Hermes.",
+          "role": {
+            "main": "Chat principal",
+            "home_alerts": "Alertas de Home Assistant",
+            "server_alerts": "Alertas del servidor Unraid"
+          },
+          "roleHint": {
+            "main": "Donde hablas con Hermes; también su canal principal. Se crea si falta.",
+            "home_alerts": "Para las alarmas de Home Assistant. Se crea si falta.",
+            "server_alerts": "Para el estado del servidor Unraid y los resultados de tareas. Se crea si falta."
+          },
+          "grant": "Para que el bot lo haga solo: en Mattermost abre Integrations > Bot Accounts, pulsa Edit en el bot y pon su rol en System Admin (o pide a un administrador que lo añada al equipo y cree los canales). O inicia sesión una vez como administrador abajo; Studio usa ese inicio de sesión solo para esta configuración y no lo guarda.",
+          "admin": "Usar una cuenta de administrador una vez",
+          "adminHint": "Solo hace falta si el bot no puede crear canales ni añadir personas. Se usa solo para esta configuración y nunca se guarda; la sesión se cierra justo después.",
+          "adminLogin": "Usuario o correo del administrador",
+          "adminPassword": "Contraseña del administrador",
+          "adminToken": "O un token de acceso de administrador",
+          "reloadTeams": "Cargar equipos con esta cuenta",
+          "run": "Configurar",
+          "done": "Mattermost está configurado y el gateway se reinició.",
+          "doneNoRestart": "Mattermost está configurado. Reinicia el gateway para aplicarlo.",
+          "failed": "La configuración falló"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "Dirección del servidor",
@@ -1443,6 +1765,52 @@ export const hermesChannelsMessages = {
         "allowAll": "Laisser tout le monde sur le serveur utiliser le bot",
         "allowAllHint": "Ignore la liste des utilisateurs autorisés. Uniquement pour des tests sur un serveur privé.",
         "allowAllWarning": "Toute personne pouvant écrire au bot peut utiliser l'agent et ses outils.",
+        "unraid": {
+          "title": "Pas encore de Mattermost ? L’installer sur Unraid",
+          "steps": {
+            "apps": "Dans Unraid, ouvrez l’onglet Apps (Community Applications), cherchez Mattermost et installez-le. Il lui faut une base PostgreSQL : installez d’abord une app Postgres depuis Apps (par exemple postgresql15), créez une base nommée mattermost et saisissez son adresse, son utilisateur et son mot de passe dans le modèle Mattermost.",
+            "image": "Pas de modèle ? Dans Docker > Add Container, utilisez l’image mattermost/mattermost-team-edition, exposez le port 8065, placez /mattermost/data et /mattermost/config sous /mnt/user/appdata/mattermost et définissez MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "Ouvrez http://UNRAID-IP:8065. Le premier compte créé devient administrateur système. Créez ensuite une équipe (par exemple Home).",
+            "siteUrl": "Dans System Console > Environment > Web Server, réglez Site URL sur l’adresse avec laquelle vous ouvrez Mattermost, puis enregistrez.",
+            "enableBots": "Dans System Console > Integrations > Bot Accounts, activez Enable Bot Account Creation et enregistrez.",
+            "then": "Créez ensuite le bot et son jeton comme indiqué ci-dessous, collez-les ici, cliquez sur Tester, puis utilisez « Configurer Mattermost pour Hermes »."
+          }
+        },
+        "setup": {
+          "title": "Configurer Mattermost pour Hermes",
+          "intro": "Studio crée les canaux, vous y ajoute avec le bot, y oriente Hermes et redémarre la passerelle.",
+          "needsTest": "Enregistrez d’abord l’adresse du serveur et le jeton du bot ci-dessus, puis cliquez sur Tester. Une fois le test réussi, Studio fait le reste.",
+          "start": "Configurer Mattermost",
+          "redo": "Relancer la configuration",
+          "current": "Configuré dans l’équipe {team} pour {user} :",
+          "jobsHint": "Dans Tâches, choisissez Mattermost · #home-alerts ou #server-alerts comme destination des résultats. Hermes répond à chaque message du canal principal ; dans les canaux d’alerte, mentionnez-le.",
+          "noTeams": "Le bot n’est encore dans aucune équipe. Ajoutez-le à votre équipe dans Mattermost (menu de l’équipe > Ajouter des membres) ou connectez-vous une fois en tant qu’administrateur ci-dessous.",
+          "team": "Équipe",
+          "teamHint": "L’équipe où créer les canaux. Le bot ({bot}) y est ajouté si besoin.",
+          "username": "Votre nom d’utilisateur Mattermost",
+          "usernameHint": "Studio retrouve votre ID utilisateur, vous ajoute aux canaux et vous autorise à parler à Hermes.",
+          "role": {
+            "main": "Discussion principale",
+            "home_alerts": "Alertes Home Assistant",
+            "server_alerts": "Alertes du serveur Unraid"
+          },
+          "roleHint": {
+            "main": "Là où vous parlez à Hermes ; aussi son canal principal. Créé s’il manque.",
+            "home_alerts": "Pour les alarmes Home Assistant. Créé s’il manque.",
+            "server_alerts": "Pour l’état du serveur Unraid et les résultats des tâches. Créé s’il manque."
+          },
+          "grant": "Pour que le bot le fasse lui-même : dans Mattermost, ouvrez Integrations > Bot Accounts, cliquez sur Edit pour le bot et donnez-lui le rôle System Admin (ou demandez à un administrateur de l’ajouter à l’équipe et de créer les canaux). Ou connectez-vous une fois en tant qu’administrateur ci-dessous ; Studio n’utilise cette connexion que pour cette configuration et ne l’enregistre pas.",
+          "admin": "Utiliser un compte administrateur une fois",
+          "adminHint": "Nécessaire seulement si le bot ne peut pas créer de canaux ni ajouter de personnes. Utilisé pour cette configuration uniquement, jamais enregistré ; la session est fermée juste après.",
+          "adminLogin": "Nom d’utilisateur ou e-mail de l’administrateur",
+          "adminPassword": "Mot de passe de l’administrateur",
+          "adminToken": "Ou un jeton d’accès administrateur",
+          "reloadTeams": "Charger les équipes avec ce compte",
+          "run": "Configurer",
+          "done": "Mattermost est configuré et la passerelle a redémarré.",
+          "doneNoRestart": "Mattermost est configuré. Redémarrez la passerelle pour l’appliquer.",
+          "failed": "Échec de la configuration"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "Adresse du serveur",
@@ -1630,6 +1998,52 @@ export const hermesChannelsMessages = {
         "allowAll": "Deixar qualquer pessoa do servidor usar o bot",
         "allowAllHint": "Ignora a lista de usuários permitidos. Só para testes em servidor privado.",
         "allowAllWarning": "Qualquer pessoa que puder escrever ao bot poderá usar o agente e suas ferramentas.",
+        "unraid": {
+          "title": "Ainda sem Mattermost? Instale no Unraid",
+          "steps": {
+            "apps": "No Unraid, abra a aba Apps (Community Applications), procure Mattermost e instale. Ele precisa de um banco PostgreSQL: instale antes um app Postgres pelo Apps (por exemplo postgresql15), crie um banco chamado mattermost e informe endereço, usuário e senha no modelo do Mattermost.",
+            "image": "Sem modelo? Em Docker > Add Container use a imagem mattermost/mattermost-team-edition, mapeie a porta 8065, guarde /mattermost/data e /mattermost/config em /mnt/user/appdata/mattermost e defina MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "Abra http://UNRAID-IP:8065. A primeira conta criada vira administradora do sistema. Depois crie uma equipe (por exemplo Home).",
+            "siteUrl": "Em System Console > Environment > Web Server, defina Site URL como o endereço que você usa para abrir o Mattermost e salve.",
+            "enableBots": "Em System Console > Integrations > Bot Accounts, ative Enable Bot Account Creation e salve.",
+            "then": "Depois crie o bot e o token como descrito abaixo, cole-os aqui, clique em Testar e use “Configurar o Mattermost para o Hermes”."
+          }
+        },
+        "setup": {
+          "title": "Configurar o Mattermost para o Hermes",
+          "intro": "O Studio cria os canais, adiciona você e o bot, aponta o Hermes para eles e reinicia o gateway.",
+          "needsTest": "Primeiro salve acima o endereço do servidor e o token do bot e clique em Testar. Quando o teste passar, o Studio faz o resto.",
+          "start": "Configurar Mattermost",
+          "redo": "Executar a configuração de novo",
+          "current": "Configurado na equipe {team} para {user}:",
+          "jobsHint": "Em Tarefas, escolha Mattermost · #home-alerts ou #server-alerts como destino dos resultados. O Hermes responde a toda mensagem no canal principal; nos canais de alerta, mencione-o.",
+          "noTeams": "O bot ainda não está em nenhuma equipe. Adicione-o à sua equipe no Mattermost (menu da equipe > Adicionar membros) ou entre uma vez como administrador abaixo.",
+          "team": "Equipe",
+          "teamHint": "A equipe onde ficam os canais. O bot ({bot}) é adicionado se preciso.",
+          "username": "Seu nome de usuário no Mattermost",
+          "usernameHint": "O Studio encontra seu ID de usuário, adiciona você aos canais e permite que você fale com o Hermes.",
+          "role": {
+            "main": "Chat principal",
+            "home_alerts": "Alertas do Home Assistant",
+            "server_alerts": "Alertas do servidor Unraid"
+          },
+          "roleHint": {
+            "main": "Onde você fala com o Hermes; também o canal principal dele. Criado se não existir.",
+            "home_alerts": "Para alarmes do Home Assistant. Criado se não existir.",
+            "server_alerts": "Para status do servidor Unraid e resultados de tarefas. Criado se não existir."
+          },
+          "grant": "Para o bot fazer isso sozinho: no Mattermost abra Integrations > Bot Accounts, clique em Edit no bot e defina a função como System Admin (ou peça a um administrador para adicioná-lo à equipe e criar os canais). Ou entre uma vez como administrador abaixo; o Studio usa esse login só nesta configuração e não o salva.",
+          "admin": "Usar uma conta de administrador uma vez",
+          "adminHint": "Só é necessário se o bot não puder criar canais nem adicionar pessoas. Usado só nesta configuração e nunca salvo; a sessão é encerrada logo depois.",
+          "adminLogin": "Usuário ou e-mail do administrador",
+          "adminPassword": "Senha do administrador",
+          "adminToken": "Ou um token de acesso de administrador",
+          "reloadTeams": "Carregar equipes com esta conta",
+          "run": "Configurar",
+          "done": "O Mattermost está configurado e o gateway foi reiniciado.",
+          "doneNoRestart": "O Mattermost está configurado. Reinicie o gateway para aplicar.",
+          "failed": "A configuração falhou"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "Endereço do servidor",
@@ -1817,6 +2231,52 @@ export const hermesChannelsMessages = {
         "allowAll": "Разрешить всем на сервере пользоваться ботом",
         "allowAllHint": "Пропускает список разрешённых пользователей. Только для тестов на частном сервере.",
         "allowAllWarning": "Любой, кто может написать боту, сможет пользоваться агентом и его инструментами.",
+        "unraid": {
+          "title": "Ещё нет Mattermost? Установите его на Unraid",
+          "steps": {
+            "apps": "В Unraid откройте вкладку Apps (Community Applications), найдите Mattermost и установите. Нужна база PostgreSQL: сначала установите приложение Postgres из Apps (например, postgresql15), создайте базу mattermost и укажите её адрес, пользователя и пароль в шаблоне Mattermost.",
+            "image": "Нет шаблона? В Docker > Add Container используйте образ mattermost/mattermost-team-edition, откройте порт 8065, храните /mattermost/data и /mattermost/config в /mnt/user/appdata/mattermost и задайте MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "Откройте http://UNRAID-IP:8065. Первая созданная учётная запись становится системным администратором. Затем создайте команду (например, Home).",
+            "siteUrl": "В System Console > Environment > Web Server укажите в Site URL адрес, по которому вы открываете Mattermost, и сохраните.",
+            "enableBots": "В System Console > Integrations > Bot Accounts включите Enable Bot Account Creation и сохраните.",
+            "then": "Затем создайте бота и его токен, как описано ниже, вставьте их сюда, нажмите «Проверить» и воспользуйтесь «Настроить Mattermost для Hermes»."
+          }
+        },
+        "setup": {
+          "title": "Настроить Mattermost для Hermes",
+          "intro": "Studio создаст каналы, добавит в них вас и бота, направит туда Hermes и перезапустит шлюз.",
+          "needsTest": "Сначала сохраните выше адрес сервера и токен бота и нажмите «Проверить». Когда проверка пройдёт, остальное сделает Studio.",
+          "start": "Настроить Mattermost",
+          "redo": "Запустить настройку снова",
+          "current": "Настроено в команде {team} для {user}:",
+          "jobsHint": "В задачах выберите Mattermost · #home-alerts или #server-alerts как место для результатов. Hermes отвечает на каждое сообщение в основном канале; в каналах оповещений упомяните его.",
+          "noTeams": "Бот пока не состоит ни в одной команде. Добавьте его в команду в Mattermost (меню команды > Добавить участников) или один раз войдите ниже как администратор.",
+          "team": "Команда",
+          "teamHint": "Команда, в которой будут каналы. Бот ({bot}) будет добавлен при необходимости.",
+          "username": "Ваше имя пользователя в Mattermost",
+          "usernameHint": "Studio найдёт ваш ID пользователя, добавит вас в каналы и разрешит общаться с Hermes.",
+          "role": {
+            "main": "Основной чат",
+            "home_alerts": "Оповещения Home Assistant",
+            "server_alerts": "Оповещения сервера Unraid"
+          },
+          "roleHint": {
+            "main": "Здесь вы общаетесь с Hermes; это и его домашний канал. Создаётся, если его нет.",
+            "home_alerts": "Для тревог Home Assistant. Создаётся, если его нет.",
+            "server_alerts": "Для состояния сервера Unraid и результатов задач. Создаётся, если его нет."
+          },
+          "grant": "Чтобы бот сделал это сам: в Mattermost откройте Integrations > Bot Accounts, нажмите Edit у бота и задайте роль System Admin (или попросите администратора добавить его в команду и создать каналы). Или один раз войдите ниже как администратор; Studio использует этот вход только для этой настройки и не сохраняет его.",
+          "admin": "Один раз использовать учётную запись администратора",
+          "adminHint": "Нужно, только если бот не может создавать каналы или добавлять людей. Используется только для этой настройки и не сохраняется; сеанс сразу завершается.",
+          "adminLogin": "Имя пользователя или почта администратора",
+          "adminPassword": "Пароль администратора",
+          "adminToken": "Или токен доступа администратора",
+          "reloadTeams": "Загрузить команды с этой учётной записью",
+          "run": "Настроить",
+          "done": "Mattermost настроен, шлюз перезапущен.",
+          "doneNoRestart": "Mattermost настроен. Перезапустите шлюз, чтобы применить.",
+          "failed": "Не удалось настроить"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "Адрес сервера",
@@ -2004,6 +2464,52 @@ export const hermesChannelsMessages = {
         "allowAll": "Sunucudaki herkes botu kullanabilsin",
         "allowAllHint": "İzinli kullanıcı listesini atlar. Yalnızca özel sunucuda test için.",
         "allowAllWarning": "Bota mesaj yazabilen herkes ajanı ve araçlarını kullanabilir.",
+        "unraid": {
+          "title": "Henüz Mattermost yok mu? Unraid'e kurun",
+          "steps": {
+            "apps": "Unraid'de Apps sekmesini (Community Applications) açın, Mattermost'u arayıp kurun. Bir PostgreSQL veritabanı gerekir: önce Apps'ten bir Postgres uygulaması kurun (örneğin postgresql15), mattermost adlı bir veritabanı oluşturun ve adresini, kullanıcısını ve parolasını Mattermost şablonuna girin.",
+            "image": "Şablon yok mu? Docker > Add Container altında mattermost/mattermost-team-edition imajını kullanın, 8065 portunu eşleyin, /mattermost/data ve /mattermost/config'i /mnt/user/appdata/mattermost altında tutun ve şunları ayarlayın: MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "http://UNRAID-IP:8065 adresini açın. Oluşturduğunuz ilk hesap sistem yöneticisi olur. Sonra bir takım oluşturun (örneğin Home).",
+            "siteUrl": "System Console > Environment > Web Server'da Site URL'yi Mattermost'u açtığınız adres yapın ve kaydedin.",
+            "enableBots": "System Console > Integrations > Bot Accounts'ta Enable Bot Account Creation'ı açın ve kaydedin.",
+            "then": "Ardından aşağıda anlatıldığı gibi botu ve jetonunu oluşturun, buraya yapıştırın, Test'e basın ve \"Hermes için Mattermost'u kur\"u kullanın."
+          }
+        },
+        "setup": {
+          "title": "Hermes için Mattermost'u kur",
+          "intro": "Studio kanalları oluşturur, sizi ve botu ekler, Hermes'i bu kanallara yönlendirir ve ağ geçidini yeniden başlatır.",
+          "needsTest": "Önce yukarıda sunucu adresini ve bot jetonunu kaydedip Test'e basın. Test geçince gerisini Studio yapar.",
+          "start": "Mattermost'u kur",
+          "redo": "Kurulumu yeniden çalıştır",
+          "current": "{team} takımında {user} için kuruldu:",
+          "jobsHint": "Görevlerde sonuçların gideceği yer olarak Mattermost · #home-alerts veya #server-alerts'i seçin. Hermes ana kanaldaki her mesaja yanıt verir; uyarı kanallarında ondan bahsedin.",
+          "noTeams": "Bot henüz hiçbir takımda değil. Mattermost'ta takımınıza ekleyin (takım menüsü > Üye ekle) ya da aşağıda bir kez yönetici olarak oturum açın.",
+          "team": "Takım",
+          "teamHint": "Kanalların açılacağı takım. Gerekirse bot ({bot}) eklenir.",
+          "username": "Mattermost kullanıcı adınız",
+          "usernameHint": "Studio kullanıcı kimliğinizi bulur, sizi kanallara ekler ve Hermes ile konuşmanıza izin verir.",
+          "role": {
+            "main": "Ana sohbet",
+            "home_alerts": "Home Assistant uyarıları",
+            "server_alerts": "Unraid sunucu uyarıları"
+          },
+          "roleHint": {
+            "main": "Hermes ile konuştuğunuz yer; aynı zamanda ana kanalı. Yoksa oluşturulur.",
+            "home_alerts": "Home Assistant alarmları için. Yoksa oluşturulur.",
+            "server_alerts": "Unraid sunucu durumu ve görev sonuçları için. Yoksa oluşturulur."
+          },
+          "grant": "Botun bunu kendisinin yapması için: Mattermost'ta Integrations > Bot Accounts'u açın, botta Edit'e basın ve rolünü System Admin yapın (ya da bir yöneticiden onu takıma eklemesini ve kanalları oluşturmasını isteyin). Veya aşağıda bir kez yönetici olarak oturum açın; Studio bu oturumu yalnızca bu kurulum için kullanır ve kaydetmez.",
+          "admin": "Bir kez yönetici hesabı kullan",
+          "adminHint": "Yalnızca bot kanal oluşturamıyor veya kişi ekleyemiyorsa gerekir. Sadece bu kurulum için kullanılır, asla kaydedilmez; oturum hemen ardından kapatılır.",
+          "adminLogin": "Yönetici kullanıcı adı veya e-postası",
+          "adminPassword": "Yönetici parolası",
+          "adminToken": "Ya da bir yönetici erişim jetonu",
+          "reloadTeams": "Takımları bu hesapla yükle",
+          "run": "Kur",
+          "done": "Mattermost kuruldu ve ağ geçidi yeniden başlatıldı.",
+          "doneNoRestart": "Mattermost kuruldu. Uygulamak için ağ geçidini yeniden başlatın.",
+          "failed": "Kurulum başarısız"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "Sunucu adresi",
@@ -2191,6 +2697,52 @@ export const hermesChannelsMessages = {
         "allowAll": "السماح لأي شخص على الخادم باستخدام البوت",
         "allowAllHint": "يتخطى قائمة المستخدمين المسموح لهم. للاختبار على خادم خاص فقط.",
         "allowAllWarning": "أي شخص يستطيع مراسلة البوت يمكنه استخدام الوكيل وأدواته.",
+        "unraid": {
+          "title": "لا يوجد Mattermost بعد؟ ثبّته على Unraid",
+          "steps": {
+            "apps": "في Unraid افتح تبويب Apps (Community Applications)، وابحث عن Mattermost وثبّته. يحتاج إلى قاعدة بيانات PostgreSQL: ثبّت أولًا تطبيق Postgres من Apps (مثل postgresql15)، وأنشئ قاعدة بيانات باسم mattermost، ثم أدخل عنوانها واسم المستخدم وكلمة المرور في قالب Mattermost.",
+            "image": "لا يوجد قالب؟ من Docker > Add Container استخدم الصورة mattermost/mattermost-team-edition، واربط المنفذ 8065، واحفظ /mattermost/data و/mattermost/config في /mnt/user/appdata/mattermost، واضبط MM_SQLSETTINGS_DRIVERNAME=postgres, MM_SQLSETTINGS_DATASOURCE=postgres://user:password{'@'}UNRAID-IP:5432/mattermost?sslmode=disable.",
+            "firstAdmin": "افتح http://UNRAID-IP:8065. أول حساب تنشئه يصبح مدير النظام. ثم أنشئ فريقًا (مثل Home).",
+            "siteUrl": "في System Console > Environment > Web Server اضبط Site URL على العنوان الذي تفتح به Mattermost واحفظ.",
+            "enableBots": "في System Console > Integrations > Bot Accounts فعّل Enable Bot Account Creation واحفظ.",
+            "then": "بعد ذلك أنشئ البوت ورمزه كما هو موضح أدناه، والصقهما هنا، واضغط اختبار، ثم استخدم «إعداد Mattermost لـ Hermes»."
+          }
+        },
+        "setup": {
+          "title": "إعداد Mattermost لـ Hermes",
+          "intro": "ينشئ Studio القنوات، ويضيفك أنت والبوت إليها، ويوجّه Hermes إليها، ثم يعيد تشغيل البوابة.",
+          "needsTest": "احفظ أولًا عنوان الخادم ورمز البوت في الأعلى واضغط اختبار. عند نجاح الاختبار يتولى Studio الباقي.",
+          "start": "إعداد Mattermost",
+          "redo": "تشغيل الإعداد مرة أخرى",
+          "current": "تم الإعداد في الفريق {team} للمستخدم {user}:",
+          "jobsHint": "في المهام اختر Mattermost · #home-alerts أو #server-alerts وجهةً للنتائج. يرد Hermes على كل رسالة في القناة الرئيسية؛ وفي قنوات التنبيه اذكره بالإشارة.",
+          "noTeams": "البوت ليس في أي فريق بعد. أضفه إلى فريقك في Mattermost (قائمة الفريق > إضافة أعضاء)، أو سجّل الدخول مرة واحدة كمسؤول أدناه.",
+          "team": "الفريق",
+          "teamHint": "الفريق الذي توضع فيه القنوات. يُضاف البوت ({bot}) إليه عند الحاجة.",
+          "username": "اسم المستخدم في Mattermost",
+          "usernameHint": "يبحث Studio عن معرّف المستخدم الخاص بك، ويضيفك إلى القنوات، ويسمح لك بالتحدث إلى Hermes.",
+          "role": {
+            "main": "الدردشة الرئيسية",
+            "home_alerts": "تنبيهات Home Assistant",
+            "server_alerts": "تنبيهات خادم Unraid"
+          },
+          "roleHint": {
+            "main": "حيث تتحدث إلى Hermes، وهي أيضًا قناته الرئيسية. تُنشأ إن لم تكن موجودة.",
+            "home_alerts": "لإنذارات Home Assistant. تُنشأ إن لم تكن موجودة.",
+            "server_alerts": "لحالة خادم Unraid ونتائج المهام. تُنشأ إن لم تكن موجودة."
+          },
+          "grant": "لكي يفعل البوت ذلك بنفسه: في Mattermost افتح Integrations > Bot Accounts، واضغط Edit على البوت واجعل دوره System Admin (أو اطلب من مسؤول إضافته إلى الفريق وإنشاء القنوات). أو سجّل الدخول مرة واحدة كمسؤول أدناه؛ يستخدم Studio هذا الدخول لهذا الإعداد فقط ولا يحفظه.",
+          "admin": "استخدام حساب مسؤول مرة واحدة",
+          "adminHint": "مطلوب فقط إذا لم يكن مسموحًا للبوت بإنشاء القنوات أو إضافة الأشخاص. يُستخدم لهذا الإعداد فقط ولا يُحفظ أبدًا؛ ويُسجَّل الخروج من الجلسة فورًا بعد ذلك.",
+          "adminLogin": "اسم المستخدم أو البريد للمسؤول",
+          "adminPassword": "كلمة مرور المسؤول",
+          "adminToken": "أو رمز وصول للمسؤول",
+          "reloadTeams": "تحميل الفرق بهذا الحساب",
+          "run": "إعداد",
+          "done": "تم إعداد Mattermost وأُعيد تشغيل البوابة.",
+          "doneNoRestart": "تم إعداد Mattermost. أعد تشغيل البوابة لتطبيقه.",
+          "failed": "فشل الإعداد"
+        },
         "fields": {
           "MATTERMOST_URL": {
             "label": "عنوان الخادم",

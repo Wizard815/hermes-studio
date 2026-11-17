@@ -52,6 +52,7 @@ import { xaiAuthRoutes } from '../modules/hermes/routes/xai-auth'
 import { anthropicAuthRoutes } from '../modules/hermes/routes/anthropic-auth'
 import { minimaxAuthRoutes } from '../modules/hermes/routes/minimax-auth'
 import { weixinRoutes } from '../modules/hermes/routes/weixin'
+import { mattermostSetupRoutes } from '../modules/hermes/routes/mattermost-setup'
 import { fileRoutes } from '../modules/studio/routes/files'
 import { downloadRoutes } from '../modules/studio/routes/download'
 import { jobRoutes } from '../modules/hermes/routes/jobs'
@@ -159,6 +160,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(anthropicAuthRoutes.routes())
   app.use(minimaxAuthRoutes.routes())
   app.use(weixinRoutes.routes())
+  app.use(mattermostSetupRoutes.routes())
   app.use(chatRunRoutes.routes())
   app.use(chatWebhookRoutes.routes())
   app.use(groupChatRoutes.routes())
