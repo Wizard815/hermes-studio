@@ -40,6 +40,12 @@ export interface HerdrInteractiveLaunch {
   model: string
   /** The agent runs in the chat's clean-room container (the pane runs the docker client). */
   cleanRoom?: boolean
+  /**
+   * When the agent refuses `args` (Hermes: exit 2, the chat's model differs from the one its
+   * session started with), the pane runs these instead, then `afterRetryInput` is typed there.
+   */
+  retryArgs?: string[]
+  afterRetryInput?: string
   /** Host folder that is the agent's home inside its clean room (its transcripts land there). */
   agentHome?: string
 }
@@ -244,6 +250,8 @@ export class HerdrBridge {
   private links = new Map<string, HerdrLinkInfo>()
   /** Panes Studio opened itself: pane id → launch details. */
   private pending = new Map<string, PendingLaunch>()
+  /** Text to type into a pane once its agent's retry launch runs (see `HerdrInteractiveLaunch.retryArgs`). */
+  private readonly afterRetryInputs = new Map<string, string>()
   private accessAt = new Map<string, number>()
   /** Native ids that have shown activity; they become chats even before a transcript exists. */
   private active = new Set<string>()
@@ -491,7 +499,10 @@ export class HerdrBridge {
           if (row && row.agent_native_session_id !== nativeId) this.deps.updateNativeSessionId(sessionId, nativeId)
         }
       } else if (nativeId) {
-        const row = this.deps.findSessionByNativeId(nativeId) ?? this.deps.getSession(herdrChatId(nativeId))
+        // A Hermes chat runs as the Hermes session named after the chat itself (herdr brings
+        // such a pane back after a restart without Studio launching it).
+        const own = pane.agent === 'hermes' ? this.deps.getSession(nativeId) : null
+        const row = this.deps.findSessionByNativeId(nativeId) ?? (own?.agent === 'hermes' ? own : null) ?? this.deps.getSession(herdrChatId(nativeId))
         if (row) sessionId = row.id
         else if (this.settings.autoImport && studioAgent && !this.persisted.dismissed.includes(nativeId)) {
           sessionId = await this.importPane(pane, studioAgent, nativeId, pending)
@@ -505,6 +516,9 @@ export class HerdrBridge {
       let waiting = false
       if (!sessionId && stubOwner.has(pane.pane_id)) { sessionId = stubOwner.get(pane.pane_id)!; waiting = true }
 
+      // A chat whose agent runs in another pane (herdr brought it back after a restart) is linked
+      // to that pane, not to its waiting pane.
+      if (sessionId && waiting && liveChats.has(sessionId)) sessionId = null
       if (sessionId) {
         seen.add(sessionId)
         const link: HerdrLinkInfo = { paneId: pane.pane_id, workspaceId: pane.workspace_id, status, ...(waiting ? { waiting: true } : {}) }
@@ -763,6 +777,8 @@ export class HerdrBridge {
     await this.refreshAgentAccess(true, row.profile)
     const launch = await this.deps.prepareSessionLaunch(sessionId)
     this.pending.set(paneId, { sessionId, agentId: launch.agentId, provider: launch.provider, model: launch.model, title: row.title || '' })
+    if (launch.afterRetryInput) this.afterRetryInputs.set(paneId, launch.afterRetryInput)
+    else this.afterRetryInputs.delete(paneId)
     this.scheduleRefresh(500)
     // No agent session to resume (an old chat): the fresh session starts from the chat so far.
     // Hermes resumes the whole conversation by Studio's session id, so it needs no recap.
@@ -1061,7 +1077,18 @@ export class HerdrBridge {
 
   /** Open (or focus) a Studio chat as a live herdr pane. */
   async openSession(sessionId: string): Promise<HerdrLinkInfo> {
-    const existing = this.links.get(sessionId)
+    let existing = this.links.get(sessionId)
+    // A resume that never got its agent going (it exited at once) leaves the chat's waiting pane
+    // marked as resuming; once that pane shows the chat's card again, it is waiting again.
+    const stubPaneId = this.persisted.chatSpaces?.[sessionId]?.stubPaneId
+    if (existing && !existing.waiting && existing.paneId === stubPaneId && this.pending.has(stubPaneId)
+      && !this.snapshot.panes.find(pane => pane.pane_id === stubPaneId)?.agent) {
+      const client = this.requireClient()
+      const pending = this.pending.get(stubPaneId)!
+      this.pending.delete(stubPaneId) // stubBusy counts a pending resume as busy
+      if (await this.stubRunning(client, stubPaneId) && !await this.stubBusy(client, stubPaneId)) existing = { ...existing, waiting: true }
+      else this.pending.set(stubPaneId, pending)
+    }
     // A live agent pane is focused; a waiting pane is resumed below (as Enter there does).
     if (existing && !existing.waiting) {
       await this.focusPane(existing.paneId)
@@ -1212,9 +1239,27 @@ export class HerdrBridge {
     if (link.waiting) throw Object.assign(new Error('The chat\'s agent is not running in herdr'), { status: 409, code: 'agent_not_running' })
     const body = String(text || '')
     if (!body.trim()) throw Object.assign(new Error('Message is empty'), { status: 400 })
+    await this.sendToPane(link.paneId, body)
+    return { paneId: link.paneId }
+  }
+
+  /**
+   * The pane's agent refused its launch and runs its retry launch: type what Studio prepared
+   * for that (Hermes: `/model <route>`) once it takes input. Only text Studio prepared is typed.
+   */
+  async afterRetry(paneId: string): Promise<boolean> {
+    const text = this.afterRetryInputs.get(paneId)
+    if (!text) return false
+    this.afterRetryInputs.delete(paneId)
+    void this.sendToPane(paneId, text, 60000).catch(error => this.log('warn', '[herdr] could not switch the resumed agent\'s model', { paneId, error: String(error) }))
+    return true
+  }
+
+  /** Types a message into an agent's pane; a Hermes pane gets it once its terminal UI takes input. */
+  private async sendToPane(paneId: string, body: string, waitMs = 30000): Promise<void> {
     const send = async () => {
       try {
-        await this.requireClient().request('agent.prompt', { target: link.paneId, text: body }, 15000)
+        await this.requireClient().request('agent.prompt', { target: paneId, text: body }, 15000)
       } catch (error) {
         if (error instanceof HerdrRequestError && error.code === 'agent_blocked') {
           throw Object.assign(new Error('The agent is waiting on an approval or question in herdr'), { status: 409, code: 'agent_blocked' })
@@ -1223,16 +1268,16 @@ export class HerdrBridge {
       }
     }
     // A pane that just started may not be in the last snapshot yet: ask herdr.
-    const agent = this.panes.find(entry => entry.pane_id === link.paneId)?.agent
-      ?? await this.requireClient().request<any>('pane.get', { pane_id: link.paneId }, 5000).then(result => result?.pane?.agent).catch(() => undefined)
-    let before = agent === 'hermes' ? await this.readPane(link.paneId) : null
+    const agent = this.panes.find(entry => entry.pane_id === paneId)?.agent
+      ?? await this.requireClient().request<any>('pane.get', { pane_id: paneId }, 5000).then(result => result?.pane?.agent).catch(() => undefined)
+    let before = agent === 'hermes' ? await this.readPane(paneId) : null
     if (before !== null && before && !hermesInputReady(before)) {
       // herdr reports a resumed Hermes idle before its terminal UI is drawn; what is typed
-      // then never reaches the conversation. Wait for its input line (at most 30 s).
-      const deadline = Date.now() + 30000
+      // then never reaches the conversation. Wait for its input line (at most waitMs).
+      const deadline = Date.now() + waitMs
       while (Date.now() < deadline && !this.stopped && !hermesInputReady(before)) {
         await new Promise(resolve => setTimeout(resolve, 500))
-        before = await this.readPane(link.paneId)
+        before = await this.readPane(paneId)
       }
     }
     if (before === '') before = null // no screen to check against (older herdr): send once, as before
@@ -1242,19 +1287,18 @@ export class HerdrBridge {
     if (before !== null) {
       let resent = false
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        const state = await this.promptState(link.paneId, body, before)
+        const state = await this.promptState(paneId, body, before)
         if (state === 'submitted') break
         if (state === 'typed') {
-          this.log('warn', '[herdr] Hermes kept the message in its input; pressing Enter', { paneId: link.paneId })
-          await this.requireClient().request('pane.send_keys', { pane_id: link.paneId, keys: ['Enter'] })
+          this.log('warn', '[herdr] Hermes kept the message in its input; pressing Enter', { paneId: paneId })
+          await this.requireClient().request('pane.send_keys', { pane_id: paneId, keys: ['Enter'] })
         } else if (!resent) {
-          this.log('warn', '[herdr] Hermes did not take the message; sending it again', { paneId: link.paneId })
+          this.log('warn', '[herdr] Hermes did not take the message; sending it again', { paneId: paneId })
           resent = true
           await send()
         } else break
       }
     }
-    return { paneId: link.paneId }
   }
 
   private async readPane(paneId: string): Promise<string> {

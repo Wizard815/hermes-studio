@@ -63,4 +63,12 @@ describe('hermes chats in herdr', () => {
     expect(hermesNewChatLaunch('/w', { profile: 'work', provider: 'openrouter', model: 'a/b', profileHome: home }))
       .toMatchObject({ args: ['chat', '-m', 'a/b', '--provider', 'openrouter'], provider: 'openrouter', model: 'a/b' })
   })
+
+  it('can resume without the model and switch with /model when Hermes refuses a changed model', () => {
+    const launch = hermesInteractiveLaunch({ id: 's3', model: 'm', provider: 'p' }, undefined, { model: 'fake2/fake-model-2' })
+    expect(launch.args).toEqual(['chat', '--resume', 's3', '--create-if-missing', '-m', 'fake2/fake-model-2'])
+    expect(launch.retryArgs).toEqual(['chat', '--resume', 's3', '--create-if-missing'])
+    expect(launch.afterRetryInput).toBe('/model fake2/fake-model-2')
+    expect(hermesInteractiveLaunch({ id: 's4' }).retryArgs).toBeUndefined()
+  })
 })

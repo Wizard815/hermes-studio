@@ -235,8 +235,17 @@ export async function pluginResume(ctx: Context) {
     const paneId = String(body.paneId || '')
     if (!sessionId || !/^[\w:.-]{1,64}$/.test(paneId)) throw Object.assign(new Error('A chat id and pane id are required'), { status: 400 })
     const launch = await herdrManager.requireBridge().prepareResume(sessionId, paneId)
-    ctx.body = { launch: { command: launch.command, args: launch.args, env: launch.env, cwd: launch.workspaceDir } }
+    ctx.body = { launch: { command: launch.command, args: launch.args, env: launch.env, cwd: launch.workspaceDir, ...(launch.retryArgs ? { retryArgs: launch.retryArgs } : {}) } }
   } catch (error) { fail(ctx, error, 'Failed to resume the chat in herdr') }
+}
+
+/** The pane's agent refused its launch and runs the retry launch: type what Studio prepared for it. */
+export async function pluginAfterRetry(ctx: Context) {
+  try {
+    const paneId = String(((ctx.request.body || {}) as { paneId?: unknown }).paneId || '')
+    if (!/^[\w:.-]{1,64}$/.test(paneId)) throw Object.assign(new Error('A pane id is required'), { status: 400 })
+    ctx.body = { typed: await herdrManager.requireBridge().afterRetry(paneId) }
+  } catch (error) { fail(ctx, error, 'Failed to finish resuming the chat in herdr') }
 }
 
 /** A chat herdr cannot run itself: the pane talks to it through Studio's chat runs. */

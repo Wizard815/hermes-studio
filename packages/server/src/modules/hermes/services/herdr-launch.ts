@@ -4,6 +4,9 @@ import { delimiter, join } from 'node:path'
 
 /** Shape herdr's bridge expects from a session launch (structural match). */
 export interface HermesHerdrLaunch {
+  /** Resuming without the model (when Hermes refuses `-m` that differs from the session's start), then `/model`. */
+  retryArgs?: string[]
+  afterRetryInput?: string
   agentId: string
   command: string
   args: string[]
@@ -113,10 +116,15 @@ export function hermesInteractiveLaunch(session: {
   model?: string | null
   profile?: string | null
 }, profileHome?: (profile: string) => string, route?: ModelRouteArgs | null): HermesHerdrLaunch {
+  const resume = ['chat', '--resume', hermesSessionIdFor(session), '--create-if-missing']
+  const modelArgs = routeArgs(route, session.model, session.provider)
   return {
     agentId: 'hermes',
     command: hermesCliPath(),
-    args: ['chat', '--resume', hermesSessionIdFor(session), '--create-if-missing', ...routeArgs(route, session.model, session.provider)],
+    args: [...resume, ...modelArgs],
+    // Hermes keeps the model a session started with: `-m` with another model (picked in Studio
+    // or with /model since) is refused on resume. Then the pane resumes as it is and switches.
+    ...(modelArgs.length ? { retryArgs: resume, afterRetryInput: `/model ${modelArgs.slice(1).join(' ')}` } : {}),
     env: profileEnv(session.profile, profileHome),
     workspaceDir: session.workspace || homedir(),
     provider: session.provider || '',

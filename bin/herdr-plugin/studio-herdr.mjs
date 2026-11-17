@@ -245,12 +245,24 @@ async function resume() {
   if (!sessionId || !paneId) throw new Error('resume needs a chat id and a herdr pane')
   process.stdout.write('\x1b[2J\x1b[H  Starting the chat\'s agent…\n')
   const { launch } = await api(config, '/resume', { method: 'POST', body: JSON.stringify({ sessionId, paneId }) })
-  const child = spawn(launch.command, launch.args || [], { cwd: launch.cwd || process.cwd(), env: { ...process.env, ...(launch.env || {}) }, stdio: 'inherit' })
   // The terminal's Ctrl-C belongs to the agent, not to this launcher.
   process.on('SIGINT', () => {})
+  const run = args => new Promise(resolve => {
+    const child = spawn(launch.command, args || [], { cwd: launch.cwd || process.cwd(), env: { ...process.env, ...(launch.env || {}) }, stdio: 'inherit' })
+    child.on('exit', code => resolve({ started: true, code }))
+    child.on('error', error => { process.stderr.write(`${error.message}\n`); resolve({ started: false, code: null }) })
+  })
+  const startedAt = Date.now()
+  let result = await run(launch.args)
+  // Hermes refuses (exit 2) a model other than the one the chat's session started with:
+  // resume it as it is, and Studio switches its model once it is up.
+  if (result.started && result.code === 2 && Array.isArray(launch.retryArgs) && Date.now() - startedAt < 60000) {
+    process.stdout.write('  Resuming on the session\'s first model, then switching to the chat\'s model…\n')
+    api(config, '/after-retry', { method: 'POST', body: JSON.stringify({ paneId }) }).catch(() => {})
+    result = await run(launch.retryArgs)
+  }
   // Exit 1 only when the agent could not start; however the agent itself ends, the chat waits again.
-  const started = await new Promise(resolve => { child.on('exit', () => resolve(true)); child.on('error', error => { process.stderr.write(`${error.message}\n`); resolve(false) }) })
-  process.exit(started ? 0 : 1)
+  process.exit(result.started ? 0 : 1)
 }
 
 /** The waiting pane's own command, so herdr brings the chat back after a restart. */
