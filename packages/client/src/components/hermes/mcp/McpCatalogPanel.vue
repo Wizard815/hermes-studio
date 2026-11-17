@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 import { NAlert, NButton, NEmpty, NInput, NModal, NRadioButton, NRadioGroup, NSpin, NTag, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import McpOAuthConnect from './McpOAuthConnect.vue'
+import McpHomeServerForm from './McpHomeServerForm.vue'
+import { fetchMcpServers } from '@/api/hermes/mcp'
 import {
   fetchMcpCatalog, filterMcpCatalog, installMcpCatalogEntry, type McpCatalogEntry,
 } from '@/api/hermes/extensions'
@@ -26,6 +28,34 @@ const installBusy = ref(false)
 
 const connectServer = ref('')
 const showConnect = ref(false)
+
+// "Your home": Home Assistant and Unraid, added with a short form instead of the catalog's install.
+type HomeKind = 'home-assistant' | 'unraid'
+const homeForm = ref<HomeKind | null>(null)
+const serverConfigs = ref<Array<{ name: string; url: string }>>([])
+const homeEntries = computed(() => [
+  { kind: 'home-assistant' as HomeKind, title: t('hermesExtensions.home.ha.title'), description: t('hermesExtensions.home.ha.description'), docs: 'https://www.home-assistant.io/integrations/mcp_server/' },
+  { kind: 'unraid' as HomeKind, title: t('hermesExtensions.home.unraid.title'), description: t('hermesExtensions.home.unraid.description'), docs: 'https://github.com/tinkerologie/unraid-management-agent' },
+].filter(entry => !query.value.trim() || `${entry.title} ${entry.description}`.toLowerCase().includes(query.value.trim().toLowerCase())))
+
+/** The servers already added for it: Home Assistant by its /api/mcp address, Unraid by name or the agent's port. */
+function homeAdded(kind: HomeKind) {
+  return serverConfigs.value.filter(server => kind === 'home-assistant'
+    ? /\/api\/mcp$/.test(server.url) || server.name.includes('home-assistant')
+    : server.name.includes('unraid') || /:8043\/mcp/.test(server.url)).map(server => server.name)
+}
+
+async function loadServerConfigs() {
+  try {
+    const data = await fetchMcpServers()
+    serverConfigs.value = (data.servers || []).map(server => ({ name: server.name, url: String(server.raw_config?.url || '') }))
+  } catch { /* the catalog still works without it */ }
+}
+
+function onHomeAdded(name: string) {
+  void loadServerConfigs()
+  emit('changed', name)
+}
 
 const filtered = computed(() => filterMcpCatalog(entries.value, query.value, show.value))
 const installedCount = computed(() => entries.value.filter(e => e.installed).length)
@@ -91,6 +121,7 @@ function onConnected(name: string) {
 
 defineExpose({ load, connect })
 void load()
+void loadServerConfigs()
 </script>
 
 <template>
@@ -109,6 +140,32 @@ void load()
       </NRadioGroup>
       <NButton size="small" quaternary :loading="loading" @click="load">{{ t('hermesExtensions.common.refresh') }}</NButton>
     </div>
+
+    <section v-if="homeEntries.length" class="home-group">
+      <h3 class="group-title">{{ t('hermesExtensions.home.groupTitle') }}</h3>
+      <p class="group-hint">{{ t('hermesExtensions.home.groupHint') }}</p>
+      <div class="catalog-grid">
+        <div v-for="entry in homeEntries" :key="entry.kind" class="catalog-card" :class="{ installed: homeAdded(entry.kind).length }">
+          <div class="catalog-head">
+            <h3>{{ entry.title }}</h3>
+            <div class="catalog-tags">
+              <NTag v-if="homeAdded(entry.kind).length" size="small" type="success" round>{{ t('hermesExtensions.common.installed') }}</NTag>
+              <NTag size="small" round>{{ entry.kind === 'home-assistant' ? t('hermesExtensions.home.readOnlyTag') : t('hermesExtensions.home.tokenTag') }}</NTag>
+            </div>
+          </div>
+          <p class="catalog-desc">{{ entry.description }}</p>
+          <div v-if="homeAdded(entry.kind).length" class="catalog-url">{{ homeAdded(entry.kind).join(', ') }}</div>
+          <div class="catalog-actions">
+            <a :href="entry.docs" target="_blank" rel="noopener" class="catalog-link">{{ t('hermesExtensions.common.docs') }}</a>
+            <span class="spacer" />
+            <NButton size="tiny" :type="homeAdded(entry.kind).length ? 'default' : 'primary'" @click="homeForm = entry.kind">
+              {{ homeAdded(entry.kind).length ? t('hermesExtensions.home.addAnother') : t('hermesExtensions.home.connect') }}
+            </NButton>
+          </div>
+        </div>
+      </div>
+      <h3 class="group-title">{{ t('hermesExtensions.home.catalogTitle') }}</h3>
+    </section>
 
     <div v-if="loading && !loaded" class="catalog-loading"><NSpin /></div>
     <div v-else-if="filtered.length" class="catalog-grid">
@@ -174,6 +231,7 @@ void load()
       </div>
     </NModal>
 
+    <McpHomeServerForm :kind="homeForm" @close="homeForm = null" @added="onHomeAdded" />
     <McpOAuthConnect v-model:show="showConnect" :server="connectServer" @connected="onConnected" />
   </div>
 </template>
@@ -184,6 +242,9 @@ void load()
 
 @include mcp-manager.layout;
 
+.home-group { display: flex; flex-direction: column; gap: calc(8px * var(--spacing-scale, 1)); margin-bottom: calc(8px * var(--spacing-scale, 1)); }
+.group-title { margin: calc(8px * var(--spacing-scale, 1)) 0 0; font-size: calc(var(--font-size-base, 14px) * 14 / 14); font-weight: 600; }
+.group-hint { margin: 0; color: $text-muted; font-size: calc(var(--font-size-base, 14px) * 12 / 14); }
 .catalog-loading { display: grid; place-items: center; padding: 40px 0; }
 .catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: calc(12px * var(--spacing-scale, 1)); }
 .catalog-card {

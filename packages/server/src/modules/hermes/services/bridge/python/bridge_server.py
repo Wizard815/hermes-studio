@@ -493,9 +493,11 @@ class BridgeServer:
             t = getattr(task, "_task", None)
             connected = bool(t and not t.done())
             err = getattr(task, "_error", None)
-            cfg = getattr(task, "_config", {})
             # Build filtered tool_details (name + description) for card display
             srv_cfg = mcp_configs.get(name, {}) if isinstance(mcp_configs.get(name), dict) else {}
+            # Show config.yaml's entry, not the running task's copy: Hermes fills ${VAR}
+            # references (tokens kept in .env) into the copy it connects with.
+            cfg = srv_cfg or getattr(task, "_config", {})
             tools_filter = srv_cfg.get("tools") if isinstance(srv_cfg.get("tools"), dict) else {}
             has_include_filter = "include" in tools_filter
             has_exclude_filter = "exclude" in tools_filter

@@ -1,6 +1,8 @@
 import { hermesApi } from '../services/hermes-api'
 import type { Context } from 'koa'
 import { bridgeMcpAction } from '../services/mcp/bridge-actions'
+import { getActiveProfileName } from '../services/profiles/profile'
+import { saveEnvValueForProfile } from '../../studio/public/profile-config'
 
 function getProfile(ctx: Context): string | undefined {
   return (ctx.state as any)?.profile?.name || undefined
@@ -24,9 +26,27 @@ export async function listServers(ctx: Context) {
   }
 }
 
+/**
+ * Secrets for a new server (a token or API key) go to the profile's .env, never
+ * into config.yaml: the config holds only `${MCP_X_API_KEY}`, which Hermes fills
+ * in when it connects. Each key must be MCP_-prefixed and used by the config.
+ * Returns an error message, or null when the secrets are fine.
+ */
+export function checkMcpSecrets(config: Record<string, unknown>, secrets: unknown): string | null {
+  if (secrets === undefined || secrets === null) return null
+  if (typeof secrets !== 'object' || Array.isArray(secrets)) return 'secrets must be an object'
+  const text = JSON.stringify(config)
+  for (const [key, value] of Object.entries(secrets as Record<string, unknown>)) {
+    if (!/^MCP_[A-Z0-9_]{1,80}$/.test(key)) return `Secret name ${key} must look like MCP_NAME_API_KEY`
+    if (typeof value !== 'string' || !value.trim() || /[\r\n]/.test(value)) return `Secret ${key} must be a single line of text`
+    if (!text.includes('${' + key + '}')) return `Secret ${key} is not used by the server config`
+  }
+  return null
+}
+
 export async function addServer(ctx: Context) {
   try {
-    const { name, config } = (ctx.request.body || {}) as Record<string, unknown>
+    const { name, config, secrets } = (ctx.request.body || {}) as Record<string, unknown>
     if (typeof name !== 'string' || !isValidServerName(name)) {
       ctx.status = 400
       ctx.body = { error: 'Valid server name is required' }
@@ -36,6 +56,18 @@ export async function addServer(ctx: Context) {
       ctx.status = 400
       ctx.body = { error: 'config object is required' }
       return
+    }
+    const secretError = checkMcpSecrets(config as Record<string, unknown>, secrets)
+    if (secretError) {
+      ctx.status = 400
+      ctx.body = { error: secretError }
+      return
+    }
+    if (secrets) {
+      const profile = getProfile(ctx) || getActiveProfileName() || 'default'
+      for (const [key, value] of Object.entries(secrets as Record<string, string>)) {
+        await saveEnvValueForProfile(profile, key, value.trim())
+      }
     }
     ctx.body = await bridgeMcpAction('mcp_server_add', { name: name.trim(), config }, getProfile(ctx))
   } catch (err: any) {

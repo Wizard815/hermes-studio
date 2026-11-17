@@ -114,3 +114,70 @@ describe('MCP sign-in window', () => {
     vi.useRealTimers()
   })
 })
+
+describe('Home Assistant and Unraid servers', () => {
+  it('builds Home Assistant read-only, with the token only in .env', () => {
+    const draft = api.buildHomeAssistantServer({ address: 'homeassistant.local:8123/', token: 'Bearer abc.def' })
+    expect(draft).toEqual({
+      name: 'home-assistant',
+      config: {
+        url: 'http://homeassistant.local:8123/api/mcp',
+        headers: { Authorization: 'Bearer ${MCP_HOME_ASSISTANT_API_KEY}' },
+        tools: { include: [...api.HOME_ASSISTANT_READ_TOOLS] },
+      },
+      secrets: { MCP_HOME_ASSISTANT_API_KEY: 'abc.def' },
+    })
+    expect(JSON.stringify(draft.config)).not.toContain('abc.def')
+    expect(api.buildHomeAssistantServer({ address: 'https://ha.example/api/mcp', token: 't', readOnly: false }).config)
+      .toEqual({ url: 'https://ha.example/api/mcp', headers: { Authorization: 'Bearer ${MCP_HOME_ASSISTANT_API_KEY}' } })
+  })
+
+  it('keeps only the read tools in the read-only list', () => {
+    const allowed = (name: string) => api.HOME_ASSISTANT_READ_TOOLS.some(glob => new RegExp(`^${glob.replace(/\*/g, '.*')}$`).test(name))
+    for (const tool of ['homeassistant__GetLiveContext', 'GetLiveContext', 'llm__GetDateTime', 'history__get_history', 'search__search', 'system_log__get_logs', 'todo__get_items'])
+      expect(allowed(tool), tool).toBe(true)
+    for (const tool of ['intent__HassTurnOn', 'HassTurnOff', 'homeassistant__call_action', 'todo__HassListAddItem', 'config__reload_config_entry', 'assist_satellite__HassBroadcast', 'intent__HassCancelAllTimers'])
+      expect(allowed(tool), tool).toBe(false)
+  })
+
+  it('reports what is missing in the Home Assistant form', () => {
+    expect(() => api.buildHomeAssistantServer({ address: '', token: 't' })).toThrow('address')
+    expect(() => api.buildHomeAssistantServer({ address: 'ha:8123', token: ' ' })).toThrow('token')
+  })
+
+  it('builds the Unraid Management Agent with a token, a Connect URL or nothing', () => {
+    expect(api.buildUnraidServer({ address: 'tower.local', auth: 'token', token: 'uma' })).toEqual({
+      name: 'unraid',
+      config: { url: 'http://tower.local:8043/mcp', headers: { Authorization: 'Bearer ${MCP_UNRAID_API_KEY}' } },
+      secrets: { MCP_UNRAID_API_KEY: 'uma' },
+    })
+    expect(api.buildUnraidServer({ address: 'https://unraid.home:9443/mcp', auth: 'none' }).config).toEqual({ url: 'https://unraid.home:9443/mcp' })
+    expect(api.buildUnraidServer({ auth: 'connect-url', connectUrl: 'http://192.168.1.5:8043/mcp/abcdefgh12345678abcdefgh12345678' })).toEqual({
+      name: 'unraid',
+      config: { url: 'http://192.168.1.5:8043/mcp/${MCP_UNRAID_CONNECT_SECRET}' },
+      secrets: { MCP_UNRAID_CONNECT_SECRET: 'abcdefgh12345678abcdefgh12345678' },
+    })
+    expect(() => api.buildUnraidServer({ auth: 'connect-url', connectUrl: 'http://tower:8043/mcp' })).toThrow('connectUrl')
+    expect(() => api.buildUnraidServer({ address: 'tower', auth: 'token' })).toThrow('token')
+  })
+
+  it('builds the script builder settings only when an SSH host is given', () => {
+    const ha = { address: 'http://ha:8123', token: 'tok' }
+    expect(api.homeAssistantBuilderEnv(ha, { sshHost: '' })).toEqual({})
+    expect(api.homeAssistantBuilderEnv(ha, { sshHost: 'ha.local', sshKey: '~/.ssh/ha' })).toEqual({
+      HA_BUILD_URL: 'http://ha:8123', HA_BUILD_TOKEN: 'tok', HA_BUILD_SSH_HOST: 'ha.local', HA_BUILD_SSH_PORT: '22',
+      HA_BUILD_SSH_USER: 'root', HA_BUILD_SSH_KEY: '~/.ssh/ha', HA_BUILD_CONFIG_DIR: '/config',
+    })
+    expect(() => api.homeAssistantBuilderEnv(ha, { sshHost: 'h', sshPort: 'x' })).toThrow('sshPort')
+  })
+})
+
+describe('MCP tool include globs', () => {
+  it('matches exact names and * globs only', () => {
+    expect(api.toolIncluded('homeassistant__GetLiveContext', ['*GetLiveContext'])).toBe(true)
+    expect(api.toolIncluded('search', ['search'])).toBe(true)
+    expect(api.toolIncluded('homeassistant__search_actions', ['search'])).toBe(false)
+    expect(api.toolIncluded('a.b', ['a?b'])).toBe(true)
+    expect(api.toolIncluded('axb', ['a.b'])).toBe(false)
+  })
+})

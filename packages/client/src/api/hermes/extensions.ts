@@ -105,6 +105,184 @@ export function filterMcpCatalog(entries: McpCatalogEntry[], query: string, show
   })
 }
 
+// ---- Home servers (Home Assistant, Unraid) ---------------------------------
+
+/**
+ * A server ready for Studio's MCP add: the config Hermes saves in config.yaml
+ * and the secrets Studio puts in the profile's .env. The config only names a
+ * secret as `${MCP_X_API_KEY}`, so a token is never shown back.
+ */
+export interface McpServerDraft {
+  name: string
+  config: { url?: string; headers?: Record<string, string>; tools?: { include?: string[] } }
+  secrets: Record<string, string>
+}
+
+/** Why a home server form cannot be saved; each is a hermesExtensions.home.errors key. */
+export type HomeServerError = 'name' | 'address' | 'token' | 'connectUrl' | 'sshPort'
+
+export class HomeServerFormError extends Error {
+  readonly code: HomeServerError
+  constructor(code: HomeServerError) {
+    super(code)
+    this.code = code
+  }
+}
+
+/** Hermes's own .env name for a server's key: MCP_HOME_ASSISTANT_API_KEY. */
+export function mcpSecretKey(server: string, part = 'API_KEY'): string {
+  const suffix = server.toUpperCase().replace(/[^A-Z0-9_]/g, '_').replace(/^_+|_+$/g, '')
+  return `MCP_${suffix}_${part}`
+}
+
+export function normalizeServerName(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64)
+}
+
+/** A typed address as a base URL: adds http:// when missing, drops a trailing slash. */
+export function normalizeAddress(address: string): string {
+  let value = address.trim()
+  if (!value) return ''
+  if (!/^https?:\/\//i.test(value)) value = `http://${value}`
+  try {
+    const url = new URL(value)
+    if (!url.hostname) return ''
+  } catch {
+    return ''
+  }
+  return value.replace(/\/+$/, '')
+}
+
+/** How config.yaml names a .env value: ${MCP_X_API_KEY}. */
+export const envRef = (key: string) => '${' + key + '}'
+
+function stripBearer(token: string): string {
+  const value = token.trim()
+  return /^bearer\s+/i.test(value) ? value.replace(/^bearer\s+/i, '').trim() : value
+}
+
+/**
+ * Home Assistant's read tools (readOnlyHint) as Hermes include globs: newer
+ * Home Assistant prefixes names (homeassistant__GetLiveContext), older ones do
+ * not. Everything else (HassTurnOn/Off, call_action, list edits, reload, broadcast)
+ * stays out, so Hermes watches but does not control devices through MCP.
+ */
+export const HOME_ASSISTANT_READ_TOOLS = [
+  '*GetLiveContext', '*GetDateTime', '*get_items', '*get_history', '*render_template',
+  '*search_actions', '*search_integrations', 'search', '*__search', '*get_config_entries',
+  '*get_system_info', '*get_entries', '*get_logs',
+] as const
+
+/** Whether a tool name passes a Hermes include list (exact names or fnmatch-style * and ? globs). */
+export function toolIncluded(tool: string, include: readonly string[]): boolean {
+  const toRegExp = (glob: string) => new RegExp(`^${[...glob].map(ch => ch === '*' ? '.*' : ch === '?' ? '.' : ch.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('')}$`)
+  return include.some(glob => toRegExp(glob).test(tool))
+}
+
+export interface HomeAssistantForm { name?: string; address: string; token: string; readOnly?: boolean }
+
+/** Home Assistant's built-in MCP Server: <address>/api/mcp, streamable HTTP, a long-lived token. */
+export function buildHomeAssistantServer(form: HomeAssistantForm): McpServerDraft {
+  const name = normalizeServerName(form.name || 'home-assistant')
+  if (!name) throw new HomeServerFormError('name')
+  const base = normalizeAddress(form.address).replace(/\/api\/mcp$/i, '')
+  if (!base) throw new HomeServerFormError('address')
+  const token = stripBearer(form.token)
+  if (!token) throw new HomeServerFormError('token')
+  const key = mcpSecretKey(name)
+  return {
+    name,
+    config: {
+      url: `${base}/api/mcp`,
+      headers: { Authorization: `Bearer ${envRef(key)}` },
+      ...(form.readOnly === false ? {} : { tools: { include: [...HOME_ASSISTANT_READ_TOOLS] } }),
+    },
+    secrets: { [key]: token },
+  }
+}
+
+export interface HomeAssistantBuilderForm {
+  sshHost: string
+  sshPort?: string | number
+  sshUser?: string
+  /** Private key file on the machine Hermes runs on. */
+  sshKey?: string
+  /** Home Assistant's config folder on the SSH host (the SSH add-on: /config). */
+  configDir?: string
+}
+
+/**
+ * The .env values for the home-assistant-builder skill, which copies a script or
+ * automation package over SSH, has Home Assistant check and reload it, and can
+ * start a script. Empty when no SSH host is given.
+ */
+export function homeAssistantBuilderEnv(ha: HomeAssistantForm, form: HomeAssistantBuilderForm): Record<string, string> {
+  const host = form.sshHost.trim()
+  if (!host) return {}
+  const base = normalizeAddress(ha.address).replace(/\/api\/mcp$/i, '')
+  if (!base) throw new HomeServerFormError('address')
+  const token = stripBearer(ha.token)
+  if (!token) throw new HomeServerFormError('token')
+  const port = String(form.sshPort || '').trim() || '22'
+  if (!/^\d{1,5}$/.test(port)) throw new HomeServerFormError('sshPort')
+  return {
+    HA_BUILD_URL: base,
+    HA_BUILD_TOKEN: token,
+    HA_BUILD_SSH_HOST: host,
+    HA_BUILD_SSH_PORT: port,
+    HA_BUILD_SSH_USER: (form.sshUser || '').trim() || 'root',
+    HA_BUILD_SSH_KEY: (form.sshKey || '').trim(),
+    HA_BUILD_CONFIG_DIR: (form.configDir || '').trim() || '/config',
+  }
+}
+
+/** Save one value in the profile's .env through Hermes's own API. */
+export const saveHermesEnvValue = (key: string, value: string) =>
+  hermesAgent<unknown>('env', { method: 'PUT', body: { key, value } })
+
+/** How Hermes signs in to the Unraid Management Agent's MCP. */
+export type UnraidAuth = 'token' | 'connect-url' | 'none'
+
+export interface UnraidForm {
+  name?: string
+  /** The agent's address, e.g. http://tower.local:8043 (port 8043 by default). */
+  address?: string
+  auth: UnraidAuth
+  /** The agent's API token (sent as Authorization: Bearer). */
+  token?: string
+  /** The whole Connect URL from the agent's settings: http://tower:8043/mcp/<connect-secret>. */
+  connectUrl?: string
+}
+
+export const UNRAID_DEFAULT_PORT = 8043
+
+/**
+ * The Unraid Management Agent (tinkerologie/unraid-management-agent) serves
+ * stateful streamable HTTP MCP at http://<unraid>:8043/mcp, with the API token
+ * as a Bearer header, or at /mcp/<connect-secret> with the secret in the path.
+ */
+export function buildUnraidServer(form: UnraidForm): McpServerDraft {
+  const name = normalizeServerName(form.name || 'unraid')
+  if (!name) throw new HomeServerFormError('name')
+  if (form.auth === 'connect-url') {
+    const match = normalizeAddress(form.connectUrl || '').match(/^(https?:\/\/[^/]+)\/mcp\/([A-Za-z0-9_-]{8,256})$/)
+    if (!match) throw new HomeServerFormError('connectUrl')
+    const key = mcpSecretKey(name, 'CONNECT_SECRET')
+    return { name, config: { url: `${match[1]}/mcp/${envRef(key)}` }, secrets: { [key]: match[2] } }
+  }
+  // A bare host (tower.local) gets the agent's default port; a typed scheme or port is kept.
+  const typed = (form.address || '').trim()
+  const bare = !!typed && !/^https?:\/\//i.test(typed) && !/:\d+(\/|$)/.test(typed)
+  const base = normalizeAddress(bare ? `${typed.replace(/\/.*$/, '')}:${UNRAID_DEFAULT_PORT}` : typed).replace(/\/mcp$/i, '')
+  if (!base) throw new HomeServerFormError('address')
+  const url = `${base}/mcp`
+  if (form.auth === 'none') return { name, config: { url }, secrets: {} }
+  const token = stripBearer(form.token || '')
+  if (!token) throw new HomeServerFormError('token')
+  const key = mcpSecretKey(name)
+  return { name, config: { url, headers: { Authorization: `Bearer ${envRef(key)}` } }, secrets: { [key]: token } }
+}
+
 // ---- Plugins hub ----------------------------------------------------------
 
 export interface PluginCatalogEntry {

@@ -134,3 +134,44 @@ export function publicWebhookUrl(url: string, hostname: string): string {
 export function deliveryTargets(platforms: HermesPlatform[]): string[] {
   return ['log', ...platforms.filter(p => p.configured && !NON_CARD_PLATFORMS.includes(p.id) && p.id !== 'api_server').map(p => p.id)]
 }
+
+/**
+ * Home Assistant YAML that calls a Hermes webhook: a secret for secrets.yaml, a
+ * rest_command and an example automation. Home Assistant cannot compute an HMAC,
+ * so it sends the route's secret as X-Gitlab-Token, which Hermes's webhook
+ * checks as a plain shared token. The secret is shown only right after the
+ * webhook is created; later copies leave a placeholder to fill in.
+ */
+export function homeAssistantWebhookYaml(route: string, url: string, secret?: string): string {
+  const slug = route.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'webhook'
+  const secretName = `hermes_${slug}_secret`
+  const secretValue = secret ? JSON.stringify(secret) : '"PASTE-THE-WEBHOOK-SECRET"'
+  return [
+    '# secrets.yaml',
+    `${secretName}: ${secretValue}`,
+    '',
+    '# configuration.yaml',
+    'rest_command:',
+    `  hermes_${slug}:`,
+    `    url: ${JSON.stringify(url)}`,
+    '    method: post',
+    '    content_type: application/json',
+    '    headers:',
+    `      X-Gitlab-Token: !secret ${secretName}`,
+    "    payload: '{{ {\"event\": event, \"entity_id\": entity_id, \"state\": state, \"message\": message} | to_json }}'",
+    '',
+    '# automations.yaml (or Settings > Automations > Create > Edit in YAML)',
+    `- alias: "Tell Hermes (${route})"`,
+    '  triggers:',
+    '    - trigger: state',
+    '      entity_id: alarm_control_panel.home  # the entity to watch',
+    '  actions:',
+    `    - action: rest_command.hermes_${slug}`,
+    '      data:',
+    '        event: state_changed',
+    '        entity_id: "{{ trigger.entity_id }}"',
+    '        state: "{{ trigger.to_state.state }}"',
+    '        message: "{{ trigger.to_state.name }} changed to {{ trigger.to_state.state }}"',
+    '',
+  ].join('\n')
+}

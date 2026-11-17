@@ -7,7 +7,7 @@ import {
   type HermesWebhook,
 } from '@/api/hermes/channels'
 import { copyToClipboard } from '@/utils/clipboard'
-import { cleanError, deliveryTargets, normalizeWebhookName, publicWebhookUrl, splitIds } from './channel-helpers'
+import { cleanError, deliveryTargets, homeAssistantWebhookYaml, normalizeWebhookName, publicWebhookUrl, splitIds } from './channel-helpers'
 import { useHermesChannels } from './useHermesChannels'
 
 const { t } = useI18n()
@@ -22,7 +22,7 @@ const busy = ref('')
 const showForm = ref(false)
 const editing = ref<HermesWebhook | null>(null)
 const saving = ref(false)
-const created = ref<{ url: string; secret: string } | null>(null)
+const created = ref<{ name: string; url: string; secret: string } | null>(null)
 const form = reactive({ name: '', description: '', prompt: '', deliver: 'log', chatId: '', deliverOnly: false, events: '', secret: '' })
 
 const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
@@ -99,7 +99,7 @@ async function submit() {
       secret: form.secret.trim() || undefined,
     })
     showForm.value = false
-    if (res.secret) created.value = { url: url(res), secret: res.secret }
+    if (res.secret) created.value = { name, url: url(res), secret: res.secret }
     await load()
   } catch (err) {
     message.error(cleanError(err, t('hermesChannels.saveFailed')))
@@ -175,6 +175,7 @@ onMounted(load)
           <div class="route-url">
             <code>{{ url(route) }}</code>
             <NButton size="tiny" quaternary @click="copy(url(route))">{{ t('hermesChannels.copy') }}</NButton>
+            <NButton size="tiny" quaternary :title="t('hermesExtensions.home.webhook.copyHaHint')" @click="copy(homeAssistantWebhookYaml(route.name, url(route)))">{{ t('hermesExtensions.home.webhook.copyHa') }}</NButton>
           </div>
           <p v-if="route.description" class="muted">{{ route.description }}</p>
         </div>
@@ -222,6 +223,7 @@ onMounted(load)
         <NAlert type="warning" :show-icon="false">{{ t('hermesChannels.webhooks.secretOnce') }}</NAlert>
         <div class="created-row"><span class="muted">{{ t('hermesChannels.webhooks.url') }}</span><code>{{ created.url }}</code><NButton size="tiny" quaternary @click="copy(created.url)">{{ t('hermesChannels.copy') }}</NButton></div>
         <div class="created-row"><span class="muted">{{ t('hermesChannels.webhooks.secret') }}</span><code>{{ created.secret }}</code><NButton size="tiny" quaternary @click="copy(created.secret)">{{ t('hermesChannels.copy') }}</NButton></div>
+        <div class="created-row"><span class="muted">{{ t('hermesExtensions.home.webhook.copyHaHint') }}</span><NButton size="tiny" secondary @click="copy(homeAssistantWebhookYaml(created.name, created.url, created.secret))">{{ t('hermesExtensions.home.webhook.copyHa') }}</NButton></div>
       </template>
     </NModal>
   </section>

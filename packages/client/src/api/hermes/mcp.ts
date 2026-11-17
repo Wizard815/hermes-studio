@@ -88,3 +88,14 @@ export async function mcpReload(name?: string): Promise<{ ok: boolean; message?:
 export async function mcpServerTest(name: string): Promise<{ ok: boolean; tools?: string[]; error?: string }> {
   return request(`/api/hermes/mcp/servers/${encodeURIComponent(name)}/test`, { method: 'POST' })
 }
+
+/**
+ * Add a server whose token or API key must stay secret: Studio writes each
+ * secret to the profile's .env and the config only refers to it as ${KEY}.
+ */
+export async function mcpServerAddWithSecrets(name: string, config: McpServerConfig, secrets: Record<string, string>): Promise<{ ok: boolean; name?: string; error?: string }> {
+  return request('/api/hermes/mcp/servers', {
+    method: 'POST',
+    body: JSON.stringify({ name, config, ...(Object.keys(secrets).length ? { secrets } : {}) }),
+  })
+}

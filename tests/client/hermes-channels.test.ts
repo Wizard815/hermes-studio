@@ -8,7 +8,7 @@ import { defineComponent, h } from 'vue'
 import type { HermesEnvField, HermesPlatform } from '@/api/hermes/channels'
 import {
   buildPlatformUpdate, cleanError, deliveryTargets, extraPlatforms, normalizeWebhookName, panelFields,
-  publicWebhookUrl, splitIds, stateKey, stateTagType,
+  homeAssistantWebhookYaml, publicWebhookUrl, splitIds, stateKey, stateTagType,
 } from '@/components/hermes/channels/channel-helpers'
 import { hermesChannelsMessages } from '@/i18n/hermes-agent-channels-messages'
 
@@ -185,5 +185,18 @@ describe('Mattermost setup for Hermes', () => {
     expect(wrapper.text()).toContain('~server-alerts')
     expect(wrapper.text()).toContain('Unraid server alerts')
     wrapper.unmount()
+  })
+})
+
+describe('Home Assistant webhook YAML', () => {
+  it('names the URL and sends the secret as a token header', () => {
+    const yaml = homeAssistantWebhookYaml('ha-alarm', 'http://studio:8644/webhooks/ha-alarm', 's3cret')
+    expect(yaml).toContain('hermes_ha_alarm_secret: "s3cret"')
+    expect(yaml).toContain('url: "http://studio:8644/webhooks/ha-alarm"')
+    expect(yaml).toContain('X-Gitlab-Token: !secret hermes_ha_alarm_secret')
+    expect(yaml).toContain('action: rest_command.hermes_ha_alarm')
+  })
+  it('leaves a placeholder when the secret is not known', () => {
+    expect(homeAssistantWebhookYaml('x', 'http://h/webhooks/x')).toContain('hermes_x_secret: "PASTE-THE-WEBHOOK-SECRET"')
   })
 })
