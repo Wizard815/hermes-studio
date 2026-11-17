@@ -33,6 +33,106 @@ repository is `EKKOLearnAI/ekko-studio`. The primary npm package is
 `ekko-studio`, with the `ekko-studio-web` command. The legacy `hermes-web-ui`
 package and command remain supported and receive the same releases.
 
+## This fork (Wizard815/hermes-studio): test branch and upgrade guide
+
+This fork adds herdr, Pondering Orb, Mattermost, Home Assistant and Unraid
+integrations on top of Ekko Studio. Until it is merged into `main`, the work
+lives on the test branch **`herdr-upstream`** (herdr-integration plus the
+newest Ekko Studio, with its model gateway). `main` stays as it is until
+`herdr-upstream` has been tested on real machines.
+
+| Branch | What it is |
+|---|---|
+| `main` | Current stable build (Pondering Orb through Studio, no herdr) |
+| `herdr-integration` | Earlier herdr build, on the older Ekko Studio |
+| **`herdr-upstream`** | **Test this one.** herdr-integration + newest Ekko Studio |
+
+### Install on a Linux machine (for example an Intel NUC)
+
+Needs Docker with the compose plugin and about 7 GB of disk.
+
+```bash
+git clone -b herdr-upstream https://github.com/Wizard815/hermes-studio.git
+cd hermes-studio
+docker compose up -d --build
+docker compose logs -f hermes-webui
+```
+
+Open `http://<machine-ip>:6060`. Data is kept in `./hermes_data` (set
+`HERMES_DATA_DIR` to put it somewhere else). The first login token is in the
+logs and in `./hermes_data/hermes-web-ui/.token`.
+
+To update later:
+
+```bash
+git pull && docker compose up -d --build
+```
+
+### Upgrade an existing install from `main` to `herdr-upstream`
+
+1. **Back up first.** Stop Studio and copy the whole data folder: the folder
+   mounted at `/home/agent/.hermes` (`./hermes_data` with compose, the
+   container's appdata folder on Unraid). This copy is the surest way back.
+2. **Get the branch:**
+   - Compose (same checkout): `git fetch origin && git checkout herdr-upstream && git pull`
+   - Unraid / plain Docker (new folder): `git clone -b herdr-upstream https://github.com/Wizard815/hermes-studio.git`
+3. **Build the image** (about 5 minutes):
+   - Compose: `docker compose up -d --build`
+   - Unraid / plain Docker: `docker build -t hermes-studio:herdr-upstream .`
+4. **Point the container at it** (Unraid / plain Docker only): edit the Studio
+   container, set **Repository** to `hermes-studio:herdr-upstream`, keep the
+   same data path, and apply.
+5. **Add herdr's folders** so herdr keeps its spaces across restarts. Compose
+   already has them. On Unraid add two paths:
+   - `<appdata>/herdr/config` → `/home/agent/.config/herdr`
+   - `<appdata>/herdr/state` → `/home/agent/.local/state/herdr`
+
+What happens on the first start:
+
+- Chats, profiles, MCP servers and their tokens, Mattermost and herdr settings
+  and scheduled jobs are kept.
+- Each profile's model settings move onto Studio's **model gateway**: profile
+  defaults become gateway routes, Hermes API key pools show on **Models → Key
+  pools**, and jobs with their own model are moved onto the gateway.
+- Before Studio first changes a profile, it copies Hermes's own `config.yaml`,
+  `.env`, `auth.json` and `cron/jobs.json` into `<profile>/pre-studio-gateway/`
+  (`<profile>` is the data folder itself for the default profile, or
+  `profiles/<name>/` for the others).
+- Scheduled job posts no longer carry Hermes's "Cronjob Response" header and
+  "To stop or manage this job" footer. Turn them back on in **Hermes Settings →
+  Session → Job post header and footer**.
+
+### Going back to `main`
+
+Easiest: stop Studio, put the backup from step 1 back, and run the `main` image
+again.
+
+Without the backup: stop Studio, copy the files in each
+`<profile>/pre-studio-gateway/` back into that profile (`cron-jobs.json` goes
+back to `cron/jobs.json`), then start the `main` image. If you skip the copy,
+the old build opens but no model works.
+
+### What to check after upgrading
+
+Things the automated tests could not cover, because they need a real model or
+your own services:
+
+- [ ] A chat streams a reply and uses a tool
+- [ ] `/model` switches the model in a chat and in herdr
+- [ ] A job with its own model runs and posts to Mattermost (without the header and footer)
+- [ ] Home Assistant and Unraid tools answer through Hermes
+- [ ] Key pools switch to the next key on a real rate limit
+- [ ] Hermes local works with a downloaded model (if you use it)
+- [ ] Old chats, jobs and Mattermost still work as before
+- [ ] herdr: open a Hermes chat in herdr, send a message, restart the container, and check the pane is still linked
+
+Known issues on this branch:
+
+- A reply that is still being written when Studio restarts is lost without a note.
+- A full disk shows only "Internal Server Error" (files are not damaged).
+- With gateway autostart off, Hermes can still start its own gateway for chats.
+
+
 ## Screenshots
 
 Captured from **v0.8.13** source on 2026-11-03, running locally with isolated data. The workflow is an example created in the UI and has not been run; Agent statuses reflect this machine. See [capture notes](./docs/screenshots/overview/README.md).
