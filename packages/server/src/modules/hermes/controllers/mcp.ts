@@ -1,8 +1,9 @@
 import { hermesApi } from '../services/hermes-api'
 import type { Context } from 'koa'
 import { bridgeMcpAction } from '../services/mcp/bridge-actions'
-import { getActiveProfileName } from '../services/profiles/profile'
+import { getActiveProfileName, getProfileDir } from '../services/profiles/profile'
 import { saveEnvValueForProfile } from '../../studio/public/profile-config'
+import { ensureHomeAssistantSshKey } from '../services/home-assistant/ssh-key'
 
 function getProfile(ctx: Context): string | undefined {
   return (ctx.state as any)?.profile?.name || undefined
@@ -174,5 +175,16 @@ export async function reloadMcp(ctx: Context) {
   } catch (err: any) {
     ctx.status = 503
     ctx.body = { error: err.message || 'Failed to reload MCP' }
+  }
+}
+
+/** Studio's SSH key for Home Assistant's SSH add-on: makes it once, returns the public half. */
+export async function homeAssistantSshKey(ctx: Context) {
+  try {
+    const profile = getProfile(ctx) || getActiveProfileName() || 'default'
+    ctx.body = await ensureHomeAssistantSshKey(getProfileDir(profile))
+  } catch (err: any) {
+    ctx.status = 500
+    ctx.body = { error: `Could not make an SSH key: ${err?.message || err}` }
   }
 }

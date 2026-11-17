@@ -9123,6 +9123,32 @@
         }
       }
     },
+    "/api/hermes/mcp/home-assistant/ssh-key": {
+      "post": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Create ssh-key",
+        "description": "POST /api/hermes/mcp/home-assistant/ssh-key",
+        "operationId": "homeAssistantSshKey",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/api/hermes/mcp/reload": {
       "post": {
         "tags": [

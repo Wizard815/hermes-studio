@@ -76,17 +76,62 @@ script or automation and Home Assistant runs it, through the bundled skill
    automations.
 3. To run a script it asks again, then calls `script.turn_on`.
 
-Those are the only Home Assistant calls it can make: `check_config`, `script.reload`,
-`automation.reload`, `script.turn_on`. Deploy needs the code `show` printed for that exact
-YAML, and run needs the script's entity id, so the agent cannot skip showing you what it
-deploys. One-time setup: the skill's `setup` adds
-`homeassistant: packages: !include_dir_named packages/hermes` to configuration.yaml (after
-asking) and you restart Home Assistant once.
+Those are the only Home Assistant calls it can make: `check_config` (or `ha core check`),
+`script.reload`, `automation.reload`, `script.turn_on`. Deploy needs the code `show` printed
+for that exact YAML, and run needs the script's entity id, so the agent cannot skip showing
+you what it deploys. After a deploy it reads `script.<id>` back and warns if Home Assistant
+did not load it.
 
-Turn it on in the Home Assistant form ("Let Hermes build scripts and automations"): SSH
-host, port, user, a private key file on the Hermes machine, and the config folder on that
-host. Home Assistant OS: the "Advanced SSH & Web Terminal" add-on, folder `/config`.
-Home Assistant in Docker: SSH to the Docker host, folder = the host path mounted at
+**Packages must be on, once.** Hermes's files load as packages, so configuration.yaml needs:
+
+```yaml
+homeassistant:
+  packages: !include_dir_named packages
+```
+
+(if there is already a `homeassistant:` section, add only the `packages:` line under it),
+then restart Home Assistant once. The skill never edits configuration.yaml: `status` (and
+`deploy`) stop and print exactly that line when it is missing. An existing
+`!include_dir_named <folder>` is used as it is (Hermes writes to `<folder>/hermes/`, which
+Home Assistant reads because the include is recursive); `!include_dir_merge_named` or an
+inline `packages:` list is reported, not changed.
+
+#### Home Assistant OS (a VM): the SSH add-on
+
+With Home Assistant OS the only way into the config folder is an SSH add-on inside the VM:
+the official **Terminal & SSH** or the community **Advanced SSH & Web Terminal**. There is no
+Docker host to SSH to.
+
+1. MCP page → Home Assistant → tick "Let Hermes build scripts and automations". The form
+   fills in port **22**, user **root** and **Studio's own key** (made once by Studio,
+   `<profile>/ssh/ha_builder_ed25519`; the private key stays on the Hermes machine; "Use
+   Studio's key" shows it again).
+2. Copy the public key line the form shows. In Home Assistant: Settings → Add-ons →
+   Terminal & SSH → Configuration → `authorized_keys`, paste it, Save, and restart the
+   add-on. Advanced SSH & Web Terminal: the same under `ssh` → `authorized_keys`; its `ssh`
+   `username` (default `hassio`) is the user to type in the form, and you are root after
+   signing in. Under Network make sure port 22 is set (Terminal & SSH leaves it empty,
+   which turns SSH off; Advanced SSH has 22).
+3. SSH host: the VM's address (e.g. `homeassistant.local`). Leave "config folder" empty.
+
+What the skill does there:
+
+- **Config folder.** The add-ons mount Home Assistant's config at `/homeassistant`; current
+  Terminal & SSH (10.x) and Advanced SSH also link `/config` to it, while older add-on
+  versions only had `/config`. The skill looks for `configuration.yaml` in `/homeassistant`,
+  then `/config` (`HA_BUILD_CONFIG_DIR=auto`); type a folder to override.
+- **Config check with `ha`.** The add-ons ship the Supervisor's `ha` CLI, which needs the
+  add-on's `SUPERVISOR_TOKEN`. Both add-ons write it to `/data/.ssh/environment` (that is
+  `~/.ssh/environment`) and run sshd with `PermitUserEnvironment SUPERVISOR_TOKEN`, so a
+  plain `ssh root@ha 'ha core check'` gets it; login shells also get it from
+  `/etc/profile.d/homeassistant.sh`. The skill uses the session's token, else reads it from
+  those files (or s6's `/run/s6/container_environment`), and runs
+  `ha core check --raw-json`. Without `ha` (Docker installs) it uses Home Assistant's
+  `check_config` API.
+- **Reload and run** go through Home Assistant's API with the long-lived token from the
+  form (`script.reload`, `automation.reload`, `script.turn_on`).
+
+Home Assistant in Docker: SSH to the Docker host and type the host folder mounted at
 `/config`. The values are saved as `HA_BUILD_URL`, `HA_BUILD_TOKEN`, `HA_BUILD_SSH_HOST`,
 `HA_BUILD_SSH_PORT`, `HA_BUILD_SSH_USER`, `HA_BUILD_SSH_KEY`, `HA_BUILD_CONFIG_DIR` in `.env`.
 Home Assistant's config check accepts a script with a bad field (it only logs and disables

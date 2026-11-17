@@ -11,3 +11,4 @@ mcpRoutes.delete('/api/hermes/mcp/servers/:name', requireSuperAdmin, ctrl.remove
 mcpRoutes.post('/api/hermes/mcp/servers/:name/test', requireSuperAdmin, ctrl.testServer)
 mcpRoutes.get('/api/hermes/mcp/tools', ctrl.listTools)
 mcpRoutes.post('/api/hermes/mcp/reload', requireSuperAdmin, ctrl.reloadMcp)
+mcpRoutes.post('/api/hermes/mcp/home-assistant/ssh-key', requireSuperAdmin, ctrl.homeAssistantSshKey)
