@@ -4,7 +4,7 @@ import { join } from 'path'
 import { getActiveProfileName, getProfileDir } from '../services/profiles/profile'
 import { gatewayAutostartDisabledByEnv, restartGatewayForProfile } from '../services/gateway/autostart'
 import { readAppConfig, normalizeGatewayAutoStartConfig } from '../../studio/public/app-config'
-import { saveEnvValueForProfile } from '../../studio/public/profile-config'
+import { saveEnvValueForProfile, updateConfigYamlForProfile } from '../../studio/public/profile-config'
 import { safeFileStore } from '../../studio/public/safe-file-store'
 import { logger } from '../../studio/public/logging'
 
@@ -328,6 +328,17 @@ export async function applySetup(profile: string, input: ApplyInput) {
     MATTERMOST_ALLOWED_USERS: mergeCsv(env.MATTERMOST_ALLOWED_USERS, [result.user.id]),
   }
   for (const [key, value] of Object.entries(envUpdates)) await saveEnvValueForProfile(profile, key, value)
+  // The gateway connects with only the URL and token in .env, but Hermes's cron delivery refuses a
+  // platform that config.yaml has off ("mattermost has no gateway credentials configured"), so
+  // jobs could never post to these channels. Setting Hermes up for Mattermost turns it on.
+  const enabled = await updateConfigYamlForProfile<boolean>(profile, (config) => {
+    if (!config.platforms || typeof config.platforms !== 'object') config.platforms = {}
+    const mm = config.platforms.mattermost && typeof config.platforms.mattermost === 'object' ? config.platforms.mattermost : {}
+    const changed = mm.enabled !== true
+    mm.enabled = true
+    config.platforms.mattermost = mm
+    return { data: config, result: changed, write: changed }
+  })
 
   const record: MattermostSetupRecord = {
     url: result.base,
@@ -352,7 +363,7 @@ export async function applySetup(profile: string, input: ApplyInput) {
     }
   }
   logger.info('[mattermost-setup] profile=%s team=%s channels=%j steps=%j restarted=%s', profile, result.team.name, result.channels.map(c => c.name), result.steps, restarted)
-  return { ok: true, ...record, steps: result.steps, env: envUpdates, restarted, restart_error: restartError }
+  return { ok: true, ...record, steps: enabled ? [...result.steps, 'turned Mattermost on in Hermes'] : result.steps, env: envUpdates, restarted, restart_error: restartError }
 }
 
 function adminFromBody(body: any): AdminAuth | undefined {
