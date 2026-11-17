@@ -94,18 +94,55 @@ export async function removePoolKey(provider: string, index: number): Promise<vo
 }
 
 const cursors = new Map<string, number>()
+/** Keys that hit a rate limit rest until this time (ms), per account and provider. */
+const resting = new Map<string, number>()
+const restKey = (account: number, provider: string, key: string) => `${account}:${provider}:${key}`
+
+/** How long a rate-limited key rests: the provider's Retry-After, else a minute (capped at 10). */
+export function restMs(retryAfter: string | null | undefined, now = Date.now()): number {
+  const value = String(retryAfter || '').trim()
+  if (/^\d+(\.\d+)?$/.test(value)) return Math.min(600_000, Math.max(1_000, Number(value) * 1000))
+  const date = value ? Date.parse(value) : NaN
+  if (!Number.isNaN(date)) return Math.min(600_000, Math.max(1_000, date - now))
+  return 60_000
+}
+
+async function poolKeys(provider: string, apiKey: string | undefined, profile?: string): Promise<{ account: number; keys: string[] } | null> {
+  let account: number
+  try { account = providerAccountId(profile) } catch { return null }
+  let auth: Record<string, any>
+  try { auth = JSON.parse(await safeFileStore.readText(join(providerAccountHome(account), 'auth.json')) || '{}') } catch { return null }
+  const pooled = pooledKeyEntries(auth.credential_pool?.[provider]).map(entry => String(entry.access_token).trim())
+  if (!pooled.length) return null
+  return { account, keys: [...new Set([...(apiKey ? [apiKey] : []), ...pooled])] }
+}
+
+/**
+ * A key hit a rate limit: rest it, and return another pooled key that is not
+ * resting (or undefined when the pool has none left), for one retry.
+ */
+export async function failoverPooledApiKey(provider: string, apiKey: string, profile: string | undefined, retryAfter?: string | null, now = Date.now()): Promise<string | undefined> {
+  const pool = await poolKeys(provider, apiKey, profile)
+  if (!pool) return undefined
+  resting.set(restKey(pool.account, provider, apiKey), now + restMs(retryAfter, now))
+  return pool.keys.find(key => key !== apiKey && (resting.get(restKey(pool.account, provider, key)) ?? 0) <= now)
+}
 
 /** The key for the next request: the Provider's own key and its pooled keys in turn. */
-export async function nextPooledApiKey(provider: string, apiKey: string | undefined, profile?: string): Promise<string | undefined> {
-  let account: number
-  try { account = providerAccountId(profile) } catch { return apiKey }
-  let auth: Record<string, any>
-  try { auth = JSON.parse(await safeFileStore.readText(join(providerAccountHome(account), 'auth.json')) || '{}') } catch { return apiKey }
-  const pooled = pooledKeyEntries(auth.credential_pool?.[provider]).map(entry => String(entry.access_token).trim())
-  if (!pooled.length) return apiKey
-  const keys = [...new Set([...(apiKey ? [apiKey] : []), ...pooled])]
+export async function nextPooledApiKey(provider: string, apiKey: string | undefined, profile?: string, now = Date.now()): Promise<string | undefined> {
+  const pool = await poolKeys(provider, apiKey, profile)
+  if (!pool) return apiKey
+  const { account, keys } = pool
   const cursorKey = `${account}:${provider}`
-  const next = cursors.get(cursorKey) ?? 0
-  cursors.set(cursorKey, (next + 1) % keys.length)
-  return keys[next % keys.length]
+  const start = cursors.get(cursorKey) ?? 0
+  // Take turns, skipping keys that are resting after a rate limit (all resting: plain turn).
+  for (let step = 0; step < keys.length; step += 1) {
+    const index = (start + step) % keys.length
+    if ((resting.get(restKey(account, provider, keys[index])) ?? 0) <= now) {
+      cursors.set(cursorKey, (index + 1) % keys.length)
+      return keys[index]
+    }
+  }
+  cursors.set(cursorKey, (start + 1) % keys.length)
+  return keys[start % keys.length]
 }
