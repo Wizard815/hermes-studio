@@ -2,7 +2,7 @@ import { applySupplementalEdits, readSupplementalEdits, supplementalSections } f
 import { readConfigYamlForProfile } from '../../public/provider-config'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
-import { chmod } from 'node:fs/promises'
+import { chmod, copyFile, constants, mkdir } from 'node:fs/promises'
 import YAML from 'js-yaml'
 import { config } from '../../public/config'
 import { safeFileStore } from '../../public/safe-file-store'
@@ -11,7 +11,12 @@ import { providerRouteNamespace, qualifyModelRoute, logicalModelSelection } from
 
 interface Group { provider: string; models: string[]; base_url?: string }
 let modelGroups: ((profile: string) => Promise<Group[]>) | undefined
-export const configureProviderProjection = (resolver: NonNullable<typeof modelGroups>) => { modelGroups = resolver }
+let beforeProjection: ((profile: string) => Promise<unknown>) | undefined
+/** `before` may move a Profile's selection first (e.g. Hermes's own llama.cpp default onto its gateway Provider). */
+export const configureProviderProjection = (resolver: NonNullable<typeof modelGroups>, before?: (profile: string) => Promise<unknown>) => {
+  modelGroups = resolver
+  beforeProjection = before
+}
 export const studioModelGatewayUrl = () => `http://127.0.0.1:${config.port}/api/ekko-studio/models/v1`
 
 function parse(raw: string | undefined): Record<string, any> {
@@ -24,6 +29,7 @@ function parse(raw: string | undefined): Record<string, any> {
 
 export async function synchronizeHermesProvider(profile: string): Promise<void> {
   if (!modelGroups) throw new Error('Provider projection is not configured')
+  if (beforeProjection) await beforeProjection(profile).catch(error => console.warn(`[providers] ${profile}: ${error?.message || error}`))
   const dir = providerProfileDir(profile)
   const cfg = await readConfigYamlForProfile(profile)
   const edits = await readSupplementalEdits(profile)
@@ -66,6 +72,7 @@ export async function synchronizeHermesProvider(profile: string): Promise<void> 
     }
     return projected
   }
+  if (!await safeFileStore.readText(marker).catch(() => '')) await keepPreGatewayCopy(src)
   const importedEnv = await safeFileStore.readText(join(providerAccountHome(), '.env')).catch(() => '')
   const envKeys = new Set(importedEnv.split(/\r?\n/).filter(Boolean).map(line => line.trim().split('=', 1)[0].trim()))
   await safeFileStore.updateTexts([configPath, envPath, authPath, anthropicPath, marker], async current => {
@@ -98,6 +105,21 @@ export async function synchronizeHermesProvider(profile: string): Promise<void> 
   await Promise.all([configPath, marker].map(path => chmod(path, 0o600)))
 }
 
+/**
+ * Before Studio first points a Hermes profile at its model gateway, keep Hermes's
+ * own files beside it (`pre-studio-gateway/`): copying them back lets an older
+ * Studio, or Hermes on its own, use the profile's providers again.
+ */
+async function keepPreGatewayCopy(profileDir: string): Promise<void> {
+  const dir = join(profileDir, 'pre-studio-gateway')
+  await mkdir(dir, { recursive: true, mode: 0o700 })
+  for (const name of ['config.yaml', '.env', 'auth.json']) {
+    await copyFile(join(profileDir, name), join(dir, name), constants.COPYFILE_EXCL)
+      .then(() => chmod(join(dir, name), 0o600))
+      .catch((error: any) => { if (!['EEXIST', 'ENOENT'].includes(error?.code)) throw error })
+  }
+}
+
 export async function hermesGatewaySelection(profile: string, provider: string, model: string) {
   const selected = logicalModelSelection(profile, provider, model)
   if (selected.provider === 'moa') return { model: selected.model, provider: selected.provider }
@@ -106,4 +128,17 @@ export async function hermesGatewaySelection(profile: string, provider: string, 
   const routedModel = qualifyModelRoute(await providerRouteNamespace(profile, selected.provider), selected.model)
   return { provider: 'ekkostudio', model: routedModel,
     gateway_runtime: { provider: 'custom', api_mode: 'codex_responses', base_url: studioModelGatewayUrl(), api_key: credential.token } }
+}
+
+/**
+ * A Provider/model as Hermes's gateway route (`ekkostudio` + qualified model),
+ * without re-projecting (callers may run during a projection). Null when the
+ * Provider is not one of the account's Providers (deleted, or MoA).
+ */
+export async function hermesGatewayRoute(profile: string, provider: string, model: string): Promise<{ provider: 'ekkostudio'; model: string } | null> {
+  const selected = logicalModelSelection(profile, provider, model)
+  if (selected.provider === 'moa') return null
+  const cfg = await readConfigYamlForProfile(profile)
+  if (!Object.hasOwn(cfg.providers || {}, selected.provider)) return null
+  return { provider: 'ekkostudio', model: qualifyModelRoute(await providerRouteNamespace(profile, selected.provider), selected.model) }
 }

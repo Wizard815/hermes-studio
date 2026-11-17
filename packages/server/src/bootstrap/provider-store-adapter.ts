@@ -8,6 +8,8 @@ import { configureProviderSources } from '../modules/studio/public/provider-acco
 import { getProfileDir, listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
 import { PROVIDER_ENV_MAP } from '../modules/hermes/services/profiles/config'
 import { findUserById, listUserProfiles } from '../modules/studio/public/users'
+import { adoptNativeLocalDefault } from '../modules/hermes/services/models/local-provider'
+import { migrateJobModels } from '../modules/hermes/controllers/jobs'
 
 configureProviderSources({
   profileDir: getProfileDir,
@@ -28,4 +30,9 @@ configureProviderSources({
   environmentKeys: Object.values(PROVIDER_ENV_MAP).flatMap(mapping => [mapping.api_key_env, mapping.base_url_env]).filter(Boolean),
 })
 
-configureProviderProjection(getAvailableModelGroupsForProfile)
+// Before Hermes is pointed at the gateway: Hermes's own llama.cpp default and jobs pinned to
+// Hermes's providers (from before Studio's gateway) move onto the gateway's Providers.
+configureProviderProjection(getAvailableModelGroupsForProfile, async profile => {
+  await adoptNativeLocalDefault(profile)
+  await migrateJobModels(profile)
+})

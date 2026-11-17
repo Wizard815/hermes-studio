@@ -1,11 +1,13 @@
 import type { Context } from 'koa'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { readConfigYamlForProfile } from '../../studio/public/profile-config'
 import { getActiveProfileName, getProfileDir } from '../services/profiles/profile'
 import { getHermesBin } from '../services/runtime/path'
 import { execHermesWithBin, spawnHermesWithBin } from '../services/runtime/process'
 import { readSetupRecord } from './mattermost-setup'
+import { hermesGatewayRoute } from '../../studio/public/provider-projection'
+import { logicalModelSelection } from '../../studio/public/model-routing'
 
 const TIMEOUT_MS = 60_000
 
@@ -166,6 +168,61 @@ function resolveJobDefaults(jobs: JobRecord[], config: Record<string, any>): Job
   }))
 }
 
+const GATEWAY_PROVIDERS = new Set(['ekkostudio', 'custom:ekkostudio', 'moa'])
+
+/** A job's own model runs through Studio's model gateway, like Hermes's main model. */
+async function gatewayJobInference(profile: string, provider: unknown, model: unknown): Promise<{ provider: string; model: string; base_url: null } | null> {
+  const p = typeof provider === 'string' ? provider.trim() : ''
+  const m = typeof model === 'string' ? model.trim() : ''
+  if (!p || !m || GATEWAY_PROVIDERS.has(p)) return null
+  const route = await hermesGatewayRoute(profile, p, m)
+  return route ? { ...route, base_url: null } : null
+}
+
+async function withGatewayInference(profile: string, updates: Record<string, string | null>, existing?: JobRecord | null): Promise<Record<string, string | null>> {
+  if (!('provider' in updates) && !('model' in updates)) return updates
+  const provider = 'provider' in updates ? updates.provider : existing?.provider
+  const model = 'model' in updates ? updates.model : existing?.model
+  // An unchanged gateway job edited with its displayed (logical) model keeps working.
+  const moved = await gatewayJobInference(profile, provider, model).catch(() => null)
+  return moved ? { ...updates, ...moved } : updates
+}
+
+/** Shows a gateway job's model the way Studio's pickers name it. */
+function logicalJob(profile: string, job: JobRecord): JobRecord {
+  if (!['ekkostudio', 'custom:ekkostudio'].includes(job.provider) || typeof job.model !== 'string' || !job.model) return job
+  try { return { ...job, ...logicalModelSelection(profile, job.provider, job.model) } } catch { return job }
+}
+
+function keepPreGatewayJobs(profile: string, jobsPath: string): void {
+  const dir = join(resolveProfileDir(profile), 'pre-studio-gateway')
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    if (!existsSync(join(dir, 'cron-jobs.json'))) copyFileSync(jobsPath, join(dir, 'cron-jobs.json'))
+  } catch { /* the move still goes ahead */ }
+}
+
+const migratedJobs = new Map<string, number>()
+/**
+ * Jobs saved with one of Hermes's own providers (before Studio's model gateway,
+ * which took those providers out of Hermes's config) move onto the gateway.
+ */
+export async function migrateJobModels(profile: string): Promise<number> {
+  const jobsPath = getJobsPath(profile)
+  let mtime = 0
+  try { mtime = statSync(jobsPath).mtimeMs } catch { return 0 }
+  if (migratedJobs.get(jobsPath) === mtime) return 0
+  let moved = 0
+  for (const job of readJobs(profile, true)) {
+    const update = await gatewayJobInference(profile, job.provider, job.model).catch(() => null)
+    // Hermes's own list stays beside it once (`pre-studio-gateway/cron-jobs.json`), for going back.
+    if (update && !moved) keepPreGatewayJobs(profile, jobsPath)
+    if (update && patchJobFields(profile, job.job_id || job.id, update)) moved += 1
+  }
+  try { migratedJobs.set(jobsPath, statSync(jobsPath).mtimeMs) } catch {}
+  return moved
+}
+
 function writeJobs(profile: string, jobs: JobRecord[], asArray = false): void {
   const jobsPath = getJobsPath(profile)
   const payload = asArray ? jobs : { jobs }
@@ -281,16 +338,26 @@ async function runHermesCron(profile: string, args: string[]): Promise<{ stdout:
       windowsHide: true,
     })
   } catch (error: any) {
-    const stderr = String(error?.stderr || '').trim()
-    const stdout = String(error?.stdout || '').trim()
-    throw new Error(stderr || stdout || error?.message || 'Hermes cron command failed')
+    throw Object.assign(new Error(cronFailureMessage(error?.stderr, error?.stdout) || error?.message || 'Hermes cron command failed'),
+      { status: /\b(?:failed to (?:create|update|edit)|invalid|unknown|not found|must|cannot)\b/i.test(`${error?.stderr}\n${error?.stdout}`) ? 400 : 500 })
   }
+}
+
+/**
+ * What a failed `hermes cron` said, without Hermes's own install warnings
+ * ("⚠ install out of sync ..." on every command in the Docker image).
+ */
+export function cronFailureMessage(stderr: unknown, stdout: unknown): string {
+  const lines = [stderr, stdout].flatMap(output => String(output || '').split(/\r?\n/))
+    .map(line => line.trim()).filter(line => line && !/^⚠\s/.test(line))
+  const failure = lines.find(line => /^(?:failed|error|invalid)\b/i.test(line))
+  return failure || lines.join('\n')
 }
 
 function reportedCommandFailure(result: { stdout: string; stderr: string }): string | null {
   for (const output of [result.stderr, result.stdout]) {
     const message = String(output || '').trim()
-    if (/^(?:failed|error)\b/im.test(message)) return message
+    if (/^(?:failed|error)\b/im.test(message)) return cronFailureMessage(message, '')
   }
   return null
 }
@@ -324,7 +391,7 @@ function sendJobNotFound(ctx: Context): void {
 }
 
 function sendCommandError(ctx: Context, error: any): void {
-  ctx.status = 500
+  ctx.status = error?.status === 400 ? 400 : 500
   ctx.body = { error: { message: error?.message || 'Hermes cron command failed' } }
 }
 
@@ -338,7 +405,7 @@ export async function list(ctx: Context) {
   const includeDisabled = boolQuery(ctx.query.include_disabled, false)
   const jobs = readJobs(profile, includeDisabled)
   const config = await readConfigYamlForProfile(profile)
-  ctx.body = { jobs: resolveJobDefaults(jobs, config) }
+  ctx.body = { jobs: resolveJobDefaults(jobs, config).map(job => logicalJob(profile, job)) }
 }
 
 export function deliveryTargets(ctx: Context) {
@@ -349,7 +416,7 @@ export async function get(ctx: Context) {
   const profile = resolveProfile(ctx)
   const job = findJob(profile, ctx.params.id)
   if (!job) return sendJobNotFound(ctx)
-  ctx.body = { job }
+  ctx.body = { job: logicalJob(profile, job) }
 }
 
 export async function create(ctx: Context) {
@@ -411,9 +478,9 @@ export async function create(ctx: Context) {
       }
       throw new Error('Hermes cron command completed without creating a job')
     }
-    const inferenceUpdates = buildInferenceUpdates(body)
+    const inferenceUpdates = await withGatewayInference(profile, buildInferenceUpdates(body))
     const patchedJob = patchJobFields(profile, job.job_id || job.id, inferenceUpdates)
-    ctx.body = { job: patchedJob || job }
+    ctx.body = { job: logicalJob(profile, patchedJob || job) }
   } catch (error: any) {
     sendCommandError(ctx, error)
   }
@@ -422,7 +489,8 @@ export async function create(ctx: Context) {
 export async function update(ctx: Context) {
   const profile = resolveProfile(ctx)
   const body = getBody(ctx)
-  if (!findJob(profile, ctx.params.id)) return sendJobNotFound(ctx)
+  const existing = findJob(profile, ctx.params.id)
+  if (!existing) return sendJobNotFound(ctx)
 
   const args = getCronArgs(profile, 'edit', ctx.params.id)
   if (body.schedule != null || body.schedule_display != null) {
@@ -455,7 +523,7 @@ export async function update(ctx: Context) {
   if (body.no_agent === false) args.push('--agent')
 
   try {
-    const inferenceUpdates = buildInferenceUpdates(body)
+    const inferenceUpdates = await withGatewayInference(profile, buildInferenceUpdates(body), existing)
     const hasCliUpdates = args.length > 5
     if (hasCliUpdates) {
       await runHermesCron(profile, args)
@@ -463,7 +531,7 @@ export async function update(ctx: Context) {
     const patchedJob = patchJobFields(profile, ctx.params.id, inferenceUpdates)
     const job = patchedJob || findJob(profile, ctx.params.id)
     if (!job) return sendJobNotFound(ctx)
-    ctx.body = { job }
+    ctx.body = { job: logicalJob(profile, job) }
   } catch (error: any) {
     sendCommandError(ctx, error)
   }
