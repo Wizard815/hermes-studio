@@ -51,3 +51,31 @@ describe("Hermes's errors and uploads through Studio", () => {
     expect(calls[0].init.body).toBeDefined()
   })
 })
+
+describe("Hermes's API going away", () => {
+  it('starts it again and sends once more when nothing answered', async () => {
+    let calls = 0
+    const fetcher = vi.fn(async () => {
+      calls += 1
+      if (calls === 1) throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } })
+      return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch
+    const bridge = new HermesApiBridge(fetcher)
+    const killed: string[] = []
+    ;(bridge as any).child = { exitCode: null, kill: (signal: string) => killed.push(signal) }
+    ;(bridge as any).port = 1234
+    // The restart: a fresh child that is up at once.
+    ;(bridge as any).start = async function () { this.child = { exitCode: null } }
+    const result = await bridge.request('GET', 'memory', new URLSearchParams(), undefined)
+    expect(result.status).toBe(200)
+    expect(calls).toBe(2)
+    expect(killed).toEqual(['SIGKILL'])
+  })
+  it('does not send a request twice when Hermes may have received it', async () => {
+    const fetcher = vi.fn(async () => { throw new Error('aborted') }) as unknown as typeof fetch
+    const bridge = new HermesApiBridge(fetcher)
+    ;(bridge as any).child = { exitCode: null }
+    await expect(bridge.request('POST', 'x', new URLSearchParams(), {})).rejects.toThrow('aborted')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+})

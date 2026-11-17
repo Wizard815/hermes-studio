@@ -134,6 +134,21 @@ export class HermesApiBridge {
    * profile is added unless the caller names one.
    */
   async request(method: string, path: string, query: URLSearchParams, body: unknown, profile?: string, upload?: { stream: NodeJS.ReadableStream; contentType: string; length?: string }): Promise<{ status: number; contentType: string; body: Buffer }> {
+    try {
+      return await this.requestOnce(method, path, query, body, profile, upload)
+    } catch (error: any) {
+      // Hermes's API went away (crashed or was killed) while Studio still had it as running:
+      // nothing reached it, so start it again and send once more (an upload's stream is spent).
+      if (upload || !['ECONNREFUSED', 'ECONNRESET'].includes(error?.cause?.code)) throw error
+      this.remember('Hermes Agent API did not answer; starting it again')
+      const child = this.child
+      this.child = null
+      if (child && child.exitCode === null) child.kill('SIGKILL')
+      return this.requestOnce(method, path, query, body, profile, upload)
+    }
+  }
+
+  private async requestOnce(method: string, path: string, query: URLSearchParams, body: unknown, profile?: string, upload?: { stream: NodeJS.ReadableStream; contentType: string; length?: string }): Promise<{ status: number; contentType: string; body: Buffer }> {
     await this.ensureRunning()
     this.lastUse = Date.now()
     const params = new URLSearchParams(query)
