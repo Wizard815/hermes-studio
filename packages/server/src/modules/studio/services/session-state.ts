@@ -5,6 +5,8 @@ import { listSessionStateRecords, markSessionRead, type SessionStateRecord } fro
 import type { SessionListState } from '../../../../../shared/session-state'
 import { getSessionHerdrLink, onSessionHerdrLinkChanged, onSessionListChanged } from '../public/session-status'
 
+const SETTLE_GRACE_MS = 5000
+
 interface RuntimeState { working: boolean; backgroundPending: number; collaborationPending?: number }
 type Subscriber = { socket: Socket; user: AuthenticatedUser }
 
@@ -12,6 +14,8 @@ type Subscriber = { socket: Socket; user: AuthenticatedUser }
 export class SessionStateSync {
   private readonly subscribers = new Set<Subscriber>()
   private readonly foreground = new Map<string, boolean>()
+  /** When a run last ended without queued work: its own terminal outranks a runtime that has not caught up yet. */
+  private readonly settledAt = new Map<string, number>()
   private readonly pending = new Map<string, number>()
   /** Open approval/clarification ids per session; non-empty means blocked. */
   private readonly interactions = new Map<string, Set<string>>()
@@ -29,7 +33,7 @@ export class SessionStateSync {
   }
 
   private forget(sessionId: string) {
-    this.foreground.delete(sessionId); this.pending.delete(sessionId); this.interactions.delete(sessionId)
+    this.foreground.delete(sessionId); this.settledAt.delete(sessionId); this.pending.delete(sessionId); this.interactions.delete(sessionId)
     const retry = this.retries.get(sessionId)
     if (retry) clearTimeout(retry)
     this.retries.delete(sessionId)
@@ -44,11 +48,13 @@ export class SessionStateSync {
     return listSessionStateRecords(user.id, sessionId).filter(session => this.allowed(user, session)).map(session => {
       const runtime = this.runtime(session.id)
       const backgroundPending = this.pending.get(session.id) ?? runtime.backgroundPending
-      // A live runtime always wins: a stale "finished" flag must never hide running work.
-      // Person main turns are owned by the chat host, so a missed terminal event
-      // must not keep a settled host alive in subsequent list snapshots.
+      // A live runtime wins over an old "finished" flag, so stale state never hides
+      // running work; only a terminal seen moments ago outranks it (the runtime may
+      // not have caught up with a stop yet). Person main turns are owned by the chat
+      // host, so a missed terminal event must not keep a settled host alive.
+      const justSettled = Date.now() - (this.settledAt.get(session.id) ?? 0) < SETTLE_GRACE_MS
       const foreground = session.id.startsWith('person-main-') && !runtime.working
-        ? false : runtime.working || this.foreground.get(session.id) === true
+        ? false : this.foreground.get(session.id) === true || (runtime.working && !justSettled)
       const working = foreground || backgroundPending > 0 || (runtime.collaborationPending || 0) > 0
       const blocked = (this.interactions.get(session.id)?.size || 0) > 0
       const herdr = getSessionHerdrLink(session.id)
@@ -131,6 +137,8 @@ export class SessionStateSync {
     const terminal = ['run.completed', 'run.failed', 'abort.completed'].includes(event) || (event === 'session.command' && payload.terminal === true)
     const interaction = event === 'approval.requested' || event === 'clarify.requested'
     const resolved = event === 'approval.resolved' || event === 'clarify.resolved'
+    // Activity after a terminal (e.g. a queue drain that starts the next turn without run.started) ends the grace.
+    if (!terminal && event !== 'run.queued') this.settledAt.delete(id)
     if (interaction || resolved) {
       const key = String(payload.approval_id ?? payload.clarify_id ?? payload.request_id ?? event)
       const open = this.interactions.get(id) ?? new Set<string>()
@@ -140,11 +148,11 @@ export class SessionStateSync {
       if (open.size) this.interactions.set(id, open)
       else this.interactions.delete(id)
     }
-    if (started) this.foreground.set(id, true)
+    if (started) { this.foreground.set(id, true); this.settledAt.delete(id) }
     if (terminal) {
       this.interactions.delete(id)
       if (Number(payload.queue_remaining || payload.queue_length || 0) > 0) this.foreground.set(id, true)
-      else this.foreground.delete(id)
+      else { this.foreground.delete(id); this.settledAt.set(id, Date.now()) }
     }
     if (event === 'run.queued') {
       if (this.runtime(id).working || Number(payload.queue_length || 0) > 0) this.foreground.set(id, true)
@@ -168,6 +176,6 @@ export class SessionStateSync {
     for (const stop of this.unsubscribe.splice(0)) stop()
     for (const retry of this.retries.values()) clearTimeout(retry)
     this.retries.clear(); this.interactions.clear()
-    this.subscribers.clear(); this.foreground.clear(); this.pending.clear()
+    this.subscribers.clear(); this.foreground.clear(); this.settledAt.clear(); this.pending.clear()
   }
 }

@@ -19,7 +19,7 @@ it('resolves latest once, installs exactly and activates only after compatibilit
   h.preflight.mockImplementation(async () => { expect((await manager.info()).command).toBeUndefined() })
   await manager.install({}, h)
   expect(h.install.mock.calls[0][1]).toBe('0.2.2-rc.1')
-  expect(await manager.info()).toMatchObject({ verifiedVersion: '0.2.2-rc.1', adapterRevision: 5, pinnedVersion: '' })
+  expect(await manager.info()).toMatchObject({ verifiedVersion: '0.2.2-rc.1', adapterRevision: 7, pinnedVersion: '' })
 })
 
 it.each(['install', 'preflight'] as const)('keeps the exact active state and old graph on %s failure, cleans only the candidate', async failure => {

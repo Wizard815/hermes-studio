@@ -73,6 +73,8 @@ function assistant(id: string, content: string): Message {
 }
 
 async function settle() {
+  // The fork batches streamed message deltas for up to 33ms before rendering.
+  vi.advanceTimersByTime(40)
   await nextTick()
   await flushPromises()
 }
