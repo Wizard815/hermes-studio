@@ -10071,6 +10071,200 @@
         }
       }
     },
+    "/api/hermes/model-key-pools": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "Get model-key-pools",
+        "description": "GET /api/hermes/model-key-pools",
+        "operationId": "getKeyPools",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "Create model-key-pools",
+        "description": "POST /api/hermes/model-key-pools",
+        "operationId": "postKeyPool",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/hermes/model-key-pools/{provider}/{index}": {
+      "delete": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "Delete :index",
+        "description": "DELETE /api/hermes/model-key-pools/:provider/:index",
+        "operationId": "deleteKeyPool",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/hermes/model-local-provider": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "Get model-local-provider",
+        "description": "GET /api/hermes/model-local-provider",
+        "operationId": "getLocalProvider",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "string"
+              ]
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "Create model-local-provider",
+        "description": "POST /api/hermes/model-local-provider",
+        "operationId": "postLocalProvider",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "string"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "profile": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/hermes/model-visibility": {
       "put": {
         "tags": [
