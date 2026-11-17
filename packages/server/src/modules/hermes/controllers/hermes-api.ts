@@ -1,5 +1,5 @@
 import type { Context } from 'koa'
-import { hermesApi, hermesApiPathAllowed } from '../services/hermes-api'
+import { hermesApi, hermesApiPathAllowed, normalizeHermesApiPath } from '../services/hermes-api'
 
 /** Status of Studio's private Hermes Agent API. */
 export async function status(ctx: Context) {
@@ -24,7 +24,9 @@ export function studioWording(body: Buffer): Buffer {
 /** /api/hermes-agent/<path>: one call to Hermes's API, as the active profile. */
 export async function forward(ctx: Context) {
   const raw = (ctx.params as any).path
-  const path = Array.isArray(raw) ? raw.join('/') : String(raw || '')
+  const requested = Array.isArray(raw) ? raw.join('/') : String(raw || '')
+  if (!hermesApiPathAllowed(requested)) { ctx.status = 404; ctx.body = { error: 'Not available through Studio' }; return }
+  const path = normalizeHermesApiPath(requested)
   if (!hermesApiPathAllowed(path)) { ctx.status = 404; ctx.body = { error: 'Not available through Studio' }; return }
   try {
     const query = new URLSearchParams(ctx.querystring)

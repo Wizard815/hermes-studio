@@ -153,6 +153,8 @@ export class HermesApiBridge {
       headers,
       ...(hasBody ? { body: JSON.stringify(body) } : {}),
       ...(upload ? { body: Readable.toWeb(upload.stream as Readable) as any, duplex: 'half' } as any : {}),
+      // A redirect is answered as it is, never followed past the path checks.
+      redirect: 'manual',
       signal: AbortSignal.timeout(Number(process.env.STUDIO_HERMES_API_TIMEOUT_MS || 120_000)),
     })
     return {
@@ -186,7 +188,13 @@ export const hermesApi = new HermesApiBridge()
  */
 const BLOCKED = [/^webapp/, /^pty/, /^console/, /^host-terminal/, /^hermes\/update$/, /^env\/reveal$/]
 
+/** A forwarded path as Hermes will route it: no empty segments, no trailing slash. */
+export function normalizeHermesApiPath(path: string): string {
+  return String(path || '').replace(/\/{2,}/g, '/').replace(/\/+$/, '')
+}
+
 export function hermesApiPathAllowed(path: string): boolean {
-  if (!path || path.includes('..') || path.startsWith('/')) return false
-  return !BLOCKED.some(pattern => pattern.test(path))
+  if (!path || path.includes('..') || path.startsWith('/') || path.includes('\\')) return false
+  const normalized = normalizeHermesApiPath(path)
+  return !!normalized && !BLOCKED.some(pattern => pattern.test(normalized) || pattern.test(normalized.toLowerCase()))
 }

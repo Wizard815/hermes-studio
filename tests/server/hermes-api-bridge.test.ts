@@ -4,7 +4,7 @@ import { HermesApiBridge, hermesApiPathAllowed } from '../../packages/server/src
 describe("Studio's private Hermes Agent API", () => {
   it("forwards Hermes's API paths but never its terminals, web app or secret reveal", () => {
     for (const path of ['memory', 'messaging/platforms', 'tools/toolsets/web/config', 'webhooks', 'mcp/catalog/install']) expect(hermesApiPathAllowed(path)).toBe(true)
-    for (const path of ['pty', 'console', 'host-terminal', 'webapp/launch', 'webapp-access/start', 'env/reveal', 'hermes/update', '../etc', '/abs', '']) expect(hermesApiPathAllowed(path)).toBe(false)
+    for (const path of ['pty', 'console', 'host-terminal', 'webapp/launch', 'webapp-access/start', 'env/reveal', 'hermes/update', '../etc', '/abs', '', 'env/reveal/', 'env//reveal', 'hermes/update/', 'Webapp/launch', 'PTY', 'env\\reveal']) expect(hermesApiPathAllowed(path)).toBe(false)
   })
 
   it("sends Studio's session token and the active profile, and keeps an explicit one", async () => {
