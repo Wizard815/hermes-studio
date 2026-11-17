@@ -70,6 +70,15 @@ export interface BrowserBrokerManager {
   cancelAgentOperation(tabId: string): void
   /** Optional: runs before every operation (e.g. to connect to the browser first). */
   beforeOperation?(method: string): Promise<void>
+  /** Raw CDP for Studio plugins; only the desktop browser provides it (not the server Screen browser). */
+  attachPluginCdp?(tabId: string): Promise<unknown>
+  sendPluginCdp?(tabId: string, method: string, params: Record<string, unknown>, sessionId?: string): Promise<unknown>
+  pluginCdpEvents?(tabId: string, cursor: number, limit: number): Promise<unknown> | unknown
+}
+
+function pluginCdp<T extends Function>(method: T | undefined): T {
+  if (!method) throw new Error('This browser does not support plugin CDP access')
+  return method
 }
 
 export interface BrowserBrokerOptions {
@@ -83,6 +92,7 @@ interface BrokerRequest {
   operation_id?: unknown
   run_metadata?: unknown
   client_pid?: unknown
+  client_scope?: unknown
 }
 
 interface Lease {
@@ -91,6 +101,7 @@ interface Lease {
 }
 
 interface BrokerClient {
+  parentId?: string
   token: string
   lastSeenAt: number
   pid?: number
@@ -227,6 +238,7 @@ export class BrowserBroker {
   }
 
   revokeClient(clientId: string): void {
+    for (const [id, client] of this.clients) if (client.parentId === clientId) this.revokeClient(id)
     for (const [tabId, lease] of this.leases) {
       if (lease.clientId === clientId) this.revokeTab(tabId)
     }
@@ -266,7 +278,18 @@ export class BrowserBroker {
       if (!client || !providedToken || !safeEqual(providedToken, client.token)) return this.send(response, 401, { error: 'Unauthorized' })
       client.lastSeenAt = Date.now()
       const body = await this.readBody(request)
-      this.send(response, 200, await this.operate(clientId, body))
+      let effectiveClientId = clientId
+      if (body.client_scope !== undefined) {
+        const scope = requiredString(body.client_scope, 'client_scope')
+        if (scope.length > 200) throw new Error('Browser client scope exceeds 200 characters')
+        effectiveClientId = `${clientId}:${scope}`
+        if (!this.clients.has(effectiveClientId)) {
+          if ([...this.clients.values()].filter(item => item.parentId === clientId).length >= 256) throw new Error('Browser client scope capacity reached')
+          this.clients.set(effectiveClientId, { ...client, parentId: clientId })
+        }
+        this.clients.get(effectiveClientId)!.lastSeenAt = Date.now()
+      }
+      this.send(response, 200, await this.operate(effectiveClientId, body))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.send(response, /lease|control|cancel|takeover/i.test(message) ? 409 : 400, { error: message })
@@ -346,6 +369,16 @@ export class BrowserBroker {
           const tab = await this.manager.navigationAction(requiredString(params.tab_id, 'tab_id'), action)
           return this.publicTab(tab)
         }
+        case 'cdp.attach':
+          return await pluginCdp(this.manager.attachPluginCdp).call(this.manager, requiredString(params.tab_id, 'tab_id'))
+        case 'cdp.send': {
+          if (params.params !== undefined && (!params.params || typeof params.params !== 'object' || Array.isArray(params.params))) throw new Error('CDP params must be an object')
+          return await pluginCdp(this.manager.sendPluginCdp).call(this.manager, requiredString(params.tab_id, 'tab_id'), requiredString(params.method, 'method'), asObject(params.params),
+            params.session_id === undefined ? undefined : requiredString(params.session_id, 'session_id'))
+        }
+        case 'cdp.events':
+          return await pluginCdp(this.manager.pluginCdpEvents).call(this.manager, requiredString(params.tab_id, 'tab_id'),
+            boundedInteger(params.cursor, 'cursor', 0, 0, Number.MAX_SAFE_INTEGER), boundedInteger(params.limit, 'limit', 32, 1, 64))
         case 'snapshot':
           return await this.manager.snapshot(requiredString(params.tab_id, 'tab_id'), snapshotOptions({
             snapshotId: params.snapshot_id as string | undefined, selector: params.selector as string | undefined,

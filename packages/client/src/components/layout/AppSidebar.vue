@@ -9,6 +9,10 @@ import { useAppStore } from "@/stores/hermes/app";
 import RouteLinkItem from "@/components/common/RouteLinkItem.vue";
 import PageSidebarFooter from "@/components/layout/PageSidebarFooter.vue";
 import { isStoredSuperAdmin } from "@/api/client";
+import { usePluginCatalog, pluginNavigation, pluginPageLocation } from '@/composables/usePluginCatalog';
+import PluginNavigationIcon from '@/components/plugins/PluginNavigationIcon.vue';
+const { snapshot: pluginSnapshot } = usePluginCatalog();
+const pluginSettings = computed(() => pluginSnapshot.value.plugins.filter(plugin => plugin.status === 'active').flatMap(plugin => pluginNavigation(plugin, 'settings').map(view => ({ plugin, view }))));
 
 const { t } = useI18n();
 const route = useRoute();
@@ -264,6 +268,9 @@ function handleSidebarClick(event: MouseEvent) {
         </svg>
         <span>{{ t("sidebar.settings") }}</span>
       </RouteLinkItem>
+      <RouteLinkItem v-for="{ plugin, view } in pluginSettings" :key="plugin.manifest.id + ':' + view.id" class="nav-item" :to="pluginPageLocation(plugin, view.id)" :active="route.name === 'studio.pluginSettings' && route.params.pluginId === plugin.manifest.id && route.params.viewId === view.id" :title="view.title">
+        <PluginNavigationIcon :icon="view.icon" /><span>{{ view.title }}</span>
+      </RouteLinkItem>
     </nav>
 
     <PageSidebarFooter :collapsed="appStore.sidebarCollapsed" class="sidebar-account-footer" />
@@ -409,6 +416,7 @@ function handleSidebarClick(event: MouseEvent) {
 }
 
 // ─── Collapsed sidebar (icon-rail mode) ─────────────────────────
+.sidebar.collapsed .nav-item :deep(.plugin-icon) { display: inline-grid; }
 
 .sidebar.collapsed {
   width: $sidebar-collapsed-width;

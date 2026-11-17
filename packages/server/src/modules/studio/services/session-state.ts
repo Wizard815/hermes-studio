@@ -45,7 +45,11 @@ export class SessionStateSync {
       const runtime = this.runtime(session.id)
       const backgroundPending = this.pending.get(session.id) ?? runtime.backgroundPending
       // A live runtime always wins: a stale "finished" flag must never hide running work.
-      const working = runtime.working || this.foreground.get(session.id) === true || backgroundPending > 0 || (runtime.collaborationPending || 0) > 0
+      // Person main turns are owned by the chat host, so a missed terminal event
+      // must not keep a settled host alive in subsequent list snapshots.
+      const foreground = session.id.startsWith('person-main-') && !runtime.working
+        ? false : runtime.working || this.foreground.get(session.id) === true
+      const working = foreground || backgroundPending > 0 || (runtime.collaborationPending || 0) > 0
       const blocked = (this.interactions.get(session.id)?.size || 0) > 0
       const herdr = getSessionHerdrLink(session.id)
       return { sessionId: session.id, profile: session.profile || 'default', working, blocked,

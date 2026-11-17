@@ -1,3 +1,4 @@
+import { withSocketProviderAccount } from '../../public/provider-account'
 import { studioModelReasoningEffort } from '../../public/model-reasoning-effort'
 import { studioSessionAccount } from '../../contracts/runs/usage'
 import { isNativeCodingAgent, isGlobalOnlyCodingAgent } from '../../contracts/agents/native-coding-agents'
@@ -62,7 +63,7 @@ export interface CodingAgentRunSocketData {
   group_agent_id?: string
 }
 
-export async function handleCodingAgentRun(
+async function handleCodingAgentRunImpl(
   nsp: ReturnType<Server['of']>,
   socket: Socket,
   data: CodingAgentRunSocketData,
@@ -245,3 +246,5 @@ export async function handleCodingAgentRun(
     throw err
   }
 }
+
+export const handleCodingAgentRun = withSocketProviderAccount(handleCodingAgentRunImpl)

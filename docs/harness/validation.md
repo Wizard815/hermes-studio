@@ -1,5 +1,11 @@
 # Validation Guide
 
+Task reports and temporary verification files belong outside all checkouts.
+`npm run harness:check` includes the read-only artifact guard; use
+`npm run artifacts:check` for a standalone check and
+`npm test -- tests/harness/task-artifacts.test.ts` when changing the policy.
+See [task artifacts](task-artifacts.md) for report defaults, exemptions and limits.
+
 The legacy automated tests and fixtures have been removed. Every new feature
 must include small, focused tests; run the relevant files locally. See
 `tests/README.md`.
@@ -59,14 +65,15 @@ state and does not require a running Gateway.
 
 - Build (`build.yml`) runs `npm run harness:check` and the production build.
 - Test (`test.yml`) runs `npm test` and reports its own Test check.
-- E2E (`playwright.yml`) runs `npm run test:e2e` and reports its own E2E check.
-  Chromium is installed only when browser test files are present. HTML reports,
-  screenshots and traces are uploaded as available, including on test failure.
+- E2E (`playwright.yml`) runs `npm run test:e2e` across four Chromium shards,
+  each with one worker. Shards finish independently after failures and upload
+  blob reports plus available screenshots/traces. A final `E2E` check merges
+  reports into one HTML artifact and requires all four shards and reports to
+  succeed. Chromium is installed only when browser test files are present.
 - All three workflows run independently on pushes to `main` and pull requests
   targeting `main` or `base`. Test and E2E also support manual dispatch. Any test
   failure fails its own check. Coverage is not required.
-- The old Playwright shards and coding-agent, P2P and desktop-isolation test
-  matrices remain removed.
+- The old coding-agent, P2P and desktop-isolation test matrices remain removed.
 - The NPM lockfile workflow still verifies dependency lockfile synchronization.
 - Desktop/runtime/release workflows retain packaging, signing, artifact and
   isolated update-feed verification, without calls into the removed test suites.
@@ -245,3 +252,27 @@ For new shared Coding Agent skill permissions, add focused tests for read-only
 shared aliases, rejected deletion without Hermes fallback and writable DSH-private
 skills. Register native skill formats from bootstrap; agent modules must not
 import another agent's implementation.
+
+## Plugin development documentation
+
+When Studio changes plugin structures, context capabilities or return contracts,
+directly edit the relevant Markdown under `packages/plugin-sdk/docs` in the same
+change. Explain compatibility or defaults in the affected section. The scaffolder
+copies these guides and SDK types into each new project; there is no documentation
+generation command, digest or change-record bookkeeping.
+
+`npm run harness:check` and `npm run build` require the guides/types and inspect
+Git changes: SDK edits must include architecture, context or return documentation.
+Local checks inspect staged/unstaged/untracked work; Build CI uses the PR base or
+push-before commit with full checkout history. Source archives without Git can
+only check file presence. This detects missing companion documentation, not its
+semantic correctness; reviewers and boundary tests must assess that.
+
+The generated project harness checks declared fields, model references and required
+files. Markdown remains directly editable. Run the focused tests when changing
+this flow:
+
+`npm test -- tests/server/studio-plugin-harness.test.ts tests/server/studio-plugin-development.test.ts tests/server/studio-plugin-manifest.test.ts`
+
+Verify the packed CLI creates a standalone project with docs, SDK, harness and
+working tests from a node_modules layout.
