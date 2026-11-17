@@ -1,7 +1,7 @@
 # nousresearch/hermes-agent:latest-desktop also works: it already has the agents'
 # screen (TigerVNC + Xfce, about 0.85 GB more); with :latest, Studio installs it on demand.
 ARG BASE_IMAGE=nousresearch/hermes-agent:latest
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} AS runtime
 
 ARG NODE_VERSION=24.22.1
 
@@ -38,17 +38,25 @@ RUN ARCH=$(uname -m) \
     && rm -f /tmp/docker.tgz \
     && docker --version
 
+# Build stage: dev dependencies, npm's cache and the build happen here; the image below
+# only gets the built app with its production dependencies (about 1.5 GB smaller).
+FROM runtime AS build
 WORKDIR /app
 
 COPY package*.json ./
 # Increase Node.js memory limit to prevent OOM during build
 ENV NODE_OPTIONS=--max-old-space-size=4096
-RUN npm ci --ignore-scripts && npm rebuild node-pty
+RUN npm ci --ignore-scripts && npm rebuild node-pty && npm cache clean --force
 
 COPY . .
 
-RUN npm run build && npm prune --omit=dev
+RUN npm run build && npm prune --omit=dev && npm cache clean --force
 RUN npm run verify:sharp-runtime
+
+FROM runtime
+WORKDIR /app
+COPY --from=build /app /app
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 ENV NODE_ENV=production
 ENV HOME=/home/agent
