@@ -320,3 +320,14 @@ input and cache counters separate.
   session row (a gateway route) as the chat's provider and model.
 - Hermes re-projection also runs when Hermes rewrote its own main model (for
   example its Local models "activate"), so Studio's selection stays authoritative.
+- The gateway reaches Hermes local where Hermes's llama-server runs now, with the
+  key it was started with (`runtimes/llamacpp/server.json`); when it is off the
+  caller gets `409 local_server_not_running`. A rate-limited pooled key rests and
+  the request moves on to every other free key; when all rest the caller gets one
+  `429 key_pool_exhausted`.
+- Moving an existing Hermes profile onto the gateway also moves its llama.cpp
+  default (onto Hermes local), its API key pools (onto the Provider) and jobs
+  with their own model (onto the gateway route). Before Studio first rewrites a
+  profile it copies Hermes's `config.yaml`, `.env`, `auth.json` (and later
+  `cron/jobs.json` as `cron-jobs.json`) into `<profile>/pre-studio-gateway/`.
+  To go back to an older Studio, stop Studio and copy them back.
