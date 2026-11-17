@@ -35,24 +35,23 @@ package and command remain supported and receive the same releases.
 
 ## This fork (Wizard815/hermes-studio): test branch and upgrade guide
 
-This fork adds herdr, Pondering Orb, Mattermost, Home Assistant and Unraid
-integrations on top of Ekko Studio. Until it is merged into `main`, the work
-lives on the test branch **`herdr-upstream`** (herdr-integration plus the
-newest Ekko Studio, with its model gateway). `main` stays as it is until
-`herdr-upstream` has been tested on real machines.
+This fork adds herdr, Pondering Orb, Mattermost, Home Assistant, Unraid and
+Agent work (Vikunja tasks and approvals) on top of the newest Ekko Studio,
+with its model gateway. Until it is merged into `main`, all of it lives on
+one test branch, **`herdr-integration`**. `main` stays as it is until
+`herdr-integration` has been tested on real machines.
 
 | Branch | What it is |
 |---|---|
 | `main` | Current stable build (Pondering Orb through Studio, no herdr) |
-| `herdr-integration` | Earlier herdr build, on the older Ekko Studio |
-| **`herdr-upstream`** | **Test this one.** herdr-integration + newest Ekko Studio |
+| **`herdr-integration`** | **Test this one.** Everything in this fork + newest Ekko Studio |
 
 ### Install on a Linux machine (for example an Intel NUC)
 
 Needs Docker with the compose plugin and about 7 GB of disk.
 
 ```bash
-git clone -b herdr-upstream https://github.com/Wizard815/hermes-studio.git
+git clone -b herdr-integration https://github.com/Wizard815/hermes-studio.git
 cd hermes-studio
 docker compose up -d --build
 docker compose logs -f hermes-webui
@@ -68,19 +67,19 @@ To update later:
 git pull && docker compose up -d --build
 ```
 
-### Upgrade an existing install from `main` to `herdr-upstream`
+### Upgrade an existing install from `main` to `herdr-integration`
 
 1. **Back up first.** Stop Studio and copy the whole data folder: the folder
    mounted at `/home/agent/.hermes` (`./hermes_data` with compose, the
    container's appdata folder on Unraid). This copy is the surest way back.
 2. **Get the branch:**
-   - Compose (same checkout): `git fetch origin && git checkout herdr-upstream && git pull`
-   - Unraid / plain Docker (new folder): `git clone -b herdr-upstream https://github.com/Wizard815/hermes-studio.git`
+   - Compose (same checkout): `git fetch origin && git checkout herdr-integration && git pull`
+   - Unraid / plain Docker (new folder): `git clone -b herdr-integration https://github.com/Wizard815/hermes-studio.git`
 3. **Build the image** (about 5 minutes):
    - Compose: `docker compose up -d --build`
-   - Unraid / plain Docker: `docker build -t hermes-studio:herdr-upstream .`
+   - Unraid / plain Docker: `docker build -t hermes-studio:herdr-integration .`
 4. **Point the container at it** (Unraid / plain Docker only): edit the Studio
-   container, set **Repository** to `hermes-studio:herdr-upstream`, keep the
+   container, set **Repository** to `hermes-studio:herdr-integration`, keep the
    same data path, and apply.
 5. **Add herdr's folders** so herdr keeps its spaces across restarts. Compose
    already has them. On Unraid add two paths:
@@ -101,6 +100,38 @@ What happens on the first start:
 - Scheduled job posts no longer carry Hermes's "Cronjob Response" header and
   "To stop or manage this job" footer. Turn them back on in **Hermes Settings →
   Session → Job post header and footer**.
+
+### Agent work: Vikunja tasks, approvals and alerts
+
+Agents record the work they do on your Vikunja tasks; you approve it once, in
+Studio, Mattermost or Pondering Orb, and it counts everywhere. Set it up in
+**Connections → Agent work → Settings**; nothing is on until you fill it in.
+
+- **Mattermost:** run **Channels → Mattermost → Set up Mattermost** first
+  (it connects the bot). Then set:
+  - **Channel**: where posts go (for example `hermes`). Empty: no posts.
+  - **Mention**: usernames to @mention on `#blocked` (and approval) posts.
+    Empty: nobody is mentioned. Set that channel to "Mentions only" in
+    Mattermost so only those alert you.
+  - **Studio address for Mattermost buttons**: Studio's address as Mattermost reaches
+    it (for example `http://192.168.1.10:6060`). It adds Approve / Reject
+    buttons; without it, react ✅ or ❌ instead. For the buttons, also add
+    Studio's IP in Mattermost under **System Console → Developer → Allow
+    untrusted internal connections**.
+- **ALLGlance:** its address under **ALLGlance (Vikunja tasks)** (for example `http://allglance-gateway:8090`)
+  and its `GATEWAY_TOKEN`, or set `ALLGLANCE_URL` / `ALLGLANCE_TOKEN` on the
+  container. Approving work linked to a Vikunja task marks the task done;
+  rejecting leaves it open. If ALLGlance is down, Studio retries every 5
+  minutes.
+- **Pondering Orb:** connect Orb under **Connections → Pondering Orb**, then
+  turn on **Share agent activity with Pondering Orb** (off by default). Orb
+  needs its `agent-work` build for the Approve / Reject alerts.
+- **Wiki daily digest:** the wiki REST address (Obsidian Local REST API) and API key, the daily-notes folder and the
+  section name. Studio writes its part of each day's digest there.
+
+Posts are tagged `#agentwork` plus `#working`, `#blocked`, `#approval`,
+`#done`, `#approved` or `#rejected`. Once something is decided anywhere, its
+Mattermost post loses its buttons, Orb's alert clears and Studio's badge goes.
 
 ### Going back to `main`
 
@@ -124,6 +155,7 @@ your own services:
 - [ ] Key pools switch to the next key on a real rate limit
 - [ ] Hermes local works with a downloaded model (if you use it)
 - [ ] Old chats, jobs and Mattermost still work as before
+- [ ] Agent work: approve one item from each of Studio, Mattermost and Orb; the Vikunja task is marked done
 - [ ] herdr: open a Hermes chat in herdr, send a message, restart the container, and check the pane is still linked
 
 Known issues on this branch:
