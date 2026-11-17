@@ -1,3 +1,4 @@
+import { hermesApi } from '../services/hermes-api'
 import type { Context } from 'koa'
 import { bridgeMcpAction } from '../services/mcp/bridge-actions'
 
@@ -79,6 +80,31 @@ export async function removeServer(ctx: Context) {
   }
 }
 
+/**
+ * A real connection test: Hermes connects to the server and lists its tools.
+ * The bridge's own check only reads a connection it already holds, so a server
+ * that never connected would look fine with no tools; it is the fallback when
+ * Hermes's API cannot be reached.
+ */
+export async function testMcpServerLive(name: string, profile: string | undefined, deps = {
+  hermes: (path: string, prof?: string) => hermesApi.request('POST', path, new URLSearchParams(), {}, prof),
+  bridge: (prof?: string) => bridgeMcpAction('mcp_server_test', { name }, prof),
+}): Promise<{ ok: boolean; tools: string[]; error?: string }> {
+  try {
+    const result = await deps.hermes(`mcp/servers/${encodeURIComponent(name)}/test`, profile)
+    const body = JSON.parse(result.body.toString('utf8') || '{}')
+    if (result.status < 400 && typeof body.ok === 'boolean') {
+      const tools = Array.isArray(body.tools) ? body.tools.map((tool: any) => typeof tool === 'string' ? tool : String(tool?.name || '')).filter(Boolean) : []
+      return body.ok ? { ok: true, tools } : { ok: false, tools, error: String(body.error || 'The server did not answer') }
+    }
+  } catch { /* Hermes's API unavailable: use the bridge's check */ }
+  const fallback = await deps.bridge(profile) as { ok?: boolean; tools?: string[]; error?: string }
+  if (fallback?.ok && (!fallback.tools || fallback.tools.length === 0)) {
+    return { ok: false, tools: [], error: 'Connected, but the server offered no tools' }
+  }
+  return { ok: !!fallback?.ok, tools: fallback?.tools || [], ...(fallback?.error ? { error: fallback.error } : {}) }
+}
+
 export async function testServer(ctx: Context) {
   try {
     const name = ctx.params.name as string
@@ -87,7 +113,7 @@ export async function testServer(ctx: Context) {
       ctx.body = { error: 'Valid server name is required' }
       return
     }
-    ctx.body = await bridgeMcpAction('mcp_server_test', { name }, getProfile(ctx))
+    ctx.body = await testMcpServerLive(name, getProfile(ctx))
   } catch (err: any) {
     ctx.status = 503
     ctx.body = { error: err.message || 'Failed to test MCP server' }
