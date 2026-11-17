@@ -1,9 +1,11 @@
 import { hermesAgent } from './agent-api'
+import { request } from '../client'
 
 /**
- * Hermes Agent's local models (a llama.cpp runtime Hermes manages) and its
- * credential pools / sign-ins, through Studio's Hermes Agent passthrough.
- * Every call names the Studio profile the Models page is showing.
+ * Hermes Agent's local models (a llama.cpp runtime Hermes manages, through
+ * Studio's Hermes Agent passthrough) and the key pools of Studio's account
+ * Providers. Local models reach chats as the model gateway Provider
+ * `custom:hermes-local`; pooled keys are rotated by the gateway.
  */
 
 export interface LocalModelsStatus {
@@ -100,44 +102,27 @@ export const localQuickstart = (profile?: string) => lm<{ job_id: string; displa
 export const setLocalServer = (action: 'start' | 'stop', profile?: string) => lm('server', profile, { method: 'POST', body: { action } })
 export const sideloadLocalModel = (path: string, profile?: string) => lm<{ model_id: string; already_present?: boolean }>('sideload', profile, { method: 'POST', body: { path } })
 
-// ── credential pools and sign-ins ────────────────────────────
+// ── local models as a model gateway Provider ─────────────
+
+export interface LocalProviderInfo { provider: string; registered: boolean; base_url: string; models: string[]; default_model?: string }
+const profileQuery = (profile?: string) => profile ? `?profile=${encodeURIComponent(profile)}` : ''
+export const getLocalProvider = (profile?: string) => request<LocalProviderInfo>(`/api/hermes/model-local-provider${profileQuery(profile)}`)
+/** Register or refresh Studio's `custom:hermes-local` Provider; with a model, make it the profile's default. */
+export const syncLocalProvider = (profile?: string, defaultModel?: string) => request<LocalProviderInfo>(`/api/hermes/model-local-provider${profileQuery(profile)}`, {
+  method: 'POST', body: JSON.stringify(defaultModel ? { default_model: defaultModel } : {}),
+})
+
+// ── key pools on account Providers ───────────────────────────
 
 export interface PoolEntry { index: number; id: string; label: string; auth_type: string; source: string; last_status: string | null; request_count: number; token_preview: string }
 export interface PoolProvider { provider: string; entries: PoolEntry[] }
-export interface HermesOAuthProvider {
-  id: string
-  name: string
-  flow: 'device_code' | 'external' | string
-  cli_command: string
-  docs_url: string
-  disconnectable: boolean
-  disconnect_hint: string | null
-  status: { logged_in: boolean; source_label?: string | null; token_preview?: string | null; error?: string }
-}
-export interface DeviceLoginStart { session_id: string; user_code: string; verification_url: string; expires_in: number; poll_interval: number }
-
-const withProfile = (profile?: string, extra: Q = {}) => ({ ...extra, profile: profile || undefined })
-export const getCredentialPools = (profile?: string) => hermesAgent<{ providers: PoolProvider[] }>('credentials/pool', { query: withProfile(profile) })
-export const addPoolKey = (provider: string, apiKey: string, label: string, profile?: string) =>
-  hermesAgent('credentials/pool', { method: 'POST', body: { provider, api_key: apiKey, label: label || undefined }, query: withProfile(profile) })
-export const removePoolKey = (provider: string, index: number, profile?: string) =>
-  hermesAgent(`credentials/pool/${encodeURIComponent(provider)}/${index}`, { method: 'DELETE', query: withProfile(profile) })
-export const getHermesOAuthProviders = (profile?: string) => hermesAgent<{ providers: HermesOAuthProvider[] }>('providers/oauth', { query: withProfile(profile) })
-export const startHermesOAuth = (id: string, profile?: string) => hermesAgent<DeviceLoginStart>(`providers/oauth/${encodeURIComponent(id)}/start`, { method: 'POST', body: {}, query: withProfile(profile) })
-export const pollHermesOAuth = (id: string, session: string, profile?: string) =>
-  hermesAgent<{ status: string; error_message: string | null }>(`providers/oauth/${encodeURIComponent(id)}/poll/${encodeURIComponent(session)}`, { query: withProfile(profile, { wait: 20 }) })
-export const cancelHermesOAuth = (session: string, profile?: string) => hermesAgent(`providers/oauth/sessions/${encodeURIComponent(session)}`, { method: 'DELETE', query: withProfile(profile) })
-export const disconnectHermesOAuth = (id: string, profile?: string) => hermesAgent(`providers/oauth/${encodeURIComponent(id)}`, { method: 'DELETE', query: withProfile(profile) })
+export const getCredentialPools = () => request<{ providers: PoolProvider[] }>('/api/hermes/model-key-pools')
+export const addPoolKey = (provider: string, apiKey: string, label: string) =>
+  request('/api/hermes/model-key-pools', { method: 'POST', body: JSON.stringify({ provider, api_key: apiKey, label: label || undefined }) })
+export const removePoolKey = (provider: string, index: number) =>
+  request(`/api/hermes/model-key-pools/${encodeURIComponent(provider)}/${index}`, { method: 'DELETE' })
 
 // ── pure helpers ─────────────────────────────────────────────
-
-/** Sign-ins Studio already offers with its own login windows (Models > Add provider). */
-export const STUDIO_SIGN_INS = new Set(['nous', 'openai-codex', 'minimax-oauth', 'xai-oauth', 'anthropic', 'claude-code', 'copilot'])
-
-/** Hermes sign-ins Studio has no own window for. */
-export function extraSignIns(providers: HermesOAuthProvider[]): HermesOAuthProvider[] {
-  return providers.filter(provider => !STUDIO_SIGN_INS.has(provider.id))
-}
 
 export function formatBytes(bytes: number | null | undefined): string {
   if (!bytes || bytes < 0) return '0 MB'

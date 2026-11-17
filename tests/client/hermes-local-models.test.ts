@@ -16,6 +16,15 @@ vi.mock('@/api/hermes/agent-api', () => ({
   }),
 }))
 
+const studio: Array<{ path: string; init: any }> = []
+const studioResponses: Record<string, unknown> = {}
+vi.mock('@/api/client', () => ({
+  request: vi.fn(async (path: string, init: any = {}) => {
+    studio.push({ path, init })
+    return studioResponses[path.split('?')[0]] ?? {}
+  }),
+}))
+
 const api = await import('@/api/hermes/local-models')
 const LocalModelsPanel = (await import('@/components/hermes/models/LocalModelsPanel.vue')).default
 const CredentialPoolsPanel = (await import('@/components/hermes/models/CredentialPoolsPanel.vue')).default
@@ -44,12 +53,6 @@ describe('local models helpers', () => {
     expect(api.hasActiveJob([job('x', 'paused')])).toBe(false)
   })
 
-  it('lists only Hermes sign-ins Studio has no own window for', () => {
-    const p = (id: string) => ({ id }) as any
-    expect(api.extraSignIns([p('nous'), p('openai-codex'), p('qwen-oauth'), p('xai-oauth'), p('minimax-oauth'), p('anthropic'), p('claude-code'), p('new-one')]).map(x => x.id))
-      .toEqual(['qwen-oauth', 'new-one'])
-  })
-
   it('every locale has every string', () => {
     const reference = Object.keys(hermesModelsMessages.en.hermesModels).sort()
     for (const [locale, messages] of Object.entries(hermesModelsMessages)) expect(Object.keys(messages.hermesModels).sort(), locale).toEqual(reference)
@@ -68,6 +71,8 @@ describe('Local models panel', () => {
     responses['local-models/hardware'] = { uma: false, vram_label: '24.0 GB', vram_usable_bytes: 20 * 2 ** 30, ram_total_bytes: 64 * 2 ** 30, ram_available_bytes: 32 * 2 ** 30, gpu_name: 'RTX 4090', gpu_util_percent: 12 }
     responses['local-models/catalog'] = { models: [{ id: 'qwen', display_name: 'Qwen Small', description: 'Fast', native_context_label: '32K', size_label: '5.0 GB', fit_summary: 'runs at its full 32K context', fits: true, recommended: true }] }
     responses['local-models/jobs'] = { jobs: [{ job_id: 'j1', target: 'Qwen Small (Q4)', status: 'running', detail: 'Downloading', total_bytes: 100, done_bytes: 50, percent: 50, can_pause: true }] }
+    // The profile's default comes from Studio's model manager (its gateway Provider for local models).
+    studioResponses['/api/hermes/model-local-provider'] = { provider: 'custom:hermes-local', registered: true, base_url: 'http://127.0.0.1:8080/v1', models: ['m1'], default_model: 'm1' }
     const wrapper = mountIn(LocalModelsPanel, { profile: 'work' })
     await flushPromises()
     const text = wrapper.text()
@@ -85,6 +90,7 @@ describe('Local models panel', () => {
     await flushPromises()
     const post = calls.find(call => call.path === 'local-models/download')
     expect(post?.init).toMatchObject({ method: 'POST', body: { model_id: 'qwen' } })
+    expect(studio.some(call => call.path === '/api/hermes/model-local-provider?profile=work' && call.init.method === 'POST')).toBe(true)
     wrapper.unmount()
   })
 })
@@ -96,21 +102,15 @@ describe('Key pools panel', () => {
     for (const key of Object.keys(responses)) delete responses[key]
   })
 
-  it('lists pooled keys and Hermes-only sign-ins', async () => {
-    responses['credentials/pool'] = { providers: [{ provider: 'openrouter', entries: [{ index: 1, id: 'a', label: 'main', source: 'manual', request_count: 3, token_preview: 'sk-…abcd', last_status: 'ok' }] }] }
-    responses['providers/oauth'] = { providers: [
-      { id: 'nous', name: 'Nous Portal', flow: 'device_code', status: { logged_in: false } },
-      { id: 'qwen-oauth', name: 'Qwen (via Qwen CLI)', flow: 'external', cli_command: 'hermes auth add qwen-oauth', status: { logged_in: false } },
-    ] }
+  it('lists the pooled keys of the account Providers', async () => {
+    studioResponses['/api/hermes/model-key-pools'] = { providers: [{ provider: 'openrouter', entries: [{ index: 1, id: 'a', label: 'main', source: 'manual', request_count: 3, token_preview: 'sk-…abcd', last_status: 'ok' }] }] }
     const wrapper = mountIn(CredentialPoolsPanel, { profile: 'default' })
     await flushPromises()
     const text = wrapper.text()
     expect(text).toContain('openrouter')
     expect(text).toContain('sk-…abcd')
     expect(text).toContain('3 requests')
-    expect(text).toContain('Qwen (via Qwen CLI)')
-    expect(text).toContain('hermes auth add qwen-oauth')
-    expect(text).not.toContain('Nous Portal')
+    expect(calls).toEqual([])
     wrapper.unmount()
   })
 })

@@ -31,8 +31,12 @@ export async function synchronizeHermesProvider(profile: string): Promise<void> 
   const stamp = createHash('sha256').update(JSON.stringify([cfg, edits, credential.token, studioModelGatewayUrl()])).digest('hex')
   const marker = join(dir, 'projection.json')
   const sourceConfig = parse(await safeFileStore.readText(join(providerSourceDir(profile), 'config.yaml')).catch(() => ''))
+  // Hermes can rewrite its own main model (e.g. its Local models "activate" or
+  // `hermes model`); Studio's selection stays the source of truth, so re-project then.
+  const sourceProvider = typeof sourceConfig.model === 'object' && sourceConfig.model ? String(sourceConfig.model.provider || '') : ''
   if (await safeFileStore.readText(marker).catch(() => '') === stamp
-    && sourceConfig.providers?.ekkostudio?.api_key === credential.token) return
+    && sourceConfig.providers?.ekkostudio?.api_key === credential.token
+    && (!sourceProvider || ['ekkostudio', 'custom:ekkostudio', 'moa'].includes(sourceProvider))) return
   const groups = (await modelGroups(profile)).filter(group => group.provider !== 'moa' && !['ekkostudio', 'custom:ekkostudio'].includes(group.provider))
   const models: string[] = []
   for (const group of groups) for (const model of group.models) models.push(qualifyModelRoute(await providerRouteNamespace(profile, group.provider), model))

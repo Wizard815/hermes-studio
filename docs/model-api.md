@@ -294,3 +294,29 @@ stream produce one external record. Failure/cancellation retains usage already
 reported; missing usage remains unknown instead of claiming a measured zero cost.
 Responses `input_tokens` includes cached input; Studio's ledger keeps ordinary
 input and cache counters separate.
+
+## Fork additions on the gateway
+
+- **Key pools** (Models → Key pools): extra API keys for an account Provider are
+  stored in the account `auth.json` `credential_pool` (entries with
+  `auth_type: api_key` and their own `access_token`; pools imported from Hermes
+  profiles keep working). The gateway's upstream resolver takes the Provider's
+  own key and its pooled keys in turn, per request, so every caller (Studio
+  chats, Hermes, Ekko, coding agents, herdr panes, jobs) shares one pool.
+  `GET/POST /api/hermes/model-key-pools`, `DELETE /api/hermes/model-key-pools/:provider/:index`.
+- **Hermes local models** (Models → Local models): Hermes downloads and loads
+  models into its llama.cpp server; Studio registers that server
+  (`<server>/v1`, Chat Completions) as the account Provider
+  `custom:hermes-local` ("Hermes local") with the downloaded models.
+  "Make default model of <profile>" loads the model in Hermes, then sets the
+  profile's Studio default to `custom:hermes-local/<model>`; the projection
+  writes it to Hermes as an `ekkostudio` route like any other model. A profile
+  Hermes had pointed at its own `llamacpp` provider moves onto the Provider when
+  the Local models tab is opened. The llama.cpp server must be running for the
+  gateway to reach it. `GET/POST /api/hermes/model-local-provider`.
+- **herdr Hermes panes** resume with `-m <gateway route>` after the profile's
+  Hermes config is projected, so a pane, a Studio chat and a job use the same
+  selection. A model picked with `/model` in a pane is read back from Hermes's
+  session row (a gateway route) as the chat's provider and model.
+- Hermes re-projection also runs when Hermes rewrote its own main model (for
+  example its Local models "activate"), so Studio's selection stays authoritative.

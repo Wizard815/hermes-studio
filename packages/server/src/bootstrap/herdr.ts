@@ -29,9 +29,12 @@ import {
 import { herdrManager, type HerdrPluginDeps } from '../modules/coding-agents/services/herdr/manager'
 import { listProfileModelChoices, listProfileModelGroups } from '../modules/hermes/controllers/models'
 import { getProfileDir, listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
-import { readProfileDefaultModel } from '../modules/hermes/services/profiles/catalog'
 import { hermesCliAvailable, hermesInteractiveLaunch, hermesNewChatLaunch, hermesSessionIdFor } from '../modules/hermes/services/herdr-launch'
-import { HerdrHermesLaunchStore, herdrModelChange, readHermesSessionRoute } from '../modules/hermes/services/herdr-model-sync'
+import { HerdrHermesLaunchStore, herdrModelChange, logicalHermesRoute, readHermesSessionRoute, type ModelRoute } from '../modules/hermes/services/herdr-model-sync'
+import { importAccountProviders, withProviderAccount } from '../modules/studio/public/provider-account'
+import { hermesGatewaySelection, synchronizeHermesProvider } from '../modules/studio/public/provider-projection'
+import { logicalModelSelection } from '../modules/studio/public/model-routing'
+import { readConfigYamlForProfile } from '../modules/studio/public/provider-config'
 
 /** The stored agent id when herdr can host the chat as a pane, else null. */
 function herdrHostableAgentId(agent: string | null | undefined): string | null {
@@ -76,12 +79,59 @@ function hermesLaunches(): HerdrHermesLaunchStore {
  * with `/model` in the pane as the chat's model, unless Studio's model picker
  * changed it since (see `herdr-model-sync.ts`).
  */
+/**
+ * Studio's model providers belong to a Studio account (upstream's model
+ * gateway). herdr acts for the user who signed it in (else the first super
+ * administrator), so launches and model lookups run in that account.
+ */
+function herdrAccountUser() {
+  return herdrManager.actingUser() ?? listUsers().find(item => item.role === 'super_admin' && item.status === 'active') ?? null
+}
+export async function inHerdrAccount<T>(profile: string | null | undefined, run: () => Promise<T>): Promise<T> {
+  const user = herdrAccountUser()
+  if (!user) return run()
+  return withProviderAccount(user.id, async () => { await importAccountProviders(); return run() }, profile || undefined)
+}
+
+/** A Hermes session's model (read from its state.db) in Studio's provider/model terms. */
+async function hermesSessionModel(profile: string, row: { id: string; agent_native_session_id?: string | null }): Promise<ModelRoute | null> {
+  const raw = await readHermesSessionRoute(getProfileDir(profile), hermesSessionIdFor(row))
+  return logicalHermesRoute(raw, model => {
+    try { return logicalModelSelection(profile, 'ekkostudio', model) } catch { return null }
+  })
+}
+
+/** The profile's default model as Studio's model manager has it (logical provider and model). */
+async function profileDefaultModel(profile: string): Promise<ModelRoute> {
+  const config = await readConfigYamlForProfile(profile)
+  const selection = config.model && typeof config.model === 'object' ? config.model : { default: config.model }
+  return { model: String(selection.default || '').trim(), provider: String(selection.provider || '').trim() }
+}
+
+/** How a Hermes pane asks for a chat's model: the gateway route, after the profile's Hermes config is projected. */
+async function hermesPaneRoute(profile: string, provider?: string | null, model?: string | null) {
+  await synchronizeHermesProvider(profile)
+  if (!model || !provider || provider === 'global') return null
+  try {
+    const selected = await hermesGatewaySelection(profile, provider, model)
+    return selected.provider === 'moa' ? null : { model: selected.model }
+  } catch (error) {
+    logger.warn({ profile, provider, model, error: String(error) }, '[herdr] chat model is not in the model gateway; the pane uses it as is')
+    return null
+  }
+}
+
 export async function syncHermesModelFromHerdr(sessionId: string, options: { forget?: boolean } = {}): Promise<HermesSessionRow | null> {
+  const row = getSession(sessionId)
+  return inHerdrAccount(row?.profile, () => syncHermesModelFromHerdrInAccount(sessionId, options))
+}
+
+async function syncHermesModelFromHerdrInAccount(sessionId: string, options: { forget?: boolean }): Promise<HermesSessionRow | null> {
   const store = hermesLaunches()
   const record = store.get(sessionId)
   const row = getSession(sessionId)
   if (!record || !row || row.agent !== 'hermes') return row
-  const hermesNow = await readHermesSessionRoute(getProfileDir(row.profile || 'default'), hermesSessionIdFor(row))
+  const hermesNow = await hermesSessionModel(row.profile || 'default', row)
   const change = herdrModelChange(record, { model: row.model || '', provider: row.provider || '' }, hermesNow)
   if (change) {
     updateSession(sessionId, { model: change.model, provider: change.provider })
@@ -95,17 +145,21 @@ export async function syncHermesModelFromHerdr(sessionId: string, options: { for
 
 /** Open a Hermes chat in herdr in its profile, on its model, remembering both for `syncHermesModelFromHerdr`. */
 async function hermesChatLaunch(sessionId: string) {
-  const row = (await syncHermesModelFromHerdr(sessionId))!
-  const profile = row.profile || 'default'
-  const hermes = await readHermesSessionRoute(getProfileDir(profile), hermesSessionIdFor(row)) ?? { model: '', provider: '' }
-  const profileDefault = readProfileDefaultModel(profile)
-  hermesLaunches().set(sessionId, {
-    studio: { model: row.model || '', provider: row.provider || '' },
-    hermes,
-    launched: row.model || (profileDefault === '—' ? '' : profileDefault),
-    at: Date.now(),
+  const first = getSession(sessionId)
+  return inHerdrAccount(first?.profile, async () => {
+    const row = (await syncHermesModelFromHerdrInAccount(sessionId, {}))!
+    const profile = row.profile || 'default'
+    const route = await hermesPaneRoute(profile, row.provider, row.model)
+    const hermes = await hermesSessionModel(profile, row) ?? { model: '', provider: '' }
+    const profileDefault = await profileDefaultModel(profile)
+    hermesLaunches().set(sessionId, {
+      studio: { model: row.model || '', provider: row.provider || '' },
+      hermes,
+      launched: row.model || profileDefault.model,
+      at: Date.now(),
+    })
+    return hermesInteractiveLaunch(row, getProfileDir, route)
   })
-  return hermesInteractiveLaunch(row, getProfileDir)
 }
 
 const AGENT_LABELS: Record<string, string> = { hermes: 'Hermes Agent' }
@@ -170,19 +224,23 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     // integration); everything else goes through the coding-agent launcher.
     prepareSessionLaunch: async sessionId => {
       const session = getSession(sessionId)
-      return session?.agent === 'hermes' ? hermesChatLaunch(sessionId) : prepareCodingAgentSessionLaunch(sessionId)
+      return session?.agent === 'hermes' ? hermesChatLaunch(sessionId) : inHerdrAccount(session?.profile, () => prepareCodingAgentSessionLaunch(sessionId))
     },
-    // A new Hermes chat runs in herdr's profile (Studio's, unless pinned) on its default model, or the model picked.
+    // A new Hermes chat runs in herdr's profile (Studio's, unless pinned) on its default model, or the model picked,
+    // through Studio's model gateway like every other Hermes run.
     prepareAgentLaunch: async (agentId, input) => agentId === 'hermes'
-      ? hermesNewChatLaunch(input.workspace, { profile: input.profile, provider: input.provider, model: input.model, profileHome: getProfileDir })
-      : prepareCodingAgentInteractiveLaunch(agentId, {
+      ? inHerdrAccount(input.profile, async () => hermesNewChatLaunch(input.workspace, {
+          profile: input.profile, provider: input.provider, model: input.model, profileHome: getProfileDir,
+          route: await hermesPaneRoute(input.profile || 'default', input.provider, input.model),
+        }))
+      : inHerdrAccount(input.profile, () => prepareCodingAgentInteractiveLaunch(agentId, {
           profile: input.profile,
           provider: input.provider,
           model: input.model,
           workspace: input.workspace,
           // Without a provider the agent runs with its own native configuration.
           mode: input.provider ? 'scoped' : 'global',
-        }),
+        })),
     herdrKindFor: agentId => herdrKindForStudioAgent(agentId),
     agentLabel: agentId => AGENT_LABELS[agentId] || getCodingAgentDefinition(agentId)?.name || agentId,
     log: (level, message, data) => logger[level](data || {}, message),
@@ -425,8 +483,8 @@ export function herdrPluginDeps(baseUrl: string): HerdrPluginDeps {
         .map(tool => ({ id: tool.id, name: tool.name })),
       ...(hermesCliAvailable() ? [{ id: 'hermes', name: AGENT_LABELS.hermes }] : []),
     ],
-    listProviders: profile => listProfileModelGroups(profile),
-    profileDefault: async profile => (await listProfileModelChoices(profile)).default,
+    listProviders: profile => inHerdrAccount(profile, () => listProfileModelGroups(profile)),
+    profileDefault: profile => inHerdrAccount(profile, async () => (await listProfileModelChoices(profile)).default),
     listProfiles: () => { try { const names = listProfileNamesFromDisk(); return names.length ? names : ['default'] } catch { return ['default'] } },
     studioUrl: () => baseUrl,
     browserUrl: () => process.env.HERMES_WEB_UI_PUBLIC_URL || baseUrl,

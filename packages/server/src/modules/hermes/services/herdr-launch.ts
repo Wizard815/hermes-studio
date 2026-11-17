@@ -51,6 +51,16 @@ export function hermesModelArgs(model?: string | null, provider?: string | null)
 }
 
 /**
+ * A chat's model as the CLI should ask for it. With Studio's model gateway the
+ * profile's Hermes config has one provider (`ekkostudio`) and models are gateway
+ * routes such as `deepseek/deepseek-v4`; `-m <route>` alone picks one.
+ */
+export interface ModelRouteArgs { model: string; provider?: string }
+function routeArgs(route: ModelRouteArgs | null | undefined, model?: string | null, provider?: string | null): string[] {
+  return route?.model ? hermesModelArgs(route.model, route.provider) : hermesModelArgs(model, provider)
+}
+
+/**
  * The pane's Hermes home: the chat's profile folder (as Studio's own Hermes
  * runs use), so the CLI reads that profile's config (its default model) and
  * sessions. Empty when no profile resolver is given.
@@ -72,11 +82,13 @@ export function hermesNewChatLaunch(workspace?: string | null, options: {
   provider?: string | null
   model?: string | null
   profileHome?: (profile: string) => string
+  /** How the CLI reaches that model (Studio's model gateway route); defaults to the model itself. */
+  route?: ModelRouteArgs | null
 } = {}): HermesHerdrLaunch {
   return {
     agentId: 'hermes',
     command: hermesCliPath(),
-    args: ['chat', ...hermesModelArgs(options.model, options.provider)],
+    args: ['chat', ...routeArgs(options.route, options.model, options.provider)],
     env: profileEnv(options.profile, options.profileHome),
     workspaceDir: workspace || homedir(),
     provider: options.model ? String(options.provider || '') : '',
@@ -100,11 +112,11 @@ export function hermesInteractiveLaunch(session: {
   provider?: string | null
   model?: string | null
   profile?: string | null
-}, profileHome?: (profile: string) => string): HermesHerdrLaunch {
+}, profileHome?: (profile: string) => string, route?: ModelRouteArgs | null): HermesHerdrLaunch {
   return {
     agentId: 'hermes',
     command: hermesCliPath(),
-    args: ['chat', '--resume', hermesSessionIdFor(session), '--create-if-missing', ...hermesModelArgs(session.model, session.provider)],
+    args: ['chat', '--resume', hermesSessionIdFor(session), '--create-if-missing', ...routeArgs(route, session.model, session.provider)],
     env: profileEnv(session.profile, profileHome),
     workspaceDir: session.workspace || homedir(),
     provider: session.provider || '',

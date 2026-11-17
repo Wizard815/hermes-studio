@@ -6,8 +6,8 @@ import {
   activateLocalModel, deleteLocalModel, downloadBrowsedModel, downloadLocalModel, ejectLocalModel,
   formatBytes, formatEta, getLocalCatalog, getLocalHardware, getLocalJobs, getLocalStatus, hasActiveJob,
   installLocalRuntime, listHuggingFaceFiles, localQuickstart, pauseLocalJob, resumeLocalJob, searchHuggingFace,
-  setLocalServer, sideloadLocalModel, visibleJobs,
-  type HfFileGroup, type HfModelHit, type LocalCatalogModel, type LocalHardware, type LocalJob, type LocalModelsStatus,
+  setLocalServer, sideloadLocalModel, syncLocalProvider, getLocalProvider, visibleJobs,
+  type HfFileGroup, type LocalProviderInfo, type HfModelHit, type LocalCatalogModel, type LocalHardware, type LocalJob, type LocalModelsStatus,
 } from '@/api/hermes/local-models'
 
 const props = defineProps<{ profile?: string }>()
@@ -17,6 +17,10 @@ const message = useMessage()
 const dialog = useDialog()
 
 const status = ref<LocalModelsStatus | null>(null)
+/** Studio's `custom:hermes-local` gateway Provider for these models. */
+const localProvider = ref<LocalProviderInfo | null>(null)
+/** A model being loaded to become the profile's default once its job finishes. */
+const pendingDefault = new Map<string, string>()
 const hardware = ref<LocalHardware | null>(null)
 const catalog = ref<LocalCatalogModel[]>([])
 const jobs = ref<LocalJob[]>([])
@@ -54,10 +58,22 @@ async function loadAll() {
     catalog.value = c.models
     jobs.value = j.jobs
     schedulePoll()
+    void refreshProvider()
   } catch (err: any) {
     loadError.value = t('hermesModels.loadFailed', { error: err?.message || String(err) })
   } finally {
     loading.value = false
+  }
+}
+
+// Keep the gateway Provider's model list in step with the downloaded models
+// (this also moves a profile Hermes had set to its own `llamacpp` onto it).
+async function refreshProvider(defaultModel?: string) {
+  try {
+    localProvider.value = await syncLocalProvider(props.profile, defaultModel)
+  } catch (err) {
+    if (defaultModel) throw err
+    try { localProvider.value = await getLocalProvider(props.profile) } catch { /* not available */ }
   }
 }
 
@@ -81,6 +97,13 @@ function schedulePoll() {
           else if (job.status === 'done') message.success(job.detail || t('hermesModels.done'))
         }
         await refreshState()
+        let madeDefault = false
+        for (const job of finished) {
+          const model = pendingDefault.get(job.job_id)
+          pendingDefault.delete(job.job_id)
+          if (model && job.status === 'done') { madeDefault = true; await refreshProvider(model).catch(fail) }
+        }
+        if (!madeDefault) await refreshProvider()
         emit('changed')
       }
     } catch { /* try again next tick */ }
@@ -88,10 +111,14 @@ function schedulePoll() {
   }, 1500)
 }
 
-async function trackJob(start: () => Promise<{ job_id?: string | null; already_downloaded?: boolean } | unknown>, key: string) {
+async function trackJob(start: () => Promise<{ job_id?: string | null; already_downloaded?: boolean } | unknown>, key: string, makeDefault?: string) {
   busy.value = key
   try {
     const result = await start() as { job_id?: string | null; already_downloaded?: boolean }
+    if (makeDefault) {
+      if (result?.job_id) pendingDefault.set(result.job_id, makeDefault)
+      else { await refreshProvider(makeDefault); emit('changed') }
+    }
     if (result?.already_downloaded) message.info(t('hermesModels.alreadyDownloaded'))
     else message.success(t('hermesModels.started'))
     jobs.value = (await getLocalJobs(props.profile)).jobs
@@ -108,6 +135,7 @@ async function act(key: string, run: () => Promise<unknown>) {
   try {
     await run()
     await refreshState()
+    await refreshProvider()
     emit('changed')
   } catch (err) {
     fail(err)
@@ -119,9 +147,11 @@ async function act(key: string, run: () => Promise<unknown>) {
 const installEngine = () => trackJob(() => installLocalRuntime(props.profile), 'engine')
 const quickstart = () => trackJob(() => localQuickstart(props.profile), 'quickstart')
 const download = (model: LocalCatalogModel) => trackJob(() => downloadLocalModel(model.id, props.profile), `dl:${model.id}`)
-// Hermes writes it as the main model of this profile's config.yaml, which is
-// the profile's default model in Studio (new chats, herdr, the model picker).
-const activate = (id: string) => trackJob(() => activateLocalModel(id, props.profile), `act:${id}`)
+// Hermes loads the model into its llama.cpp server; then Studio makes it the
+// profile's default model through its model gateway Provider `custom:hermes-local`,
+// so new chats, Hermes runs, herdr panes and jobs all use it the same way.
+const activate = (id: string) => trackJob(() => activateLocalModel(id, props.profile), `act:${id}`, id)
+const isProfileDefault = (id: string | null | undefined) => !!id && localProvider.value?.default_model === id
 const profileName = computed(() => props.profile || 'default')
 const eject = (id: string) => act(`ej:${id}`, () => ejectLocalModel(id, props.profile))
 
@@ -286,11 +316,11 @@ onUnmounted(() => { alive = false; if (pollTimer) clearTimeout(pollTimer) })
                 <strong dir="auto">{{ model.id }}</strong>
                 <small>{{ model.size_label }}</small>
               </div>
-              <NTag v-if="status.active_model_id === model.id" size="small" type="success" round>{{ t('hermesModels.profileDefault', { profile: profileName }) }}</NTag>
+              <NTag v-if="isProfileDefault(model.id)" size="small" type="success" round>{{ t('hermesModels.profileDefault', { profile: profileName }) }}</NTag>
               <NTag v-if="modelState(model.id)" size="small" type="info" round>
                 {{ modelState(model.id) === 'loading' ? t('hermesModels.loading') : t('hermesModels.loaded') }}
               </NTag>
-              <NButton v-if="status.active_model_id !== model.id" size="tiny" :loading="busy === `act:${model.id}`" @click="activate(model.id)">
+              <NButton v-if="!isProfileDefault(model.id)" size="tiny" :loading="busy === `act:${model.id}`" @click="activate(model.id)">
                 {{ t('hermesModels.makeProfileDefault', { profile: profileName }) }}
               </NButton>
               <NButton v-if="modelState(model.id) === 'loaded'" size="tiny" :loading="busy === `ej:${model.id}`" @click="eject(model.id)">
@@ -317,7 +347,7 @@ onUnmounted(() => { alive = false; if (pollTimer) clearTimeout(pollTimer) })
                 <small class="lm-muted">{{ t('hermesModels.contextLabel', { size: model.size_label, context: model.native_context_label }) }} · {{ model.fit_summary }}</small>
                 <small v-if="model.needs_engine" class="lm-warn">{{ t('hermesModels.needsEngine', { version: model.min_engine || '' }) }}</small>
               </div>
-              <NButton v-if="model.downloaded && model.downloaded_model_id && status.active_model_id !== model.downloaded_model_id" size="tiny"
+              <NButton v-if="model.downloaded && model.downloaded_model_id && !isProfileDefault(model.downloaded_model_id)" size="tiny"
                 :loading="busy === `act:${model.downloaded_model_id}`" @click="activate(model.downloaded_model_id)">
                 {{ t('hermesModels.makeProfileDefault', { profile: profileName }) }}
               </NButton>

@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { NButton, NInput, NModal, NSelect, NSpin, NTag, useDialog, useMessage } from 'naive-ui'
+import { computed, onMounted, ref, watch } from 'vue'
+import { NButton, NInput, NSelect, NSpin, useDialog, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useModelsStore } from '@/stores/hermes/models'
-import { copyToClipboard } from '@/utils/clipboard'
-import {
-  addPoolKey, cancelHermesOAuth, disconnectHermesOAuth, extraSignIns, getCredentialPools, getHermesOAuthProviders,
-  pollHermesOAuth, removePoolKey, startHermesOAuth,
-  type DeviceLoginStart, type HermesOAuthProvider, type PoolEntry, type PoolProvider,
-} from '@/api/hermes/local-models'
+import { addPoolKey, getCredentialPools, removePoolKey, type PoolEntry, type PoolProvider } from '@/api/hermes/local-models'
 
+// Pools belong to the account's Providers (the same for every profile); the model
+// gateway takes a Provider's own key and its pooled keys in turn.
 const props = defineProps<{ profile?: string }>()
 const { t } = useI18n()
 const message = useMessage()
@@ -17,7 +14,6 @@ const dialog = useDialog()
 const modelsStore = useModelsStore()
 
 const pools = ref<PoolProvider[]>([])
-const signIns = ref<HermesOAuthProvider[]>([])
 const loading = ref(false)
 const loadError = ref('')
 const provider = ref<string | null>(null)
@@ -36,9 +32,7 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const [p, o] = await Promise.all([getCredentialPools(props.profile), getHermesOAuthProviders(props.profile)])
-    pools.value = p.providers
-    signIns.value = extraSignIns(o.providers)
+    pools.value = (await getCredentialPools()).providers
   } catch (err: any) {
     loadError.value = t('hermesModels.loadFailed', { error: err?.message || String(err) })
   } finally {
@@ -51,11 +45,11 @@ async function addKey() {
   if (!name || !apiKey.value.trim()) return
   adding.value = true
   try {
-    await addPoolKey(name, apiKey.value.trim(), label.value.trim(), props.profile)
+    await addPoolKey(name, apiKey.value.trim(), label.value.trim())
     apiKey.value = ''
     label.value = ''
     message.success(t('hermesModels.keyAdded'))
-    pools.value = (await getCredentialPools(props.profile)).providers
+    pools.value = (await getCredentialPools()).providers
   } catch (err: any) {
     message.error(err?.message || String(err))
   } finally {
@@ -71,9 +65,9 @@ function removeKey(pool: PoolProvider, entry: PoolEntry) {
     negativeText: t('hermesModels.cancel'),
     onPositiveClick: async () => {
       try {
-        await removePoolKey(pool.provider, entry.index, props.profile)
+        await removePoolKey(pool.provider, entry.index)
         message.success(t('hermesModels.keyRemoved'))
-        pools.value = (await getCredentialPools(props.profile)).providers
+        pools.value = (await getCredentialPools()).providers
       } catch (err: any) {
         message.error(err?.message || String(err))
       }
@@ -81,72 +75,8 @@ function removeKey(pool: PoolProvider, entry: PoolEntry) {
   })
 }
 
-// ── device-code sign-in for providers Studio has no own window for ──
-const login = ref<{ provider: HermesOAuthProvider; start: DeviceLoginStart } | null>(null)
-const loginBusy = ref('')
-let polling = 0
-
-async function signIn(item: HermesOAuthProvider) {
-  loginBusy.value = item.id
-  try {
-    const start = await startHermesOAuth(item.id, props.profile)
-    login.value = { provider: item, start }
-    window.open(start.verification_url, '_blank', 'noopener')
-    void poll(++polling)
-  } catch (err: any) {
-    message.error(err?.message || String(err))
-  } finally {
-    loginBusy.value = ''
-  }
-}
-
-async function poll(run: number) {
-  while (run === polling && login.value) {
-    const { provider: item, start } = login.value
-    try {
-      const result = await pollHermesOAuth(item.id, start.session_id, props.profile)
-      if (run !== polling) return
-      if (result.status === 'pending') continue
-      login.value = null
-      if (result.status === 'approved') message.success(t('hermesModels.signInDone', { provider: item.name }))
-      else message.error(t('hermesModels.signInFailed', { error: result.error_message || result.status }))
-      await load()
-      return
-    } catch (err: any) {
-      if (run !== polling) return
-      login.value = null
-      message.error(t('hermesModels.signInFailed', { error: err?.message || String(err) }))
-      return
-    }
-  }
-}
-
-function cancelLogin() {
-  const current = login.value
-  polling++
-  login.value = null
-  if (current) void cancelHermesOAuth(current.start.session_id, props.profile).catch(() => undefined)
-}
-
-function signOut(item: HermesOAuthProvider) {
-  dialog.warning({
-    title: t('hermesModels.signOut'),
-    content: t('hermesModels.signOutConfirm', { provider: item.name }),
-    positiveText: t('hermesModels.signOut'),
-    negativeText: t('hermesModels.cancel'),
-    onPositiveClick: async () => {
-      try { await disconnectHermesOAuth(item.id, props.profile); await load() } catch (err: any) { message.error(err?.message || String(err)) }
-    },
-  })
-}
-
-async function copy(text: string) {
-  if (await copyToClipboard(text)) message.success(t('common.copied'))
-}
-
 watch(() => props.profile, () => { void load() })
 onMounted(load)
-onUnmounted(() => { polling++ })
 </script>
 
 <template>
@@ -192,44 +122,8 @@ onUnmounted(() => { polling++ })
         </ul>
       </div>
 
-      <section v-if="signIns.length" class="kp-signins">
-        <h3>{{ t('hermesModels.otherSignIns') }}</h3>
-        <p class="kp-muted">{{ t('hermesModels.otherSignInsDesc') }}</p>
-        <ul class="kp-list">
-          <li v-for="item in signIns" :key="item.id" class="kp-row">
-            <span class="kp-main">
-              <strong dir="auto">{{ item.name }}
-                <NTag size="tiny" round :type="item.status.logged_in ? 'success' : 'default'">
-                  {{ item.status.logged_in ? t('hermesModels.signedIn') : t('hermesModels.notSignedIn') }}
-                </NTag>
-              </strong>
-              <small v-if="item.flow !== 'device_code' && !item.status.logged_in">
-                {{ t('hermesModels.runCommand') }} <code dir="ltr">{{ item.cli_command }}</code>
-                <NButton size="tiny" text @click="copy(item.cli_command)">{{ t('hermesModels.copy') }}</NButton>
-              </small>
-              <small v-else-if="item.disconnect_hint" class="kp-muted">{{ item.disconnect_hint }}</small>
-            </span>
-            <a v-if="item.docs_url" :href="item.docs_url" target="_blank" rel="noopener" class="kp-link">{{ t('hermesModels.docs') }}</a>
-            <NButton v-if="item.flow === 'device_code' && !item.status.logged_in" size="tiny" type="primary"
-              :loading="loginBusy === item.id" @click="signIn(item)">{{ t('hermesModels.signIn') }}</NButton>
-            <NButton v-if="item.status.logged_in && item.disconnectable" size="tiny" @click="signOut(item)">{{ t('hermesModels.signOut') }}</NButton>
-          </li>
-        </ul>
-      </section>
     </NSpin>
 
-    <NModal :show="!!login" preset="card" :title="login?.provider.name" style="max-width: 420px" :mask-closable="false" @close="cancelLogin">
-      <div v-if="login" class="kp-device">
-        <p>{{ t('hermesModels.deviceCodeHint') }}</p>
-        <code class="kp-code" dir="ltr">{{ login.start.user_code }}</code>
-        <div class="kp-device-actions">
-          <NButton size="small" @click="copy(login.start.user_code)">{{ t('hermesModels.copy') }}</NButton>
-          <NButton size="small" type="primary" tag="a" :href="login.start.verification_url" target="_blank" rel="noopener">{{ t('hermesModels.openPage') }}</NButton>
-        </div>
-        <p class="kp-muted"><NSpin size="small" /> {{ t('hermesModels.waiting') }}</p>
-        <NButton size="small" quaternary @click="cancelLogin">{{ t('hermesModels.cancel') }}</NButton>
-      </div>
-    </NModal>
   </section>
 </template>
 

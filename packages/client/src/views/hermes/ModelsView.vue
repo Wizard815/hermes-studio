@@ -94,9 +94,10 @@ watch(() => route.query.modelProfile, profile => {
 })
 type ModelsTab = 'general' | 'auxiliary' | 'combination' | 'local' | 'keys' | 'stt' | 'tts' | 'jev' | 'api'
 
-// Local models and key pools run through Hermes Agent's own API (super administrators).
+// Local models run through Hermes Agent's own API (super administrators); key
+// pools belong to the account's Providers in Studio's model gateway (everyone).
 const canUseHermesAgent = isStoredSuperAdmin()
-const MODELS_TABS = new Set<ModelsTab>(['general', 'auxiliary', 'combination', 'stt', 'tts', 'jev', 'api', ...(canUseHermesAgent ? ['local', 'keys'] as const : [])])
+const MODELS_TABS = new Set<ModelsTab>(['general', 'auxiliary', 'combination', 'keys', 'stt', 'tts', 'jev', 'api', ...(canUseHermesAgent ? ['local'] as const : [])])
 const activeTab = ref<ModelsTab>('general')
 
 function normalizeTab(value: unknown): ModelsTab {
@@ -286,7 +287,7 @@ async function handleRefreshModelCache() {
         <NTabPane v-if="canUseHermesAgent" name="local" :tab="t('hermesModels.localTab')">
           <LocalModelsPanel :profile="selectedProfile" @changed="reloadModelLists" />
         </NTabPane>
-        <NTabPane v-if="canUseHermesAgent" name="keys" :tab="t('hermesModels.keysTab')">
+        <NTabPane name="keys" :tab="t('hermesModels.keysTab')">
           <CredentialPoolsPanel :profile="selectedProfile" />
         </NTabPane>
         <NTabPane name="jev" tab="JEV">

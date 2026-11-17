@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { herdrChatProfile, migrateHerdrSettings, sanitizeHerdrSettings, DEFAULT_HERDR_SETTINGS } from '../../packages/server/src/modules/coding-agents/services/herdr/runtime'
 import { HerdrHermesLaunchStore, herdrModelChange, hermesRowProvider, readHermesSessionRoute, type HerdrHermesLaunchRecord } from '../../packages/server/src/modules/hermes/services/herdr-model-sync'
-import { localModelsGroup } from '../../packages/server/src/modules/hermes/controllers/models'
+import { applyLocalProvider, localServerApiUrl } from '../../packages/server/src/modules/hermes/services/models/local-provider'
+import { logicalHermesRoute, hermesRowProvider } from '../../packages/server/src/modules/hermes/services/herdr-model-sync'
+import { pooledKeyEntries } from '../../packages/server/src/modules/studio/services/providers/key-pools'
 
 describe("herdr follows Studio's profile", () => {
   it('uses the pinned profile, else the one picked in Studio, else default', () => {
@@ -88,10 +90,53 @@ describe('a model picked in a Hermes herdr pane stays with the chat', () => {
   })
 })
 
-describe("Hermes's local models in Studio's model list", () => {
-  it("lists the profile's local default model under Hermes's own provider", () => {
-    expect(localModelsGroup('qwen3-8b-q4', 'llamacpp')).toMatchObject({ provider: 'llamacpp', models: ['qwen3-8b-q4'] })
-    expect(localModelsGroup('gpt-5', 'openai')).toBeNull()
-    expect(localModelsGroup('', 'llamacpp')).toBeNull()
+describe("Hermes's local models as a model gateway Provider", () => {
+  const status = { server_base_url: 'http://127.0.0.1:8080', models: [{ id: 'qwen3-8b-q4' }, { id: 'gemma-4b' }] }
+
+  it('registers the llama.cpp server under /v1 in the account Provider pool', () => {
+    expect(localServerApiUrl('http://127.0.0.1:8080/')).toBe('http://127.0.0.1:8080/v1')
+    expect(localServerApiUrl('http://127.0.0.1:8080/v1')).toBe('http://127.0.0.1:8080/v1')
+    const config: Record<string, any> = { studio_provider_pool: 2, providers: {}, model: { provider: 'deepseek', default: 'deepseek-v4' } }
+    expect(applyLocalProvider(config, status)).toBe(true)
+    expect(config.providers['custom:hermes-local']).toMatchObject({ base_url: 'http://127.0.0.1:8080/v1', api_mode: 'chat_completions', models: { 'qwen3-8b-q4': {}, 'gemma-4b': {} } })
+    expect(config.model).toEqual({ provider: 'deepseek', default: 'deepseek-v4' })
+    expect(applyLocalProvider(config, status)).toBe(false)
+  })
+
+  it("makes a local model the profile default, and moves Hermes's own llamacpp default onto the Provider", () => {
+    const config: Record<string, any> = { studio_provider_pool: 2, providers: {}, model: { provider: 'deepseek', default: 'deepseek-v4', base_url: 'x' } }
+    applyLocalProvider(config, status, { defaultModel: 'gemma-4b' })
+    expect(config.model).toEqual({ provider: 'custom:hermes-local', default: 'gemma-4b' })
+    const legacy: Record<string, any> = { custom_providers: [], model: { provider: 'llamacpp', default: 'qwen3-8b-q4' } }
+    applyLocalProvider(legacy, status)
+    expect(legacy.custom_providers[0]).toMatchObject({ name: 'hermes-local', base_url: 'http://127.0.0.1:8080/v1' })
+    expect(legacy.model).toEqual({ provider: 'custom:hermes-local', default: 'qwen3-8b-q4' })
+  })
+
+  it('does nothing without a server address or models', () => {
+    expect(applyLocalProvider({ providers: {} }, { server_base_url: null, models: [{ id: 'a' }] })).toBe(false)
+    expect(applyLocalProvider({ providers: {} }, { server_base_url: 'http://h:1', models: [] })).toBe(false)
+  })
+})
+
+describe('herdr Hermes panes through the model gateway', () => {
+  it("reads a gateway session row's model back as the chat's provider and model", () => {
+    expect(hermesRowProvider({ provider: 'ekkostudio', model: 'deepseek/deepseek-v4', gateway_runtime: { provider: 'custom', base_url: 'http://127.0.0.1:8648/api/ekko-studio/models/v1' } })).toBe('ekkostudio')
+    expect(hermesRowProvider({ provider: 'openrouter' })).toBe('openrouter')
+    const toLogical = (model: string) => model === 'deepseek/deepseek-v4' ? { provider: 'deepseek', model: 'deepseek-v4' } : null
+    expect(logicalHermesRoute({ provider: 'ekkostudio', model: 'deepseek/deepseek-v4' }, toLogical)).toEqual({ provider: 'deepseek', model: 'deepseek-v4' })
+    expect(logicalHermesRoute({ provider: 'ekkostudio', model: 'gone/x' }, toLogical)).toEqual({ provider: 'ekkostudio', model: 'gone/x' })
+    expect(logicalHermesRoute({ provider: 'openrouter', model: 'a/b' }, toLogical)).toEqual({ provider: 'openrouter', model: 'a/b' })
+  })
+})
+
+describe('key pools', () => {
+  it('rotates only entries that carry their own API key', () => {
+    expect(pooledKeyEntries([
+      { auth_type: 'api_key', source: 'env:OPENROUTER_API_KEY' },
+      { auth_type: 'api_key', access_token: 'sk-2' },
+      { auth_type: 'oauth', access_token: 'oauth-token' },
+      { access_token: 'codex-token' },
+    ]).map(entry => entry.access_token)).toEqual(['sk-2'])
   })
 })

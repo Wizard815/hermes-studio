@@ -186,15 +186,6 @@ function applyModelVisibility(groups: AvailableGroup[], visibility: ModelVisibil
     .filter(group => group.models.length > 0)
 }
 
-/** Hermes Agent's own local-model provider, when it is a profile's default. */
-export const HERMES_LOCAL_PROVIDER = 'llamacpp'
-
-/** The group for Hermes's local models when the profile's default model is one of them. */
-export function localModelsGroup(currentDefault: string, currentDefaultProvider: string): { provider: string; label: string; models: string[] } | null {
-  if (currentDefaultProvider !== HERMES_LOCAL_PROVIDER || !currentDefault) return null
-  return { provider: HERMES_LOCAL_PROVIDER, label: 'Local models (Hermes Agent)', models: [currentDefault] }
-}
-
 function resolveVisibleDefault(defaultModel: string, defaultProvider: string, groups: AvailableGroup[]) {
   if (defaultModel) {
     const explicit = groups.find(group => group.provider === defaultProvider && group.models.includes(defaultModel))
@@ -362,7 +353,7 @@ function requestedProfileName(ctx: any): string {
   return typeof queryProfile === 'string' && queryProfile.trim() ? queryProfile.trim() : ''
 }
 
-function requestScopedProfileName(ctx: any): string {
+export function requestScopedProfileName(ctx: any): string {
   const headerProfile = typeof ctx.get === 'function' ? ctx.get('x-hermes-profile') : ''
   const queryProfile = typeof ctx.query?.profile === 'string' ? ctx.query.profile : ''
   const bodyProfile = typeof ctx.request?.body?.profile === 'string' ? ctx.request.body.profile : ''
@@ -627,12 +618,6 @@ async function buildAvailableForProfile(
       { api_mode: 'chat_completions' },
     )
   }
-
-  // Hermes Agent's local models (Models page → Local models → "Make default"):
-  // Hermes serves them itself as provider `llamacpp`, so Studio lists that
-  // default for the profile and its chats run on it through Hermes.
-  const local = localModelsGroup(currentDefault, currentDefaultProvider)
-  if (local) addGroup(local.provider, local.label, '', local.models, '', true)
 
   for (const g of groups) {
     g.models = Array.from(new Set(g.models))

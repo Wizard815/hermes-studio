@@ -12,6 +12,19 @@ import { dirname, join } from 'node:path'
 
 export interface ModelRoute { model: string; provider: string }
 
+/** Hermes's provider for Studio's model gateway. */
+export const GATEWAY_PROVIDER = 'ekkostudio'
+
+/**
+ * A Hermes session's model in Studio's terms. Through the gateway Hermes runs
+ * provider `ekkostudio` with routes like `deepseek/deepseek-v4`; `toLogical`
+ * (Studio's route table) turns that back into the chat's provider and model.
+ */
+export function logicalHermesRoute(route: ModelRoute | null, toLogical: (model: string) => ModelRoute | null): ModelRoute | null {
+  if (!route?.model || !['ekkostudio', 'custom:ekkostudio'].includes(route.provider)) return route
+  return toLogical(route.model) ?? route
+}
+
 export interface HerdrHermesLaunchRecord {
   /** Studio's model for the chat when the pane started. */
   studio: ModelRoute
@@ -43,6 +56,9 @@ export function hermesRowProvider(modelConfig: unknown): string {
     try { config = JSON.parse(modelConfig) } catch { return '' }
   }
   if (!config || typeof config !== 'object') return ''
+  // Runs through Studio's model gateway: the model is a gateway route (see logicalHermesRoute).
+  if (['ekkostudio', 'custom:ekkostudio'].includes(String(config.provider || ''))
+    || String(config.gateway_runtime?.base_url || config.base_url || '').includes('/api/ekko-studio/models/')) return GATEWAY_PROVIDER
   return String(config.gateway_runtime?.provider || config.provider || '').trim()
 }
 
