@@ -1510,6 +1510,47 @@ const tools = [
       }, ['action']),
   },
   {
+    name: 'ekko_studio_use_agent_work',
+    toolset: 'use',
+    description: 'Report and follow agent work on a Vikunja task (the task itself lives in Vikunja through ALLGlance; this records the agent side). list (optional status filter), create (title, vikunja_task_id, agent, session_id, status, summary), set_status (id, status: queued, working, blocked, awaiting_approval or done; summary says what happened or what you need), approve or reject (id, only when the user tells you to). Use blocked when you need the user, awaiting_approval when the work is finished and needs their sign-off: they are alerted in Mattermost, Studio and (when shared) Pondering Orb, and approving marks the Vikunja task done.',
+    inputSchema: inputSchema({
+        action: {
+          type: 'string',
+          enum: ['list', 'create', 'set_status', 'approve', 'reject'],
+          description: 'What to do.',
+        },
+        id: {
+          type: 'string',
+          description: 'The agent work id (from create or list). For set_status, approve and reject.',
+        },
+        title: {
+          type: 'string',
+          description: 'For create: a short title, usually the Vikunja task title.',
+        },
+        vikunja_task_id: {
+          type: 'string',
+          description: 'For create: the Vikunja task id (from ALLGlance allglance_list_tasks, source vikunja).',
+        },
+        agent: {
+          type: 'string',
+          description: 'For create: the agent doing the work, e.g. hermes or claude-code.',
+        },
+        session_id: {
+          type: 'string',
+          description: 'For create: the Studio chat id doing the work.',
+        },
+        status: {
+          type: 'string',
+          enum: ['queued', 'working', 'blocked', 'awaiting_approval', 'done'],
+          description: 'For create and set_status: the state. For list: only work in this state.',
+        },
+        summary: {
+          type: 'string',
+          description: 'For create and set_status: one or two sentences on what happened or what is needed.',
+        },
+      }, ['action']),
+  },
+  {
     name: 'ekko_studio_use_sessions_list',
     toolset: 'use',
     description: 'List Ekko Studio chat sessions for an explicit user-requested session operation. Do not use this as an internal delegation mechanism.',
@@ -1997,7 +2038,7 @@ const CATEGORY_TOOLSETS = {
   },
   use: {
     name: 'ekko_studio_use_toolset',
-    coverage: 'Explicit user-requested Studio chat/coding runs; one-time confirmed mobile location, calendar and reminder operations; session list/count/detail/messages/context/rename/delete; usage statistics; profiles and available models; provider add/delete; worker status; workflow CRUD and workflow run list/start/stop/rerun/delete; Pondering Orb tasks/plans, projects, logs, chores, ideas and upkeep (read, add tasks and logs, complete tasks, move projects).',
+    coverage: 'Explicit user-requested Studio chat/coding runs; one-time confirmed mobile location, calendar and reminder operations; session list/count/detail/messages/context/rename/delete; usage statistics; profiles and available models; provider add/delete; worker status; workflow CRUD and workflow run list/start/stop/rerun/delete; Pondering Orb tasks/plans, projects, logs, chores, ideas and upkeep (read, add tasks and logs, complete tasks, move projects); agent work on Vikunja tasks (report status, ask for approval).',
     description: 'Discover and invoke high-level Ekko Studio operations without loading every Studio-use tool schema into the model context. Covers explicit user-requested chat or coding runs, one-time confirmed mobile location, calendar/reminder operations, session management and clean context, usage statistics, profiles/models/providers, worker status, workflow CRUD, workflow run lifecycle, and the connected Pondering Orb dashboard (tasks and plans, projects, ideas, upkeep). Never use chat/session or mobile-device operations as an internal delegation mechanism. Use action=list for the compact operation catalog, action=describe for one full input schema, then action=call with that exact tool name and arguments.',
   },
 }
@@ -2421,6 +2462,27 @@ async function callToolInner(name, args = {}, signal) {
       if (!tool) throw new Error(`Unknown Orb action: ${args.action}`)
       const fields = args.arguments && typeof args.arguments === 'object' ? args.arguments : {}
       return jsonText(await request(`/api/studio/orb/tools/${tool}`, withAuthArgs(args, { method: 'POST', body: fields })))
+    }
+    case 'ekko_studio_use_agent_work': {
+      const action = String(args.action || '')
+      const id = encodeURIComponent(String(args.id || ''))
+      if (['set_status', 'approve', 'reject'].includes(action) && !args.id) throw new Error(`${action} needs the agent work id`)
+      if (action === 'list') {
+        return jsonText(await request('/api/studio/agent-work', withAuthArgs(args, { query: pickDefined(args, ['status']) })))
+      }
+      if (action === 'create') {
+        return jsonText(await request('/api/studio/agent-work', withAuthArgs(args, {
+          method: 'POST',
+          body: { title: args.title, vikunjaTaskId: args.vikunja_task_id, agent: args.agent, sessionId: args.session_id, status: args.status, summary: args.summary },
+        })))
+      }
+      if (action === 'set_status') {
+        return jsonText(await request(`/api/studio/agent-work/${id}/status`, withAuthArgs(args, { method: 'POST', body: pickDefined(args, ['status', 'summary']) })))
+      }
+      if (action === 'approve' || action === 'reject') {
+        return jsonText(await request(`/api/studio/agent-work/${id}/${action}`, withAuthArgs(args, { method: 'POST', body: {} })))
+      }
+      throw new Error(`Unknown agent work action: ${action}`)
     }
     case 'ekko_studio_use_sessions_list':
       return jsonText(await request('/api/studio/sessions', withAuthArgs(args, {
