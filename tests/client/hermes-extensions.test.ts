@@ -166,8 +166,9 @@ describe('Home Assistant and Unraid servers', () => {
     expect(api.homeAssistantBuilderEnv(ha, { sshHost: '' })).toEqual({})
     expect(api.homeAssistantBuilderEnv(ha, { sshHost: 'ha.local', sshKey: '~/.ssh/ha' })).toEqual({
       HA_BUILD_URL: 'http://ha:8123', HA_BUILD_TOKEN: 'tok', HA_BUILD_SSH_HOST: 'ha.local', HA_BUILD_SSH_PORT: '22',
-      HA_BUILD_SSH_USER: 'root', HA_BUILD_SSH_KEY: '~/.ssh/ha', HA_BUILD_CONFIG_DIR: '/config',
+      HA_BUILD_SSH_USER: 'root', HA_BUILD_SSH_KEY: '~/.ssh/ha', HA_BUILD_CONFIG_DIR: 'auto',
     })
+    expect(api.homeAssistantBuilderEnv(ha, { sshHost: 'h', configDir: ' /homeassistant ' }).HA_BUILD_CONFIG_DIR).toBe('/homeassistant')
     expect(() => api.homeAssistantBuilderEnv(ha, { sshHost: 'h', sshPort: 'x' })).toThrow('sshPort')
   })
 })

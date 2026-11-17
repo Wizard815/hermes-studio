@@ -89,6 +89,11 @@ export async function mcpServerTest(name: string): Promise<{ ok: boolean; tools?
   return request(`/api/hermes/mcp/servers/${encodeURIComponent(name)}/test`, { method: 'POST' })
 }
 
+/** Studio's SSH key for Home Assistant's SSH add-on (made once): the private key file and its public line. */
+export async function homeAssistantSshKey(): Promise<{ keyPath: string; publicKey: string; created: boolean }> {
+  return request('/api/hermes/mcp/home-assistant/ssh-key', { method: 'POST' })
+}
+
 /**
  * Add a server whose token or API key must stay secret: Studio writes each
  * secret to the profile's .env and the config only refers to it as ${KEY}.

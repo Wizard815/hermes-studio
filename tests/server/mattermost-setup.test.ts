@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let dir = ''
 const savedEnv: Record<string, string> = {}
+let yamlConfig: Record<string, any> = {}
 const restart = vi.fn(async () => ({ running: true, profile: 'default' }))
 
 vi.mock('../../packages/server/src/modules/hermes/services/profiles/profile', () => ({
@@ -13,6 +14,13 @@ vi.mock('../../packages/server/src/modules/hermes/services/profiles/profile', ()
 }))
 vi.mock('../../packages/server/src/modules/studio/public/profile-config', () => ({
   saveEnvValueForProfile: async (_p: string, key: string, value: string) => { savedEnv[key] = value },
+  // Same contract as safeFileStore.updateYaml: return the new config, or { data, result }.
+  updateConfigYamlForProfile: async (_p: string, fn: (c: Record<string, any>) => any) => {
+    const out = await fn(structuredClone(yamlConfig))
+    if (out && typeof out === 'object' && 'data' in out && 'result' in out) { yamlConfig = out.data; return out.result }
+    yamlConfig = out
+    return undefined
+  },
 }))
 vi.mock('../../packages/server/src/modules/hermes/services/gateway/autostart', () => ({
   gatewayAutostartDisabledByEnv: () => false,
@@ -80,6 +88,7 @@ describe('Mattermost setup for Hermes', () => {
     dir = mkdtempSync(join(tmpdir(), 'mm-setup-'))
     writeFileSync(join(dir, '.env'), 'MATTERMOST_URL=http://mm.local:8065/\nMATTERMOST_TOKEN=bot-token\nMATTERMOST_ALLOWED_USERS=old1\n')
     for (const key of Object.keys(savedEnv)) delete savedEnv[key]
+    yamlConfig = { platforms: { mattermost: { enabled: false }, webhook: { enabled: true } } }
     restart.mockClear()
   })
   afterEach(() => {
@@ -109,6 +118,8 @@ describe('Mattermost setup for Hermes', () => {
       MATTERMOST_ALLOWED_CHANNELS: 'c1,c2,c3',
       MATTERMOST_ALLOWED_USERS: 'old1,u1',
     })
+    expect(yamlConfig.platforms).toEqual({ mattermost: { enabled: true }, webhook: { enabled: true } })
+    expect(result.steps).toContain('turned Mattermost on in Hermes')
     expect(restart).toHaveBeenCalledWith('default')
     expect(result.restarted).toBe(true)
     expect(readSetupRecord('default')?.channels.find(c => c.role === 'server_alerts')?.id).toBe('c3')

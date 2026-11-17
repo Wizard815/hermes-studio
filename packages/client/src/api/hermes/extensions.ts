@@ -207,7 +207,7 @@ export interface HomeAssistantBuilderForm {
   sshUser?: string
   /** Private key file on the machine Hermes runs on. */
   sshKey?: string
-  /** Home Assistant's config folder on the SSH host (the SSH add-on: /config). */
+  /** Home Assistant's config folder on the SSH host; empty = the skill finds it (/homeassistant or /config). */
   configDir?: string
 }
 
@@ -232,7 +232,8 @@ export function homeAssistantBuilderEnv(ha: HomeAssistantForm, form: HomeAssista
     HA_BUILD_SSH_PORT: port,
     HA_BUILD_SSH_USER: (form.sshUser || '').trim() || 'root',
     HA_BUILD_SSH_KEY: (form.sshKey || '').trim(),
-    HA_BUILD_CONFIG_DIR: (form.configDir || '').trim() || '/config',
+    // The SSH add-ons mount the config at /homeassistant or /config depending on version: "auto" finds it.
+    HA_BUILD_CONFIG_DIR: (form.configDir || '').trim() || 'auto',
   }
 }
 

@@ -1,7 +1,7 @@
 ---
 name: home-assistant-builder
 description: "Build a Home Assistant script or automation for the user and hand it to Home Assistant to run: write the YAML, show it and ask, copy it over SSH into packages/hermes, check the config, reload, and (when asked) start the script. Use when the user wants Home Assistant to DO something; Hermes's Home Assistant MCP tools are read-only."
-version: 1.0.0
+version: 1.1.0
 author: Ekko
 license: MIT
 platforms: [linux, macos]
@@ -22,19 +22,26 @@ runs it**.
 The tool is `scripts/ha_build.py` in this skill's folder. It makes only these
 Home Assistant calls: the config check, `script.reload`, `automation.reload`
 and `script.turn_on`. It writes only `packages/hermes/<name>.yaml` in Home
-Assistant's config folder (and, once, a `packages` line in configuration.yaml).
+Assistant's config folder. It never edits configuration.yaml.
 
 ## Settings
 
 Read from the profile's `.env` (Studio: MCP page, Home Assistant card, "Let
 Hermes build scripts"): `HA_BUILD_URL`, `HA_BUILD_TOKEN`, `HA_BUILD_SSH_HOST`,
 `HA_BUILD_SSH_PORT`, `HA_BUILD_SSH_USER`, `HA_BUILD_SSH_KEY`,
-`HA_BUILD_CONFIG_DIR` (default `/config`), or `HA_BUILD_DOCKER` for a Home
+`HA_BUILD_CONFIG_DIR` (`auto` finds it), or `HA_BUILD_DOCKER` for a Home
 Assistant container on this same machine. Never print or ask for the token in chat.
 
-Start with `python3 scripts/ha_build.py status`. If it says packages are not set
-up, run `setup` (it prints what it will add), ask the user, then
-`setup --confirm setup`, and tell them to restart Home Assistant once.
+Home Assistant OS: the SSH host is the "Terminal & SSH" or "Advanced SSH & Web
+Terminal" add-on (port 22, signed in with Studio's key). The tool finds the
+config folder (`/homeassistant` or `/config`) and checks the config with the
+add-on's `ha core check`.
+
+Start with `python3 scripts/ha_build.py status`. If it says **Packages: NOT
+READY**, stop and tell the user exactly what it printed: the line to add to
+configuration.yaml (`homeassistant:` → `packages: !include_dir_named packages`)
+and that Home Assistant needs one restart. Do not edit configuration.yaml
+yourself, and do not deploy until `status` says packages are ready.
 
 ## Steps
 
@@ -62,7 +69,9 @@ up, run `setup` (it prints what it will add), ask the user, then
    exactly what Home Assistant will get. Do not deploy without a yes.
 4. `python3 scripts/ha_build.py deploy /tmp/ha_<name>.yaml --name <name> --confirm <code>`
    copies it, runs Home Assistant's config check (a failure undoes the copy and
-   prints the errors), and reloads scripts/automations.
+   prints the errors), and reloads scripts/automations. If it prints a WARNING
+   that Home Assistant did not load the script, tell the user (usually Home
+   Assistant still needs its one restart after the packages line was added).
 5. To run a script now, **ask again** (clarify: "Run script.<id> now?"), then
    `python3 scripts/ha_build.py run script.<id> --confirm script.<id>`.
    Home Assistant runs it; confirm the result with the read-only MCP tools.

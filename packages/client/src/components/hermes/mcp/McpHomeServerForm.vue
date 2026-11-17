@@ -6,7 +6,8 @@ import {
   buildHomeAssistantServer, buildUnraidServer, homeAssistantBuilderEnv, HomeServerFormError, saveHermesEnvValue, toolIncluded,
   type McpServerDraft, type UnraidAuth,
 } from '@/api/hermes/extensions'
-import { mcpServerAddWithSecrets, mcpServerTest } from '@/api/hermes/mcp'
+import { homeAssistantSshKey, mcpServerAddWithSecrets, mcpServerTest } from '@/api/hermes/mcp'
+import { copyToClipboard } from '@/utils/clipboard'
 
 /** Short forms that add Home Assistant's or Unraid's MCP server, then test the connection. */
 const props = defineProps<{ kind: 'home-assistant' | 'unraid' | null }>()
@@ -15,7 +16,34 @@ const emit = defineEmits<{ close: []; added: [server: string] }>()
 const { t } = useI18n()
 
 const ha = reactive({ name: 'home-assistant', address: '', token: '', readOnly: true })
-const builder = reactive({ enabled: false, sshHost: '', sshPort: '22', sshUser: 'root', sshKey: '', configDir: '/config' })
+// Home Assistant OS: the "Terminal & SSH" / "Advanced SSH & Web Terminal" add-on on port 22, signed in
+// as root with a key. The config folder is found on the host (/homeassistant or /config).
+const builder = reactive({ enabled: false, sshHost: '', sshPort: '22', sshUser: 'root', sshKey: '', configDir: '' })
+const studioKey = ref<{ keyPath: string; publicKey: string } | null>(null)
+const keyBusy = ref(false)
+const keyError = ref('')
+const keyCopied = ref(false)
+
+async function useStudioKey() {
+  keyBusy.value = true
+  keyError.value = ''
+  try {
+    const key = await homeAssistantSshKey()
+    studioKey.value = { keyPath: key.keyPath, publicKey: key.publicKey }
+    builder.sshKey = key.keyPath
+  } catch (err: any) {
+    keyError.value = t('hermesExtensions.home.ha.keyFailed', { error: err?.message || String(err) })
+  } finally {
+    keyBusy.value = false
+  }
+}
+
+async function copyPublicKey() {
+  if (studioKey.value) keyCopied.value = await copyToClipboard(studioKey.value.publicKey)
+}
+
+// Key auth by default: the first time the builder is turned on, Studio's own key is filled in.
+watch(() => builder.enabled, (on) => { if (on && !builder.sshKey && !studioKey.value) void useStudioKey() })
 const unraid = reactive({ name: 'unraid', address: '', auth: 'token' as UnraidAuth, token: '', connectUrl: '' })
 const busy = ref(false)
 const error = ref('')
@@ -118,21 +146,36 @@ function close() {
             </div>
             <div class="field port">
               <label>{{ t('hermesExtensions.home.ha.sshPort') }}</label>
-              <NInput v-model:value="builder.sshPort" size="small" />
+              <NInput v-model:value="builder.sshPort" size="small" placeholder="22" />
             </div>
             <div class="field port">
               <label>{{ t('hermesExtensions.home.ha.sshUser') }}</label>
-              <NInput v-model:value="builder.sshUser" size="small" />
+              <NInput v-model:value="builder.sshUser" size="small" placeholder="root" />
             </div>
           </div>
+          <span class="hint">{{ t('hermesExtensions.home.ha.sshHostHint') }} {{ t('hermesExtensions.home.ha.sshUserHint') }}</span>
           <div class="field">
             <label>{{ t('hermesExtensions.home.ha.sshKey') }}</label>
-            <NInput v-model:value="builder.sshKey" size="small" placeholder="~/.ssh/id_ed25519" />
+            <div class="key-row">
+              <NInput v-model:value="builder.sshKey" size="small" placeholder="~/.ssh/id_ed25519" />
+              <NButton size="small" :loading="keyBusy" @click="useStudioKey">{{ t('hermesExtensions.home.ha.useStudioKey') }}</NButton>
+            </div>
+          </div>
+          <NAlert v-if="keyError" type="error" :bordered="false">{{ keyError }}</NAlert>
+          <div v-if="studioKey && builder.sshKey === studioKey.keyPath" class="steps key-steps">
+            <ol>
+              <li>{{ t('hermesExtensions.home.ha.keyStep1') }}</li>
+              <li>{{ t('hermesExtensions.home.ha.keyStep2') }}</li>
+            </ol>
+            <NInput :value="studioKey.publicKey" type="textarea" size="small" readonly :autosize="{ minRows: 2, maxRows: 3 }" class="public-key" />
+            <NButton size="small" @click="copyPublicKey">{{ keyCopied ? t('hermesExtensions.home.ha.keyCopied') : t('hermesExtensions.home.ha.copyKey') }}</NButton>
           </div>
           <div class="field">
             <label>{{ t('hermesExtensions.home.ha.configDir') }}</label>
-            <NInput v-model:value="builder.configDir" size="small" />
+            <NInput v-model:value="builder.configDir" size="small" :placeholder="t('hermesExtensions.home.ha.configDirPlaceholder')" />
+            <span class="hint">{{ t('hermesExtensions.home.ha.configDirHint') }}</span>
           </div>
+          <span class="hint">{{ t('hermesExtensions.home.ha.packagesHint') }}</span>
         </template>
       </template>
 
@@ -208,6 +251,10 @@ function close() {
 .field label { color: $text-muted; font-size: calc(var(--font-size-base, 14px) * 12 / 14); }
 .hint { margin: 0; color: $text-muted; font-size: calc(var(--font-size-base, 14px) * 12 / 14); }
 .required { color: $error; }
+.key-row { display: flex; gap: 8px; align-items: center; }
+.key-row > :first-child { flex: 1 1 auto; }
+.key-steps { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.public-key { font-family: var(--font-mono, monospace); font-size: 12px; }
 .tools { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .tools .off { opacity: 0.55; text-decoration: line-through; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
