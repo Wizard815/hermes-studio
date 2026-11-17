@@ -2969,6 +2969,8 @@ export default {
       memoryWriteApprovalHint: 'تجهيز كتابات ذاكرة Hermes Agent للموافقة قبل حفظها.',
       skillsWriteApproval: 'مراجعة كتابات المهارات',
       skillsWriteApprovalHint: 'تجهيز تغييرات مهارات Hermes Agent للموافقة قبل حفظها.',
+      jobPostWrapper: 'رأس وتذييل منشورات المهام',
+      jobPostWrapperHint: 'إضافة رأس "Cronjob Response" وتذييل "To stop or manage this job" من Hermes حول منشورات المهام المجدولة.',
       writeApprovalTitle: 'موافقات الكتابة المعلّقة',
       writeApprovalDescription: 'الموافقة على كتابات ذاكرة ومهارات Hermes Agent المجهّزة أو رفضها.',
       writeApprovalRefresh: 'تحديث',

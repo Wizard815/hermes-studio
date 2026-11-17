@@ -2919,6 +2919,8 @@ export default {
       memoryWriteApprovalHint: 'Hermes Agent 寫入 MEMORY.md / USER.md 前先進入待審核佇列。',
       skillsWriteApproval: '技能寫入審核',
       skillsWriteApprovalHint: 'Hermes Agent 建立或修改技能前先進入待審核佇列。',
+      jobPostWrapper: '任務訊息的頁首與頁尾',
+      jobPostWrapperHint: '在排程任務訊息前後加上 Hermes 的「Cronjob Response」頁首與「To stop or manage this job」頁尾。',
       writeApprovalTitle: '待審核寫入',
       writeApprovalDescription: '批准或拒絕 Hermes Agent 暫存的記憶和技能寫入。',
       writeApprovalRefresh: '重新整理',

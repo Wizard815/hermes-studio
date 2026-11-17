@@ -2466,6 +2466,8 @@ export default {
       memoryWriteApprovalHint: 'Hermes Agent のメモリ書き込みを保存前に承認待ちにします。',
       skillsWriteApproval: 'スキル書き込みを確認',
       skillsWriteApprovalHint: 'Hermes Agent のスキル変更を保存前に承認待ちにします。',
+      jobPostWrapper: 'ジョブ投稿のヘッダーとフッター',
+      jobPostWrapperHint: '定期ジョブの投稿に Hermes の「Cronjob Response」ヘッダーと「To stop or manage this job」フッターを付けます。',
       writeApprovalTitle: '書き込み承認待ち',
       writeApprovalDescription: 'Hermes Agent が保留したメモリとスキルの書き込みを承認または拒否します。',
       writeApprovalRefresh: '更新',

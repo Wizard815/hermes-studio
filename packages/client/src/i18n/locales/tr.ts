@@ -1026,6 +1026,8 @@ export default {
       memoryWriteApprovalHint: 'Hermes Aracısının bellek yazımlarını kaydedilmeden önce onaya sun.',
       skillsWriteApproval: 'Yetenek yazımlarını incele',
       skillsWriteApprovalHint: 'Hermes Aracısının yetenek değişikliklerini kaydedilmeden önce onaya sun.',
+      jobPostWrapper: 'İş gönderisi başlığı ve altbilgisi',
+      jobPostWrapperHint: 'Zamanlanmış iş gönderilerine Hermes\'in "Cronjob Response" başlığını ve "To stop or manage this job" altbilgisini ekle.',
     },
     webhooks: {
       title: 'Webhook bildirimleri',

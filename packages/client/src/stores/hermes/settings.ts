@@ -50,6 +50,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const skills = ref<SkillsConfig>({})
   const compression = ref<CompressionConfig>({})
   const sessionReset = ref<SessionResetConfig>({})
+  const cron = ref<{ wrap_response?: boolean }>({})
   const privacy = ref<PrivacyConfig>({})
   const approvals = ref<ApprovalConfig>({})
   const gatewayAutoStart = ref<GatewayAutoStartConfig>({})
@@ -78,6 +79,7 @@ export const useSettingsStore = defineStore('settings', () => {
       skills.value = data.skills || {}
       compression.value = data.compression || {}
       sessionReset.value = data.session_reset || {}
+      cron.value = (data as any).cron || {}
       privacy.value = data.privacy || {}
       approvals.value = data.approvals || {}
       gatewayAutoStart.value = data.gatewayAutoStart || {}
@@ -111,6 +113,7 @@ export const useSettingsStore = defineStore('settings', () => {
       case 'skills': skills.value = { ...skills.value, ...values }; break
       case 'compression': compression.value = { ...compression.value, ...values }; break
       case 'session_reset': sessionReset.value = { ...sessionReset.value, ...values }; break
+      case 'cron': cron.value = { ...cron.value, ...values }; break
       case 'privacy': privacy.value = { ...privacy.value, ...values }; break
       case 'approvals': approvals.value = { ...approvals.value, ...values }; break
       case 'gatewayAutoStart': gatewayAutoStart.value = mergeGatewayAutoStart(gatewayAutoStart.value, values); break
@@ -148,6 +151,7 @@ export const useSettingsStore = defineStore('settings', () => {
       case 'skills': skills.value = { ...skills.value, ...values }; break
       case 'compression': compression.value = { ...compression.value, ...values }; break
       case 'session_reset': sessionReset.value = { ...sessionReset.value, ...values }; break
+      case 'cron': cron.value = { ...cron.value, ...values }; break
       case 'privacy': privacy.value = { ...privacy.value, ...values }; break
       case 'approvals': approvals.value = { ...approvals.value, ...values }; break
       case 'gatewayAutoStart': gatewayAutoStart.value = mergeGatewayAutoStart(gatewayAutoStart.value, values); break
@@ -180,7 +184,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   return {
     loading, saving,
-    display, agent, memory, skills, compression, sessionReset, privacy, approvals, gatewayAutoStart, proxy,
+    display, agent, memory, skills, compression, sessionReset, cron, privacy, approvals, gatewayAutoStart, proxy,
     telegram, discord, slack, whatsapp, matrix, wecom, feishu, dingtalk, qqbot, weixin, platforms, platformCredentialStatus,
     fetchSettings, saveSection, updateLocal,
   }

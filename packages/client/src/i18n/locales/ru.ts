@@ -2741,6 +2741,8 @@ export default {
       memoryWriteApprovalHint: 'Отправлять записи памяти Hermes Agent на подтверждение перед сохранением.',
       skillsWriteApproval: 'Проверять записи skills',
       skillsWriteApprovalHint: 'Отправлять изменения skills от Hermes Agent на подтверждение перед сохранением.',
+      jobPostWrapper: 'Заголовок и подпись в сообщениях задач',
+      jobPostWrapperHint: 'Добавлять заголовок Hermes «Cronjob Response» и подпись «To stop or manage this job» к сообщениям запланированных задач.',
       writeApprovalTitle: 'Ожидающие подтверждения записи',
       writeApprovalDescription: 'Подтвердите или отклоните записи памяти и skills, подготовленные Hermes Agent.',
       writeApprovalRefresh: 'Обновить',

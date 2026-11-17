@@ -44,6 +44,7 @@ import { startChatWebhookDispatcher } from '../modules/studio/services/webhooks'
 import { getAgentBridgeManager, startAgentBridgeManager } from '../modules/hermes/services/bridge'
 import { HermesSkillInjector } from '../modules/hermes/services/skills/injector'
 import { injectBundledMcpServer } from '../modules/hermes/services/mcp/studio-autoinject'
+import { applyJobPostDefaultsToAllProfiles } from '../modules/hermes/services/cron/job-post-defaults'
 import { ensureProfileGatewaysRunning } from '../modules/hermes/services/gateway/autostart'
 import { runRegisteredStartupTasks } from './startup-tasks'
 import { refreshConfiguredProviderModelCatalogsInBackground } from '../modules/hermes/services/providers/model-catalog-cache'
@@ -447,6 +448,8 @@ export async function bootstrap() {
     logger.warn(err, '[bootstrap] failed to inject bundled MCP server')
     console.warn('[bootstrap] failed to inject bundled MCP server:', err instanceof Error ? err.message : err)
   }
+
+  await applyJobPostDefaultsToAllProfiles()
 
   try {
     const migratedPiMcpConfigs = await migratePersistedPiRuntimeMcpConfigs()

@@ -2466,6 +2466,8 @@ export default {
       memoryWriteApprovalHint: 'Hermes Agent의 메모리 쓰기를 저장하기 전에 승인 대기 상태로 둡니다.',
       skillsWriteApproval: '스킬 쓰기 검토',
       skillsWriteApprovalHint: 'Hermes Agent의 스킬 변경을 저장하기 전에 승인 대기 상태로 둡니다.',
+      jobPostWrapper: '작업 게시물 머리글과 바닥글',
+      jobPostWrapperHint: '예약 작업 게시물에 Hermes의 "Cronjob Response" 머리글과 "To stop or manage this job" 바닥글을 붙입니다.',
       writeApprovalTitle: '쓰기 승인 대기',
       writeApprovalDescription: 'Hermes Agent가 보류한 메모리와 스킬 쓰기를 승인하거나 거부합니다.',
       writeApprovalRefresh: '새로고침',

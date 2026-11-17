@@ -47,6 +47,16 @@ async function toggleRequireAuth(value: boolean) {
   }
 }
 
+async function toggleJobPostWrapper(value: boolean) {
+  try {
+    settingsStore.updateLocal("cron", { wrap_response: value });
+    await settingsStore.saveSection("cron", { wrap_response: value });
+    message.success(t("settings.saved"));
+  } catch (err: any) {
+    message.error(t("settings.saveFailed"));
+  }
+}
+
 async function toggleWriteApproval(section: "memory" | "skills", value: boolean) {
   try {
     settingsStore.updateLocal(section, { write_approval: value });
@@ -83,6 +93,16 @@ async function toggleWriteApproval(section: "memory" | "skills", value: boolean)
       <NSwitch
         :value="settingsStore.skills.write_approval === true"
         @update:value="(value) => toggleWriteApproval('skills', value)"
+      />
+    </SettingRow>
+    <SettingRow
+      :label="t('settings.session.jobPostWrapper')"
+      :hint="t('settings.session.jobPostWrapperHint')"
+    >
+      <NSwitch
+        :value="settingsStore.cron.wrap_response !== false"
+        data-testid="job-post-wrapper"
+        @update:value="toggleJobPostWrapper"
       />
     </SettingRow>
     <SettingRow

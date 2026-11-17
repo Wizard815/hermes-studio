@@ -2975,6 +2975,8 @@ export default {
       memoryWriteApprovalHint: 'Stage Hermes Agent memory writes for approval before they are saved.',
       skillsWriteApproval: 'Review skill writes',
       skillsWriteApprovalHint: 'Stage Hermes Agent skill changes for approval before they are saved.',
+      jobPostWrapper: 'Job post header and footer',
+      jobPostWrapperHint: 'Add Hermes\'s "Cronjob Response" header and "To stop or manage this job" footer around scheduled job posts.',
       writeApprovalTitle: 'Pending write approvals',
       writeApprovalDescription: 'Approve or reject staged Hermes Agent memory and skill writes.',
       writeApprovalRefresh: 'Refresh',
