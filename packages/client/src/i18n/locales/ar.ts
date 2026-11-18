@@ -700,6 +700,13 @@ export default {
     },
   },
 
+  upstreamView: {
+    unreachable: 'لا يستجيب Upstream Manager على {target}.',
+    howTo: 'شغّله (scripts/install.sh أو docker compose up -d في UpstreamManager)، أو أخبر Studio بعنوانه عبر UPSTREAM_UPKEEP_TARGET. عندما يستجيب، يكفي فتح هذا التبويب لربطهما: يبدأ Upstream وكلاء herdr كمحادثات في Studio.',
+    retry: 'إعادة المحاولة',
+    openTasks: '{count} مهام مفتوحة',
+  },
+
   sidebar: {
     resize: 'تغيير عرض الشريط الجانبي',
     desktopUpdatePreparing: "جارٍ تجهيز التحديث",
@@ -1159,6 +1166,8 @@ export default {
   chat: {
     cleanRoom: 'غرفة نظيفة',
     cleanRoomHint: 'يعمل وكيل هذه المحادثة في حاويته الخاصة: يمكنه فعل أي شيء داخلها دون سؤال، ولا يرى إلا مجلد هذه المحادثة، ولا يصل إلا إلى Studio والمضيفين المسموح بهم.',
+    upstreamTask: 'Upstream task',
+    upstreamTaskHint: 'An Upstream Manager task: {title}. Open it in Upstream to see its branch, commit and ask for approval.',
     selectMessages: "تحديد الرسائل",
     messagesSelected: "تم تحديد {count}",
     deleteSelectedMessages: "حذف المحدد",

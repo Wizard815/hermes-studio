@@ -700,6 +700,13 @@ export default {
     },
   },
 
+  upstreamView: {
+    unreachable: 'Upstream Manager 在 {target} 沒有回應。',
+    howTo: '請啟動它（在 UpstreamManager 中執行 scripts/install.sh 或 docker compose up -d），或用 UPSTREAM_UPKEEP_TARGET 告訴 Studio 它的位址。它回應後，開啟此分頁即可連接兩者：Upstream 會把 herdr 代理作為 Studio 對話啟動。',
+    retry: '重試',
+    openTasks: '{count} 個未完成任務',
+  },
+
   sidebar: {
     resize: '調整側邊欄寬度',
     desktopUpdatePreparing: "正在準備更新",
@@ -1159,6 +1166,8 @@ export default {
   chat: {
     cleanRoom: '潔淨室',
     cleanRoomHint: '此對話的代理在獨立容器中執行：容器內不需詢問即可執行任何操作，只能看到此對話的資料夾，只能連到 Studio 與允許的主機。',
+    upstreamTask: 'Upstream 任務',
+    upstreamTaskHint: '來自 Upstream Manager 的任務：{title}。在 Upstream 中開啟以查看分支、提交並申請核准。',
     selectMessages: "多選訊息",
     messagesSelected: "已選 {count} 則",
     deleteSelectedMessages: "刪除所選",

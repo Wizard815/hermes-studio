@@ -626,6 +626,13 @@ export default {
     },
   },
 
+  upstreamView: {
+    unreachable: 'Upstream Manager не отвечает по адресу {target}.',
+    howTo: 'Запустите его (scripts/install.sh или docker compose up -d в UpstreamManager) или укажите Studio адрес через UPSTREAM_UPKEEP_TARGET. Когда он ответит, эта вкладка свяжет их: Upstream будет запускать агентов herdr как чаты Studio.',
+    retry: 'Повторить',
+    openTasks: 'Открытых задач: {count}',
+  },
+
   sidebar: {
     resize: 'Изменить ширину боковой панели',
     desktopUpdatePreparing: "Подготовка обновления",
@@ -1072,6 +1079,8 @@ export default {
   chat: {
     cleanRoom: 'Чистая комната',
     cleanRoomHint: 'Агент этого чата работает в своём контейнере: там он может всё без вопросов, видит только папку этого чата и может обращаться только к Studio и разрешённым хостам.',
+    upstreamTask: 'Задача Upstream',
+    upstreamTaskHint: 'Задача из Upstream Manager: {title}. Откройте её в Upstream, чтобы увидеть ветку, сделать коммит и запросить одобрение.',
     clarifySendFailed: 'Доставка ответа не подтверждена. Ответ сохранён. Повторите попытку.',
     approvalSendFailed: 'Решение по запросу разрешения не подтверждено. Повторите попытку.',
     selectMessages: "Выбрать сообщения",

@@ -712,6 +712,13 @@ export default {
     },
   },
 
+  upstreamView: {
+    unreachable: 'Upstream Manager antwortet nicht unter {target}.',
+    howTo: 'Starten Sie ihn (scripts/install.sh oder docker compose up -d in UpstreamManager) oder setzen Sie UPSTREAM_UPKEEP_TARGET für Studio. Sobald er antwortet, verbindet dieser Tab beide: Upstream startet dann herdr-Agenten als Studio-Chats.',
+    retry: 'Erneut versuchen',
+    openTasks: '{count} offene Aufgaben',
+  },
+
   sidebar: {
     resize: 'Seitenleistenbreite ändern',
     desktopUpdatePreparing: "Update wird vorbereitet",
@@ -1145,6 +1152,8 @@ export default {
   chat: {
     cleanRoom: 'Reinraum',
     cleanRoomHint: 'Der Agent dieses Chats läuft in einem eigenen Container: Dort darf er alles ohne Nachfrage, sieht nur den Ordner dieses Chats und erreicht nur Studio und die erlaubten Hosts.',
+    upstreamTask: 'Upstream-Aufgabe',
+    upstreamTaskHint: 'Eine Aufgabe aus Upstream Manager: {title}. In Upstream öffnen, um Branch, Commit und Freigabe zu sehen.',
     selectMessages: "Nachrichten auswählen",
     messagesSelected: "{count} ausgewählt",
     deleteSelectedMessages: "Auswahl löschen",

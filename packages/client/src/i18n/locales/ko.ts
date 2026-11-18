@@ -712,6 +712,13 @@ export default {
     },
   },
 
+  upstreamView: {
+    unreachable: 'Upstream Manager가 {target}에서 응답하지 않습니다.',
+    howTo: '실행하세요(UpstreamManager에서 scripts/install.sh 또는 docker compose up -d). 또는 UPSTREAM_UPKEEP_TARGET으로 Studio에 주소를 알려 주세요. 응답하면 이 탭을 여는 것만으로 둘이 연결되어 Upstream이 herdr 에이전트를 Studio 채팅으로 시작합니다.',
+    retry: '다시 시도',
+    openTasks: '열린 작업 {count}개',
+  },
+
   sidebar: {
     resize: '사이드바 너비 조절',
     desktopUpdatePreparing: "업데이트 준비 중",
@@ -1145,6 +1152,8 @@ export default {
   chat: {
     cleanRoom: '클린룸',
     cleanRoomHint: '이 채팅의 에이전트는 전용 컨테이너에서 실행됩니다. 안에서는 묻지 않고 무엇이든 할 수 있고, 이 채팅의 폴더만 보이며, Studio와 허용된 호스트에만 접속할 수 있습니다.',
+    upstreamTask: 'Upstream 작업',
+    upstreamTaskHint: 'Upstream Manager 작업: {title}. Upstream에서 열어 브랜치를 보고 커밋하고 승인을 요청하세요.',
     selectMessages: "메시지 선택",
     messagesSelected: "{count}개 선택됨",
     deleteSelectedMessages: "선택 항목 삭제",

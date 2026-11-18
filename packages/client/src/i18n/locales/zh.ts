@@ -700,6 +700,13 @@ export default {
     },
   },
 
+  upstreamView: {
+    unreachable: 'Upstream Manager 在 {target} 没有响应。',
+    howTo: '请启动它（在 UpstreamManager 中运行 scripts/install.sh 或 docker compose up -d），或用 UPSTREAM_UPKEEP_TARGET 告诉 Studio 它的地址。它响应后，打开此标签页即可把两者连接起来：Upstream 会把 herdr 智能体作为 Studio 对话启动。',
+    retry: '重试',
+    openTasks: '{count} 个未完成任务',
+  },
+
   sidebar: {
     resize: '调整侧边栏宽度',
     desktopUpdatePreparing: "正在准备更新",
@@ -1166,6 +1173,8 @@ export default {
   chat: {
     cleanRoom: '洁净室',
     cleanRoomHint: '此对话的智能体在独立容器中运行：容器内无需询问即可执行任何操作，只能看到此对话的文件夹，只能访问 Studio 和允许的主机。',
+    upstreamTask: 'Upstream 任务',
+    upstreamTaskHint: '来自 Upstream Manager 的任务：{title}。在 Upstream 中打开以查看分支、提交并申请批准。',
     selectMessages: "多选消息",
     messagesSelected: "已选 {count} 条",
     deleteSelectedMessages: "删除所选",

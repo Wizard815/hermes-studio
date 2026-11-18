@@ -47,6 +47,7 @@ import { cleanRoomHomes } from '../modules/coding-agents/services/cleanroom'
 import type { HerdrBridgeDeps, HerdrSessionRef, HerdrWorkRef } from '../modules/coding-agents/services/herdr/bridge'
 import { setupHerdrSocket } from '../modules/coding-agents/sockets/herdr'
 import { getOrbClient } from '../modules/studio/services/orb/client'
+import { reportUpstreamAgentStatus } from '../modules/studio/services/upstream/client'
 import { writeModelRunProfileToken } from '../modules/studio/services/chat-run/model-run-prompt'
 import { listUsers } from '../modules/studio/public/users'
 import { issueModelRunJwt, type AuthenticatedUser } from '../modules/studio/public/auth'
@@ -244,7 +245,9 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     herdrKindFor: agentId => herdrKindForStudioAgent(agentId),
     agentLabel: agentId => AGENT_LABELS[agentId] || getCodingAgentDefinition(agentId)?.name || agentId,
     log: (level, message, data) => logger[level](data || {}, message),
-    workStatusChanged: (data, _paneId, status, agent) => reportOrbAgentStatus(data.orb, status, agent),
+    workStatusChanged: async (data, paneId, status, agent) => {
+      await Promise.all([reportOrbAgentStatus(data.orb, status, agent), reportUpstreamAgentStatus(data.upstream, paneId, status)])
+    },
     folderForWork,
     categoryForSpace,
     listChatSpaces: async () => listChatSpaces(),
@@ -297,6 +300,13 @@ async function reportOrbAgentStatus(ref: HerdrWorkRef['orb'], status: string, ag
  * the start directory set for it in Mission.
  */
 async function folderForWork(ref: HerdrWorkRef): Promise<{ categoryId: number | null; workspace: string } | null> {
+  // An Upstream task's agent works in the task's own branch folder: only its chat is filed (in the
+  // Studio folder named after the repo, if there is one), the folder's start directory is not used.
+  if (ref.upstream && !ref.orb) {
+    const repo = (ref.upstream.repo || '').trim().toLowerCase()
+    const match = repo ? listSessionCategories().find(category => category.name.trim().toLowerCase() === repo) : undefined
+    return match ? { categoryId: match.id, workspace: '' } : null
+  }
   const name = (ref.orb?.project || ref.orb?.task?.list || '').trim().toLowerCase()
   if (!name) return null
   const categories = listSessionCategories()

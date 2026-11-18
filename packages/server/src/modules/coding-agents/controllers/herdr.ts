@@ -1,4 +1,5 @@
 import type { Context } from 'koa'
+import { upstreamWorkRef } from '../../studio/services/upstream/client'
 import { herdrManager, HERDR_INTEGRATIONS } from '../services/herdr/manager'
 import { herdrKindForStudioAgent } from '../services/herdr/protocol'
 import { herdrChatProfile } from '../services/herdr/runtime'
@@ -134,6 +135,16 @@ export async function sessionLink(ctx: Context) {
   ctx.body = { link }
 }
 
+/**
+ * What a launched agent is for: a Pondering Orb task or project (marked in progress once it works),
+ * and/or an Upstream Manager task (Upstream is told how the agent is doing).
+ */
+function workRef(input: any): HerdrWorkRef | undefined {
+  const orb = orbRef(input?.orb)
+  const upstream = upstreamWorkRef(input?.upstream)
+  return orb || upstream ? { ...(orb || {}), ...(upstream ? { upstream } : {}) } : undefined
+}
+
 /** The Pondering Orb task or project an agent is for, marked in progress once it works. */
 function orbRef(input: any): HerdrWorkRef | undefined {
   const text = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max)
@@ -144,7 +155,7 @@ function orbRef(input: any): HerdrWorkRef | undefined {
 
 export async function launchAgent(ctx: Context) {
   try {
-    const body = (ctx.request.body || {}) as { agentId?: unknown; provider?: unknown; model?: unknown; workspace?: unknown; title?: unknown; prompt?: unknown; orb?: any }
+    const body = (ctx.request.body || {}) as { agentId?: unknown; provider?: unknown; model?: unknown; workspace?: unknown; title?: unknown; prompt?: unknown; orb?: any; upstream?: any }
     const agentId = String(body.agentId || '')
     if (!herdrKindForStudioAgent(agentId)) throw Object.assign(new Error('This agent cannot run in herdr'), { status: 400 })
     herdrManager.noteUser(ctx.state.user)
@@ -155,7 +166,7 @@ export async function launchAgent(ctx: Context) {
         workspace: body.workspace ? String(body.workspace) : undefined,
         title: body.title ? String(body.title) : undefined,
         prompt: body.prompt ? String(body.prompt).slice(0, 20000) : undefined,
-        onWorking: orbRef(body.orb),
+        onWorking: workRef(body),
       }),
     }
   } catch (error) { fail(ctx, error, 'Failed to launch agent in herdr') }

@@ -571,6 +571,13 @@ export default {
     invalidConfig: 'Geçersiz yapılandırma', invalidServerConfig: 'Geçersiz sunucu yapılandırması', missingCommandOrUrl: 'Komut veya URL gerekli',
   },
 
+  upstreamView: {
+    unreachable: 'Upstream Manager {target} adresinde yanıt vermiyor.',
+    howTo: 'Başlatın (UpstreamManager içinde scripts/install.sh veya docker compose up -d) ya da UPSTREAM_UPKEEP_TARGET ile Studio\'ya adresini verin. Yanıt verince bu sekmeyi açmak ikisini bağlar: Upstream herdr ajanlarını Studio sohbetleri olarak başlatır.',
+    retry: 'Tekrar dene',
+    openTasks: '{count} açık görev',
+  },
+
   sidebar: {
     resize: 'Kenar çubuğunu yeniden boyutlandır',
     chat: 'Sohbet', backToChat: 'Geri', search: 'Ara', apiRelay: 'API geçidi', history: 'Geçmiş', jobs: 'İşler', kanban: 'Kanban',
@@ -612,6 +619,8 @@ export default {
   chat: {
     cleanRoom: 'Temiz oda',
     cleanRoomHint: 'Bu sohbetin ajanı kendi konteynerinde çalışır: orada sormadan her şeyi yapabilir, yalnızca bu sohbetin klasörünü görür ve yalnızca Studio\'ya ve izin verilen sunuculara erişir.',
+    upstreamTask: 'Upstream görevi',
+    upstreamTaskHint: 'Upstream Manager görevi: {title}. Dalını görmek, commit etmek ve onay istemek için Upstream\'de açın.',
     clarifySendFailed: 'Yanıtınızın alındığı doğrulanmadı. Yanıtınız korundu. Lütfen tekrar deneyin.',
     approvalSendFailed: 'Onay kararınız doğrulanmadı. Lütfen tekrar deneyin.',
     voiceInput: {

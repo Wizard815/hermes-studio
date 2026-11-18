@@ -328,6 +328,31 @@ describe('herdr bridge', () => {
     expect(seen).toEqual(['w9:p2:working:claude:Fix flaky login test', 'w9:p2:blocked:claude:Fix flaky login test', 'w9:p2:done:claude:Fix flaky login test'])
   })
 
+  it('runs an Upstream task in its own branch folder, reports it and links its chat to the task', async () => {
+    const { deps, sessions } = makeDeps(dir)
+    const prepared: Array<string | undefined> = []
+    const prepare = deps.prepareAgentLaunch
+    deps.prepareAgentLaunch = async (agentId, input) => { prepared.push(input.workspace); return prepare(agentId, input) }
+    const seen: string[] = []
+    deps.workStatusChanged = (data, paneId, status) => { seen.push(`${paneId}:${status}:${data.upstream?.task}`) }
+    const links: any[] = []
+    const setLink = deps.setLink
+    deps.setLink = (sessionId, link) => { links.push(link); setLink(sessionId, link) }
+    // The repo's Studio folder files the chat, but its start directory must not replace the task's branch folder.
+    deps.folderForWork = async data => (data.upstream ? { categoryId: 3, workspace: '' } : null)
+    await startBridge(deps)
+    const upstream = { task: 't1234', title: 'Fix the parser', repo: 'mine' }
+    await bridge!.launchAgent('claude-code', { title: 'Fix the parser', workspace: join(dir, 'task-branch'), onWorking: { upstream } })
+    expect(prepared).toEqual([join(dir, 'task-branch')])
+    const nativeId = '81818181-2222-3333-4444-555555555555'
+    Object.assign(herdr.panes.find(p => p.pane_id === 'w9:p2'), { agent: 'claude', agent_status: 'working', agent_session: { kind: 'id', value: nativeId, source: 'herdr:claude' } })
+    herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2', agent_status: 'working' })
+    await until(() => sessions.size === 1 && links.some(l => l?.upstream))
+    expect(links.find(l => l?.upstream)?.upstream).toEqual(upstream)
+    await until(() => seen.length === 1)
+    expect(seen).toEqual(['w9:p2:working:t1234'])
+  })
+
   it('starts project work in the matching Studio folder and files its chat there', async () => {
     const { deps, sessions } = makeDeps(dir)
     const prepared: Array<string | undefined> = []

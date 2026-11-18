@@ -17,6 +17,8 @@ export interface SessionHerdrLink {
   status: AgentDisplayStatus
   /** The pane is the chat's waiting pane: its agent is not running, so messages go through Studio. */
   waiting?: boolean
+  /** The Upstream Manager task the agent works on (Upstream started it through Studio's herdr). */
+  upstream?: { task: string; title?: string; repo?: string }
 }
 
 /** Account-specific read cursor and live execution state, independent of open tabs. */

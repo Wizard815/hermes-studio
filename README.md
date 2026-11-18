@@ -133,6 +133,44 @@ Posts are tagged `#agentwork` plus `#working`, `#blocked`, `#approval`,
 `#done`, `#approved` or `#rejected`. Once something is decided anywhere, its
 Mattermost post loses its buttons, Orb's alert clears and Studio's badge goes.
 
+### Upstream Manager: repos, tasks and herdr agents, in tandem with Studio
+
+[Upstream Manager](https://github.com/Wizard815/UpstreamManager) (it keeps your repos in step with
+their upstreams and hands work to coding agents) shows inside Studio in the **Upstream** tab.
+
+**Setup.** Install Upstream on the same machine (`scripts/install.sh`, or `docker compose up -d
+--build`; it listens on `127.0.0.1:5001`). Then open the **Upstream** tab once. That's all: the
+tab hands Upstream Studio's address and a login for you (renewed on its own), so Upstream can call
+Studio back. If the tab says Upstream isn't answering, it shows the address it tried and how to fix
+it. Upstream elsewhere: start Studio with `UPSTREAM_UPKEEP_TARGET=http://host:5001`, list Studio's
+address in Upstream's `UPSTREAM_TRUSTED_PROXIES`, and set `HERMES_STUDIO_URL_FOR_UPSTREAM` to how
+that machine reaches Studio.
+
+**herdr: one herdr, two apps.** On Studio's machine Upstream starts its agents through Studio's
+herdr bridge, not on its own:
+
+- Each agent a task gets (Hermes by default) is a normal Studio chat in its own herdr space, with
+  Studio's models, profile and folders, filed in the Studio folder named after the repo if there is
+  one. It works in the task's own branch folder.
+- The chat's header shows **Upstream task**; it opens the task in the Upstream tab (its branch,
+  the proposed commit message, the approval).
+- Studio tells Upstream when the agent starts working, waits for an answer, finishes, or its pane
+  closes, the same way it tells Pondering Orb about Orb work. You answer the agent in Studio or in
+  herdr.
+- Neither app closes the other's herdr spaces. Agents on other machines (`herdr --machine`) are
+  started by Upstream's own herdr connection, and Upstream falls back to that here too if Studio
+  can't start one. Set `UPSTREAM_HERDR_VIA_STUDIO=off` in Upstream's `.env` to never go through Studio.
+
+**Moving between them.** A link in Upstream to a Studio chat opens the chat in Studio. Links to
+`#/hermes/upstream?path=/work?task=<id>` open an Upstream page, and Studio's address follows the
+page Upstream shows, so reloads and the back button keep your place.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `UPSTREAM_UPKEEP_TARGET` | `http://127.0.0.1:5001` | Where Upstream Manager listens. |
+| `UPSTREAM_UPKEEP_PATH_PREFIX` | `/upstream` | The path Studio serves it under. |
+| `HERMES_STUDIO_URL_FOR_UPSTREAM` | `http://127.0.0.1:<PORT>` | How Upstream reaches Studio (only when Upstream runs on another machine). |
+
 ### Going back to `main`
 
 Easiest: stop Studio, put the backup from step 1 back, and run the `main` image

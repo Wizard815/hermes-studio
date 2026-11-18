@@ -127,6 +127,15 @@ const filesStore = useFilesStore();
 const toolPanelStore = useToolPanelStore();
 const sessionBrowserPrefsStore = useSessionBrowserPrefsStore();
 const router = useRouter();
+// The Upstream Manager task this chat's herdr agent works on (Upstream started it through Studio).
+const upstreamTask = computed(() => {
+  const id = chatStore.activeSessionId
+  return id ? sessionStates.herdrLink(id)?.upstream ?? null : null
+});
+function openUpstreamTask() {
+  const task = upstreamTask.value
+  if (task) void router.push({ name: 'hermes.upstream', query: { path: `/work?task=${encodeURIComponent(task.task)}` } })
+}
 const route = useRoute();
 const sessionTasksMounted = ref(false);
 const showSessionTasks = computed(() => props.contentMode === 'chat' && chatStore.runtimeMode === 'default' && route.query.tasks === '1');
@@ -3223,6 +3232,12 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             <template #trigger><span class="header-cleanroom-badge" data-testid="chat-cleanroom-badge">{{ t('chat.cleanRoom') }}</span></template>
             {{ t('chat.cleanRoomHint') }}
           </NTooltip>
+          <NTooltip v-if="upstreamTask" trigger="hover">
+            <template #trigger>
+              <button type="button" class="header-upstream-badge" data-testid="chat-upstream-task" @click="openUpstreamTask">{{ t('chat.upstreamTask') }}</button>
+            </template>
+            {{ t('chat.upstreamTaskHint', { title: upstreamTask.title || upstreamTask.task }) }}
+          </NTooltip>
         </div>
         <div class="header-actions">
           <NTooltip v-if="chatStore.runtimeMode === 'default'" trigger="hover">
@@ -3998,6 +4013,21 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
   border: var(--border-width, 1px) solid currentColor;
   opacity: 0.8;
 }
+
+.header-upstream-badge {
+  margin-inline-start: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+  border: var(--border-width, 1px) solid currentColor;
+  background: transparent;
+  color: inherit;
+  opacity: 0.8;
+  cursor: pointer;
+}
+.header-upstream-badge:hover,
+.header-upstream-badge:focus-visible { opacity: 1; }
 
 .chat-header {
   display: flex;

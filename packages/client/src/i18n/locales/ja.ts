@@ -712,6 +712,13 @@ export default {
     },
   },
 
+  upstreamView: {
+    unreachable: 'Upstream Manager が {target} で応答しません。',
+    howTo: '起動してください（UpstreamManager で scripts/install.sh または docker compose up -d）。または UPSTREAM_UPKEEP_TARGET で Studio に場所を指定します。応答すると、このタブを開くだけで両者が接続され、Upstream は herdr エージェントを Studio のチャットとして起動します。',
+    retry: '再試行',
+    openTasks: '未完了のタスク {count} 件',
+  },
+
   sidebar: {
     resize: 'サイドバーの幅を変更',
     desktopUpdatePreparing: "更新を準備中",
@@ -1145,6 +1152,8 @@ export default {
   chat: {
     cleanRoom: 'クリーンルーム',
     cleanRoomHint: 'このチャットのエージェントは専用コンテナで動きます。中では確認なしで何でもでき、見えるのはこのチャットのフォルダだけ、接続できるのは Studio と許可されたホストだけです。',
+    upstreamTask: 'Upstream タスク',
+    upstreamTaskHint: 'Upstream Manager のタスク：{title}。Upstream で開くと、ブランチの確認、コミット、承認の依頼ができます。',
     selectMessages: "メッセージを選択",
     messagesSelected: "{count} 件選択中",
     deleteSelectedMessages: "選択項目を削除",

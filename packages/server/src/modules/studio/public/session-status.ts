@@ -23,6 +23,7 @@ export function listSessionHerdrLinks(): Array<[string, SessionHerdrLink]> {
 
 function sameLink(a?: SessionHerdrLink, b?: SessionHerdrLink): boolean {
   return a?.paneId === b?.paneId && a?.status === b?.status && a?.workspaceId === b?.workspaceId && !!a?.waiting === !!b?.waiting
+    && a?.upstream?.task === b?.upstream?.task
 }
 
 /** Set or clear (null) the herdr pane linked to a chat. Only real changes notify. */

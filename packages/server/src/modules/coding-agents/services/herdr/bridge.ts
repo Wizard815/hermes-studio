@@ -56,6 +56,8 @@ export interface HerdrLinkInfo {
   status: HerdrAgentStatus
   /** The chat's waiting pane (no agent running there yet). */
   waiting?: boolean
+  /** The Upstream Manager task the agent works on, when Upstream started it. */
+  upstream?: { task: string; title?: string; repo?: string }
 }
 
 /** Everything the bridge needs from Studio, injected so it stays testable. */
@@ -149,6 +151,8 @@ export interface HerdrWorkRef {
   /** Last status reported. */
   last?: string
   orb?: { task?: { title: string; list: string }; project?: string }
+  /** An Upstream Manager task (Upstream started the agent through Studio; see services/upstream). */
+  upstream?: { task: string; title?: string; repo?: string }
 }
 
 export interface HerdrPaneView extends HerdrPane {
@@ -521,7 +525,8 @@ export class HerdrBridge {
       if (sessionId && waiting && liveChats.has(sessionId)) sessionId = null
       if (sessionId) {
         seen.add(sessionId)
-        const link: HerdrLinkInfo = { paneId: pane.pane_id, workspaceId: pane.workspace_id, status, ...(waiting ? { waiting: true } : {}) }
+        const upstream = this.persisted.working?.[pane.pane_id]?.upstream
+        const link: HerdrLinkInfo = { paneId: pane.pane_id, workspaceId: pane.workspace_id, status, ...(waiting ? { waiting: true } : {}), ...(upstream ? { upstream } : {}) }
         const previous = this.links.get(sessionId)
         this.links.set(sessionId, link)
         this.deps.setLink(sessionId, link)
