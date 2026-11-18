@@ -15,7 +15,7 @@ import { HerdrRequestError, HerdrSocketClient } from './socket-client'
 import { newTranscriptSince, readTranscriptFrom, type TranscriptMessage } from './transcript'
 import { herdrChatProfile, type HerdrSettings } from './runtime'
 
-import { awakeChats, chatAgentLabel, chatSpaceLabel, keptWakeUps, planChatSpaces, type ChatSpaceChat, type ChatSpaceRecord } from './chat-spaces'
+import { awakeChats, chatAgentLabel, chatSpaceLabel, closedChatSpaces, keptOpenedChats, openedChatsFrom, planChatSpaces, type ChatSpaceChat, type ChatSpaceRecord } from './chat-spaces'
 
 export interface HerdrSessionRef {
   id: string
@@ -168,6 +168,8 @@ export interface HerdrBridgeState {
   focusedPaneId: string | null
   workspaces: HerdrSnapshot['workspaces']
   panes: HerdrPaneView[]
+  /** Studio chats with a herdr space now (awake); other top-level chats sleep until opened. */
+  chatSpaces: string[]
 }
 
 interface PersistedState {
@@ -178,13 +180,29 @@ interface PersistedState {
   working?: Record<string, HerdrWorkRef>
   /** Each Studio chat's herdr space, by chat id. */
   chatSpaces?: Record<string, ChatSpaceRecord>
-  /** Sleeping chats woken in herdr, and when (they stay awake for the awake window). */
+  /** Older Studios' chats woken in herdr (read once into `openedChats`). */
   wokenChats?: Record<string, number>
+  /** Chats opened in herdr by hand, and when: they keep their space until it is closed there or the chat goes away. */
+  openedChats?: Record<string, number>
   /** "The chat so far" sent to a fresh agent session: kept out of the mirrored chat, with its reply. */
   recaps?: Record<string, { text: string; at: number; replying?: boolean }>
 }
 
 const RECAP_MIRROR_WINDOW_MS = 30 * 60 * 1000
+
+/**
+ * Where a chat's herdr space starts: the chat's folder, or the home folder when
+ * the chat has none or its folder is gone (moved or deleted since), so the
+ * space is still made.
+ */
+export async function chatSpaceCwd(workspace: string | null | undefined, home = process.env.HOME || '/'): Promise<string> {
+  const folder = String(workspace || '').trim()
+  if (!folder) return home
+  try {
+    if ((await stat(folder)).isDirectory()) return folder
+  } catch { /* gone */ }
+  return home
+}
 
 /** The agent's own config home from its launch (Studio-provider agents keep sessions there). */
 export function configHomeEnv(env: Record<string, string> | undefined): NodeJS.ProcessEnv {
@@ -304,6 +322,7 @@ export class HerdrBridge {
       focusedPaneId: this.snapshot.focused_pane_id ?? null,
       workspaces: this.snapshot.workspaces,
       panes: this.panes,
+      chatSpaces: Object.keys(this.persisted.chatSpaces || {}),
     }
   }
 
@@ -609,10 +628,15 @@ export class HerdrBridge {
     if (!pane) return
     // Only awake chats have a space; sleeping ones wake when opened or messaged.
     const awakeDays = this.settings.chatSpacesAwakeDays ?? 7
-    const woken = keptWakeUps(this.persisted.wokenChats || {}, Date.now(), awakeDays)
-    const chats = awakeChats(await this.deps.listChatSpaces(), { now: Date.now(), awakeDays, woken, live: this.liveChats })
-    let changed = Object.keys(woken).length !== Object.keys(this.persisted.wokenChats || {}).length
-    this.persisted.wokenChats = woken
+    const allChats = await this.deps.listChatSpaces()
+    const before = this.persisted.openedChats || {}
+    const opened = keptOpenedChats(before, {
+      chatIds: new Set(allChats.map(chat => chat.id)),
+      closed: closedChatSpaces(records, workspaces, this.liveChats),
+    })
+    const chats = awakeChats(allChats, { now: Date.now(), awakeDays, opened, live: this.liveChats })
+    let changed = Object.keys(opened).length !== Object.keys(before).length
+    this.persisted.openedChats = opened
     // A waiting pane that stopped reporting: herdr dropped its report (a busy
     // restart) and Studio reports it again, or it is a plain shell now and its
     // space is made again.
@@ -732,7 +756,8 @@ export class HerdrBridge {
 
   private async createChatSpace(client: HerdrSocketClient, chat: ChatSpaceChat, pane: ChatPaneSetup): Promise<ChatSpaceRecord> {
     const label = chatSpaceLabel(chat)
-    const cwd = chat.workspace || process.env.HOME || '/'
+    const cwd = await chatSpaceCwd(chat.workspace)
+    if (chat.workspace && cwd !== chat.workspace) this.log('info', '[herdr] chat folder is gone; its space starts in the home folder', { sessionId: chat.id, workspace: chat.workspace })
     const created = await client.request<any>('workspace.create', { cwd, label, focus: false })
     const workspaceId = String(created?.workspace?.workspace_id || '')
     const tabId = String(created?.tab?.tab_id || '')
@@ -878,10 +903,16 @@ export class HerdrBridge {
     return false
   }
 
-  /** Wake a sleeping chat: it gets its herdr space now and stays awake for the awake window. */
-  async wakeChat(sessionId: string): Promise<ChatSpaceRecord | null> {
-    this.persisted.wokenChats = { ...(this.persisted.wokenChats || {}), [sessionId]: Date.now() }
+  /** A chat opened in herdr by hand keeps its space (until it is closed there or the chat goes away). */
+  private async keepChatOpen(sessionId: string): Promise<void> {
+    if (this.persisted.openedChats?.[sessionId] != null) return
+    this.persisted.openedChats = { ...(this.persisted.openedChats || {}), [sessionId]: Date.now() }
     await this.savePersisted()
+  }
+
+  /** Wake a sleeping chat: it gets its herdr space now and keeps it (see `keepChatOpen`). */
+  async wakeChat(sessionId: string): Promise<ChatSpaceRecord | null> {
+    await this.keepChatOpen(sessionId)
     // Run the sync now (after one already running), not on the usual delay.
     while (this.chatSync) await this.chatSync.catch(() => undefined)
     await this.runChatSync()
@@ -995,7 +1026,8 @@ export class HerdrBridge {
       if (Array.isArray(raw?.dismissed)) this.persisted.dismissed = raw.dismissed.filter((id: unknown) => typeof id === 'string').slice(-500)
       if (raw?.working && typeof raw.working === 'object') this.persisted.working = raw.working
       if (raw?.chatSpaces && typeof raw.chatSpaces === 'object') this.persisted.chatSpaces = raw.chatSpaces
-      if (raw?.wokenChats && typeof raw.wokenChats === 'object') this.persisted.wokenChats = raw.wokenChats
+      // Older Studios saved hand-opened chats as `wokenChats`: they are kept from now on.
+      this.persisted.openedChats = openedChatsFrom(raw)
       if (raw?.recaps && typeof raw.recaps === 'object') this.persisted.recaps = raw.recaps
     } catch { /* fresh state */ }
   }
@@ -1027,6 +1059,7 @@ export class HerdrBridge {
     for (const nativeId of nativeIds) if (!this.persisted.dismissed.includes(nativeId)) this.persisted.dismissed.push(nativeId)
     this.persisted.dismissed = this.persisted.dismissed.slice(-500)
     delete this.persisted.offsets[sessionId]
+    if (this.persisted.openedChats) delete this.persisted.openedChats[sessionId]
     for (const [paneId, pending] of this.pending) if (pending.sessionId === sessionId) this.pending.delete(paneId)
     if (this.links.delete(sessionId)) this.deps.setLink(sessionId, null)
     await this.savePersisted()
@@ -1082,6 +1115,9 @@ export class HerdrBridge {
 
   /** Open (or focus) a Studio chat as a live herdr pane. */
   async openSession(sessionId: string): Promise<HerdrLinkInfo> {
+    // Opened by hand: the chat keeps its space after its awake window
+    // (a chat that does not exist is dropped again by the next chat sync).
+    await this.keepChatOpen(sessionId)
     let existing = this.links.get(sessionId)
     // A resume that never got its agent going (it exited at once) leaves the chat's waiting pane
     // marked as resuming; once that pane shows the chat's card again, it is waiting again.

@@ -54,6 +54,8 @@ export interface HerdrBridgeState {
   focusedPaneId: string | null
   workspaces: HerdrWorkspace[]
   panes: HerdrPaneView[]
+  /** Studio chats with a herdr space now; other top-level chats sleep until opened (older servers leave it out). */
+  chatSpaces?: string[]
 }
 
 export interface HerdrStatus {

@@ -36,9 +36,19 @@ import { hermesGatewaySelection, synchronizeHermesProvider } from '../modules/st
 import { logicalModelSelection } from '../modules/studio/public/model-routing'
 import { readConfigYamlForProfile } from '../modules/studio/public/provider-config'
 
+/**
+ * A chat's stored agent as herdr sees it. Chats with no stored agent are
+ * Hermes chats (older Studio chats were saved that way), so they are 'hermes',
+ * except Ekko's own chats (source 'builtin_agent').
+ */
+export function herdrStoredAgent(agent: string | null | undefined, source?: string | null): string {
+  return String(agent || '').trim() || (source === 'builtin_agent' ? 'ekko-agent' : 'hermes')
+}
+
 /** The stored agent id when herdr can host the chat as a pane, else null. */
-function herdrHostableAgentId(agent: string | null | undefined): string | null {
-  const id = codingAgentIdForStoredAgent(agent) || String(agent || '')
+export function herdrHostableAgentId(agent: string | null | undefined, source?: string | null): string | null {
+  const stored = herdrStoredAgent(agent, source)
+  const id = codingAgentIdForStoredAgent(stored) || stored
   return herdrKindForStudioAgent(id) ? id : null
 }
 import { herdrChatMode, herdrKindForStudioAgent } from '../modules/coding-agents/services/herdr/protocol'
@@ -57,7 +67,7 @@ function toRef(row: HermesSessionRow | null): HerdrSessionRef | null {
   if (!row) return null
   return {
     id: row.id,
-    agent: codingAgentIdForStoredAgent(row.agent) || row.agent,
+    agent: codingAgentIdForStoredAgent(row.agent) || herdrStoredAgent(row.agent, row.source),
     title: row.title,
     workspace: row.workspace || null,
     agent_native_session_id: row.agent_native_session_id || '',
@@ -131,7 +141,7 @@ async function syncHermesModelFromHerdrInAccount(sessionId: string, options: { f
   const store = hermesLaunches()
   const record = store.get(sessionId)
   const row = getSession(sessionId)
-  if (!record || !row || row.agent !== 'hermes') return row
+  if (!record || !row || herdrStoredAgent(row.agent, row.source) !== 'hermes') return row
   const hermesNow = await hermesSessionModel(row.profile || 'default', row)
   const change = herdrModelChange(record, { model: row.model || '', provider: row.provider || '' }, hermesNow)
   if (change) {
@@ -225,7 +235,7 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     // integration); everything else goes through the coding-agent launcher.
     prepareSessionLaunch: async sessionId => {
       const session = getSession(sessionId)
-      return session?.agent === 'hermes' ? hermesChatLaunch(sessionId) : inHerdrAccount(session?.profile, () => prepareCodingAgentSessionLaunch(sessionId))
+      return session && herdrStoredAgent(session.agent, session.source) === 'hermes' ? hermesChatLaunch(sessionId) : inHerdrAccount(session?.profile, () => prepareCodingAgentSessionLaunch(sessionId))
     },
     // A new Hermes chat runs in herdr's profile (Studio's, unless pinned) on its default model, or the model picked,
     // through Studio's model gateway like every other Hermes run.
@@ -257,8 +267,8 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
       const user = herdrManager.actingUser() ?? listUsers().find(item => item.role === 'super_admin' && item.status === 'active') ?? null
       if (!user) throw Object.assign(new Error('Sign in to Studio first'), { status: 401 })
       const token = await issueModelRunJwt({ id: user.id, username: user.username, role: user.role as AuthenticatedUser['role'] })
-      const stored = String(row.agent || '').trim()
-      const name = stored === 'ekko-agent' || stored === 'ekko' ? 'Ekko' : !stored || stored === 'hermes' ? 'Hermes' : getCodingAgentDefinition(stored)?.name || stored
+      const stored = herdrStoredAgent(row.agent, row.source)
+      const name = stored === 'ekko-agent' || stored === 'ekko' ? 'Ekko' : stored === 'hermes' ? 'Hermes' : getCodingAgentDefinition(stored)?.name || stored
       return { token, profile: row.profile || 'default', run: chatRunFields(row), agent: chatAgentLabel(stored), name }
     },
     chatRecap: async sessionId => chatRecap(getSession(sessionId)?.title || '', getRecentSessionMessages(sessionId, 50).map(message => ({ role: message.role, text: messageText(message.content) }))),
@@ -455,12 +465,13 @@ function listChatSpaces() {
   return chatSpaceRows()
     .map(row => {
       // Hermes runs in herdr through its CLI; without it the chat is talked to through Studio.
-      const hostable = herdrHostableAgentId(row.agent) === 'hermes' && !hermesCli ? null : herdrHostableAgentId(row.agent)
+      const agent = herdrHostableAgentId(row.agent, row.source)
+      const hostable = agent === 'hermes' && !hermesCli ? null : agent
       return {
         id: row.id,
         title: row.title || '',
         folderPath: pathOf(row.category_id),
-        agent: hostable || codingAgentIdForStoredAgent(row.agent) || String(row.agent || 'hermes'),
+        agent: hostable || codingAgentIdForStoredAgent(row.agent) || herdrStoredAgent(row.agent, row.source),
         hostable: !!hostable,
         workspace: row.workspace || null,
         lastActive: toMs(Number(row.last_active || row.started_at || 0)),
@@ -478,11 +489,11 @@ export function herdrPluginDeps(baseUrl: string): HerdrPluginDeps {
         .filter(row => !query || String(row.title || '').toLowerCase().includes(query))
         .slice(options.offset || 0, (options.offset || 0) + limit)
         .map(row => {
-          const stored = String(row.agent || '').trim()
+          const stored = herdrStoredAgent(row.agent, row.source)
           return {
             id: row.id,
             title: row.title || '',
-            agent: herdrHostableAgentId(stored) || (stored === 'ekko-agent' ? 'ekko' : codingAgentIdForStoredAgent(stored) || 'hermes'),
+            agent: herdrHostableAgentId(stored) || (stored === 'ekko-agent' || stored === 'ekko' ? 'ekko' : codingAgentIdForStoredAgent(stored) || 'hermes'),
             updatedAt: Number(row.last_active || row.started_at || 0),
           }
         })

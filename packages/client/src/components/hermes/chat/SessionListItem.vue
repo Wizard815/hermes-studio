@@ -26,6 +26,8 @@ const props = withDefaults(defineProps<{
   status?: AgentDisplayStatus
   /** The chat is open in a live herdr pane. */
   herdrLinked?: boolean
+  /** The chat has no herdr space now (it sleeps there until it is opened). */
+  herdrAsleep?: boolean
   selectable?: boolean
   selected?: boolean
   showProfile?: boolean
@@ -154,6 +156,13 @@ onUnmounted(() => {
           <span class="session-item-title" dir="auto">
             {{ session.title }}
           </span>
+          <span
+            v-if="herdrAsleep"
+            class="session-item-herdr-asleep"
+            data-testid="session-herdr-asleep"
+            :title="t('herdr.asleep')"
+            :aria-label="t('herdr.asleep')"
+          >z</span>
           <NTooltip v-if="profileModelsMissing" trigger="click" placement="top">
             <template #trigger>
               <button class="session-item-warning" type="button" @click.stop.prevent>
@@ -476,4 +485,13 @@ onUnmounted(() => {
   border-radius: inherit;
 }
 
+.session-item-herdr-asleep {
+  flex: none;
+  margin-left: 4px;
+  font-size: 10px;
+  font-style: italic;
+  line-height: 1;
+  opacity: 0.55;
+  cursor: default;
+}
 </style>

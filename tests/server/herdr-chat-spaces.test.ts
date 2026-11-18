@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { awakeChats, chatAgentLabel, keptWakeUps, chatSpaceLabel, chatSpaceOrder, planChatSpaces, type ChatSpaceChat } from '../../packages/server/src/modules/coding-agents/services/herdr/chat-spaces'
+import { awakeChats, chatAgentLabel, closedChatSpaces, keptOpenedChats, openedChatsFrom, chatSpaceLabel, chatSpaceOrder, planChatSpaces, type ChatSpaceChat } from '../../packages/server/src/modules/coding-agents/services/herdr/chat-spaces'
 
 const chat = (id: string, title: string, folderPath: string[] = [], lastActive = 1, extra: Partial<ChatSpaceChat> = {}): ChatSpaceChat =>
   ({ id, title, folderPath, agent: 'claude-code', hostable: true, workspace: null, lastActive, ...extra })
@@ -82,18 +82,45 @@ describe('every Studio chat is a herdr space', () => {
     expect(plan.create.map(item => item.id)).toEqual(['a'])
   })
 
-  it('keeps recent, woken and running chats awake; the rest sleep', () => {
+  it('keeps recent, hand-opened and running chats awake; the rest sleep', () => {
     const day = 24 * 60 * 60 * 1000
     const now = 100 * day
     const chats = [
       chat('recent', 'Recent', [], now - 2 * day),
       chat('old', 'Old', [], now - 30 * day),
-      chat('woken', 'Woken', [], now - 30 * day),
+      chat('opened', 'Opened by hand long ago', [], now - 30 * day),
       chat('running', 'Running', [], now - 30 * day),
     ]
-    const awake = awakeChats(chats, { now, awakeDays: 7, woken: { woken: now - day }, live: new Map([['running', 'w9']]) })
-    expect(awake.map(item => item.id)).toEqual(['recent', 'woken', 'running'])
-    expect(awakeChats(chats, { now, awakeDays: 0, woken: {}, live: new Map() })).toHaveLength(4)
-    expect(keptWakeUps({ a: now - day, b: now - 20 * day }, now, 7)).toEqual({ a: now - day })
+    // A chat opened by hand weeks ago is still awake: its space does not close after the awake window.
+    const awake = awakeChats(chats, { now, awakeDays: 7, opened: { opened: now - 20 * day }, live: new Map([['running', 'w9']]) })
+    expect(awake.map(item => item.id)).toEqual(['recent', 'opened', 'running'])
+    expect(awakeChats(chats, { now, awakeDays: 0, opened: {}, live: new Map() })).toHaveLength(4)
+  })
+
+  it('lets a hand-opened chat sleep again only once it is gone or its space was closed in herdr', () => {
+    const opened = { a: 1, b: 2, c: 3 }
+    expect(keptOpenedChats(opened, { chatIds: new Set(['a', 'b', 'c']), closed: new Set() })).toEqual(opened)
+    // b was archived or deleted; c's space was closed in herdr.
+    expect(keptOpenedChats(opened, { chatIds: new Set(['a', 'c']), closed: new Set(['c']) })).toEqual({ a: 1 })
+  })
+
+  it('tells a space closed in herdr from herdr starting over', () => {
+    const records = {
+      a: { workspaceId: 'w1', stubPaneId: 'w1:p1', label: 'A' },
+      b: { workspaceId: 'w2', stubPaneId: 'w2:p1', label: 'B' },
+      c: { workspaceId: 'w3', stubPaneId: '', label: 'C' },
+    }
+    expect([...closedChatSpaces(records, new Set(['w1', 'w3']), new Map())]).toEqual(['b'])
+    // Every chat space is gone: herdr lost its state; nothing was closed by hand.
+    expect([...closedChatSpaces(records, new Set(), new Map())]).toEqual([])
+    // A chat whose agent runs elsewhere is not closed.
+    expect([...closedChatSpaces(records, new Set(['w1']), new Map([['c', 'w9']]))]).toEqual(['b'])
+  })
+
+  it('reads hand-opened chats from the old saved state too', () => {
+    expect(openedChatsFrom({ wokenChats: { a: 5 } })).toEqual({ a: 5 })
+    expect(openedChatsFrom({ wokenChats: { a: 5 }, openedChats: { b: 6 } })).toEqual({ a: 5, b: 6 })
+    expect(openedChatsFrom({ openedChats: { a: 'x' } })).toEqual({})
+    expect(openedChatsFrom(null)).toEqual({})
   })
 })

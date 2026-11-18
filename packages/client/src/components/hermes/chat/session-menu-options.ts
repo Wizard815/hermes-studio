@@ -13,6 +13,7 @@ export type SessionMenuIconName =
   | 'open-new'
   | 'link'
   | 'copy'
+  | 'herdr'
 
 interface ActiveSessionMenuLabels {
   outline: string
@@ -40,12 +41,16 @@ interface SessionContextMenuLabels {
   open: string
   copyLink: string
   copyId: string
+  /** Needed when `includeHerdr` is set. */
+  openInHerdr?: string
 }
 
 interface BuildSessionContextMenuOptions {
   pinned: boolean
   includeArchive: boolean
   includeModel: boolean
+  /** "Open in herdr" (super admins, herdr on, a chat with a herdr space). */
+  includeHerdr?: boolean
   categoryChildren: DropdownOption[]
   labels: SessionContextMenuLabels
 }
@@ -110,6 +115,11 @@ function iconChildren(name: SessionMenuIconName): VNodeChild[] {
         h('rect', { x: 9, y: 9, width: 12, height: 12, rx: 2 }),
         h('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
       ]
+    case 'herdr':
+      // The header's "Open in herdr" button icon: a split terminal.
+      return [
+        h('path', { d: 'M3 4h18v16H3zM12 4v16M3 12h9M7 8l2 2-2 2' }),
+      ]
   }
 }
 
@@ -159,6 +169,7 @@ export function buildSessionContextMenuOptions({
   pinned,
   includeArchive,
   includeModel,
+  includeHerdr = false,
   categoryChildren,
   labels,
 }: BuildSessionContextMenuOptions): DropdownOption[] {
@@ -200,6 +211,9 @@ export function buildSessionContextMenuOptions({
       },
     ],
   }))
+  if (includeHerdr && labels.openInHerdr) {
+    options.push(actionOption(labels.openInHerdr, 'open-herdr', 'herdr'))
+  }
   options.push(actionOption(labels.open, 'open-link', 'open-new'))
   options.push(actionOption(labels.copyLink, 'copy-link', 'link'))
   options.push(actionOption(labels.copyId, 'copy-id', 'copy'))

@@ -22,6 +22,7 @@ export type BridgeSessionCommandName =
   | 'destroy'
   | 'reload-mcp'
   | 'reload-skills'
+  | 'herdr'
 
 export interface BridgeSessionCommandDefinition {
   key: string
@@ -111,4 +112,17 @@ export const EKKO_SESSION_COMMAND_DEFINITIONS: BridgeSessionCommandDefinition[] 
 export function isKnownEkkoSessionCommand(input: string): boolean {
   const name = readBridgeSessionCommandName(input)
   return name === 'compress' || EKKO_SESSION_COMMAND_DEFINITIONS.some(command => command.name === name)
+}
+
+/**
+ * `/herdr`: Studio opens the chat in herdr (waking it into its space if it is
+ * asleep). Handled in the chat box, never sent to the agent, so it is not one
+ * of the bridge or Ekko commands above.
+ */
+export const HERDR_SESSION_COMMAND_DEFINITION: BridgeSessionCommandDefinition = {
+  key: 'command:herdr', name: 'herdr', args: '', descriptionKey: 'herdr.slashCommand',
+}
+
+export function isHerdrSessionCommand(input: string): boolean {
+  return /^\/herdr$/i.test(input.trim())
 }

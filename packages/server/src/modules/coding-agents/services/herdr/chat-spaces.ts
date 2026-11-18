@@ -134,18 +134,46 @@ export function chatAgentLabel(_agent: string): string {
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
- * Chats awake in herdr: used in the last `awakeDays` days, woken since (opened
- * in herdr, picked in herdr's Studio chats, messaged), or with their agent
- * running. The rest sleep: no space and no process until they are woken.
+ * Chats awake in herdr: used in the last `awakeDays` days, opened in herdr by
+ * hand (they keep their space until it is closed or the chat goes away), or
+ * with their agent running. The rest sleep: no space and no process until they
+ * are opened.
  */
-export function awakeChats(chats: ChatSpaceChat[], input: { now: number; awakeDays: number; woken: Record<string, number>; live: Map<string, string> }): ChatSpaceChat[] {
+export function awakeChats(chats: ChatSpaceChat[], input: { now: number; awakeDays: number; opened: Record<string, number>; live: Map<string, string> }): ChatSpaceChat[] {
   if (!(input.awakeDays > 0)) return chats
   const since = input.now - input.awakeDays * DAY_MS
-  return chats.filter(chat => chat.lastActive >= since || (input.woken[chat.id] || 0) >= since || input.live.has(chat.id))
+  return chats.filter(chat => chat.lastActive >= since || input.opened[chat.id] != null || input.live.has(chat.id))
 }
 
-/** Woken chats still inside the awake window (older wake-ups are dropped). */
-export function keptWakeUps(woken: Record<string, number>, now: number, awakeDays: number): Record<string, number> {
-  const since = now - Math.max(awakeDays, 1) * DAY_MS
-  return Object.fromEntries(Object.entries(woken).filter(([, at]) => at >= since))
+/**
+ * Chats opened in herdr by hand stay open: only a chat that is gone (archived
+ * or deleted) or whose space the user closed in herdr goes back to sleep.
+ */
+export function keptOpenedChats(opened: Record<string, number>, input: { chatIds: Set<string>; closed: Set<string> }): Record<string, number> {
+  return Object.fromEntries(Object.entries(opened).filter(([id]) => input.chatIds.has(id) && !input.closed.has(id)))
+}
+
+/**
+ * Chat spaces the user closed in herdr: their space is gone while other chat
+ * spaces are still there. When every one is gone, herdr started over (its
+ * state was lost), and the chats get their spaces back.
+ */
+export function closedChatSpaces(records: Record<string, ChatSpaceRecord>, workspaces: Set<string>, live: Map<string, string>): Set<string> {
+  const entries = Object.entries(records).filter(([id]) => !live.has(id))
+  const gone = entries.filter(([, record]) => !workspaces.has(record.workspaceId)).map(([id]) => id)
+  return gone.length && gone.length < entries.length ? new Set(gone) : new Set()
+}
+
+/**
+ * Chats opened by hand, from the saved state. Older Studios saved them as
+ * `wokenChats` (dropped after the awake window); those were opened by hand
+ * too, so they are kept from now on.
+ */
+export function openedChatsFrom(raw: { openedChats?: unknown; wokenChats?: unknown } | null | undefined): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const source of [raw?.wokenChats, raw?.openedChats]) {
+    if (!source || typeof source !== 'object') continue
+    for (const [id, at] of Object.entries(source as Record<string, unknown>)) if (typeof at === 'number') out[id] = at
+  }
+  return out
 }

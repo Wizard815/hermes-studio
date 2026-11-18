@@ -39,9 +39,31 @@ export interface TreeChat {
 }
 
 /** Stored chat agents herdr can host (see services/herdr/protocol.ts); hermes
- * chats resume as `hermes chat` panes. */
+ * chats resume as `hermes chat` panes. A chat with no stored agent is a Hermes
+ * chat (older Studio chats were saved that way). */
 const HERDR_HOSTABLE_AGENTS = new Set(['claude', 'claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot', 'hermes'])
-export const herdrCanHost = (agent: string | undefined | null) => HERDR_HOSTABLE_AGENTS.has(String(agent || ''))
+export const herdrCanHost = (agent: string | undefined | null) => HERDR_HOSTABLE_AGENTS.has(String(agent || '').trim() || 'hermes')
+
+/** What `herdrCanOpenChat` reads of a Studio chat. */
+export interface HerdrChatCandidate {
+  id?: string
+  source?: string
+  isArchived?: boolean
+  isLocalOnly?: boolean
+  parentSessionId?: string | null
+}
+
+/**
+ * Whether a chat has a herdr space (so "Open in herdr" can open it, waking it
+ * if it is asleep). Every saved top-level chat does, whatever its agent: agents
+ * herdr hosts run in its pane, the others (Ekko, Hermes without its CLI) talk
+ * through Studio's chat client there. Sub-chats, archived chats, group chats
+ * and workflows have none (the server's `chatSpaceRows` leaves them out).
+ */
+export function herdrCanOpenChat(chat: HerdrChatCandidate | null | undefined): boolean {
+  if (!chat || !chat.id || chat.isLocalOnly || chat.isArchived || chat.parentSessionId) return false
+  return chat.source !== 'group_chat' && chat.source !== 'workflow'
+}
 
 export const folderIdOf = (categoryId: number) => `c${categoryId}`
 export const categoryIdOf = (folderId: string): number | null => (/^c\d+$/.test(folderId) ? Number(folderId.slice(1)) : null)
@@ -149,7 +171,7 @@ export function useStudioFolders(onError: (message: string) => void) {
           title: chat.title || chat.id,
           folderId: chat.category_id != null ? folderIdOf(chat.category_id) : '',
           agent: chat.agent || '',
-          hostable: herdrCanHost(chat.agent),
+          hostable: chat.source !== 'builtin_agent' && herdrCanHost(chat.agent),
           lastActive: chat.last_active || chat.started_at || 0,
         }))
         .sort((a, b) => b.lastActive - a.lastActive)

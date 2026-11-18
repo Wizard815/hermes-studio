@@ -2,7 +2,8 @@
 import { getCleanRoomStatus } from '@/api/coding-agents'
 import { agentSupportsSurface } from "@/utils/agent-catalog"
 import { agentMetadata, isNativeCodingAgent, isGlobalOnlyCodingAgent, isPluginAgentId } from '@/utils/agent-catalog'
-import { herdrCanHost } from '@/mission/useFolders'
+import { herdrCanOpenChat } from '@/mission/useFolders'
+import { openChatInHerdr } from '@/utils/mission-url'
 import SessionListSidebar from "./SessionListSidebar.vue"
 import SessionSelectionToolbar from "./SessionSelectionToolbar.vue"
 import { usePageSidebarState } from "@/composables/usePageSidebar"
@@ -151,7 +152,9 @@ const { t } = useI18n();
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
 // By id and the chat list too: while Studio switches chats the loaded chat lags
 // behind, and herdr mode must not flicker off (it would reconnect herdr).
-// 'unknown' while the chat is not loaded yet; 'other' for chats herdr cannot host.
+// 'unknown' while the chat is not loaded yet; 'other' for chats with no herdr space
+// (sub-chats, archived, group chats, workflows). Every other chat opens in herdr:
+// its agent's pane, or Studio's chat client there for Ekko and the like.
 const herdrChatState = computed<'eligible' | 'other' | 'unknown' | 'none'>(() => {
   const id = chatStore.activeSessionId
   if (!id) return 'none'
@@ -159,9 +162,21 @@ const herdrChatState = computed<'eligible' | 'other' | 'unknown' | 'none'>(() =>
   const active = chatStore.activeSession
   const session = active && active.id === id ? active : chatStore.sessions.find(item => item.id === id)
   if (!session) return 'unknown'
-  return herdrCanHost(session.codingAgentId || session.agent) ? 'eligible' : 'other'
+  return herdrCanOpenChat(session) ? 'eligible' : 'other'
 })
 const herdrEligible = computed(() => herdrChatState.value === 'eligible')
+/**
+ * Chats asleep in herdr (no space now; they get one when opened there), from
+ * the herdr state Studio already has. Super admins with herdr on only.
+ */
+const herdrSpaceIds = computed(() => {
+  const spaces = herdrStore.bridge?.connected ? herdrStore.bridge.chatSpaces : undefined
+  return isSuperAdmin.value && herdrStore.enabled && Array.isArray(spaces) ? new Set(spaces) : null
+})
+function herdrAsleep(session: Session): boolean {
+  const spaces = herdrSpaceIds.value
+  return !!spaces && !spaces.has(session.id) && !sessionStates.herdrLink(session.id) && herdrCanOpenChat(session)
+}
 
 // The center column swaps between the chat and its herdr agent; the sidebar,
 // header and tool panel stay. Both stay mounted once opened, so swapping is instant.
@@ -2139,6 +2154,8 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
   pinned: contextSessionPinned.value,
   includeArchive: contextSession.value?.source !== "global_agent",
   includeModel: canSetContextSessionModel.value,
+  // Same rule as the header's "Open in herdr" button, with herdr on.
+  includeHerdr: isSuperAdmin.value && herdrStore.enabled && herdrCanOpenChat(contextSession.value),
   categoryChildren: buildSessionCategoryMenuChildren({
     categories: [...sessionCategories.value].sort((a, b) =>
       categoryPathLabel(sessionCategories.value, a.id).localeCompare(categoryPathLabel(sessionCategories.value, b.id))),
@@ -2166,6 +2183,7 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
       : "chat.openSessionInNewTab"),
     copyLink: t("chat.copySessionLink"),
     copyId: t("chat.copySessionId"),
+    openInHerdr: t("herdr.openInHerdr"),
   },
 }).map(option => option.key === "pin"
   ? { ...option, disabled: Boolean(contextSession.value?.isLocalOnly) }
@@ -2253,6 +2271,12 @@ async function handleContextMenuSelect(key: string) {
     copySessionId(contextSessionId.value);
   } else if (key === "open-link") {
     openSessionInNewTab(contextSessionId.value, contextSession.value?.profile || null);
+  } else if (key === "open-herdr") {
+    try {
+      await openChatInHerdr(contextSessionId.value);
+    } catch (error: any) {
+      message.error(error?.message || String(error));
+    }
   } else if (key === "archive") {
     const archivedSession = contextSession.value;
     const ok = await chatStore.archiveSession(contextSessionId.value);
@@ -2771,6 +2795,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
+              :herdr-asleep="herdrAsleep(s)"
             :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
             :selectable="isBatchMode"
             :selected="isSessionSelected(s)"
@@ -2827,6 +2852,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
+              :herdr-asleep="herdrAsleep(s)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -2933,6 +2959,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
+              :herdr-asleep="herdrAsleep(s)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"

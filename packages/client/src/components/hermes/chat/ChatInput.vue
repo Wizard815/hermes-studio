@@ -19,7 +19,11 @@ import { useToolTraceVisibility } from '@/composables/useToolTraceVisibility'
 import { extractClipboardFiles } from '@/utils/clipboard-files'
 import VoiceDialogueControls from './VoiceDialogueControls.vue'
 import BundleCreateModal from './BundleCreateModal.vue'
-import { BRIDGE_SESSION_COMMAND_DEFINITIONS } from '@/utils/hermes/bridge-session-commands'
+import { BRIDGE_SESSION_COMMAND_DEFINITIONS, HERDR_SESSION_COMMAND_DEFINITION, isHerdrSessionCommand } from '@/utils/hermes/bridge-session-commands'
+import { isStoredSuperAdmin } from '@/api/client'
+import { useHerdrStore } from '@/stores/hermes/herdr'
+import { herdrCanOpenChat } from '@/mission/useFolders'
+import { openChatInHerdr } from '@/utils/mission-url'
 import { clampChatInputHeight, isMobileChatInputViewport } from '@/utils/chat-input-height'
 import { normalizeComposerVoiceTranscript, useComposerVoiceInput } from '@/composables/useComposerVoiceInput'
 import { extractRepresentativeVideoFrames, isVideoFile } from '@/utils/video-frame-extraction'
@@ -320,6 +324,10 @@ const isCodingAgentSession = computed(() => isExternalCodingAgentSession(compose
 const isCursorSession = computed(() => (composerSession.value?.codingAgentId === 'cursor' || composerSession.value?.codingAgentId === 'antigravity') || (composerSession.value?.agent === 'cursor' || composerSession.value?.agent === 'antigravity'))
 const showSessionUsage = computed(() => isCodingAgentSession.value)
 const isForkCommandSession = computed(() => !!composerSession.value && !isEkkoSession.value && !isCodingAgentSession.value)
+const herdrStore = useHerdrStore()
+/** `/herdr` opens this chat in herdr: super admins, herdr on, a chat with a herdr space (any agent). */
+const herdrCommandAvailable = computed(() => !props.draft && !props.submit && isStoredSuperAdmin()
+  && herdrStore.enabled && herdrCanOpenChat(composerSession.value))
 const skillPickerItems = computed(() => {
   const byName = new Map<string, SkillInfo>()
   for (const category of skillCategories.value) {
@@ -340,7 +348,7 @@ const skillPickerItems = computed(() => {
 })
 const filteredBridgeCommands = computed(() => {
   const query = slashQuery.value.trim().toLowerCase()
-  const commands = /^person-(main|task)-/.test(composerSession.value?.id || '') ? [] : isEkkoSession.value
+  const agentCommands: SlashCommandOption[] = /^person-(main|task)-/.test(composerSession.value?.id || '') ? [] : isEkkoSession.value
     ? EKKO_SESSION_COMMAND_DEFINITIONS.map(command => ({ ...command, args: command.args || '', description: t(command.descriptionKey) }))
     : isBridgeSession.value
     // Clean rooms are for coding agents (their agent runs in a container).
@@ -356,6 +364,9 @@ const filteredBridgeCommands = computed(() => {
       : isForkCommandSession.value
         ? bridgeCommands.value.filter(command => command.name === 'fork')
         : []
+  const commands = herdrCommandAvailable.value
+    ? [...agentCommands, { ...HERDR_SESSION_COMMAND_DEFINITION, args: '', description: t(HERDR_SESSION_COMMAND_DEFINITION.descriptionKey) }]
+    : agentCommands
   if (!query) return commands
   return commands.filter((command) => {
     const name = command.name.toLowerCase()
@@ -657,7 +668,7 @@ function scrollCommandIntoView() {
 }
 
 function updateSlashState() {
-  if (!isEkkoSession.value && !isBridgeSession.value && !isCodingAgentSession.value && !isForkCommandSession.value) {
+  if (!isEkkoSession.value && !isBridgeSession.value && !isCodingAgentSession.value && !isForkCommandSession.value && !herdrCommandAvailable.value) {
     slashActive.value = false
     return
   }
@@ -1061,6 +1072,11 @@ async function handleSend() {
   }
   const text = inputText.value.trim()
   if (!text && attachments.value.length === 0) return
+  // `/herdr` is Studio's, not the agent's: open this chat in herdr instead of sending it.
+  if (attachments.value.length === 0 && isHerdrSessionCommand(text) && herdrCommandAvailable.value) {
+    await openComposerChatInHerdr()
+    return
+  }
   if (isBridgeSession.value && text === '/skill' && attachments.value.length === 0) {
     void openSkillPicker()
     return
@@ -1093,6 +1109,23 @@ async function handleSend() {
 
   if (textareaRef.value) {
     textareaRef.value.style.height = 'auto'
+  }
+}
+
+async function openComposerChatInHerdr() {
+  const sessionId = composerSession.value?.id
+  if (!sessionId) return
+  inputText.value = ''
+  saveDraftForActiveSession('')
+  slashActive.value = false
+  if (textareaRef.value) textareaRef.value.style.height = 'auto'
+  submitting.value = true
+  try {
+    await openChatInHerdr(sessionId)
+  } catch (error: any) {
+    message.error(error?.message || String(error))
+  } finally {
+    submitting.value = false
   }
 }
 

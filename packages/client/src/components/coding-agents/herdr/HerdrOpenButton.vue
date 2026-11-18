@@ -2,9 +2,8 @@
 import { computed, ref } from 'vue'
 import { NButton, NTooltip, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { openSessionInHerdr } from '@/api/coding-agents/herdr'
 import { useSessionStateStore } from '@/stores/hermes/session-state'
-import { missionUrl } from '@/utils/mission-url'
+import { openChatInHerdr } from '@/utils/mission-url'
 
 /** Studio → herdr swap for one chat: opens (or focuses) its live pane, then switches to the herdr view. */
 const props = defineProps<{ sessionId: string }>()
@@ -18,9 +17,7 @@ const link = computed(() => states.herdrLink(props.sessionId))
 async function open() {
   busy.value = true
   try {
-    const { link: opened } = await openSessionInHerdr(props.sessionId)
-    // The Mission view is a separate page on Studio's origin (same tunnel port).
-    window.location.assign(missionUrl({ pane: opened.paneId }))
+    await openChatInHerdr(props.sessionId)
   } catch (err: any) {
     toast.error(err?.message || String(err))
   } finally {

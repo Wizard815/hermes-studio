@@ -204,8 +204,19 @@ stay separate apps; this integration links them.
   (`awakeChats`). A sleeping chat wakes into its space when it is opened in
   herdr (Studio's herdr view, Open in herdr, herdr's Studio chats picker,
   which lists every chat with search and pages and marks sleeping ones `z`),
-  or when it is used (a message moves its last activity). A wake-up lasts the
-  awake window (`wokenChats`). Studio stores chat times in seconds; the chat
+  or when it is used (a message moves its last activity). Any chat herdr has
+  a space for can be opened, whatever its agent: chats with no stored agent
+  are Hermes chats (older Studio chats), and Ekko chats talk to Studio from
+  their waiting pane. Studio offers it in the chat header, the chat list's
+  right-click menu (Open in herdr) and the `/herdr` command in the chat box
+  (handled by the chat box, never sent to the agent). A chat opened by hand
+  (`openSession`) keeps its space after the awake window (`openedChats`;
+  older `wokenChats` are read into it) until its space is closed in herdr
+  (`closedChatSpaces`: gone while other chat spaces are still there) or the
+  chat is archived or deleted. The herdr state lists the chats with a space
+  (`chatSpaces`); Studio's chat list marks the others with a small `z`
+  (asleep in herdr). A chat whose folder is gone gets its space in the home
+  folder (`chatSpaceCwd`). Studio stores chat times in seconds; the chat
   list converts them (`toMs`).
 - **Cost.** herdr's own cost is about 0.12% CPU per open pane (304 panes: 41%;
   10: 4%), plus about 0.13 MB per waiting pane. Status updates are followed

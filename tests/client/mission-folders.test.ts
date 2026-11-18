@@ -3,7 +3,7 @@ vi.mock('@/api/studio/sessions', () => ({}))
 vi.mock('@/api/coding-agents/herdr', () => ({}))
 vi.mock('@/api/coding-agents', () => ({}))
 vi.mock('@/api/studio/orb', () => ({ fetchOrbStatus: async () => ({ settings: { url: '' } }) }))
-import { buildFolderTree, folderForSpace, herdrCanHost } from '@/mission/useFolders'
+import { buildFolderTree, folderForSpace, herdrCanHost, herdrCanOpenChat } from '@/mission/useFolders'
 
 const cat = (id: number, name: string, parent_id: number | null = null) => ({ id, name, parent_id, created_at: 0, updated_at: 0 })
 const categories = [cat(1, 'Clients'), cat(2, 'acme', 1), cat(3, 'api', 2), cat(4, 'Home')]
@@ -34,8 +34,25 @@ describe('Mission folders are Studio chat folders', () => {
     expect(place('w1', '/home/me/code/acme')).toBe('c2')
   })
 
-  it('hosts coding-agent and hermes chats in herdr; other chats open in Studio', () => {
-    for (const agent of ['claude', 'claude-code', 'codex', 'opencode', 'hermes']) expect(herdrCanHost(agent)).toBe(true)
-    for (const agent of ['ekko-agent', '', null, undefined]) expect(herdrCanHost(agent)).toBe(false)
+  it('hosts coding-agent and hermes chats in herdr panes (no stored agent = Hermes); Ekko runs through Studio', () => {
+    for (const agent of ['claude', 'claude-code', 'codex', 'opencode', 'hermes', '', null, undefined]) expect(herdrCanHost(agent)).toBe(true)
+    for (const agent of ['ekko-agent', 'ekko', 'dsh']) expect(herdrCanHost(agent)).toBe(false)
+  })
+
+  it('opens every saved top-level chat in herdr, Ekko and old Hermes chats included', () => {
+    expect(herdrCanOpenChat({ id: 'a', source: 'cli' })).toBe(true)
+    expect(herdrCanOpenChat({ id: 'b', source: 'api_server' })).toBe(true)
+    expect(herdrCanOpenChat({ id: 'c', source: 'builtin_agent' })).toBe(true)
+    expect(herdrCanOpenChat({ id: 'd', source: 'coding_agent' })).toBe(true)
+    expect(herdrCanOpenChat({ id: 'e', source: 'global_agent' })).toBe(true)
+  })
+
+  it('offers herdr for no sub-chat, archived, unsaved, group or workflow chat', () => {
+    expect(herdrCanOpenChat(null)).toBe(false)
+    expect(herdrCanOpenChat({ id: 'a', source: 'cli', parentSessionId: 'p' })).toBe(false)
+    expect(herdrCanOpenChat({ id: 'a', source: 'cli', isArchived: true })).toBe(false)
+    expect(herdrCanOpenChat({ id: 'a', source: 'cli', isLocalOnly: true })).toBe(false)
+    expect(herdrCanOpenChat({ id: 'a', source: 'group_chat' })).toBe(false)
+    expect(herdrCanOpenChat({ id: 'a', source: 'workflow' })).toBe(false)
   })
 })
