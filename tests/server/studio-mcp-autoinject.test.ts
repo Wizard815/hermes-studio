@@ -160,6 +160,7 @@ describe('studio MCP autoinject', () => {
     expect(injectedWork.data.mcp_servers['ekko-studio-api'].env.HERMES_WEB_UI_PROFILE).toBe('work')
     expect(result.serverNames).toEqual([
       'ekko-studio-api',
+      'ekko-studio-plugins',
       'ekko-studio-browser',
       'ekko-studio-use',
       'ekko-studio-interaction',
@@ -380,7 +381,7 @@ describe('studio MCP autoinject', () => {
     const server = migrated.data.mcp_servers['ekko-studio-interaction']
     expect(server.enabled).toBe(enabled)
     if (enabled) expect(server.env.HERMES_MCP_USER_CLARIFICATION).toBe('0')
-    expect(Object.keys(migrated.data.mcp_servers)).toHaveLength(4)
+    expect(Object.keys(migrated.data.mcp_servers)).toHaveLength(5)
   })
 
   it.each([false, true])('migrates Hermes split names without duplicates (new names already present: %s)', async (coexisting) => {
@@ -404,7 +405,7 @@ describe('studio MCP autoinject', () => {
     expect(migrated.data.mcp_servers['ekko-studio-api'].timeout).toBe(123)
     expect(migrated.data.mcp_servers.custom.command).toBe('user-command')
     expect(migrated.data.mcp_servers['ekko-studio-devices']).toBeUndefined()
-    expect(Object.keys(migrated.data.mcp_servers)).toHaveLength(5)
+    expect(Object.keys(migrated.data.mcp_servers)).toHaveLength(6)
     const repeated = await updater(migrated.data)
     expect(repeated.result.status).toBe('unchanged')
     expect(repeated.write).toBe(false)
@@ -434,12 +435,11 @@ describe('studio MCP autoinject', () => {
       },
     })
 
-    expect(updated.write).toBe(false)
-    expect(updated.result).toMatchObject({
-      status: 'skipped',
-      reason: 'existing ekko-studio-api MCP server is disabled by user',
-    })
+    // Upstream now keeps a user-disabled server disabled while still
+    // injecting and repairing the other managed servers in the profile.
+    expect(updated.result.status).not.toBe('skipped')
     expect(updated.data.mcp_servers['ekko-studio-api'].enabled).toBe(false)
+    expect(updated.data.mcp_servers['ekko-studio-browser'].enabled).toBe(true)
   })
 
   it('cleans a disabled legacy managed MCP server entry before injecting split servers', async () => {

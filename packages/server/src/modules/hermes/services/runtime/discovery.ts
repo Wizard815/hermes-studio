@@ -10,6 +10,11 @@ import { resolveHermesBin } from './process'
 
 const execFileAsync = promisify(execFile)
 const HERMES_VERSION_PROBE = [
+  'import sys',
+  // Source launchers add the checkout root, including packages that an older
+  // editable install does not know about. Keep this probe free of bootstrap's
+  // dependency installation and update-recovery side effects.
+  'if sys.argv[1]: sys.path.insert(0, sys.argv[1])',
   'import importlib.util, hermes_cli',
   "assert importlib.util.find_spec('hermes_cli.main')",
   'try:',
@@ -21,14 +26,6 @@ const HERMES_VERSION_PROBE = [
   '    version = get_version_info().display_version',
   'print(version)',
 ].join('\n')
-
-// Source-checkout launchers put the agent root on sys.path themselves (often
-// under `python -I`), so the probe must do the same to see hermes_cli.
-function hermesVersionProbe(agentRoot: string | undefined): string {
-  return agentRoot
-    ? `import sys; sys.path.insert(0, ${JSON.stringify(agentRoot)}); ${HERMES_VERSION_PROBE}`
-    : HERMES_VERSION_PROBE
-}
 
 export interface HermesManagedRuntimeLocation {
   version: string
@@ -128,7 +125,7 @@ export async function probeHermesCliVersion(
   }
 
   try {
-    const { stdout } = await execFileAsync(installation.python, ['-c', hermesVersionProbe(installation.agentRoot)], {
+    const { stdout } = await execFileAsync(installation.python, ['-c', HERMES_VERSION_PROBE, installation.agentRoot || ''], {
       encoding: 'utf8',
       // A cold Python start importing hermes_cli can exceed 5s on a loaded or
       // small machine; a false timeout makes Studio treat an installed Hermes

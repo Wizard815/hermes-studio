@@ -330,7 +330,6 @@ function openUpstream() {
 }
 
 .api-relay-logo { border-radius: var(--radius-component, 4px); }
-.page-sidebar-relay-badge { margin-inline-start: auto; }
 
 .page-sidebar-tab {
   width: 100%;
@@ -355,7 +354,7 @@ function openUpstream() {
     flex-shrink: 0;
   }
 
-  span:not(.page-sidebar-relay-badge) {
+  span {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

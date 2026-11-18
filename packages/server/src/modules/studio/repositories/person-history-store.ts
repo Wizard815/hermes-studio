@@ -42,10 +42,11 @@ export function clearPersonHistory(userId: number, mainId: string, historyRevisi
       for (const table of ['person_acceptance_attempts', 'person_acceptance', 'person_task_returns', 'person_deliveries', 'person_events'])
         db.prepare(`DELETE FROM ${table} WHERE execution_id IN (SELECT id FROM person_executions WHERE task_id=?)`).run(task.id)
       db.prepare("DELETE FROM person_operations WHERE owner_user_id=? AND (json_extract(result_json,'$.task.id')=? OR json_extract(result_json,'$.task_id')=?)").run(userId, task.id, task.id)
-      for (const table of ['person_interactions', 'person_schedules', 'person_task_origins', 'person_executions', 'person_stage_tasks'])
+      for (const table of ['person_interactions', 'person_schedules', 'person_task_origins', 'person_task_redirects', 'person_executions', 'person_stage_tasks'])
         db.prepare(`DELETE FROM ${table} WHERE task_id=?`).run(task.id)
     }
     for (const { id } of rows) {
+      db.prepare('DELETE FROM person_flow_runs WHERE session_id=?').run(id)
       for (const table of ['messages', TASK_PLANS_TABLE, 'session_tasks', COMPRESSION_SNAPSHOT_TABLE, RUN_USAGE_TABLE,
         SESSION_UPLOADS_TABLE, WORKSPACE_RUN_CHANGE_FILES_TABLE, WORKSPACE_RUN_CHANGES_TABLE,
         'person_context_chunks', 'person_context_summaries', 'person_context_progress']) {

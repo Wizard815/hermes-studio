@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, symlink, truncate, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { basename, join, resolve } from 'path'
@@ -274,6 +274,12 @@ vi.mock('../../packages/server/src/modules/studio/public/agent-status-registry',
 }))
 
 describe('session conversations controller', () => {
+  // The controller's import graph grew with the plugin host; load it once
+  // up front so the first test is not charged for the cold import.
+  beforeAll(async () => {
+    await import('../../packages/server/src/modules/studio/controllers/sessions')
+  }, 60_000)
+
   it('authorizes manual task changes against the session profile and rejects run credentials', async () => {
     const mod = await import('../../packages/server/src/modules/studio/controllers/sessions')
     getSessionMock.mockReturnValue({ id: 's1', profile: 'research', source: 'coding_agent' })

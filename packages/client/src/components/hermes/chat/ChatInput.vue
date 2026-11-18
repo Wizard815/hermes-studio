@@ -565,11 +565,32 @@ function saveDraftForActiveSession(value: string) {
   writeDraft(chatStore.activeSessionId, value)
 }
 
+// Key for drafts the store hands back when Stop cancels attachment preparation.
+function getActiveDraftSessionId() {
+  if (props.draft) return ''
+  return chatStore.activeSessionId || composerSession.value?.id || ''
+}
+
+function restoreCancelledAttachmentDraft() {
+  const sessionId = getActiveDraftSessionId()
+  const draft = chatStore.cancelledAttachmentDrafts.get(sessionId)
+  if (!draft) return
+  chatStore.cancelledAttachmentDrafts.delete(sessionId)
+  // Keep anything typed while the upload was pending as well as the cancelled input.
+  inputText.value = [draft.content, inputText.value].filter(Boolean).join('\n\n')
+  const existingIds = new Set(attachments.value.map(attachment => attachment.id))
+  attachments.value = [...draft.attachments.filter(attachment => !existingIds.has(attachment.id)), ...attachments.value]
+  nextTick(focusComposer)
+}
+
+watch(() => chatStore.cancelledAttachmentDrafts.get(getActiveDraftSessionId()), restoreCancelledAttachmentDraft, { flush: 'post' })
+
 // 从 localStorage 读取设置
 onMounted(() => {
   // Persistent: restore this session's draft. Transient: seed from prompt.
   if (props.initialText) inputText.value = props.initialText
   else if (props.persistDraft) loadDraftForActiveSession()
+  restoreCancelledAttachmentDraft()
   syncViewport()
   window.addEventListener('resize', syncViewport)
   nextTick(() => {
