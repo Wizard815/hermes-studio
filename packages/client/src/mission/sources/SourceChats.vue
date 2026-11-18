@@ -6,6 +6,7 @@ import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import { fetchSessions, type SessionSummary } from '@/api/studio/sessions'
 import { openSessionInHerdr } from '@/api/coding-agents/herdr'
 import { useSessionStateStore } from '@/stores/hermes/session-state'
+import { useHerdrStore } from '@/stores/hermes/herdr'
 import { studioUrl } from '../useMission'
 
 /** Studio's coding-agent chats with live status: open one as a herdr pane or in Studio. */
@@ -13,6 +14,16 @@ const emit = defineEmits<{ 'select-pane': [paneId: string] }>()
 const { t } = useI18n()
 const toast = useMessage()
 const states = useSessionStateStore()
+const herdr = useHerdrStore()
+/** Chats with no herdr space now (asleep): they get one when opened in herdr. */
+const spaceIds = computed(() => {
+  const spaces = herdr.bridge?.connected ? herdr.bridge.chatSpaces : undefined
+  return Array.isArray(spaces) ? new Set(spaces) : null
+})
+function asleep(chat: SessionSummary): boolean {
+  const spaces = spaceIds.value
+  return !!spaces && !spaces.has(chat.id) && !states.herdrLink(chat.id)
+}
 const chats = ref<SessionSummary[]>([])
 const error = ref('')
 const query = ref('')
@@ -71,6 +82,7 @@ onBeforeUnmount(() => {
       <div class="source-card-meta">
         <AgentStatusIcon :status="states.statusOf(chat.id)" :live="!!states.herdrLink(chat.id)" :size="12" />
         <span class="source-card-title">{{ chat.title || chat.id }}</span>
+        <span v-if="asleep(chat)" class="source-asleep" data-testid="mission-chat-asleep" :title="t('herdr.asleep')" :aria-label="t('herdr.asleep')">z</span>
       </div>
       <div class="source-card-meta">
         <span class="source-chip">{{ chat.agent }}</span>
@@ -87,6 +99,15 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 @use '@/styles/variables' as *;
 @use './source';
+
+.source-asleep {
+  flex: none;
+  font-size: 10px;
+  font-style: italic;
+  line-height: 1;
+  opacity: 0.55;
+  cursor: default;
+}
 
 .source-search {
   flex: 1 1 200px;
