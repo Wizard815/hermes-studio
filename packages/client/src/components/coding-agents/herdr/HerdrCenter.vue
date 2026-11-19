@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import HerdrTerminal from './HerdrTerminal.vue'
 import { useHerdrStore } from '@/stores/hermes/herdr'
-import { fetchHerdrMachines, focusHerdrMachineAgent, focusHerdrPane, openSessionInHerdr, studioFocusRequest, type HerdrMachine, type HerdrPaneView } from '@/api/coding-agents/herdr'
+import { fetchHerdrMachines, focusHerdrMachineAgent, focusHerdrPane, openSessionInHerdr, reopenClosedHerdrChat, studioFocusRequest, type HerdrMachine, type HerdrPaneView } from '@/api/coding-agents/herdr'
 import { missionUrl } from '@/utils/mission-url'
 import { herdrKeyBytes } from '@/utils/herdr-keys'
 
@@ -82,6 +82,30 @@ const newChatKey = computed(() => herdr.status?.keys?.newChat || '')
 function newChat() {
   const bytes = newChatKey.value ? herdrKeyBytes(newChatKey.value, keys.value.prefix) : null
   if (!bytes || !terminal.value?.send(bytes)) emit('new-chat')
+}
+
+/** herdr's "Reopen closed chat" key, when Studio's setup bound one. */
+const reopenKey = computed(() => herdr.status?.keys?.reopen || '')
+const reopening = ref(false)
+
+/**
+ * Reopen closed chat: Studio brings back the newest chat closed in herdr (a
+ * pane, tab or space), linked to the same Studio chat, and shows it here.
+ */
+async function reopenClosed() {
+  reopening.value = true
+  try {
+    const { reopened } = await reopenClosedHerdrChat()
+    if (!reopened.length) { toast.info(t('herdr.reopenNothing')); return }
+    await herdr.refresh()
+    toast.success(t('herdr.reopened', { title: reopened.map(chat => chat.title || chat.sessionId).join(', ') }))
+    emit('open-chat', reopened[0].sessionId)
+    terminal.value?.focus()
+  } catch (err: any) {
+    toast.error(err?.message || String(err))
+  } finally {
+    reopening.value = false
+  }
 }
 
 /**
@@ -196,6 +220,15 @@ onBeforeUnmount(() => herdr.release())
           :title="newChatKey ? newChatKey.replace(/^prefix\+/i, `${keys.prefix} then `) : undefined"
           @click="newChat"
         ><span aria-hidden="true">+</span> {{ t('chat.newChat') }}</button>
+        <button
+          v-if="!machine"
+          type="button"
+          class="herdr-center-key"
+          data-testid="herdr-center-reopen"
+          :disabled="reopening"
+          :title="reopenKey ? reopenKey.replace(/^prefix\+/i, `${keys.prefix} then `) : undefined"
+          @click="reopenClosed"
+        >{{ t('herdr.reopenClosed') }}</button>
         <NTooltip v-for="button in keyButtons" :key="button.name" trigger="hover">
           <template #trigger>
             <button type="button" class="herdr-center-key" :data-testid="`herdr-center-key-${button.name}`" @click="press(button.bytes)">

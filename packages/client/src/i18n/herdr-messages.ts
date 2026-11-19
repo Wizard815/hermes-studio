@@ -45,6 +45,9 @@ export const herdrMessages = {
       "centerOff": "herdr is off. Turn it on in herdr settings.",
       "centerNotLive": "This chat isn't running in herdr.",
       "centerMission": "Open Mission",
+      "reopenClosed": "Reopen closed chat",
+      "reopenNothing": "No closed chat to reopen",
+      "reopened": "Reopened: {title}",
       "tabs": {
         "ui": "herdr",
         "agents": "Agents",
@@ -287,6 +290,9 @@ export const herdrMessages = {
       "centerOff": "herdr 已关闭。请在 herdr 设置中开启。",
       "centerNotLive": "此聊天未在 herdr 中运行。",
       "centerMission": "打开 Mission",
+      "reopenClosed": "重新打开已关闭的聊天",
+      "reopenNothing": "没有可重新打开的已关闭聊天",
+      "reopened": "已重新打开：{title}",
       "tabs": {
         "ui": "herdr",
         "agents": "智能体",
@@ -529,6 +535,9 @@ export const herdrMessages = {
       "centerOff": "herdr 已關閉。請在 herdr 設定中開啟。",
       "centerNotLive": "此聊天未在 herdr 中執行。",
       "centerMission": "開啟 Mission",
+      "reopenClosed": "重新開啟已關閉的聊天",
+      "reopenNothing": "沒有可重新開啟的已關閉聊天",
+      "reopened": "已重新開啟：{title}",
       "tabs": {
         "ui": "herdr",
         "agents": "代理",
@@ -771,6 +780,9 @@ export const herdrMessages = {
       "centerOff": "herdr はオフです。herdr の設定でオンにしてください。",
       "centerNotLive": "このチャットは herdr で動いていません。",
       "centerMission": "Mission を開く",
+      "reopenClosed": "閉じたチャットを再度開く",
+      "reopenNothing": "再度開ける閉じたチャットはありません",
+      "reopened": "再度開きました: {title}",
       "tabs": {
         "ui": "herdr",
         "agents": "エージェント",
@@ -1013,6 +1025,9 @@ export const herdrMessages = {
       "centerOff": "herdr가 꺼져 있습니다. herdr 설정에서 켜세요.",
       "centerNotLive": "이 채팅은 herdr에서 실행 중이 아닙니다.",
       "centerMission": "Mission 열기",
+      "reopenClosed": "닫은 채팅 다시 열기",
+      "reopenNothing": "다시 열 닫은 채팅이 없습니다",
+      "reopened": "다시 열었습니다: {title}",
       "tabs": {
         "ui": "herdr",
         "agents": "에이전트",
@@ -1255,6 +1270,9 @@ export const herdrMessages = {
       "centerOff": "herdr ist aus. In den herdr-Einstellungen einschalten.",
       "centerNotLive": "Dieser Chat läuft nicht in herdr.",
       "centerMission": "Mission öffnen",
+      "reopenClosed": "Geschlossenen Chat wieder öffnen",
+      "reopenNothing": "Kein geschlossener Chat zum Wiederöffnen",
+      "reopened": "Wieder geöffnet: {title}",
       "tabs": {
         "ui": "herdr",
         "agents": "Agenten",
@@ -1497,6 +1515,9 @@ export const herdrMessages = {
       "centerOff": "herdr está apagado. Actívalo en los ajustes de herdr.",
       "centerNotLive": "Este chat no se está ejecutando en herdr.",
       "centerMission": "Abrir Mission",
+      "reopenClosed": "Reabrir chat cerrado",
+      "reopenNothing": "No hay ningún chat cerrado para reabrir",
+      "reopened": "Reabierto: {title}",
       "tabs": {
         "ui": "herdr",
         "agents": "Agentes",
@@ -1739,6 +1760,9 @@ export const herdrMessages = {
       "centerOff": "herdr est désactivé. Activez-le dans les réglages herdr.",
       "centerNotLive": "Ce chat ne tourne pas dans herdr.",
       "centerMission": "Ouvrir Mission",
+      "reopenClosed": "Rouvrir la discussion fermée",
+      "reopenNothing": "Aucune discussion fermée à rouvrir",
+      "reopened": "Rouverte : {title}",
       "tabs": {
         "ui": "herdr",
         "agents": "Agents",
@@ -1981,6 +2005,9 @@ export const herdrMessages = {
       "centerOff": "O herdr está desligado. Ative-o nas configurações do herdr.",
       "centerNotLive": "Este chat não está rodando no herdr.",
       "centerMission": "Abrir Mission",
+      "reopenClosed": "Reabrir chat fechado",
+      "reopenNothing": "Nenhum chat fechado para reabrir",
+      "reopened": "Reaberto: {title}",
       "tabs": {
         "ui": "herdr",
         "agents": "Agentes",
@@ -2223,6 +2250,9 @@ export const herdrMessages = {
       "centerOff": "herdr выключен. Включите его в настройках herdr.",
       "centerNotLive": "Этот чат не запущен в herdr.",
       "centerMission": "Открыть Mission",
+      "reopenClosed": "Открыть закрытый чат снова",
+      "reopenNothing": "Нет закрытых чатов для повторного открытия",
+      "reopened": "Снова открыт: {title}",
       "tabs": {
         "ui": "herdr",
         "agents": "Агенты",
@@ -2465,6 +2495,9 @@ export const herdrMessages = {
       "centerOff": "herdr kapalı. herdr ayarlarından açın.",
       "centerNotLive": "Bu sohbet herdr'da çalışmıyor.",
       "centerMission": "Mission'ı aç",
+      "reopenClosed": "Kapatılan sohbeti yeniden aç",
+      "reopenNothing": "Yeniden açılacak kapalı sohbet yok",
+      "reopened": "Yeniden açıldı: {title}",
       "tabs": {
         "ui": "herdr",
         "agents": "Ajanlar",
@@ -2707,6 +2740,9 @@ export const herdrMessages = {
       "centerOff": "herdr متوقف. شغّله من إعدادات herdr.",
       "centerNotLive": "هذه الدردشة لا تعمل في herdr.",
       "centerMission": "افتح Mission",
+      "reopenClosed": "أعد فتح المحادثة المغلقة",
+      "reopenNothing": "لا توجد محادثة مغلقة لإعادة فتحها",
+      "reopened": "أُعيد فتح: {title}",
       "tabs": {
         "ui": "herdr",
         "agents": "الوكلاء",
