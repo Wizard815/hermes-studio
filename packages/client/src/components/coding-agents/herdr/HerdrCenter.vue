@@ -109,9 +109,11 @@ async function focusChat() {
   if (pane) await focusHerdrPane(pane.pane_id).catch(() => undefined)
 }
 
-watch(() => props.active, async value => {
+// The terminal starts at once; focusing the chat's pane goes out first and
+// lands while herdr's client attaches (waiting for it cost a round trip).
+watch(() => props.active, value => {
   if (!value || started.value) return
-  await focusChat()
+  void focusChat()
   started.value = true
 }, { immediate: true })
 // A string key: only a different chat or pane refocuses (every herdr update makes new pane objects).

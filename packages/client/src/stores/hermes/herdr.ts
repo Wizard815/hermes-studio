@@ -4,6 +4,7 @@ import type { Socket } from 'socket.io-client'
 import {
   connectHerdrSocket,
   fetchHerdrStatus,
+  gunzipState,
   saveHerdrSettings,
   startHerdrServer,
   type HerdrBridgeState,
@@ -47,9 +48,13 @@ export const useHerdrStore = defineStore('herdr', () => {
     if (socket) return socket
     const owner = connectHerdrSocket()
     socket = owner
-    owner.on('herdr.state', (state: HerdrBridgeState | null) => {
-      if (socket === owner) bridge.value = state
-    })
+    // States apply in the order they came, gzipped ones included (unzipping is async).
+    let queue: Promise<unknown> = Promise.resolve()
+    const apply = (next: () => Promise<HerdrBridgeState | null> | HerdrBridgeState | null) => {
+      queue = queue.then(next).then(state => { if (socket === owner) bridge.value = state }, () => undefined)
+    }
+    owner.on('herdr.state', (state: HerdrBridgeState | null) => apply(() => state))
+    owner.on('herdr.state.gz', (payload: ArrayBuffer) => apply(() => gunzipState(payload)))
     return owner
   }
 

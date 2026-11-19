@@ -175,12 +175,25 @@ export function focusHerdrPane(paneId: string) {
   return request<{ ok: boolean }>(`${base}/panes/${encodeURIComponent(paneId)}/focus`, { method: 'POST', body: '{}' })
 }
 
+/** Whether this browser can unzip herdr's gzipped state. */
+export function canGunzip(): boolean {
+  return typeof DecompressionStream === 'function' && typeof Response === 'function' && typeof Blob === 'function'
+}
+
+/** herdr's gzipped state (`herdr.state.gz`) as the bridge state. */
+export async function gunzipState(payload: ArrayBuffer | Uint8Array): Promise<HerdrBridgeState | null> {
+  const bytes = payload instanceof Uint8Array ? payload : new Uint8Array(payload)
+  const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'))
+  return JSON.parse(await new Response(stream).text()) as HerdrBridgeState | null
+}
+
 export function connectHerdrSocket(): Socket {
   const endpoint = socketEndpoint(getBaseUrlValue(), '/herdr')
   return io(endpoint.url, {
     forceNew: true,
     path: endpoint.path,
-    auth: { token: getApiKey() },
+    // gz: herdr's state comes gzipped (it lists every chat's space).
+    auth: { token: getApiKey(), gz: canGunzip() },
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionDelay: 500,

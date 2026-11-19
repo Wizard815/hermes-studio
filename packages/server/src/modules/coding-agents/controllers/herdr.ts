@@ -1,10 +1,12 @@
 import type { Context } from 'koa'
+import { gzipSync } from 'node:zlib'
 import { upstreamWorkRef } from '../../studio/services/upstream/client'
 import { herdrManager, HERDR_INTEGRATIONS } from '../services/herdr/manager'
 import { herdrKindForStudioAgent } from '../services/herdr/protocol'
 import { herdrChatProfile } from '../services/herdr/runtime'
 import { HERDR_PLUGIN_TOKEN_HEADER } from '../services/herdr/plugin'
 import type { HerdrWorkRef } from '../services/herdr/bridge'
+import { clientBridgeState } from '../services/herdr/client-state'
 
 function fail(ctx: Context, error: unknown, fallback: string) {
   const err = error as { status?: number; message?: string; code?: string }
@@ -26,12 +28,30 @@ function browserOrigin(ctx: Context): string {
   return `${proto}://${host}`
 }
 
+/**
+ * JSON, gzipped when the browser takes it and it is big: herdr's status holds
+ * every chat's space (hundreds with hundreds of chats), and API responses are
+ * not compressed otherwise.
+ */
+function sendJson(ctx: Context, value: unknown) {
+  const json = JSON.stringify(value)
+  ctx.type = 'application/json'
+  ctx.vary('Accept-Encoding')
+  if (json.length >= 8192 && /\bgzip\b/i.test(ctx.get('Accept-Encoding'))) {
+    ctx.set('Content-Encoding', 'gzip')
+    ctx.body = gzipSync(json, { level: 6 })
+  } else {
+    ctx.body = json
+  }
+}
+
 export async function status(ctx: Context) {
   try {
     herdrManager.noteBrowserOrigin(browserOrigin(ctx))
     herdrManager.noteUser(ctx.state.user)
     await herdrManager.noteStudioProfile(ctx.state.profile?.name)
-    ctx.body = { ...(await herdrManager.status()), integrations: HERDR_INTEGRATIONS }
+    const current = await herdrManager.status()
+    sendJson(ctx, { ...current, bridge: clientBridgeState(current.bridge), integrations: HERDR_INTEGRATIONS })
   } catch (error) { fail(ctx, error, 'Failed to read herdr status') }
 }
 

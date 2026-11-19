@@ -7,6 +7,7 @@ import { herdrManager } from '../services/herdr/manager'
 import { herdrArgs, readHerdrServerStatus } from '../services/herdr/runtime'
 import { studioClientView, type ClientViewLaunch } from '../services/herdr/client-view'
 import { NdjsonReader } from '../services/herdr/socket-client'
+import { createStateFeed, type EncodedState } from '../services/herdr/client-state'
 
 /**
  * `/herdr` namespace: live herdr state for the Studio panel, plus terminal
@@ -128,11 +129,26 @@ export function setupHerdrSocket(io: Server) {
     })().catch(() => next(new Error('Unauthorized')))
   })
 
-  const stopState = herdrManager.onState(state => nsp.emit('herdr.state', state))
+  // herdr's state for Studio's pages: slimmed, coalesced, and gzipped for
+  // pages that can unzip it (they say so with `auth.gz`), so a few hundred
+  // chats do not hold back the herdr terminal sharing this socket.
+  const ZIPPED = 'herdr:state:gz'
+  const PLAIN = 'herdr:state:plain'
+  const sendState = (target: { emit: (event: string, ...args: any[]) => boolean }, zipped: boolean, encoded: EncodedState) => {
+    if (zipped) target.emit('herdr.state.gz', encoded.gzip)
+    else target.emit('herdr.state', encoded.state)
+  }
+  const feed = createStateFeed(() => herdrManager.getBridge()?.getState() ?? null, encoded => {
+    sendState(nsp.to(ZIPPED), true, encoded)
+    sendState(nsp.to(PLAIN), false, encoded)
+  })
+  const stopState = herdrManager.onState(() => feed.changed())
 
   nsp.on('connection', (socket: Socket) => {
     const streams = new Map<string, Stream>()
-    socket.emit('herdr.state', herdrManager.getBridge()?.getState() ?? null)
+    const zipped = socket.handshake.auth?.gz === true
+    void socket.join(zipped ? ZIPPED : PLAIN)
+    sendState(socket, zipped, feed.current())
 
     socket.on('terminal.open', async (data: any, ack?: (result: { ok: boolean; streamId?: string; error?: string }) => void) => {
       const reply = typeof ack === 'function' ? ack : () => {}
@@ -195,6 +211,7 @@ export function setupHerdrSocket(io: Server) {
   return {
     close: () => {
       stopState()
+      feed.stop()
       nsp.disconnectSockets(true)
     },
   }
