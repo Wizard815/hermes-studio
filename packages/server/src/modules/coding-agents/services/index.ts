@@ -4129,7 +4129,33 @@ export function nativeResumeArgs(id: string, nativeSessionId: string): { prefix:
   if (!nativeSessionId) return { prefix: [], suffix: [] }
   if (id === 'claude-code') return { prefix: [], suffix: ['--resume', nativeSessionId] }
   if (id === 'codex') return { prefix: ['resume', nativeSessionId], suffix: [] }
+  // Studio's CodeBuddy and ZCode chats keep the CLI's own session id (ACP / stream-json).
+  if (id === 'codebuddy' || id === 'zcode') return { prefix: [], suffix: ['--resume', nativeSessionId] }
   return { prefix: [], suffix: [] }
+}
+
+/**
+ * Terminal flags for native CLIs whose Studio launch has none for approvals
+ * (Studio's own runs set approvals per turn): asking is each CLI's terminal
+ * default; "auto" (Studio's act-without-asking) needs the CLI's own flag.
+ */
+export function nativeInteractiveApprovalArgs(id: string, asks: boolean): string[] {
+  if (asks) return []
+  if (id === 'codebuddy') return ['--dangerously-skip-permissions']
+  if (id === 'zcode') return ['--mode', 'yolo']
+  return []
+}
+
+/**
+ * Studio's MCP servers for a native CLI in a terminal (Studio's own runs hand
+ * them over ACP): CodeBuddy reads them from `--mcp-config`, like Claude Code.
+ */
+export async function nativeInteractiveMcpArgs(id: string, launch: { rootDir?: string; nativeMcpServers?: Record<string, any> }): Promise<string[]> {
+  if (id !== 'codebuddy' || !launch.rootDir || !launch.nativeMcpServers || !Object.keys(launch.nativeMcpServers).length) return []
+  const path = join(launch.rootDir, 'herdr-mcp.json')
+  await mkdir(launch.rootDir, { recursive: true })
+  await writeFile(path, `${JSON.stringify({ mcpServers: launch.nativeMcpServers }, null, 2)}\n`, { mode: 0o600 })
+  return ['--mcp-config', path]
 }
 
 export interface CodingAgentInteractiveLaunch {
@@ -4163,14 +4189,16 @@ export async function prepareCodingAgentInteractiveLaunch(
     : launchInput
   const launch = await prepareCodingAgentLaunch(id, { ...routed, piOutputMode: id === 'pi' ? 'interactive' : routed.piOutputMode })
   const resume = nativeResumeArgs(launch.agentId, resumeNativeSessionId || '')
+  const asks = !yolo && agentAsksBeforeActing(launch.agentId)
+  const native = [...nativeInteractiveApprovalArgs(launch.agentId, asks), ...await nativeInteractiveMcpArgs(launch.agentId, launch)]
   return {
     agentId: launch.agentId,
     // herdr starts panes through a login shell with its own PATH; give it the
     // exact binary Studio would run (including Studio-managed installs).
     command: await resolveInteractiveCommand(launch.command),
     // Agents ask in a terminal too, unless set to act without asking in Studio.
-    args: [...resume.prefix, ...(!yolo && agentAsksBeforeActing(launch.agentId) ? withApprovals(launch.args) : launch.args), ...resume.suffix],
-    env: !yolo && agentAsksBeforeActing(launch.agentId) ? withApprovalsEnv(launch.agentId, launch.env) : launch.env,
+    args: [...resume.prefix, ...(asks ? withApprovals(launch.args) : launch.args), ...native, ...resume.suffix],
+    env: asks ? withApprovalsEnv(launch.agentId, launch.env) : launch.env,
     workspaceDir: launch.workspaceDir,
     provider: launch.provider,
     model: launch.model,

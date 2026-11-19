@@ -4,6 +4,7 @@ vi.mock('@/api/coding-agents/herdr', () => ({}))
 vi.mock('@/api/coding-agents', () => ({}))
 vi.mock('@/api/studio/orb', () => ({ fetchOrbStatus: async () => ({ settings: { url: '' } }) }))
 import { buildFolderTree, folderForSpace, herdrCanHost, herdrCanOpenChat } from '@/mission/useFolders'
+import { HERDR_AGENTS } from '@/mission/useMission'
 
 const cat = (id: number, name: string, parent_id: number | null = null) => ({ id, name, parent_id, created_at: 0, updated_at: 0 })
 const categories = [cat(1, 'Clients'), cat(2, 'acme', 1), cat(3, 'api', 2), cat(4, 'Home')]
@@ -37,6 +38,13 @@ describe('Mission folders are Studio chat folders', () => {
   it('hosts coding-agent and hermes chats in herdr panes (no stored agent = Hermes); Ekko runs through Studio', () => {
     for (const agent of ['claude', 'claude-code', 'codex', 'opencode', 'hermes', '', null, undefined]) expect(herdrCanHost(agent)).toBe(true)
     for (const agent of ['ekko-agent', 'ekko', 'dsh']) expect(herdrCanHost(agent)).toBe(false)
+  })
+
+  it('runs every Studio coding agent with a terminal CLI in herdr panes, CodeBuddy and ZCode included; DSH uses Studio\'s chat client there', () => {
+    for (const agent of ['pi', 'grok', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot', 'codebuddy', 'zcode']) expect(herdrCanHost(agent)).toBe(true)
+    for (const agent of ['codebuddy', 'zcode']) expect(HERDR_AGENTS).toContain(agent)
+    expect(HERDR_AGENTS).not.toContain('dsh')
+    expect(herdrCanOpenChat({ id: 'dsh-chat', source: 'coding_agent' })).toBe(true)
   })
 
   it('opens every saved top-level chat in herdr, Ekko and old Hermes chats included', () => {
