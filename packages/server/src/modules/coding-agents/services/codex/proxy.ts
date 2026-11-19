@@ -35,6 +35,8 @@ import { agentRunGateway } from '../../protocol/gateway'
 import { codingAgentRunManager } from '../runtime/run-manager'
 import { codingAgentOutputLimit } from '../context-policy'
 import { normalizeTokenUsage } from '../../../studio/public/usage'
+import { GenerationClock } from '../../../studio/public/generation-time'
+
 
 export interface CodexProxyTargetInput extends AgentTargetInput {
   profile: string
@@ -261,8 +263,10 @@ function responseEventForCodexClient(target: CodexProxyTarget, event: CanonicalR
 
 function observableResponsesEvents(target: CodexProxyTarget, events: AsyncIterable<CanonicalResponsesEvent>, startedAt: number): AsyncIterable<CanonicalResponsesEvent> {
 async function* observe() {
+    const clock = new GenerationClock(startedAt)
     for await (const event of normalizeResponsesSseEvents(events)) {
-      recordTargetUsage(target, event, (performance.now() - startedAt) / 1000, target.baseUrl)
+      clock.note(event.type)
+      recordTargetUsage(target, event, clock.seconds(), target.baseUrl)
       const clientEvent = responseEventForCodexClient(target, event)
       // Grok, OpenCode and DSH report the same model activity through their native
       // stdout streams. The proxy remains responsible for transport and usage
@@ -408,13 +412,19 @@ export async function codingAgentProxyChatCompletions(ctx: Context) {
           const decoder = new TextDecoder()
           let buffer = ''
           let usage: unknown
+          const clock = new GenerationClock(started)
           try {
             for await (const chunk of source) {
               buffer += decoder.decode(chunk, { stream: true })
               let boundary: RegExpExecArray | null
               while ((boundary = /\r?\n\r?\n/.exec(buffer))) {
                 for (const line of buffer.slice(0, boundary.index).split(/\r?\n/)) if (line.startsWith('data:')) {
-                  try { const data = JSON.parse(line.slice(5)); if (data.usage) usage = data.usage } catch { /* SSE control frame */ }
+                  try {
+                    const data = JSON.parse(line.slice(5))
+                    if (data.usage) usage = data.usage
+                    const delta = data.choices?.[0]?.delta
+                    if (delta && (delta.content || delta.reasoning_content || delta.reasoning || delta.tool_calls?.length)) clock.noteOutput()
+                  } catch { /* SSE control frame */ }
                 }
                 buffer = buffer.slice(boundary.index + boundary[0].length)
               }
@@ -422,7 +432,7 @@ export async function codingAgentProxyChatCompletions(ctx: Context) {
               yield chunk
             }
           } finally {
-            if (usage) recordTargetUsage(target, { type: 'response.completed', data: { response: { model: target.model, usage } } }, (performance.now() - started) / 1000, target.baseUrl)
+            if (usage) recordTargetUsage(target, { type: 'response.completed', data: { response: { model: target.model, usage } } }, clock.seconds(), target.baseUrl)
           }
         })())
       } else {

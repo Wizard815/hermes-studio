@@ -32,6 +32,8 @@ import { agentRunGateway, ProviderApiError } from '../../protocol/gateway'
 import { teeAsyncIterable } from '../../protocol/stream-tee'
 import { codingAgentRunManager } from '../runtime/run-manager'
 import { logger } from '../../../studio/public/logging'
+import { GenerationClock } from '../../../studio/public/generation-time'
+
 
 export interface ClaudeCodeProxyTargetInput extends AgentTargetInput {}
 
@@ -352,8 +354,10 @@ function anthropicEventStream(events: AsyncIterable<AnthropicStreamEvent>): Read
 function observeResponsesEvents(target: ClaudeCodeProxyTarget, events: AsyncIterable<CanonicalResponsesEvent>, startedAt: number) {
   void (async () => {
     try {
+      const clock = new GenerationClock(startedAt)
       for await (const event of events) {
-        recordTargetUsage(target, event, (performance.now() - startedAt) / 1000, target.baseUrl)
+        clock.note(event.type)
+        recordTargetUsage(target, event, clock.seconds(), target.baseUrl)
         if (!isNativeCodingAgent(target.agentId)) codingAgentRunManager.handleResponseEvent(target.agentSessionId, event)
       }
     } catch (err) {

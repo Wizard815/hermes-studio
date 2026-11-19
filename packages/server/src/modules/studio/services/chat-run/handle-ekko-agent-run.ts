@@ -73,6 +73,7 @@ import { selectWorkspace } from '../workspace/manager'
 import { config } from '../../public/config'
 import { issueUserJwt } from '../../public/auth'
 import { findUserById, findFirstUser } from '../../repositories/users-store'
+import { generationSeconds } from '../../public/generation-time'
 
 /**
  * Mint an internal JWT that the Studio auth middleware will accept on the
@@ -771,6 +772,8 @@ async function handleEkkoAgentRunImpl(
   let usageOutput = 0
   let usageCallIndex = 0
   let modelStartedAt: number | undefined
+  /** First streamed text or reasoning of the current model call: speed is measured from here. */
+  let modelOutputAt: number | undefined
   let contextEstimate: any
   let parentUsagePersisted = false
   const pendingToolGroups = new Map<string, PendingToolGroup>()
@@ -1059,6 +1062,7 @@ async function handleEkkoAgentRunImpl(
       }
     } else if (event.type === 'model.delta') {
       assistantText += event.text
+      if (modelOutputAt == null) modelOutputAt = performance.now()
       emit('message.delta', {
         event: 'message.delta',
         run_id: event.runId,
@@ -1066,6 +1070,7 @@ async function handleEkkoAgentRunImpl(
       })
     } else if (event.type === 'model.started') {
       modelStartedAt = performance.now()
+      modelOutputAt = undefined
     } else if (event.type === 'model.usage') {
       usageInput += event.usage.inputTokens || 0
       usageOutput += event.usage.outputTokens || 0
@@ -1074,7 +1079,7 @@ async function handleEkkoAgentRunImpl(
         sessionId,
         runId: `${event.runId}:step:${event.step}:call:${usageCallIndex}`,
         parentRunId: event.runId,
-        apiDuration: modelStartedAt == null ? undefined : (performance.now() - modelStartedAt) / 1000,
+        apiDuration: modelStartedAt == null ? undefined : generationSeconds(modelStartedAt, modelOutputAt),
         source: 'ekko_agent',
         agent: 'ekko_agent',
         usageScope: 'model_call',
@@ -1094,6 +1099,7 @@ async function handleEkkoAgentRunImpl(
       })
     } else if (event.type === 'model.reasoning') {
       if (event.text) {
+        if (modelOutputAt == null) modelOutputAt = performance.now()
         assistantReasoning += event.text
         emit('reasoning.delta', {
           event: 'reasoning.delta',
