@@ -69,7 +69,7 @@ export interface HerdrStatus {
   integrations: string[]
   home: string
   /** herdr keys (the user's or herdr's defaults) for Studio's herdr buttons. */
-  keys?: { prefix: string; search: string; workspaces: string; settings: string; help: string; sidebar?: string; studioChats?: string; newChat?: string }
+  keys?: { prefix: string; search: string; workspaces: string; settings: string; help: string; sidebar?: string; studioChats?: string; newChat?: string; reopen?: string }
   publicUrl?: string
   /** herdr's collapsed-rail width (4 or 0) and phone-layout width, for Studio's embedded view. */
   view?: { rail: number; mobileWidth: number }
@@ -156,6 +156,10 @@ export const fetchHerdrProfiles = () => request<{ profiles: string[] }>(`${base}
 
 export const openSessionInHerdr = (sessionId: string) =>
   request<{ link: HerdrLink }>(`${base}/sessions/${encodeURIComponent(sessionId)}/open`, { method: 'POST', body: '{}' })
+
+/** Reopen the newest closed herdr chat (Studio's "Reopen closed chat"); `reopened` is empty when none is left. */
+export const reopenClosedHerdrChat = () =>
+  request<{ reopened: Array<{ sessionId: string; title: string; link: HerdrLink }>; remaining: number }>(`${base}/closed-chats/reopen`, { method: 'POST', body: '{}' })
 
 export const promptHerdrSession = (sessionId: string, text: string) =>
   request<{ paneId: string }>(`${base}/sessions/${encodeURIComponent(sessionId)}/prompt`, { method: 'POST', body: JSON.stringify({ text }) })

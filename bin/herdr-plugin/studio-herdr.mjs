@@ -3,6 +3,7 @@
 // "Install Studio plugin"); configuration lives in $HERDR_PLUGIN_CONFIG_DIR/studio.json.
 //
 //   open-in-studio  action: open the focused pane's chat in Studio's web UI
+//   reopen          action: reopen the newest closed Studio chat (again: further back)
 //   chats           popup:  list Studio coding-agent chats, open one as a herdr pane
 //   launch          popup:  start an agent with Studio's providers/models (e.g. llama-swap)
 //   settings        popup:  choose the Studio profile chats from herdr go to
@@ -85,6 +86,23 @@ async function openInStudio() {
   const opened = openUrl(url)
   notify(opened ? 'Opened in Studio' : 'Studio link', url)
   process.stdout.write(`${url}\n`)
+}
+
+/**
+ * Reopen closed chat, like a browser's reopen closed tab (idea from
+ * chirichidi/herdr-reopen-closed, MIT). Every pane is a Studio chat, so Studio
+ * reopens it: the same chat resumes its agent in its space, with its model,
+ * profile and approvals.
+ */
+async function reopen() {
+  const config = loadConfig()
+  const { reopened } = await api(config, '/reopen', { method: 'POST', body: '{}' })
+  if (!reopened?.length) {
+    notify('No closed chat to reopen')
+    return
+  }
+  const names = reopened.map(chat => chat.title || chat.sessionId)
+  notify(reopened.length === 1 ? 'Reopened chat' : `Reopened ${reopened.length} chats`, names.join(', ').slice(0, 200))
 }
 
 /** Closed input (Esc closing the popup, EOF) reads as "q". */
@@ -359,9 +377,9 @@ async function chat() {
   process.exit(0)
 }
 
-const run = command === 'open-in-studio' ? openInStudio : command === 'chats' ? chats : command === 'launch' ? launch : command === 'settings' ? settings : command === 'resume' ? resume : command === 'chat' ? chat : null
+const run = command === 'open-in-studio' ? openInStudio : command === 'reopen' ? reopen : command === 'chats' ? chats : command === 'launch' ? launch : command === 'settings' ? settings : command === 'resume' ? resume : command === 'chat' ? chat : null
 if (!run) {
-  process.stderr.write('usage: studio-herdr.mjs open-in-studio|chats|launch|settings|resume <chat>|chat <chat>\n')
+  process.stderr.write('usage: studio-herdr.mjs open-in-studio|reopen|chats|launch|settings|resume <chat>|chat <chat>\n')
   process.exit(2)
 }
 run().catch(error => {

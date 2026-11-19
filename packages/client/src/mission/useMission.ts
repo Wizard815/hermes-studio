@@ -11,7 +11,7 @@ import {
 } from '@/api/coding-agents/herdr'
 
 /** Studio coding agents herdr can host. */
-export const HERDR_AGENTS = ['claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot']
+export const HERDR_AGENTS = ['claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot', 'codebuddy', 'zcode']
 
 /** Folder tile palette, shared with herdr-space-folders. Empty is the neutral tile. */
 export const FOLDER_PALETTE = ['', 'teal', 'orange', 'blue', 'violet', 'green', 'pink'] as const

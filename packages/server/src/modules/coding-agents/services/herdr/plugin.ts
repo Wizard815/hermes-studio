@@ -42,6 +42,12 @@ contexts = ["pane", "workspace", "global"]
 command = ${command('open-in-studio')}
 
 [[actions]]
+id = "reopen"
+title = "Reopen closed chat"
+contexts = ["global", "workspace", "pane"]
+command = ${command('reopen')}
+
+[[actions]]
 id = "chats"
 title = "Studio chats"
 contexts = ["global", "workspace", "pane"]

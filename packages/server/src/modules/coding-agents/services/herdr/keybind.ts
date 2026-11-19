@@ -8,6 +8,8 @@ import { herdrArgs, runHerdr, type HerdrSettings } from './runtime'
 export const STUDIO_CHATS_ACTION = 'studio.hermes.chats'
 /** Plugin action that starts a new agent chat that is both a herdr pane and a Studio chat. */
 export const STUDIO_NEW_CHAT_ACTION = 'studio.hermes.launch'
+/** Plugin action that reopens the newest closed chat through Studio (idea from chirichidi/herdr-reopen-closed, MIT). */
+export const STUDIO_REOPEN_ACTION = 'studio.hermes.reopen'
 
 /**
  * Tried in order; the first one neither herdr's defaults nor the user's config
@@ -16,6 +18,8 @@ export const STUDIO_NEW_CHAT_ACTION = 'studio.hermes.launch'
 export const STUDIO_KEY_CANDIDATES = ['prefix+shift+s', 'prefix+alt+s', 'prefix+a', 'prefix+y', 'prefix+shift+a', 'prefix+f9'] as const
 /** For "New Studio chat"; herdr's own `prefix+c` stays its plain new tab. */
 export const STUDIO_NEW_CHAT_KEY_CANDIDATES = ['prefix+n', 'prefix+shift+c', 'prefix+alt+n', 'prefix+alt+c', 'prefix+f8'] as const
+/** For "Reopen closed chat" (like a browser's reopen closed tab); herdr's `prefix+shift+t` renames a tab. */
+export const STUDIO_REOPEN_KEY_CANDIDATES = ['prefix+t', 'prefix+alt+t', 'prefix+u', 'prefix+f7'] as const
 
 /** A Studio plugin action bound to a herdr key. */
 export interface StudioBinding {
@@ -27,6 +31,7 @@ export interface StudioBinding {
 
 export const STUDIO_CHATS_BINDING: StudioBinding = { action: STUDIO_CHATS_ACTION, candidates: STUDIO_KEY_CANDIDATES, description: 'Studio chats', comment: 'open the Studio chat picker' }
 export const STUDIO_NEW_CHAT_BINDING: StudioBinding = { action: STUDIO_NEW_CHAT_ACTION, candidates: STUDIO_NEW_CHAT_KEY_CANDIDATES, description: 'New Studio chat', comment: 'start a new agent chat (a herdr pane and a Studio chat)' }
+export const STUDIO_REOPEN_BINDING: StudioBinding = { action: STUDIO_REOPEN_ACTION, candidates: STUDIO_REOPEN_KEY_CANDIDATES, description: 'Reopen closed chat', comment: 'reopen the newest closed Studio chat' }
 
 /** Same resolution order as herdr: HERDR_CONFIG_PATH, XDG_CONFIG_HOME, APPDATA (Windows), ~/.config. */
 export function herdrConfigPath(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
@@ -121,10 +126,12 @@ export interface HerdrKeys {
   /** Studio's plugin keys, when bound: the chat picker and "New Studio chat". */
   studioChats?: string
   newChat?: string
+  /** "Reopen closed chat". */
+  reopen?: string
 }
 
 const DEFAULT_HERDR_KEYS: HerdrKeys = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?', sidebar: 'prefix+b' }
-type HerdrKeyName = Exclude<keyof HerdrKeys, 'studioChats' | 'newChat'>
+type HerdrKeyName = Exclude<keyof HerdrKeys, 'studioChats' | 'newChat' | 'reopen'>
 const KEY_NAMES: Record<HerdrKeyName, string> = { prefix: 'prefix', search: 'goto', workspaces: 'workspace_picker', settings: 'settings', help: 'help', sidebar: 'toggle_sidebar' }
 
 export function herdrKeys(userConfig: string): HerdrKeys {
@@ -142,7 +149,8 @@ export function herdrKeys(userConfig: string): HerdrKeys {
   }
   const studioChats = existingStudioKey(userConfig, STUDIO_CHATS_ACTION)
   const newChat = existingStudioKey(userConfig, STUDIO_NEW_CHAT_ACTION)
-  return { ...keys, ...(studioChats ? { studioChats } : {}), ...(newChat ? { newChat } : {}) }
+  const reopen = existingStudioKey(userConfig, STUDIO_REOPEN_ACTION)
+  return { ...keys, ...(studioChats ? { studioChats } : {}), ...(newChat ? { newChat } : {}), ...(reopen ? { reopen } : {}) }
 }
 
 /** herdr's layout settings Studio needs to fit its own spaces panel next to herdr's UI. */

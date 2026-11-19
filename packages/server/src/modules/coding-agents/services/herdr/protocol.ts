@@ -83,7 +83,33 @@ const STUDIO_TO_HERDR: Record<string, string> = {
   qoder: 'qodercli',
   copilot: 'copilot',
   hermes: 'hermes',
+  // herdr has no detection for these CLIs: Studio reports the pane as the agent itself
+  // (see HERDR_UNDETECTED_KINDS) under the CLI's own name.
+  codebuddy: 'codebuddy',
+  zcode: 'zcode',
 }
+
+/**
+ * Kinds herdr cannot detect or integrate with (not in herdr's agent list). Studio
+ * links their panes to their chats itself and reports the pane to herdr under this
+ * name while the agent runs; herdr cannot tell their state, so it stays 'unknown'.
+ * herdr ignores an unknown name while a shell is in the foreground, so their
+ * waiting panes report as Studio's chat agent (`chatAgentLabel`) instead.
+ */
+export const HERDR_UNDETECTED_KINDS: ReadonlySet<string> = new Set(['codebuddy', 'zcode'])
+
+/** Whether herdr detects this kind on its own (its screen manifests and hooks). */
+export function herdrDetectsKind(kind: string | null | undefined): boolean {
+  return !!kind && !HERDR_UNDETECTED_KINDS.has(kind)
+}
+
+/**
+ * Studio agents herdr shows through Studio's chat client in the chat's waiting
+ * pane, not their own CLI: Ekko (Studio's own agent) and DSH, which Studio runs
+ * only over ACP (its Studio profile, patches, approvals and session store are
+ * for the ACP server; DSH has no terminal UI Studio could resume a chat in).
+ */
+export const HERDR_STUDIO_CLIENT_AGENTS: ReadonlySet<string> = new Set(['ekko', 'ekko-agent', 'dsh'])
 
 /** Herdr agent labels (detected or reported) → Studio runtime id. */
 const HERDR_TO_STUDIO: Record<string, string> = {
@@ -101,6 +127,8 @@ const HERDR_TO_STUDIO: Record<string, string> = {
   qodercli: 'qoder',
   copilot: 'copilot',
   hermes: 'hermes',
+  codebuddy: 'codebuddy',
+  zcode: 'zcode',
 }
 
 export function herdrKindForStudioAgent(agentId: string): string | null {

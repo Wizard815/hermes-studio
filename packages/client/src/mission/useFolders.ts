@@ -40,8 +40,9 @@ export interface TreeChat {
 
 /** Stored chat agents herdr can host (see services/herdr/protocol.ts); hermes
  * chats resume as `hermes chat` panes. A chat with no stored agent is a Hermes
- * chat (older Studio chats were saved that way). */
-const HERDR_HOSTABLE_AGENTS = new Set(['claude', 'claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot', 'hermes'])
+ * chat (older Studio chats were saved that way). The rest (Ekko, DSH) are in
+ * herdr too, through Studio's chat client in their waiting pane. */
+const HERDR_HOSTABLE_AGENTS = new Set(['claude', 'claude-code', 'codex', 'pi', 'grok', 'opencode', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot', 'codebuddy', 'zcode', 'hermes'])
 export const herdrCanHost = (agent: string | undefined | null) => HERDR_HOSTABLE_AGENTS.has(String(agent || '').trim() || 'hermes')
 
 /** What `herdrCanOpenChat` reads of a Studio chat. */

@@ -150,6 +150,25 @@ export async function closeSessionPane(ctx: Context) {
   } catch (error) { fail(ctx, error, 'Failed to close herdr pane') }
 }
 
+/** Chats closed in herdr that "Reopen closed chat" can bring back, newest first. */
+export async function closedChats(ctx: Context) {
+  try {
+    ctx.body = { entries: herdrManager.requireBridge().closedChats().reverse() }
+  } catch (error) { fail(ctx, error, 'Failed to list closed chats') }
+}
+
+/**
+ * Reopen the newest closed chat (or the chats of a closed tab or space) that
+ * still exists, is not archived and is not open: it resumes in its herdr space,
+ * linked to the same Studio chat. `reopened` is empty when there is nothing left.
+ */
+export async function reopenClosedChat(ctx: Context) {
+  try {
+    if (ctx.state.user) herdrManager.noteUser(ctx.state.user)
+    ctx.body = await herdrManager.requireBridge().reopenClosed()
+  } catch (error) { fail(ctx, error, 'Failed to reopen the closed chat') }
+}
+
 export async function sessionLink(ctx: Context) {
   const link = herdrManager.getBridge()?.linkFor(String(ctx.params.sessionId || '')) ?? null
   ctx.body = { link }
