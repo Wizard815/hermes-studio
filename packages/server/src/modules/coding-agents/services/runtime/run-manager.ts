@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { agentApprovalMode, launchAsks, withApprovals } from '../approvals'
+import { chatApprovalMode, launchAsks, withApprovals } from '../approvals'
 import { needsApproval, type AgentAction } from '../approval-policy'
 import { CodexAppServerTurn } from '../codex/app-server-turn'
 import { parseCleanRoomCommand, spawnInCleanRoom } from '../cleanroom'
@@ -601,7 +601,7 @@ function piAssistantMessageText(message: any): string {
     .join('')
 }
 
-function codingAgentDisplayName(agentId: string): string {
+export function codingAgentDisplayName(agentId: string): string {
   if (isNativeCodingAgent(agentId)) return NATIVE_CODING_AGENTS.find(agent => agent.id === agentId)!.name
   if (agentId === 'antigravity') return 'Antigravity'
   if (agentId === 'cursor') return 'Cursor'
@@ -1229,7 +1229,7 @@ export class CodingAgentRunManager {
     if (parseCleanRoomCommand(run.launch.command)) return Promise.resolve('once')
     // Studio's rules answer what this agent's mode does not ask you about.
     // A workflow step that requires approval always asks, whatever the agent's mode.
-    const mode = agentApprovalMode(run.launch.agentId)
+    const mode = chatApprovalMode(run.launch.agentId, run.launch.sessionId)
     if (!needsApproval(run.launch.approvalRequired === true && mode !== 'ask' ? 'ask' : mode, request.action, run.launch.workspaceDir)) return Promise.resolve('once')
     if (this.chatApprovals.get(sessionId)?.has(request.key)) return Promise.resolve('session')
     const approvalId = `agent-${randomUUID()}`
@@ -1277,6 +1277,18 @@ export class CodingAgentRunManager {
       wait.resolve('deny')
     }
     run.agentApprovals?.clear()
+  }
+
+  /** `/yolo` turned on: the questions this chat's agent is waiting on are approved. */
+  approveOpenApprovals(sessionId: string, reason: string): number {
+    const run = this.getBySession(sessionId)
+    let approved = 0
+    for (const [approvalId, wait] of [...(run?.agentApprovals || [])]) {
+      this.emitToChat(sessionId, 'approval.resolved', { event: 'approval.resolved', session_id: sessionId, approval_id: approvalId, choice: 'once', resolved: true, reason })
+      wait.resolve('once')
+      approved += 1
+    }
+    return approved
   }
 
   resolveApproval(sessionId: string, approvalId: string, choice = 'deny'): { handled: boolean; resolved: boolean } {
@@ -1997,7 +2009,7 @@ export class CodingAgentRunManager {
       if (piTool) {
         const what = String(event.message || '')
         const action: AgentAction = piTool === 'bash' || piTool === 'powershell' ? { kind: 'command', command: what } : { kind: 'write', paths: what ? [what] : [] }
-        const mode = agentApprovalMode(run.launch.agentId)
+        const mode = chatApprovalMode(run.launch.agentId, run.launch.sessionId)
         const allowed = !needsApproval(run.launch.approvalRequired === true && mode !== 'ask' ? 'ask' : mode, action, run.launch.workspaceDir)
           || this.chatApprovals.get(run.launch.sessionId)?.has(`pi:${piTool}`)
         if (allowed) {

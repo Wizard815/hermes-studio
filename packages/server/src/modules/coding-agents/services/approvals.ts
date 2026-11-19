@@ -62,6 +62,64 @@ export function agentAsksBeforeActing(agentId: string, file?: string): boolean {
 }
 
 /**
+ * One chat's own approval mode, set by `/yolo` in that chat. It wins over the
+ * agent's mode (Settings) for that chat only; without one the chat follows the
+ * agent. Kept on disk so a Studio restart keeps the chat as it was.
+ */
+function chatSettingsFile(): string {
+  return join(getWebUiHome(), 'coding-agent', 'chat-approvals.json')
+}
+
+function readChatApprovalModes(file: string): Record<string, AgentApprovalMode> {
+  try {
+    if (!existsSync(file)) return {}
+    const raw = JSON.parse(readFileSync(file, 'utf8'))
+    const chats: Record<string, AgentApprovalMode> = {}
+    for (const [id, mode] of Object.entries(raw?.chats || {})) {
+      if (id && (mode === 'ask' || mode === 'guarded' || mode === 'auto')) chats[id] = mode
+    }
+    return chats
+  } catch {
+    return {}
+  }
+}
+
+export function chatApprovalOverride(sessionId: string | undefined, file = chatSettingsFile()): AgentApprovalMode | undefined {
+  return sessionId ? readChatApprovalModes(file)[sessionId] : undefined
+}
+
+/** Set (or with null, clear) one chat's own approval mode. */
+export function setChatApprovalOverride(sessionId: string, mode: AgentApprovalMode | null, file = chatSettingsFile()): void {
+  const chats = readChatApprovalModes(file)
+  if (mode) chats[sessionId] = mode
+  else delete chats[sessionId]
+  mkdirSync(dirname(file), { recursive: true })
+  const temp = `${file}.${process.pid}.tmp`
+  writeFileSync(temp, `${JSON.stringify({ chats }, null, 2)}\n`)
+  renameSync(temp, file)
+}
+
+/** The approval mode a chat's agent runs with: the chat's own (`/yolo`), else the agent's. */
+export function chatApprovalMode(agentId: string, sessionId?: string, file?: string, chatFile?: string): AgentApprovalMode {
+  return chatApprovalOverride(sessionId, chatFile) || agentApprovalMode(agentId, file)
+}
+
+/**
+ * `/yolo` in a coding-agent chat: the first turns this chat to "auto" (the
+ * agent acts without asking); the next puts it back on the agent's own mode.
+ * When the agent itself is already on "auto", `/yolo` turns asking on for
+ * this chat instead, so the command always switches something.
+ */
+export function toggleChatYolo(agentId: string, sessionId: string, file?: string, chatFile?: string): { mode: AgentApprovalMode; previous: AgentApprovalMode; yolo: boolean } {
+  const previous = chatApprovalMode(agentId, sessionId, file, chatFile)
+  const agentMode = agentApprovalMode(agentId, file)
+  if (chatApprovalOverride(sessionId, chatFile)) setChatApprovalOverride(sessionId, null, chatFile)
+  else setChatApprovalOverride(sessionId, agentMode === 'auto' ? 'ask' : 'auto', chatFile)
+  const mode = chatApprovalMode(agentId, sessionId, file, chatFile)
+  return { mode, previous, yolo: mode === 'auto' }
+}
+
+/**
  * Flags that let an agent act without asking. Agents that ask drop them: in a terminal
  * (herdr) the agent asks there; in a Studio chat it asks through Studio.
  */
@@ -88,7 +146,7 @@ export function withApprovalsEnv(agentId: string, env: Record<string, string>): 
  * Whether this run's agent asks before acting. A clean room never asks: the
  * agent has full permission inside its container (the container is the limit).
  */
-export function launchAsks(launch: { agentId: string; command: string; approvalRequired?: boolean }): boolean {
+export function launchAsks(launch: { agentId: string; command: string; approvalRequired?: boolean; sessionId?: string }): boolean {
   if (parseCleanRoomCommand(launch.command)) return false
-  return launch.approvalRequired === true || agentAsksBeforeActing(launch.agentId)
+  return launch.approvalRequired === true || chatApprovalMode(launch.agentId, launch.sessionId) !== 'auto'
 }

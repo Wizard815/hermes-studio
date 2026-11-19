@@ -2,7 +2,7 @@ import { deploymentUrl } from '@/utils/deployment-url'
 import { chatSessionAgentAvatar, PERSON_AVATAR } from '@/utils/chat-agent-avatar'
 import { deleteSessionMessages, type MessageDeletionResult } from '@/api/studio/sessions'
 import { isNativeCodingAgent } from '@/utils/agent-catalog'
-import { historySessionSource, isBuiltinEkkoSession } from '@/utils/hermes/session-agent'
+import { historySessionSource, isBuiltinEkkoSession, isExternalCodingAgentSession } from '@/utils/hermes/session-agent'
 import { isKnownEkkoSessionCommand } from '@/utils/hermes/bridge-session-commands'
 import { normalizeRunUsage, type RunUsageSummary } from '@/utils/run-usage'
 import { mergeTaskPlanMessages, type TaskPlanSnapshot } from '@/utils/task-plan'
@@ -3885,7 +3885,10 @@ function createChatState(scopedSessionId?: string) {
     const isProviderAgent = isProviderAgentSession(activeSession.value)
     const isBuiltinSlashCommand = !attachments?.length && isBuiltinEkkoSession(activeSession.value) && isKnownEkkoSessionCommand(trimmedContent)
     const isBridgeSlashCommand = !isProviderAgent && isKnownBridgeSessionCommand(trimmedContent)
-    const isSessionSlashCommand = isBridgeSlashCommand || isBuiltinSlashCommand
+    // "/yolo" in a coding-agent chat answers at once, also mid-turn (it can approve what the agent waits on).
+    const isCodingAgentYoloCommand = !attachments?.length && isProviderAgent && isExternalCodingAgentSession(activeSession.value)
+      && /^\/yolo\s*$/i.test(trimmedContent)
+    const isSessionSlashCommand = isBridgeSlashCommand || isBuiltinSlashCommand || isCodingAgentYoloCommand
     const isBridgeCompressCommand = isBridgeSlashCommand && /^\/compress(?:\s|$)/i.test(trimmedContent)
     const isBridgePlanCommand = isBridgeSlashCommand && /^\/plan(?:\s|$)/i.test(trimmedContent)
     const isBridgeSkillCommand = isBridgeSlashCommand && /^\/skill(?:\s|$)/i.test(trimmedContent)
@@ -3904,7 +3907,7 @@ function createChatState(scopedSessionId?: string) {
       pendingForkCommands.value = new Set(pendingForkCommands.value).add(sid)
     }
     const shouldQueue = wasLiveBeforeSend && (
-      (!isBridgeSlashCommand && !isBuiltinSlashCommand) ||
+      (!isBridgeSlashCommand && !isBuiltinSlashCommand && !isCodingAgentYoloCommand) ||
       isBridgePlanCommand ||
       isBridgeSkillCommand ||
       isBridgeBundleCommand ||
@@ -4825,7 +4828,7 @@ function createChatState(scopedSessionId?: string) {
       )
       runSubmitted = true
 
-      if (isProviderAgent && !isBuiltinSlashCommand) {
+      if (isProviderAgent && !isBuiltinSlashCommand && !isCodingAgentYoloCommand) {
         serverWorking.value.add(sid)
         streamStates.value.set(sid, ctrl)
       } else if (!isSessionSlashCommand || isBridgeCompressCommand || isBridgePlanCommand || isBridgeGoalCommand) {

@@ -1272,6 +1272,7 @@ export default {
       compress: 'Kontextkomprimierung im Leerlauf ausführen',
       compact: 'Aktuellen Dialog mit nativem CLI /compact komprimieren',
       cleanroom: 'Agent dieses Chats im eigenen Container ausführen (drinnen alles erlaubt, kein Ausweg)',
+      codingAgentYolo: 'Agent dieses Chats zwischen Handeln ohne Nachfrage (YOLO) und seinen üblichen Freigaben umschalten',
       steer: 'Steuertext an den aktiven Bridge-Lauf senden',
       destroy: 'Bridge-Agent für diese Sitzung freigeben',
       reloadMcp: 'MCP-Server neu laden',

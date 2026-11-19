@@ -1272,6 +1272,7 @@ export default {
       compress: '유휴 상태에서 컨텍스트 압축 실행',
       compact: '네이티브 CLI /compact로 현재 대화 압축',
       cleanroom: '이 채팅의 에이전트를 전용 컨테이너에서 실행 (안에서는 모든 권한, 밖으로는 못 나감)',
+      codingAgentYolo: '이 채팅의 에이전트를 묻지 않고 실행(YOLO)과 평소 승인 방식 사이에서 전환',
       steer: '활성 Bridge 실행에 지시 텍스트 보내기',
       destroy: '이 세션의 Bridge Agent 해제',
       reloadMcp: 'MCP 서버 다시 로드',

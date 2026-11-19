@@ -1288,6 +1288,7 @@ export default {
       compress: '空閒時觸發上下文壓縮',
       compact: '壓縮目前對話（橋接底層 CLI /compact）',
       cleanroom: '在獨立容器中執行此對話的代理（容器內完全權限，無法離開）',
+      codingAgentYolo: '切換此對話的代理：無需詢問直接執行（YOLO）或使用其一般審批',
       fork: '將目前空閒會話 fork 成一個新的關聯對話',
       steer: '向目前 Bridge 執行傳送引導文字',
       destroy: '釋放目前會話的 Bridge Agent',

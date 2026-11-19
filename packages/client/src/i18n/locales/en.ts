@@ -1300,6 +1300,7 @@ export default {
       compress: 'Run context compression while idle',
       compact: 'Compact current conversation using the native CLI /compact',
       cleanroom: 'Run this chat\'s agent in its own container (full access inside, cannot leave)',
+      codingAgentYolo: 'Toggle this chat\'s agent between acting without asking (yolo) and its usual approvals',
       fork: 'Fork this idle session into a new linked conversation',
       steer: 'Send steering text to the active bridge run',
       destroy: 'Release the bridge agent for this session',

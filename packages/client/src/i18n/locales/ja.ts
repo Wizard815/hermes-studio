@@ -1272,6 +1272,7 @@ export default {
       compress: 'アイドル時にコンテキスト圧縮を実行',
       compact: 'ネイティブ CLI /compact で現在の会話を圧縮',
       cleanroom: 'このチャットのエージェントを専用コンテナで実行（中では全権限、外には出られない）',
+      codingAgentYolo: 'このチャットのエージェントを、確認なしで実行（YOLO）と通常の承認の間で切り替え',
       steer: '実行中の Bridge に誘導テキストを送信',
       destroy: 'このセッションの Bridge Agent を解放',
       reloadMcp: 'MCP サーバーを再読み込み',

@@ -280,7 +280,7 @@ const voiceInput = useComposerVoiceInput({
   insertTranscript: insertVoiceTranscriptIntoInput,
 })
 
-const CODING_AGENT_SLASH_COMMANDS = ['context', 'compact', 'usage', 'status', 'cleanroom']
+const CODING_AGENT_SLASH_COMMANDS = ['context', 'compact', 'usage', 'status', 'yolo', 'cleanroom']
 
 const bridgeCommands = computed<SlashCommandOption[]>(() =>
   BRIDGE_SESSION_COMMAND_DEFINITIONS.map(command => ({
@@ -361,6 +361,8 @@ const filteredBridgeCommands = computed(() => {
           || composerSession.value?.agent === 'opencode'
           || isCursorSession.value
         )))
+        // "/yolo" switches this chat's agent between acting without asking and its approvals.
+        .map(command => command.name === 'yolo' ? { ...command, description: t('chat.slashCommands.codingAgentYolo') } : command)
       : isForkCommandSession.value
         ? bridgeCommands.value.filter(command => command.name === 'fork')
         : []

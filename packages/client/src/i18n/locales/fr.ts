@@ -1272,6 +1272,7 @@ export default {
       compress: 'Lancer la compression du contexte au repos',
       compact: 'Compacter la conversation avec le /compact natif du CLI',
       cleanroom: 'Exécuter l\'agent de cette discussion dans son propre conteneur (tout permis dedans, impossible d\'en sortir)',
+      codingAgentYolo: 'Basculer l\'agent de cette discussion entre agir sans demander (YOLO) et ses approbations habituelles',
       steer: 'Envoyer un guidage à l’exécution Bridge active',
       destroy: 'Libérer l’agent Bridge de cette session',
       reloadMcp: 'Recharger les serveurs MCP',
