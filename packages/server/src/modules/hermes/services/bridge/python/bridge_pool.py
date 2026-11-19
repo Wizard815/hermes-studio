@@ -213,6 +213,9 @@ class AgentPool:
         self._mcp_generation = 0
         self._pending_mcp_refresh: Callable[[], None] | None = None
         self._retired_mcp_tools: set[str] = set()
+        # First streamed text or reasoning of each session's current model request
+        # (epoch seconds): Studio measures model speed from here, as llama.cpp does.
+        self._first_output_at: dict[str, float] = {}
 
     def schedule_mcp_refresh(self, refresh: Callable[[], None]) -> bool:
         with self._lock:
@@ -269,8 +272,14 @@ class AgentPool:
                 flush=True,
             )
 
+    def _note_model_output(self, session_id: str) -> None:
+        if session_id and session_id not in self._first_output_at:
+            self._first_output_at[session_id] = time.time()
+
     def _post_api_request_usage_hook(self, **kwargs: Any) -> None:
         session_id = str(kwargs.get("session_id") or "").strip()
+        # One model request has ended: the next one times its own first output.
+        first_output_at = self._first_output_at.pop(session_id, None) if session_id else None
         usage = kwargs.get("usage")
         if not session_id or not isinstance(usage, dict):
             return
@@ -287,6 +296,7 @@ class AgentPool:
             "api_duration": kwargs.get("api_duration"),
             "started_at": kwargs.get("started_at"),
             "ended_at": kwargs.get("ended_at"),
+            "first_output_at": first_output_at,
         })
 
     @staticmethod
@@ -1334,6 +1344,8 @@ class AgentPool:
 
     def _text_event_callback(self, session_id: str, event_name: str):
         def callback(text):
+            if text:
+                self._note_model_output(session_id)
             self._append_event(session_id, {"event": event_name, "text": str(text)})
 
         return callback
@@ -1483,6 +1495,9 @@ class AgentPool:
             # Text deltas are already captured by the per-run stream_callback
             # passed to run_conversation.  Only consume boundary signals here
             # so registering this callback does not duplicate assistant text.
+            # The first one still starts this request's speed clock.
+            if delta:
+                self._note_model_output(session_id)
 
         return callback
 
@@ -1977,6 +1992,7 @@ class AgentPool:
                     # the true interleaving.
                     record.deltas.append(text)
                     if text:
+                        self._note_model_output(session.session_id)
                         record.events.append({"event": "stream.delta", "delta": text})
 
             approval_session_token = None

@@ -1,8 +1,25 @@
 import { bridgeLogger } from '../../public/logging'
 import { normalizeTokenUsage, recordSessionUsage } from './usage-recorder'
+import { MIN_GENERATION_SECONDS } from '../../public/generation-time'
 
 function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+/**
+ * Seconds Hermes spent generating: from the first streamed text or reasoning
+ * (noted by Studio's bridge) to the end of the request, so speed matches
+ * llama.cpp's. Falls back to Hermes's whole request time when there is no
+ * usable first output (nothing streamed, a stale mark from a cancelled request,
+ * or under MIN_GENERATION_SECONDS of output).
+ */
+export function hermesGenerationSeconds(event: Record<string, unknown>): number | undefined {
+  const whole = typeof event.api_duration === 'number' && Number.isFinite(event.api_duration) ? event.api_duration : undefined
+  const first = Number(event.first_output_at), started = Number(event.started_at), ended = Number(event.ended_at)
+  if (event.first_output_at == null || !Number.isFinite(first) || !Number.isFinite(ended)) return whole
+  if (Number.isFinite(started) && event.started_at != null && first < started) return whole
+  const generating = ended - first
+  return generating >= MIN_GENERATION_SECONDS && (whole == null || generating <= whole + 1) ? generating : whole
 }
 
 export function recordBridgeModelUsage(
@@ -38,7 +55,7 @@ export function recordBridgeModelUsage(
     sessionId,
     runId: `${bridgeRunId}:api:${requestKey}`,
     parentRunId: bridgeRunId,
-    apiDuration: typeof event.api_duration === 'number' ? event.api_duration : undefined,
+    apiDuration: hermesGenerationSeconds(event),
     source: 'hermes',
     agent: 'hermes',
     usageScope: 'model_call',
