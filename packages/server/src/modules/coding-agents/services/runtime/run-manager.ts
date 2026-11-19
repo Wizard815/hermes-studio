@@ -230,6 +230,14 @@ export interface ManagedCodingAgentRun {
   nativeResumeReady?: boolean
   codexToolBlocks?: Map<string, { id: string; name: string; arguments: string; done: boolean }>
   codexChatText?: string
+  /**
+   * This Codex turn runs on its app-server, whose notifications stream the
+   * reply (text, reasoning, tools). The provider proxy then carries only
+   * transport and usage; it is not a second source of chat text.
+   */
+  codexAppServer?: boolean
+  /** Reasoning items whose text arrived as deltas this turn (their completed copy is not added again). */
+  codexReasoningStreamed?: Set<string>
   codexPendingUsage?: any
   codexPendingError?: string
   codexTurnFailed?: boolean
@@ -1373,6 +1381,13 @@ export class CodingAgentRunManager {
     if (!agentSessionId) return
     const run = this.runs.get(agentSessionId)
     if (!run) return
+    if (run.launch.agentId === 'codex' && run.codexAppServer && !run.acceptingPrintEvent) {
+      // Codex's app-server notifications already stream this reply into the
+      // chat (item/agentMessage/delta, reasoning deltas, items). Accepting the
+      // proxy's copy of the same model output as well showed every token
+      // twice. The proxy still records usage (recordTargetUsage), not chat text.
+      return
+    }
     const responseEvent = this.normalizeCodexChatTextEvent(run, event)
     if (!responseEvent) return
     const storageSafeResponseEvent = truncateCodingAgentToolOutputEvent(responseEvent)
@@ -3372,6 +3387,8 @@ export class CodingAgentRunManager {
     run.terminalEventHandled = false
     run.codexToolBlocks = new Map()
     run.codexChatText = ''
+    run.codexAppServer = launchAsks(run.launch)
+    run.codexReasoningStreamed = new Set()
     run.codexPendingUsage = undefined
     run.currentChildStderr = ''
     run.runMarker = undefined
@@ -3390,7 +3407,7 @@ export class CodingAgentRunManager {
       ? ''
       : normalizeCliPromptArgument(systemPrompt)
     // Codex asks before acting only on its app-server protocol (`exec` cannot ask).
-    if (launchAsks(run.launch)) {
+    if (run.codexAppServer) {
       this.startCodexAppServerTurn(run, input, promptArgument, images)
       return
     }
@@ -3647,12 +3664,16 @@ export class CodingAgentRunManager {
       return
     }
     if (
+      method === 'item/reasoning/summaryTextDelta' ||
+      method === 'item/reasoning/textDelta' ||
       method === 'item/reasoning/delta' ||
       method === 'item/reasoningText/delta' ||
       method === 'item/reasoningSummary/delta' ||
       method === 'item/thinking/delta'
     ) {
-      this.appendCodexReasoning(run, this.codexReasoningText(params))
+      const text = this.codexReasoningText(params)
+      if (text && params.itemId) run.codexReasoningStreamed?.add(String(params.itemId))
+      this.appendCodexReasoning(run, text)
       return
     }
     if (method === 'item/started') {
@@ -3738,6 +3759,8 @@ export class CodingAgentRunManager {
   private handleCodexItemCompleted(run: ManagedCodingAgentRun, item: any) {
     const itemType = this.codexItemType(item)
     if (this.isCodexReasoningItem(itemType)) {
+      // Reasoning the app-server already streamed as deltas is not added again whole.
+      if (run.codexReasoningStreamed?.has(String(item.id || ''))) return
       this.appendCodexReasoning(run, this.codexReasoningText(item))
       return
     }
@@ -3807,6 +3830,7 @@ export class CodingAgentRunManager {
   private handleCodexResponseItem(run: ManagedCodingAgentRun, item: any) {
     const itemType = this.codexItemType(item)
     if (this.isCodexReasoningItem(itemType)) {
+      if (run.codexReasoningStreamed?.has(String(item.id || ''))) return
       this.appendCodexReasoning(run, this.codexReasoningText(item))
       return
     }
