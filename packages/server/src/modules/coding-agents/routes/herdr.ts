@@ -1,6 +1,7 @@
 import Router from '@koa/router'
 import { requireSuperAdmin } from '../../studio/public/auth'
 import * as ctrl from '../controllers/herdr'
+import * as folders from '../controllers/herdr-space-folders'
 
 /** Herdr drives real shells on this machine: every route is super-admin only. */
 export const herdrRoutes = new Router()
@@ -26,6 +27,15 @@ herdrRoutes.get('/api/coding-agents/herdr/closed-chats', requireSuperAdmin, ctrl
 herdrRoutes.post('/api/coding-agents/herdr/closed-chats/reopen', requireSuperAdmin, ctrl.reopenClosedChat)
 herdrRoutes.get('/api/coding-agents/herdr/folders', requireSuperAdmin, ctrl.getFolders)
 herdrRoutes.put('/api/coding-agents/herdr/folders', requireSuperAdmin, ctrl.saveFolders)
+herdrRoutes.get('/api/coding-agents/herdr/space-folders', requireSuperAdmin, folders.view)
+herdrRoutes.post('/api/coding-agents/herdr/space-folders/folders', requireSuperAdmin, folders.createFolder)
+herdrRoutes.put('/api/coding-agents/herdr/space-folders/folders/:id', requireSuperAdmin, folders.updateFolder)
+herdrRoutes.delete('/api/coding-agents/herdr/space-folders/folders/:id', requireSuperAdmin, folders.deleteFolder)
+herdrRoutes.post('/api/coding-agents/herdr/space-folders/folders/:id/space', requireSuperAdmin, folders.newSpaceInFolder)
+herdrRoutes.put('/api/coding-agents/herdr/space-folders/order', requireSuperAdmin, folders.orderFolders)
+herdrRoutes.put('/api/coding-agents/herdr/space-folders/chats/:sessionId', requireSuperAdmin, folders.placeChat)
+herdrRoutes.put('/api/coding-agents/herdr/space-folders/spaces/:workspaceId', requireSuperAdmin, folders.placeSpace)
+herdrRoutes.post('/api/coding-agents/herdr/space-repos', requireSuperAdmin, folders.spaceRepos)
 herdrRoutes.post('/api/coding-agents/herdr/panes/:paneId/focus', requireSuperAdmin, ctrl.focusPane)
 herdrRoutes.get('/api/coding-agents/herdr/sessions/:sessionId', requireSuperAdmin, ctrl.sessionLink)
 herdrRoutes.post('/api/coding-agents/herdr/sessions/:sessionId/open', requireSuperAdmin, ctrl.openSession)

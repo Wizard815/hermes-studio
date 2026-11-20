@@ -14,6 +14,11 @@ import {
   updateSession,
   updateSessionStats,
   listSessionCategories,
+  createSessionCategory,
+  renameSessionCategory,
+  moveSessionCategory,
+  deleteSessionCategory,
+  setSessionCategory,
   getRecentSessionMessages,
   type HermesSessionRow,
 } from '../modules/studio/public/sessions'
@@ -62,6 +67,8 @@ import { writeModelRunProfileToken } from '../modules/studio/services/chat-run/m
 import { listUsers } from '../modules/studio/public/users'
 import { issueModelRunJwt, type AuthenticatedUser } from '../modules/studio/public/auth'
 import { chatAgentLabel } from '../modules/coding-agents/services/herdr/chat-spaces'
+import { SpaceFolderSync, spaceFoldersFile, type SpaceFolderChat } from '../modules/coding-agents/services/herdr/space-folder-sync'
+import { orderedCategories } from '../modules/coding-agents/services/herdr/space-folder-file'
 
 function toRef(row: HermesSessionRow | null): HerdrSessionRef | null {
   if (!row) return null
@@ -260,7 +267,7 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     },
     folderForWork,
     categoryForSpace,
-    listChatSpaces: async () => listChatSpaces(),
+    listChatSpaces: () => listChatSpaces(),
     chatAccess: async sessionId => {
       const row = getSession(sessionId)
       if (!row) throw Object.assign(new Error('Chat not found'), { status: 404 })
@@ -447,9 +454,23 @@ export function chatSpaceRows(list: (limit: number, offset: number) => HermesSes
   return rows
 }
 
-function listChatSpaces() {
+async function listChatSpaces() {
   const categories = listSessionCategories()
   const byId = new Map(categories.map(category => [category.id, category]))
+  // Folders in the order Studio's herdr page shows them (herdr's own space order follows it).
+  const meta = await herdrManager.folders().load().catch(() => null)
+  const position = new Map(meta ? orderedCategories(categories, meta).map((item, index) => [item.category.id, index]) : [])
+  const rankOf = (id: number | null | undefined): number[] => {
+    const ranks: number[] = []
+    const seen = new Set<number>()
+    let current = id != null ? byId.get(id) : undefined
+    while (current && !seen.has(current.id) && ranks.length < 10) {
+      seen.add(current.id)
+      ranks.unshift(position.get(current.id) ?? Infinity)
+      current = current.parent_id != null ? byId.get(current.parent_id) : undefined
+    }
+    return ranks
+  }
   const pathOf = (id: number | null | undefined): string[] => {
     const names: string[] = []
     const seen = new Set<number>()
@@ -471,6 +492,7 @@ function listChatSpaces() {
         id: row.id,
         title: row.title || '',
         folderPath: pathOf(row.category_id),
+        folderRank: rankOf(row.category_id),
         agent: hostable || codingAgentIdForStoredAgent(row.agent) || herdrStoredAgent(row.agent, row.source),
         hostable: !!hostable,
         workspace: row.workspace || null,
@@ -519,6 +541,47 @@ export function herdrPluginDeps(baseUrl: string): HerdrPluginDeps {
   }
 }
 
+/** Every chat as Studio's herdr page lists it, with its folder and (awake) herdr space. */
+function spaceFolderChats(): SpaceFolderChat[] {
+  const spaces = herdrManager.getBridge()?.chatWorkspaces() ?? {}
+  return chatSpaceRows().map(row => ({
+    id: row.id,
+    title: row.title || '',
+    agent: codingAgentIdForStoredAgent(row.agent) || herdrStoredAgent(row.agent, row.source),
+    categoryId: row.category_id ?? null,
+    workspace: row.workspace || null,
+    workspaceId: spaces[row.id] || null,
+    lastActive: toMs(Number(row.last_active || row.started_at || 0)),
+  }))
+}
+
+/** Studio's space folders, kept in sync with herdr-space-folders' file in this machine's home. */
+function startSpaceFolders(): SpaceFolderSync {
+  const sync = new SpaceFolderSync({
+    file: spaceFoldersFile(),
+    store: herdrManager.folders(),
+    enabled: () => herdrManager.getSettings().enabled,
+    categories: () => listSessionCategories(),
+    chats: spaceFolderChats,
+    createCategory: (name, parentId) => createSessionCategory(name, parentId),
+    renameCategory: (id, name) => { renameSessionCategory(id, name) },
+    moveCategory: (id, parentId) => { moveSessionCategory(id, parentId) },
+    deleteCategory: id => { deleteSessionCategory(id) },
+    setChatCategory: (sessionId, categoryId) => {
+      if (setSessionCategory(sessionId, categoryId)) notifySessionListChanged({ type: 'updated', sessionId })
+    },
+    changed: () => {
+      herdrManager.foldersChanged()
+      // herdr's own space order follows the folders.
+      herdrManager.getBridge()?.scheduleChatSync()
+    },
+    log: (level, message, data) => logger[level](data || {}, message),
+  })
+  herdrManager.setSpaceFolders(sync)
+  sync.start()
+  return sync
+}
+
 /** Configure and (if enabled) connect the herdr bridge. Never blocks startup on herdr. */
 export function startHerdrIntegration(io: Server, baseUrl: string): { close: () => void } {
   const home = getWebUiHome()
@@ -527,6 +590,7 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
     stateFile: join(home, 'herdr', 'bridge-state.json'),
   }, herdrPluginDeps(baseUrl))
   const socket = setupHerdrSocket(io)
+  const folders = startSpaceFolders()
   try {
     const repaired = repairHerdrChatModes()
     if (repaired) logger.info({ repaired }, '[herdr] chats started in herdr now resume with their agent\'s own configuration')
@@ -535,11 +599,14 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
     if (change.type === 'deleted') void herdrManager.getBridge()?.forgetSession(change.sessionId)
     // New, renamed, moved or deleted chats: herdr's chat spaces follow.
     herdrManager.getBridge()?.scheduleChatSync()
+    folders.soon()
   })
   void herdrManager.init().catch(error => logger.warn(error, '[herdr] integration failed to start'))
   return {
     close: () => {
       stopListChanges?.(); stopListChanges = null
+      folders.stop()
+      herdrManager.setSpaceFolders(null)
       socket.close()
       herdrManager.shutdown()
     },

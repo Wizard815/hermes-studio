@@ -5,7 +5,7 @@ import { killOwnedProcessTree } from '../../studio/public/process-tree'
 import { logger } from '../../studio/public/logging'
 import { herdrManager } from '../services/herdr/manager'
 import { herdrArgs, readHerdrServerStatus } from '../services/herdr/runtime'
-import { studioClientView, type ClientViewLaunch } from '../services/herdr/client-view'
+import { studioClientView, type ClientSidebar, type ClientViewLaunch } from '../services/herdr/client-view'
 import { NdjsonReader } from '../services/herdr/socket-client'
 import { createStateFeed, type EncodedState } from '../services/herdr/client-state'
 
@@ -83,11 +83,11 @@ function paneStream(binary: string, mode: 'observe' | 'control', target: string,
 }
 
 /** The embedded herdr UI with its own client preferences (herdr's sidebar hidden), else herdr as usual. */
-async function clientLaunch(binary: string): Promise<ClientViewLaunch> {
+async function clientLaunch(binary: string, sidebar: ClientSidebar = 'studio'): Promise<ClientViewLaunch> {
   const settings = herdrManager.getSettings()
   try {
     const status = await readHerdrServerStatus(binary, settings)
-    const view = status.running && status.socket ? studioClientView(status.socket) : null
+    const view = status.running && status.socket ? studioClientView(status.socket, { sidebar }) : null
     if (view) return view
   } catch (error) {
     logger.warn({ error: String(error) }, '[herdr] embedded view uses shared client preferences')
@@ -143,6 +143,8 @@ export function setupHerdrSocket(io: Server) {
     sendState(nsp.to(PLAIN), false, encoded)
   })
   const stopState = herdrManager.onState(() => feed.changed())
+  // Space folders changed (here or in Herdr App's file): pages reload them.
+  const stopFolders = herdrManager.onFoldersChanged(() => { nsp.emit('herdr.folders') })
 
   nsp.on('connection', (socket: Socket) => {
     const streams = new Map<string, Stream>()
@@ -165,7 +167,7 @@ export function setupHerdrSocket(io: Server) {
         const machine = mode === 'client' && typeof data?.target === 'string' && data.target.startsWith('machine:') ? data.target.slice('machine:'.length) : ''
         const launch = mode !== 'client' ? null
           : machine ? { args: await herdrManager.remoteAttachArgs(machine), env: {} }
-            : await clientLaunch(binary)
+            : await clientLaunch(binary, data?.sidebar === 'herdr' ? 'herdr' : 'studio')
         streams.get(streamId)?.close()
         const onData = (bytes: string) => socket.emit('terminal.data', { streamId, bytes })
         const onClose = (reason: string) => {
@@ -211,6 +213,7 @@ export function setupHerdrSocket(io: Server) {
   return {
     close: () => {
       stopState()
+      stopFolders()
       feed.stop()
       nsp.disconnectSockets(true)
     },

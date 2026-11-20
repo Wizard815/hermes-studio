@@ -16,6 +16,8 @@ export interface ChatSpaceChat {
   title: string
   /** Folder names from the top folder down ([] when not in a folder). */
   folderPath: string[]
+  /** Each folder's place among its siblings, top folder down (the order Studio's herdr page shows); else by name. */
+  folderRank?: number[]
   /** Studio agent id (claude-code, codex, hermes, ekko-agent, ...). */
   agent: string
   /** herdr can run its agent (others show the chat and point to Studio). */
@@ -62,6 +64,8 @@ export function chatSpaceOrder(chats: ChatSpaceChat[]): ChatSpaceChat[] {
   return [...chats].sort((a, b) => {
     const depth = Math.min(a.folderPath.length, b.folderPath.length)
     for (let i = 0; i < depth; i += 1) {
+      const rank = (a.folderRank?.[i] ?? Infinity) - (b.folderRank?.[i] ?? Infinity)
+      if (rank) return rank
       const cmp = a.folderPath[i].localeCompare(b.folderPath[i], undefined, { sensitivity: 'base' })
       if (cmp) return cmp
     }
