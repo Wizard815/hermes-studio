@@ -1,0 +1,16 @@
+### InnerWarden (https://github.com/InnerWarden/innerwarden-releases, site https://www.innerwarden.com, source https://github.com/InnerWarden/inner-warden)
+**Verdict:** Maybe — the free Community guard is open source and has a Hermes hook, but it overlaps Studio's guarded mode; try it as an optional extra layer, not a build.
+**What it is:** A guardrail for AI agents. It checks each shell command, file write and MCP tool call before it runs and answers allow / review / deny with a risk score. The releases repo holds only signed binaries and installers (no source). Two lines: free "Community" guard (Apache-2.0, source in the separate `inner-warden` repo) and a paid Pro/Enterprise Linux host stack (kernel gate, source-available under licence, NOT open source, closed binaries).
+**Already in Studio/Hermes?** Partly. Studio has approval modes ask / guarded / auto (`packages/server/src/modules/coding-agents/services/approval-policy.ts`, `approvals.ts`): guarded already asks for rm outside the folder, sudo, force push, curl-pipe-shell. Clean rooms add a container plus network allowlist (`docs/cleanroom.md`). Hermes has a memory/skill write gate (`docs/hermes-write-gate.md`). Missing in Studio: rule-based risk scoring of commands and MCP calls (prompt-injection style patterns), and an MCP-call screen.
+**How to use it in Hermes Studio:** 
+- Install the Community binary on the host or in the Hermes/clean-room image, run `innerwarden agents connect hermes`. This adds a `hooks.pre_tool_call` entry to `~/.hermes/config.yaml` (needs Hermes Agent v0.22.5+; check our Hermes version first).
+- For Claude Code in a chat: `innerwarden install claude-code` adds a PreToolUse hook. Codex and Gemini CLI have hooks too.
+- For other agents or MCP servers: `innerwarden proxy -- <server>` wraps an MCP server.
+- Start in flag-only mode (its default) and read the logs before turning on enforce.
+**How to use it in herdr:** Not directly. herdr runs the same agent CLIs, so hooks set up for Claude Code/Codex apply inside herdr panes too. No herdr-specific work.
+**How to integrate it properly (build work):**
+- Small: add an optional `innerwarden` step to the clean-room Docker image (download, check sha256 and Ed25519 signature, run connect). No UI.
+- Small/medium: a Settings toggle "Extra command guard" that runs the connect commands per agent and shows status.
+- Medium (only if wanted): show its review/deny verdicts in Studio's approvals UI instead of a separate prompt. Needs its CLI/log format, which I did not read.
+**Risks:** Young project (6 stars, 3 forks; small vendor, but 306 commits and active releases, last release commit 2026-11-20). Installer is `curl | sh`; pin a tag (`IW_GUARD_TAG=guard-v1.6.10`) and verify signatures. Pro tier is closed/licensed and paid; not needed. Pre-tool hooks add latency and can break agent runs on false positives. Hook could conflict with Studio's own approval prompts (double asking). Vendor says the guard sends nothing off the machine; I did not verify this in source.
+**Facts:** Community guard: Apache-2.0, Rust, rules derived from MIT Agent Threat Rules. Releases repo: only binaries/installers/README/scoop manifest (v1.6.15 Windows manifest), no source. Tags `guard-vX.Y.Z` and rolling `iw-guard`; also npm, cargo, deb/rpm. Linux/macOS supported, Windows experimental. Did not run or build anything.
