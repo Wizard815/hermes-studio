@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NButton, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NPopover, NTooltip, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import HerdrTerminal from './HerdrTerminal.vue'
 import HerdrMissionDock from './HerdrMissionDock.vue'
+import HeaderActionOverflow from '@/components/layout/HeaderActionOverflow.vue'
 import { useHerdrDock } from './herdr-layout'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { fetchHerdrMachines, focusHerdrMachineAgent, focusHerdrPane, openSessionInHerdr, reopenClosedHerdrChat, studioFocusRequest, type HerdrMachine, type HerdrPaneView } from '@/api/coding-agents/herdr'
@@ -20,8 +21,21 @@ import { herdrKeyBytes } from '@/utils/herdr-keys'
  * On a phone herdr uses its own phone layout (its spaces slide over) and the
  * dock is a drawer.
  */
-const props = defineProps<{ sessionId: string; active: boolean }>()
-const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': []; back: [] }>()
+const props = withDefaults(defineProps<{
+  sessionId: string
+  active: boolean
+  /** The chat page's header row: the herdr bar goes there (one row with the chat title and switch). */
+  headerTarget?: HTMLElement | null
+}>(), { headerTarget: null })
+const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': [] }>()
+/** Below this header width the less-used herdr keys fold into the "more" menu. */
+const HEADER_ROOM = 1560
+/** The phone header's "more" menu: a pick closes it. */
+const phoneMenu = ref(false)
+function fromMenu(action: () => unknown) {
+  phoneMenu.value = false
+  void action()
+}
 
 const { t } = useI18n()
 const toast = useMessage()
@@ -213,74 +227,119 @@ onBeforeUnmount(() => herdr.release())
         <NButton v-if="herdr.status?.installed && !herdr.status?.server?.running" size="tiny" :loading="startingServer" data-testid="herdr-center-start" @click="startServer">{{ t('herdr.settings.startServer') }}</NButton>
         <a :href="SETTINGS_HREF" class="herdr-center-link">{{ t('sidebar.settings') }}</a>
       </div>
-      <header class="herdr-center-bar">
-        <button type="button" class="herdr-center-key herdr-center-back" data-testid="herdr-center-back" :title="t('herdr.backToChat')" @click="emit('back')">
-          <span aria-hidden="true">&larr;</span> {{ t('herdr.centerChat') }}
-        </button>
-        <div v-if="machines.length" class="herdr-center-machines" role="radiogroup" :aria-label="t('herdr.machineSwitch')" data-testid="herdr-center-machines">
-          <button type="button" role="radio" :aria-checked="!machine" :class="{ active: !machine }" @click="machine = ''">{{ t('herdr.machineLocal') }}</button>
-          <button
-            v-for="item in machines"
-            :key="item.id"
-            type="button"
-            role="radio"
-            :aria-checked="machine === item.id"
-            :class="{ active: machine === item.id }"
-            :data-testid="`herdr-center-machine-${item.id}`"
-            @click="openMachine(item.id)"
-          >{{ item.label || item.target }}</button>
-        </div>
-        <span v-if="machine" class="herdr-center-agent" data-testid="herdr-center-remote-chip">{{ t('herdr.remoteChip', { name: machineLabel }) }}</span>
-        <span v-else-if="linked" class="herdr-center-agent" data-testid="herdr-center-agent">
-          <AgentStatusIcon :status="linked.agent_status || 'unknown'" live :size="11" />
-          <span>{{ linked.label || linked.agent }}</span>
-          <small>{{ linked.pane_id }}</small>
-        </span>
-        <NButton v-else-if="sessionId && !machine" size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.centerOpenChat') }}</NButton>
-        <span v-else-if="!machine" class="herdr-center-landing" data-testid="herdr-center-landing">{{ t('herdr.centerLanding') }}</span>
-        <button
-          v-if="studioChatId"
-          type="button"
-          class="herdr-center-key"
-          data-testid="herdr-center-open-studio"
-          @click="emit('open-studio-chat', studioChatId)"
-        >{{ t('mission.openInStudio') }}</button>
-        <span class="herdr-center-spacer" />
-        <button
-          v-if="!machine"
-          type="button"
-          class="herdr-center-key herdr-center-new"
-          data-testid="herdr-center-new-chat"
-          :title="newChatKey ? newChatKey.replace(/^prefix\+/i, `${keys.prefix} then `) : undefined"
-          @click="newChat"
-        ><span aria-hidden="true">+</span> {{ t('chat.newChat') }}</button>
-        <button
-          v-if="!machine"
-          type="button"
-          class="herdr-center-key"
-          data-testid="herdr-center-reopen"
-          :disabled="reopening"
-          :title="reopenKey ? reopenKey.replace(/^prefix\+/i, `${keys.prefix} then `) : undefined"
-          @click="reopenClosed"
-        >{{ t('herdr.reopenClosed') }}</button>
-        <NTooltip v-for="button in keyButtons" :key="button.name" trigger="hover">
-          <template #trigger>
-            <button type="button" class="herdr-center-key" :data-testid="`herdr-center-key-${button.name}`" @click="press(button.bytes)">
-              {{ t(`herdr.key.${button.name}`) }}
-            </button>
+      <!--
+        herdr's bar. In Studio it sits in the chat page's own header row (one row
+        with the chat title and the Chat | herdr switch); elsewhere it is a row here.
+        The less-used herdr keys fold into a "more" menu when the row is short, and
+        on a phone everything but Tools does.
+      -->
+      <Teleport :to="headerTarget || 'body'" :disabled="!headerTarget">
+        <div v-show="active || !headerTarget" class="herdr-center-bar" :class="{ 'in-header': !!headerTarget, 'is-phone': dock.phone.value }" data-testid="herdr-center-bar">
+          <div v-if="machines.length && !dock.phone.value" class="herdr-center-machines" role="radiogroup" :aria-label="t('herdr.machineSwitch')" data-testid="herdr-center-machines">
+            <button type="button" role="radio" :aria-checked="!machine" :class="{ active: !machine }" @click="machine = ''">{{ t('herdr.machineLocal') }}</button>
+            <button
+              v-for="item in machines"
+              :key="item.id"
+              type="button"
+              role="radio"
+              :aria-checked="machine === item.id"
+              :class="{ active: machine === item.id }"
+              :data-testid="`herdr-center-machine-${item.id}`"
+              @click="openMachine(item.id)"
+            >{{ item.label || item.target }}</button>
+          </div>
+          <span v-if="machine" class="herdr-center-agent" data-testid="herdr-center-remote-chip">{{ t('herdr.remoteChip', { name: machineLabel }) }}</span>
+          <span v-else-if="linked && !dock.phone.value" class="herdr-center-agent" data-testid="herdr-center-agent" :title="linked.label || linked.agent">
+            <AgentStatusIcon :status="linked.agent_status || 'unknown'" live :size="11" />
+            <!-- In Studio's header the chat title is already there: just the agent and its pane. -->
+            <span>{{ headerTarget ? linked.agent : (linked.label || linked.agent) }}</span>
+            <small>{{ linked.pane_id }}</small>
+          </span>
+          <NButton v-else-if="sessionId && !machine && !linked" size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.centerOpenChat') }}</NButton>
+          <span v-else-if="!machine && !linked && !headerTarget" class="herdr-center-landing" data-testid="herdr-center-landing">{{ t('herdr.centerLanding') }}</span>
+          <span v-if="!headerTarget" class="herdr-center-spacer" />
+          <template v-if="!dock.phone.value">
+            <button
+              v-if="studioChatId"
+              type="button"
+              class="herdr-center-key"
+              data-testid="herdr-center-open-studio"
+              @click="emit('open-studio-chat', studioChatId)"
+            >{{ t('mission.openInStudio') }}</button>
+            <button
+              v-if="!machine"
+              type="button"
+              class="herdr-center-key herdr-center-new"
+              data-testid="herdr-center-new-chat"
+              :title="newChatKey ? newChatKey.replace(/^prefix\+/i, `${keys.prefix} then `) : undefined"
+              @click="newChat"
+            ><span aria-hidden="true">+</span> {{ t('chat.newChat') }}</button>
+            <button
+              v-if="!machine"
+              type="button"
+              class="herdr-center-key"
+              data-testid="herdr-center-reopen"
+              :disabled="reopening"
+              :title="reopenKey ? reopenKey.replace(/^prefix\+/i, `${keys.prefix} then `) : undefined"
+              @click="reopenClosed"
+            >{{ t('herdr.reopenClosed') }}</button>
           </template>
-          {{ button.combo.replace(/^prefix\+/i, `${keys.prefix} then `) }}
-        </NTooltip>
-        <button
-          type="button"
-          class="herdr-center-key herdr-center-dock-toggle"
-          :class="{ active: dock.open.value }"
-          :aria-expanded="dock.open.value"
-          aria-controls="herdr-dock"
-          data-testid="herdr-center-dock-toggle"
-          @click="dock.toggle()"
-        >{{ t('herdr.dock.title') }}</button>
-      </header>
+          <!-- Phones in Studio's header: everything but Tools is in this menu (one row, always). -->
+          <NPopover v-if="dock.phone.value && headerTarget" v-model:show="phoneMenu" trigger="click" placement="bottom-end">
+            <template #trigger>
+              <NButton size="small" class="header-overflow-trigger herdr-center-more-button" :title="t('chat.more')" :aria-label="t('chat.more')" :aria-expanded="phoneMenu" data-testid="herdr-center-more">
+                <template #icon>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+                </template>
+              </NButton>
+            </template>
+            <div class="herdr-center-menu">
+              <div v-if="machines.length" class="herdr-center-machines" role="radiogroup" :aria-label="t('herdr.machineSwitch')">
+                <button type="button" role="radio" :aria-checked="!machine" :class="{ active: !machine }" @click="fromMenu(() => { machine = '' })">{{ t('herdr.machineLocal') }}</button>
+                <button
+                  v-for="item in machines"
+                  :key="item.id"
+                  type="button"
+                  role="radio"
+                  :aria-checked="machine === item.id"
+                  :class="{ active: machine === item.id }"
+                  @click="fromMenu(() => openMachine(item.id))"
+                >{{ item.label || item.target }}</button>
+              </div>
+              <button v-if="studioChatId" type="button" class="herdr-center-key" data-testid="herdr-center-open-studio" @click="fromMenu(() => emit('open-studio-chat', studioChatId))">{{ t('mission.openInStudio') }}</button>
+              <button v-if="!machine" type="button" class="herdr-center-key herdr-center-new" data-testid="herdr-center-new-chat" @click="fromMenu(newChat)"><span aria-hidden="true">+</span> {{ t('chat.newChat') }}</button>
+              <button v-if="!machine" type="button" class="herdr-center-key" data-testid="herdr-center-reopen" :disabled="reopening" @click="fromMenu(reopenClosed)">{{ t('herdr.reopenClosed') }}</button>
+              <button v-for="button in keyButtons" :key="button.name" type="button" class="herdr-center-key" :data-testid="`herdr-center-key-${button.name}`" @click="fromMenu(() => press(button.bytes))">
+                {{ t(`herdr.key.${button.name}`) }}
+              </button>
+            </div>
+          </NPopover>
+          <HeaderActionOverflow v-else :key="headerTarget ? 'header' : 'inline'" :label="t('chat.more')" :breakpoint="HEADER_ROOM" class="herdr-center-more" data-testid="herdr-center-more">
+            <template v-if="dock.phone.value">
+              <button v-if="studioChatId" type="button" class="herdr-center-key" data-testid="herdr-center-open-studio" @click="emit('open-studio-chat', studioChatId)">{{ t('mission.openInStudio') }}</button>
+              <button v-if="!machine" type="button" class="herdr-center-key herdr-center-new" data-testid="herdr-center-new-chat" @click="newChat"><span aria-hidden="true">+</span> {{ t('chat.newChat') }}</button>
+              <button v-if="!machine" type="button" class="herdr-center-key" data-testid="herdr-center-reopen" :disabled="reopening" @click="reopenClosed">{{ t('herdr.reopenClosed') }}</button>
+            </template>
+            <NTooltip v-for="button in keyButtons" :key="button.name" trigger="hover">
+              <template #trigger>
+                <button type="button" class="herdr-center-key" :data-testid="`herdr-center-key-${button.name}`" @click="press(button.bytes)">
+                  {{ t(`herdr.key.${button.name}`) }}
+                </button>
+              </template>
+              {{ button.combo.replace(/^prefix\+/i, `${keys.prefix} then `) }}
+            </NTooltip>
+          </HeaderActionOverflow>
+          <button
+            type="button"
+            class="herdr-center-key herdr-center-dock-toggle"
+            :class="{ active: dock.open.value }"
+            :aria-expanded="dock.open.value"
+            aria-controls="herdr-dock"
+            data-testid="herdr-center-dock-toggle"
+            @click="dock.toggle()"
+          >{{ t('herdr.dock.title') }}</button>
+        </div>
+      </Teleport>
       <div class="herdr-center-body" :class="{ 'is-phone': dock.phone.value }">
         <!-- herdr's own sidebar lists every Studio chat as a space (folder path in its name). -->
         <HerdrTerminal
@@ -338,6 +397,49 @@ onBeforeUnmount(() => herdr.release())
   gap: 6px;
   padding: 6px 10px;
   border-bottom: var(--border-width, 1px) solid $border-light;
+
+  // In Studio's header row: one row, no frame of its own; if it is ever too
+  // long it scrolls sideways inside the header, never the page.
+  &.in-header {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 4px;
+    min-width: 0;
+    padding: 0;
+    border-bottom: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    > * {
+      flex: none;
+    }
+  }
+}
+
+.herdr-center-more {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+.herdr-center-more-button {
+  width: 30px;
+  padding: 0;
+
+  :deep(.n-button__icon) {
+    margin: 0;
+  }
+}
+
+.herdr-center-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 180px;
+
+  .herdr-center-key {
+    text-align: left;
+  }
 }
 
 // Phones: the bar is one row that scrolls sideways (the page never does).
@@ -409,6 +511,7 @@ onBeforeUnmount(() => herdr.release())
 }
 
 .herdr-center-key {
+  white-space: nowrap;
   padding: 3px 10px;
   border: var(--border-width, 1px) solid $border-light;
   border-radius: 999px;

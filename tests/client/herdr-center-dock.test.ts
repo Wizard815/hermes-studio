@@ -77,16 +77,37 @@ describe('the herdr page: herdr with Mission docked', () => {
     expect(JSON.parse(localStorage.getItem('studio_herdr_dock')!).open).toBe(false)
   })
 
-  it('has Back to chat and Open in Studio for the pane herdr shows', async () => {
+  it('has Open in Studio for the pane herdr shows, New chat and Reopen (no second Back to chat)', async () => {
     setWidth(1440)
     const wrapper = mount(HerdrCenter, { props: { sessionId: 'chat-2', active: true } })
     await flushPromises()
-    await wrapper.find('[data-testid="herdr-center-back"]').trigger('click')
-    expect(wrapper.emitted('back')).toHaveLength(1)
+    expect(wrapper.find('[data-testid="herdr-center-back"]').exists()).toBe(false)
     await wrapper.find('[data-testid="herdr-center-open-studio"]').trigger('click')
     expect(wrapper.emitted('open-studio-chat')?.[0]).toEqual(['chat-2'])
     expect(wrapper.find('[data-testid="herdr-center-reopen"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="herdr-center-new-chat"]').exists()).toBe(true)
+  })
+
+  it('puts its bar in the chat page header row, and only while herdr is shown', async () => {
+    setWidth(1440)
+    const header = document.createElement('div')
+    document.body.appendChild(header)
+    const wrapper = mount(HerdrCenter, { props: { sessionId: 'chat-2', active: true, headerTarget: header }, attachTo: document.body })
+    await flushPromises()
+    const bar = header.querySelector('[data-testid="herdr-center-bar"]') as HTMLElement
+    expect(bar).not.toBeNull()
+    expect(bar.classList.contains('in-header')).toBe(true)
+    expect(wrapper.find('section [data-testid="herdr-center-bar"]').exists()).toBe(false)
+    // The chat title is in the header already: the chip shows the agent and pane only.
+    expect(bar.querySelector('[data-testid="herdr-center-agent"]')?.textContent).toContain('codex')
+    expect(bar.querySelector('[data-testid="herdr-center-agent"]')?.textContent).not.toContain('Two')
+    for (const id of ['herdr-center-open-studio', 'herdr-center-new-chat', 'herdr-center-reopen', 'herdr-center-dock-toggle']) {
+      expect(bar.querySelector(`[data-testid="${id}"]`)).not.toBeNull()
+    }
+    await wrapper.setProps({ active: false })
+    expect(bar.style.display).toBe('none')
+    wrapper.unmount()
+    header.remove()
   })
 
   it('is a drawer on a phone: closed at first, closes after a pick and on the backdrop', async () => {

@@ -209,6 +209,8 @@ const herdrCenterAvailable = computed(() => !props.standalone && isSuperAdmin.va
   && (herdrStore.enabled || (!herdrStore.status && centerMode.value === 'herdr')))
 watch(isSuperAdmin, admin => { if (admin && !props.standalone && !herdrStore.status) void herdrStore.refresh().catch(() => undefined) }, { immediate: true })
 const herdrCenterMounted = ref(false)
+/** Where herdr's bar goes in herdr mode: this page's header row. */
+const herdrHeaderSlot = ref<HTMLElement | null>(null)
 /**
  * The chat the herdr center shows ('' = none: herdr's own focus). Kept while the
  * next chat loads, so the center stays mounted and herdr does not reconnect.
@@ -3266,6 +3268,8 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             {{ t('chat.upstreamTaskHint', { title: upstreamTask.title || upstreamTask.task }) }}
           </NTooltip>
         </div>
+        <!-- herdr mode: herdr's bar joins this row (HerdrCenter puts it here). -->
+        <div v-show="showHerdrCenter" ref="herdrHeaderSlot" class="header-herdr-slot" data-testid="chat-header-herdr" />
         <div class="header-actions">
           <NTooltip v-if="chatStore.runtimeMode === 'default'" trigger="hover">
             <template #trigger>
@@ -3311,7 +3315,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             >{{ mode === 'chat' ? t('herdr.centerChat') : mode === 'herdr' ? t('herdr.centerHerdr') : mode === 'code' ? t('vscode.centerCode') : t('screen.centerScreen') }}</button>
           </div>
           <HerdrOpenButton
-            v-if="isSuperAdmin && !showNewChatPage && chatStore.activeSessionId && herdrEligible"
+            v-if="isSuperAdmin && !showNewChatPage && chatStore.activeSessionId && herdrEligible && !showHerdrCenter"
             :session-id="chatStore.activeSessionId"
           />
           <!-- chat/live mode toggle hidden -->
@@ -3463,10 +3467,10 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               v-show="showHerdrCenter"
               :session-id="herdrSessionId"
               :active="showHerdrCenter"
+              :header-target="herdrHeaderSlot"
               @open-chat="sessionId => handleSessionClick(sessionId)"
               @open-studio-chat="sessionId => { centerMode = 'chat'; void handleSessionClick(sessionId) }"
               @new-chat="openNewChatPage()"
-              @back="selectCenter('chat')"
             />
             <VsCodeCenter
               v-if="codeCenterMounted || showCodeCenter"
@@ -4093,6 +4097,20 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
   flex-shrink: 0;
   white-space: nowrap;
   line-height: var(--line-height, calc(var(--font-size-base, 14px) * 16 / 14));
+}
+
+.header-herdr-slot {
+  display: flex;
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+  margin: 0 calc(8px * var(--spacing-scale, 1));
+
+  // Phones: Tools and its menu keep their size; the chat title gives way.
+  @media (max-width: 640px) {
+    flex: none;
+    margin: 0 calc(4px * var(--spacing-scale, 1));
+  }
 }
 
 .header-actions {

@@ -232,10 +232,13 @@ spaces sidebar, where every Studio chat is a space named after it in its Studio
 folder order, and the focused pane with herdr's keys, search and settings. On
 the right, Mission's tools are docked (`HerdrMissionDock.vue`): Chats (every
 chat, with the "z" asleep marker; Open in herdr wakes it into its space), and
-Pondering Orb's Tasks, Projects, Ideas, Upkeep, plus Control. The bar above has
-"← Chat" (back to Studio's chat view), the chat's agent, Open in Studio (the
-focused pane's chat in the chat view), + New chat, Reopen closed chat, the herdr
-key buttons and Tools (the dock). The dock's open/closed state and last tab are
+Pondering Orb's Tasks, Projects, Ideas, Upkeep, plus Control. herdr's bar shares the
+chat page's header row (one row with the chat title and the Chat | herdr | Code
+| Screen switch, which is the way back to the chat view): the chat's agent and
+pane, Open in Studio (the focused pane's chat in the chat view), + New chat,
+Reopen closed chat and Tools (the dock) stay in the row; herdr sidebar, Search,
+Workspaces, herdr settings and Keys fold into a "More" menu when the header is
+narrower than 1560 px. On a phone the row keeps only More and Tools. The dock's open/closed state and last tab are
 kept per viewer in browser storage (`herdr-layout.ts`, `studio_herdr_dock`).
 At 640 px and below the dock is a drawer over the terminal (it starts closed)
 and herdr uses its own phone layout, where its spaces slide over the pane.

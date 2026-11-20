@@ -131,3 +131,44 @@ test('herdr remote: picking a saved machine opens that machine\'s full herdr', a
   await expect(page.getByTestId('herdr-center-agent')).toContainText('auth refactor')
   expect(errors).toEqual([])
 })
+
+test('in the page header herdr\'s bar is one row: the less-used keys fold into More when short', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { errors } = await openCenter(page, 'herdr-aaa&header=1')
+  const header = page.getByTestId('fixture-header')
+  const bar = header.getByTestId('herdr-center-bar')
+  await expect(bar).toBeVisible()
+  for (const id of ['herdr-center-open-studio', 'herdr-center-new-chat', 'herdr-center-reopen', 'herdr-center-dock-toggle']) {
+    await expect(bar.getByTestId(id)).toBeVisible()
+  }
+  // Not enough room for everything at 1440: Search & co. are in the More menu.
+  await expect(bar.getByTestId('herdr-center-key-search')).toHaveCount(0)
+  await bar.locator('.header-overflow-trigger').click()
+  await expect(page.getByTestId('herdr-center-key-search')).toBeVisible()
+  await expect(page.getByTestId('herdr-center-key-workspaces')).toBeVisible()
+  // One row.
+  const box = (await bar.boundingBox())!
+  const reopen = (await bar.getByTestId('herdr-center-reopen').boundingBox())!
+  expect(box.height).toBeLessThan(reopen.height * 1.6)
+  // With room to spare, every key is in the row.
+  await page.keyboard.press('Escape')
+  await page.setViewportSize({ width: 1900, height: 900 })
+  await expect(bar.getByTestId('herdr-center-key-search')).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('on a phone the header keeps one row: Tools and More, and the page never scrolls sideways', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const { errors } = await openCenter(page, 'herdr-aaa&header=1')
+  const bar = page.getByTestId('fixture-header').getByTestId('herdr-center-bar')
+  await expect(bar.getByTestId('herdr-center-dock-toggle')).toBeVisible()
+  await expect(bar.getByTestId('herdr-center-reopen')).toHaveCount(0)
+  await bar.locator('.header-overflow-trigger').click()
+  await expect(page.getByTestId('herdr-center-reopen')).toBeVisible()
+  await expect(page.getByTestId('herdr-center-new-chat')).toBeVisible()
+  await expect(page.getByTestId('herdr-center-open-studio')).toBeVisible()
+  const heights = await bar.evaluate(el => ({ bar: el.getBoundingClientRect().height, tools: el.querySelector('[data-testid="herdr-center-dock-toggle"]')!.getBoundingClientRect().height }))
+  expect(heights.bar).toBeLessThan(heights.tools * 1.6)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+  expect(errors).toEqual([])
+})
