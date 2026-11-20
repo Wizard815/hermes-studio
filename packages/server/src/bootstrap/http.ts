@@ -46,6 +46,7 @@ import { getAgentBridgeManager, startAgentBridgeManager } from '../modules/herme
 import { HermesSkillInjector } from '../modules/hermes/services/skills/injector'
 import { injectBundledMcpServer } from '../modules/hermes/services/mcp/studio-autoinject'
 import { applyJobPostDefaultsToAllProfiles } from '../modules/hermes/services/cron/job-post-defaults'
+import { scheduleRecommendedPlugins } from '../modules/hermes/services/plugins/recommended'
 import { ensureProfileGatewaysRunning } from '../modules/hermes/services/gateway/autostart'
 import { runRegisteredStartupTasks } from './startup-tasks'
 import { refreshConfiguredProviderModelCatalogsInBackground } from '../modules/hermes/services/providers/model-catalog-cache'
@@ -612,6 +613,10 @@ export async function bootstrap() {
   const closeDshPluginUi = dshPluginUi.attach(servers)
   additionalShutdownSteps.push({ name: 'DSH plugin UI transport', close: closeDshPluginUi })
   additionalShutdownSteps.push({ name: 'Hermes Agent API', close: () => hermesApi.close() })
+  // Recommended official Hermes plugins, once per profile, in the background
+  // (it starts Hermes's API and clones pinned plugins; never blocks startup).
+  const recommendedPluginsTimer = setTimeout(() => { void scheduleRecommendedPlugins() }, Number(process.env.STUDIO_RECOMMENDED_HERMES_PLUGINS_DELAY_MS || 30_000))
+  recommendedPluginsTimer.unref()
   const closeScreenGateway = screenGateway.attach(servers)
   additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })
   // A screen installed before this container was rebuilt is installed again.
