@@ -3,7 +3,7 @@ import type { AuthenticatedUser } from '../public/auth'
 import { logger } from '../public/logging'
 import { listSessionStateRecords, markSessionRead, type SessionStateRecord } from '../repositories/session-state-store'
 import type { SessionListState } from '../../../../../shared/session-state'
-import { getSessionHerdrLink, onSessionHerdrLinkChanged, onSessionListChanged } from '../public/session-status'
+import { getSessionHerdrLink, getSessionLimitHit, onSessionHerdrLinkChanged, onSessionLimitHitChanged, onSessionListChanged } from '../public/session-status'
 
 const SETTLE_GRACE_MS = 5000
 
@@ -25,6 +25,7 @@ export class SessionStateSync {
   constructor(private readonly runtime: (sessionId: string) => RuntimeState,
     private readonly canAccessProfile: (user: AuthenticatedUser, profile: string) => boolean) {
     this.unsubscribe.push(onSessionHerdrLinkChanged(sessionId => this.publish(sessionId)))
+    this.unsubscribe.push(onSessionLimitHitChanged(sessionId => this.publish(sessionId)))
     this.unsubscribe.push(onSessionListChanged(change => {
       for (const subscriber of this.subscribers) subscriber.socket.emit('sessions.list.changed', change)
       if (change.type === 'deleted') this.forget(change.sessionId)
@@ -56,13 +57,14 @@ export class SessionStateSync {
       const foreground = session.id.startsWith('person-main-') && !runtime.working
         ? false : this.foreground.get(session.id) === true || (runtime.working && !justSettled)
       const working = foreground || backgroundPending > 0 || (runtime.collaborationPending || 0) > 0
-      const blocked = (this.interactions.get(session.id)?.size || 0) > 0
+      const limit = getSessionLimitHit(session.id)
+      const blocked = (this.interactions.get(session.id)?.size || 0) > 0 || !!limit
       const herdr = getSessionHerdrLink(session.id)
       return { sessionId: session.id, profile: session.profile || 'default', working, blocked,
         backgroundPending, lastMessageId: session.lastMessageId, readMessageId: session.readMessageId,
         lastAttentionId: session.lastAttentionId, readAttentionId: session.readAttentionId,
         unread: !working && (session.lastMessageId > session.readMessageId || session.lastAttentionId > session.readAttentionId),
-        ...(herdr ? { herdr } : {}) }
+        ...(herdr ? { herdr } : {}), ...(limit ? { limit } : {}) }
     })
   }
 
