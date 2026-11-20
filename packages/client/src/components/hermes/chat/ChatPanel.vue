@@ -3466,6 +3466,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               @open-chat="sessionId => handleSessionClick(sessionId)"
               @open-studio-chat="sessionId => { centerMode = 'chat'; void handleSessionClick(sessionId) }"
               @new-chat="openNewChatPage()"
+              @back="selectCenter('chat')"
             />
             <VsCodeCenter
               v-if="codeCenterMounted || showCodeCenter"

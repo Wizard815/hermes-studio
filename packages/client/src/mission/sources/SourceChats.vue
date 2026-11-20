@@ -8,8 +8,13 @@ import { openSessionInHerdr } from '@/api/coding-agents/herdr'
 import { useSessionStateStore } from '@/stores/hermes/session-state'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { studioUrl } from '../useMission'
+import { herdrCanOpenChat } from '../useFolders'
 
-/** Studio's coding-agent chats with live status: open one as a herdr pane or in Studio. */
+/**
+ * Every Studio chat with live status (every chat is a herdr space too; asleep
+ * ones are marked "z" and wake when opened): open one as a herdr pane or in
+ * Studio's chat view.
+ */
 const emit = defineEmits<{ 'select-pane': [paneId: string] }>()
 const { t } = useI18n()
 const toast = useMessage()
@@ -37,7 +42,12 @@ const visible = computed(() => {
 
 async function load() {
   try {
-    chats.value = (await fetchSessions('coding_agent', 60)).filter(chat => chat.agent)
+    chats.value = (await fetchSessions(undefined, 1000)).filter(chat => herdrCanOpenChat({
+      id: chat.id,
+      source: chat.source,
+      isArchived: !!chat.is_archived,
+      parentSessionId: chat.parent_session_id || null,
+    }))
     error.value = ''
   } catch (err: any) {
     error.value = err?.message || String(err)
@@ -85,12 +95,12 @@ onBeforeUnmount(() => {
         <span v-if="asleep(chat)" class="source-asleep" data-testid="mission-chat-asleep" :title="t('herdr.asleep')" :aria-label="t('herdr.asleep')">z</span>
       </div>
       <div class="source-card-meta">
-        <span class="source-chip">{{ chat.agent }}</span>
+        <span class="source-chip">{{ chat.agent || chat.source }}</span>
         <span v-if="states.herdrLink(chat.id)" class="source-chip is-good">{{ t('mission.liveIn', { pane: states.herdrLink(chat.id)?.paneId }) }}</span>
       </div>
       <div class="source-card-actions">
         <NButton size="tiny" @click="openInHerdr(chat)">{{ states.herdrLink(chat.id) ? t('mission.showPane') : t('mission.openInHerdr') }}</NButton>
-        <a v-if="studioUrl(`/hermes/session/${chat.id}`)" class="source-link" :href="studioUrl(`/hermes/session/${chat.id}`)!">{{ t('mission.openInStudio') }}</a>
+        <a v-if="studioUrl(`/hermes/session/${chat.id}?center=chat`)" class="source-link" :href="studioUrl(`/hermes/session/${chat.id}?center=chat`)!">{{ t('mission.openInStudio') }}</a>
       </div>
     </article>
   </section>
@@ -115,6 +125,7 @@ onBeforeUnmount(() => {
   padding: 5px 8px;
   font-size: 12px;
   color: $text-primary;
+  background: $bg-input;
   border: var(--border-width, 1px) solid $border-light;
   border-radius: var(--radius-component, 6px);
   outline: none;

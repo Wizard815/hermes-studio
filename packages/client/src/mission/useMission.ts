@@ -122,7 +122,8 @@ export async function launchForCard(input: {
  */
 export function studioUrl(hashPath: string): string | null {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/')
-  return window.location.pathname.startsWith(`${base}mission`) ? `${base}#${hashPath}` : null
+  // In Studio itself (the combined herdr page) a hash link stays in the page.
+  return window.location.pathname.startsWith(`${base}mission`) ? `${base}#${hashPath}` : `#${hashPath}`
 }
 
 /**

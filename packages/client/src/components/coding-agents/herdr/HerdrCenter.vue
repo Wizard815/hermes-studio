@@ -4,19 +4,24 @@ import { NButton, NTooltip, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import HerdrTerminal from './HerdrTerminal.vue'
+import HerdrMissionDock from './HerdrMissionDock.vue'
+import { useHerdrDock } from './herdr-layout'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { fetchHerdrMachines, focusHerdrMachineAgent, focusHerdrPane, openSessionInHerdr, reopenClosedHerdrChat, studioFocusRequest, type HerdrMachine, type HerdrPaneView } from '@/api/coding-agents/herdr'
-import { missionUrl } from '@/utils/mission-url'
 import { herdrKeyBytes } from '@/utils/herdr-keys'
 
 /**
- * herdr in the chat page's center column: herdr's own full UI (its key bar,
- * search, pickers and settings), opened on this chat's agent. Studio's
- * sidebar, header and tool panel stay; ChatPanel keeps this and the chat
- * mounted together and only shows one, so swapping is instant.
+ * The herdr page (Studio's chat page in herdr mode): herdr's own full UI on
+ * the left and center (its spaces sidebar, where every Studio chat is a space
+ * in its Studio folder, and the focused pane with herdr's keys, search and
+ * settings), and Mission's tools docked on the right (Chats, Tasks, Projects,
+ * Ideas, Upkeep, Control). Old Mission links land here. ChatPanel keeps this
+ * and the chat mounted together and only shows one, so swapping is instant.
+ * On a phone herdr uses its own phone layout (its spaces slide over) and the
+ * dock is a drawer.
  */
 const props = defineProps<{ sessionId: string; active: boolean }>()
-const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': [] }>()
+const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': []; back: [] }>()
 
 const { t } = useI18n()
 const toast = useMessage()
@@ -49,6 +54,23 @@ async function openMachine(id: string, paneId?: string) {
 const started = ref(false)
 
 const panes = computed<HerdrPaneView[]>(() => herdr.bridge?.panes || [])
+const dock = useHerdrDock()
+/** The pane herdr shows now, and its chat: what "Open in Studio" opens. */
+const focusedPane = computed(() => {
+  const id = herdr.bridge?.focusedPaneId || ''
+  return (id && panes.value.find(pane => pane.pane_id === id)) || null
+})
+const studioChatId = computed(() => (machine.value ? '' : focusedPane.value?.studioSessionId || props.sessionId || ''))
+/** Mission's tools start agents in the folder of the pane herdr shows. */
+const dockWorkspace = computed(() => focusedPane.value?.foreground_cwd || focusedPane.value?.cwd || '')
+
+/** A pane picked in the dock: herdr shows it (and the chat follows). */
+function selectPane(paneId: string) {
+  machine.value = ''
+  void focusHerdrPane(paneId).catch((err: any) => toast.error(err?.message || String(err)))
+  dock.picked()
+  terminal.value?.focus()
+}
 /** The open chat's pane; with no herdr chat open (sessionId ''), herdr shows its own focus. */
 const linked = computed(() => (props.sessionId ? panes.value.find(pane => pane.studioSessionId === props.sessionId) ?? null : null))
 
@@ -192,6 +214,9 @@ onBeforeUnmount(() => herdr.release())
         <a :href="SETTINGS_HREF" class="herdr-center-link">{{ t('sidebar.settings') }}</a>
       </div>
       <header class="herdr-center-bar">
+        <button type="button" class="herdr-center-key herdr-center-back" data-testid="herdr-center-back" :title="t('herdr.backToChat')" @click="emit('back')">
+          <span aria-hidden="true">&larr;</span> {{ t('herdr.centerChat') }}
+        </button>
         <div v-if="machines.length" class="herdr-center-machines" role="radiogroup" :aria-label="t('herdr.machineSwitch')" data-testid="herdr-center-machines">
           <button type="button" role="radio" :aria-checked="!machine" :class="{ active: !machine }" @click="machine = ''">{{ t('herdr.machineLocal') }}</button>
           <button
@@ -213,6 +238,13 @@ onBeforeUnmount(() => herdr.release())
         </span>
         <NButton v-else-if="sessionId && !machine" size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.centerOpenChat') }}</NButton>
         <span v-else-if="!machine" class="herdr-center-landing" data-testid="herdr-center-landing">{{ t('herdr.centerLanding') }}</span>
+        <button
+          v-if="studioChatId"
+          type="button"
+          class="herdr-center-key"
+          data-testid="herdr-center-open-studio"
+          @click="emit('open-studio-chat', studioChatId)"
+        >{{ t('mission.openInStudio') }}</button>
         <span class="herdr-center-spacer" />
         <button
           v-if="!machine"
@@ -239,9 +271,17 @@ onBeforeUnmount(() => herdr.release())
           </template>
           {{ button.combo.replace(/^prefix\+/i, `${keys.prefix} then `) }}
         </NTooltip>
-        <a class="herdr-center-link" :href="missionUrl(linked ? { pane: linked.pane_id } : {})">{{ t('herdr.centerMission') }}</a>
+        <button
+          type="button"
+          class="herdr-center-key herdr-center-dock-toggle"
+          :class="{ active: dock.open.value }"
+          :aria-expanded="dock.open.value"
+          aria-controls="herdr-dock"
+          data-testid="herdr-center-dock-toggle"
+          @click="dock.toggle()"
+        >{{ t('herdr.dock.title') }}</button>
       </header>
-      <div class="herdr-center-body">
+      <div class="herdr-center-body" :class="{ 'is-phone': dock.phone.value }">
         <!-- herdr's own sidebar lists every Studio chat as a space (folder path in its name). -->
         <HerdrTerminal
           v-if="started"
@@ -259,6 +299,21 @@ onBeforeUnmount(() => herdr.release())
           mode="client"
           :target="`machine:${machine}`"
           data-testid="herdr-center-remote"
+        />
+        <!-- Mission's tools: beside the terminal, or a drawer over it on a phone. -->
+        <div v-if="dock.phone.value && dock.open.value" class="herdr-dock-backdrop" data-testid="herdr-dock-backdrop" @click="dock.setOpen(false)" />
+        <HerdrMissionDock
+          v-if="dock.open.value"
+          id="herdr-dock"
+          class="herdr-center-dock"
+          :class="{ 'is-drawer': dock.phone.value }"
+          :tab="dock.tab.value"
+          :panes="panes"
+          :workspace="dockWorkspace"
+          :drawer="dock.phone.value"
+          @update:tab="value => { dock.tab.value = value }"
+          @select-pane="selectPane"
+          @close="dock.setOpen(false)"
         />
       </div>
     </template>
@@ -283,6 +338,23 @@ onBeforeUnmount(() => herdr.release())
   gap: 6px;
   padding: 6px 10px;
   border-bottom: var(--border-width, 1px) solid $border-light;
+}
+
+// Phones: the bar is one row that scrolls sideways (the page never does).
+@media (max-width: 640px) {
+  .herdr-center-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    > * {
+      flex: none;
+    }
+  }
+
+  .herdr-center-spacer {
+    display: none;
+  }
 }
 
 .herdr-center-agent {
@@ -357,9 +429,39 @@ onBeforeUnmount(() => herdr.release())
 }
 
 .herdr-center-body {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
+  gap: 6px;
   min-height: 0;
+  min-width: 0;
+}
+
+.herdr-center-dock {
+  flex: 0 0 clamp(280px, 28vw, 380px);
+
+  &.is-drawer {
+    position: absolute;
+    z-index: 5;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(360px, 88vw);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18);
+  }
+}
+
+.herdr-dock-backdrop {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.herdr-center-dock-toggle.active,
+.herdr-center-back:hover {
+  color: $text-primary;
+  border-color: $accent-primary;
 }
 
 .herdr-center-terminal {

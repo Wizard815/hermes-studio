@@ -1,6 +1,10 @@
 import { test, expect, type Page } from '@playwright/test'
+import { resolve } from 'node:path'
 
-/** herdr Mission (packages/client/mission.html) against mocked Studio + Orb APIs. */
+/**
+ * Mission's tools docked on Studio's herdr page (HerdrCenter + HerdrMissionDock)
+ * against mocked Studio + Orb APIs, and Mission's old address sending you there.
+ */
 const STATUS = {
   settings: { enabled: true, autoStart: true, setupVersion: '0.9.5', binaryPath: '', session: '', autoImport: true, mirrorTranscripts: true, profile: 'default' },
   installed: true, binary: '/usr/local/bin/herdr', version: '0.9.5', home: '/home/me', error: '',
@@ -23,8 +27,7 @@ async function openMission(page: Page, options: { orbUrl?: string } = {}) {
   const posts: Array<{ path: string; body: any }> = []
   const errors: string[] = []
   const orbCalls: string[] = []
-  // A folder from before Mission shared Studio's folders: it becomes Studio folder "Clients".
-  let folders: any = { list: [{ id: 'fclient', name: 'Clients', color: 'teal', folded: false, start: '', rules: 'client-*' }], of: {}, at: 1 }
+  let folders: any = { list: [], of: {}, at: 1 }
   const categories: any[] = [{ id: 5, name: 'Docs', parent_id: null, created_at: 1, updated_at: 1 }, { id: 6, name: 'site', parent_id: 5, created_at: 1, updated_at: 1 }]
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(() => { localStorage.setItem('hermes_locale', 'en'); localStorage.setItem('hermes_api_key', 'test-key') })
@@ -66,29 +69,44 @@ async function openMission(page: Page, options: { orbUrl?: string } = {}) {
     if (path.startsWith('/api/studio/orb/data/')) return route.fulfill({ json: { kind: path.split('/').pop(), data: [] } })
     return route.fulfill({ json: {} })
   })
-  await page.goto('/mission.html')
-  await expect(page.getByTestId('mission-app')).toBeVisible()
+  const entry = '/@fs/' + resolve('tests/e2e/fixtures/herdr-center.ts').replaceAll('\\', '/').replace(/^\//, '')
+  await page.route('**/__herdr_center__*', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script type="module" src="${entry}"></script></body></html>` }))
+  await page.goto('/__herdr_center__?session=herdr-aaa')
+  await expect(page.getByTestId('herdr-center')).toBeVisible()
   return { posts, errors, orbCalls }
 }
 
-test('Mission folders are Studio chat folders, and spaces follow their chats', async ({ page }) => {
-  const { errors, posts } = await openMission(page)
-  // The old Mission folder became a Studio folder, keeping its rule.
-  await expect.poll(() => posts.find(p => p.path === '/api/studio/session-categories')?.body).toMatchObject({ name: 'Clients' })
-  const clients = page.getByTestId('mission-folder-row').filter({ hasText: 'Clients' })
-  await expect(clients.locator('.tree-count')).toHaveText('1')
-  // Studio's nesting (Docs › site), and the space whose chat is filed in "site" sits there.
-  const rows = page.locator('[data-testid="mission-folder-row"], [data-testid="mission-space-row"]')
-  await expect(rows).toHaveText([/Clients/, /api/, /Docs/, /site/, /site/])
-  await expect(page.getByTestId('mission-folder-row').filter({ hasText: 'Docs' }).locator('.tree-count')).toHaveText('1')
-  await expect(page.getByTestId('mission-space-row')).toHaveCount(2)
-  await expect(page.getByTestId('mission-agents')).toContainText('auth refactor')
+test('Mission\'s old address opens Studio\'s herdr page on the same pane', async ({ page }) => {
+  await page.route(url => url.pathname === '/index.html', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>studio</title>' }))
+  await page.goto('/mission.html?pane=w2:p1')
+  await page.waitForURL(url => url.pathname === '/index.html')
+  expect(new URL(page.url()).hash).toBe('#/hermes/chat?center=herdr&pane=w2%3Ap1')
+})
+
+test('the herdr page docks Mission: herdr on the left, its tools on the right', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { errors } = await openMission(page)
+  await expect(page.locator('.herdr-terminal')).toBeVisible()
+  const dock = page.getByTestId('herdr-dock')
+  await expect(dock).toBeVisible()
+  const terminalBox = (await page.locator('.herdr-terminal').boundingBox())!
+  const dockBox = (await dock.boundingBox())!
+  expect(dockBox.x).toBeGreaterThan(terminalBox.x + terminalBox.width - 1)
+  await expect(page.getByRole('tab')).toHaveText(['Studio chats', 'Tasks & plans', 'Projects', 'Ideas', 'Upkeep', 'Control'])
+  // Every chat is listed, with Open in herdr and Open in Studio.
+  await expect(page.getByTestId('mission-source-chats').locator('article')).toHaveCount(2)
+  // The dock remembers being hidden.
+  await page.getByTestId('herdr-center-dock-toggle').click()
+  await expect(dock).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByTestId('herdr-center')).toBeVisible()
+  await expect(page.getByTestId('herdr-dock')).toHaveCount(0)
   expect(errors).toEqual([])
 })
 
 test('Mission starts an agent from an Orb task with the task as its prompt', async ({ page }) => {
   const { posts, errors } = await openMission(page)
-  await page.getByTestId('mission-source-tasks-tab').click()
+  await page.getByTestId('herdr-dock-tab-tasks').click()
   const card = page.getByTestId('mission-task').filter({ hasText: 'Fix flaky login test' })
   await expect(card).toBeVisible()
   await expect(page.getByTestId('mission-task').filter({ hasText: 'Old thing' })).toHaveCount(0)
@@ -102,36 +120,41 @@ test('Mission starts an agent from an Orb task with the task as its prompt', asy
   expect(errors).toEqual([])
 })
 
-test('Mission fits a phone width', async ({ page }) => {
+test('on a phone the tools are a drawer and nothing scrolls sideways', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await openMission(page)
-  await expect(page.getByTestId('mission-space-tree')).toBeVisible()
+  await expect(page.locator('.herdr-terminal')).toBeVisible()
+  await expect(page.getByTestId('herdr-dock')).toHaveCount(0)
+  await page.getByTestId('herdr-center-dock-toggle').click()
+  await expect(page.getByTestId('herdr-dock')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+  await page.getByTestId('herdr-dock-backdrop').click({ position: { x: 10, y: 200 } })
+  await expect(page.getByTestId('herdr-dock')).toHaveCount(0)
 })
 
 test('without Pondering Orb, its sources show one note and make no Orb requests', async ({ page }) => {
   const { errors, orbCalls } = await openMission(page, { orbUrl: '' })
   for (const tab of ['tasks', 'projects', 'ideas', 'upkeep']) {
-    await page.getByTestId(`mission-source-${tab}-tab`).click()
+    await page.getByTestId(`herdr-dock-tab-${tab}`).click()
     await expect(page.getByTestId('mission-orb-not-connected')).toHaveCount(1)
   }
   // Chats do not need Orb and keep working.
-  await page.getByTestId('mission-source-chats-tab').click()
+  await page.getByTestId('herdr-dock-tab-chats').click()
   await expect(page.getByTestId('mission-orb-not-connected')).toHaveCount(0)
   // No error toasts and no Orb data requests.
   await page.waitForTimeout(300)
   await expect(page.locator('.n-message--error-type')).toHaveCount(0)
   expect(orbCalls).toEqual([])
   // The note leads to the place to set Orb up.
-  await page.getByTestId('mission-source-tasks-tab').click()
+  await page.getByTestId('herdr-dock-tab-tasks').click()
   await page.getByTestId('mission-orb-open-control').click()
-  await expect(page.getByTestId('mission-source-control-tab')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('herdr-dock-tab-control')).toHaveAttribute('aria-selected', 'true')
   expect(errors).toEqual([])
 })
 
 test('Mission Control points to Studio\'s Connections for Pondering Orb', async ({ page }) => {
   const { errors } = await openMission(page, { orbUrl: '' })
-  await page.getByTestId('mission-source-control-tab').click()
+  await page.getByTestId('herdr-dock-tab-control').click()
   await expect(page.getByTestId('mission-control-panel')).toContainText('Connections → Pondering Orb')
   expect(errors).toEqual([])
 })

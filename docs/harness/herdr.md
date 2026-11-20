@@ -223,30 +223,38 @@ stay separate apps; this integration links them.
   only for panes where an agent really runs: herdr's per-pane status
   subscription costs CPU per pane (10 waiting panes cost 16% before).
 
-## Mission view
+## The herdr page (Mission docked)
 
-`/mission/` is a second web page (`packages/client/mission.html`,
-`packages/client/src/mission/`) for running herdr from a browser: a space tree
-with folders on the left (the herdr-space-folders layout), agents and live
-terminals in the middle, and work sources on top (Studio chats, Pondering Orb
-tasks and plans, projects, ideas, upkeep, and Control).
+herdr has one page: Studio's chat page in herdr mode
+(`components/coding-agents/herdr/HerdrCenter.vue` in `ChatPanel.vue`). On the
+left and center is herdr's own full UI (a `client` terminal stream): herdr's
+spaces sidebar, where every Studio chat is a space named after it in its Studio
+folder order, and the focused pane with herdr's keys, search and settings. On
+the right, Mission's tools are docked (`HerdrMissionDock.vue`): Chats (every
+chat, with the "z" asleep marker; Open in herdr wakes it into its space), and
+Pondering Orb's Tasks, Projects, Ideas, Upkeep, plus Control. The bar above has
+"← Chat" (back to Studio's chat view), the chat's agent, Open in Studio (the
+focused pane's chat in the chat view), + New chat, Reopen closed chat, the herdr
+key buttons and Tools (the dock). The dock's open/closed state and last tab are
+kept per viewer in browser storage (`herdr-layout.ts`, `studio_herdr_dock`).
+At 640 px and below the dock is a drawer over the terminal (it starts closed)
+and herdr uses its own phone layout, where its spaces slide over the pane.
 
-- **One port for the tunnel.** Mission is served by Studio's own server at
-  `<studio>/mission/`, so a Cloudflare tunnel to Studio's port serves it with
-  no extra route; the terminal stream uses Studio's Socket.IO. Studio also
-  listens on `HERDR_MISSION_PORT` (default 5180, `0` turns it off) and serves
-  Mission at `/` there, with its own sign-in.
-- **Folders are Studio's chat folders, 1:1** (`mission/useFolders.ts`). The
-  tree is Studio's session categories (same names and nesting; changes in
-  either show in the other). Mission keeps only extras per folder (color, start
-  directory, collect rules, folded) in `HERMES_WEB_UI_HOME/herdr/space-folders.json`,
-  keyed `c<category id>` (`services/herdr/folders.ts`,
-  `GET/PUT /api/coding-agents/herdr/folders`). A space sits in the folder of a
-  chat running in it, else where it was dropped, else the folder whose start
-  directory or rules match its directory most deeply (paths match as prefixes,
-  names like `client-*` at any depth). Dropping a space on a folder also files
-  its chats there in Studio; dropping a folder on a folder nests it. Folders
-  from before this were turned into Studio folders of the same name.
+- **Old links.** `/mission/?pane=…` (and the root of `HERDR_MISSION_PORT`,
+  default 5180, `0` turns it off) only redirects to
+  `index.html#/hermes/chat?center=herdr&pane=…` (`mission/main.ts`,
+  `utils/herdr-page-url.ts`); Studio's `?center=herdr&pane=…` and `/herdr`
+  links land on the same page and pane. "Open in herdr" (header button, chat
+  menu, `/herdr`) opens the chat there (`utils/mission-url.ts`).
+- **Speed with hundreds of chats.** herdr's state lists every chat's space and
+  pane (about 250 kB with 360 chats). Pages get only the fields they read
+  (`services/herdr/client-state.ts`), changes are coalesced (150 ms), unchanged
+  states are not sent, and pages that can unzip get `herdr.state.gz` (gzipped,
+  about 11 kB) instead of `herdr.state`; `GET /api/coding-agents/herdr` is
+  gzipped too. The terminal stream shares that socket, so before this the
+  first herdr screen waited behind the full state.
+- **Folders are Studio's chat folders, 1:1** (`mission/useFolders.ts`,
+  `services/herdr/folders.ts`): herdr's spaces follow Studio's folder order.
 - **Start from a card.** Each task, project or idea card has a button per
   installed agent. Studio opens a herdr space for it and types the card as the
   agent's first prompt once herdr reports the agent idle
@@ -265,8 +273,6 @@ tasks and plans, projects, ideas, upkeep, and Control).
   project) starts in the start directory of the Studio folder with the
   project's name, and its chat is filed in that folder
   (`HerdrBridgeDeps.folderForWork`).
-- **Studio ↔ Mission.** "Open in herdr" and the herdr center's Open Mission link open Mission
-  (`utils/mission-url.ts`); Mission's "Back to Studio" returns.
 - **herdr in the chat center.** The chat header's Chat | herdr switch swaps
   only the center column (`components/coding-agents/herdr/HerdrCenter.vue` in
   `ChatPanel.vue`) to herdr's own full UI (a `client` terminal stream), opened
@@ -389,7 +395,7 @@ an API token from Orb's `ORB_API_TOKENS`, set in Mission → Control or with
 | Routes / socket | `routes/herdr.ts`, `controllers/herdr.ts`, `sockets/herdr.ts` |
 | Studio wiring | `bootstrap/herdr.ts`, `studio/public/session-status.ts` |
 | UI | `views/hermes/HerdrView.vue`, `components/coding-agents/herdr/*` |
-| Mission page | `packages/client/mission.html`, `packages/client/src/mission/*`, `bootstrap/http.ts` |
+| herdr page (Mission docked) | `components/coding-agents/herdr/HerdrCenter.vue`, `HerdrMissionDock.vue`, `herdr-layout.ts`, `packages/client/src/mission/sources/*`; old `/mission/` redirect: `packages/client/mission.html`, `src/mission/main.ts`, `bootstrap/http.ts` |
 | Space folders | `services/herdr/folders.ts` |
 | Chat spaces, waiting pane | `services/herdr/chat-spaces.ts`, `bin/herdr-plugin/studio-chat.sh` |
 | Pondering Orb | `modules/studio/services/orb/client.ts`, `studio/routes/orb.ts`, `studio/controllers/orb.ts` |

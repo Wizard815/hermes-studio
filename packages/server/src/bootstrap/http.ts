@@ -552,11 +552,12 @@ export async function bootstrap() {
   // SPA fallback
   const distDir = resolve(__dirname, '..', 'client')
   app.use(createStaticCompressionMiddleware())
-  // On the Mission port the root page is Mission, not Studio; static serving
-  // would otherwise answer "/" with index.html first.
+  // On the Mission port the root page is Mission (which now sends you on to
+  // Studio's herdr page at /index.html#/...), not Studio; static serving would
+  // otherwise answer "/" with index.html first.
   app.use(async (ctx, next) => {
     if (missionPort > 0 && ctx.req.socket.localPort === missionPort && (ctx.method === 'GET' || ctx.method === 'HEAD')
-      && (ctx.path === '/' || ctx.path === '/index.html')) {
+      && ctx.path === '/') {
       ctx.set('Cache-Control', SPA_ENTRY_CACHE_CONTROL)
       await send(ctx, 'mission.html', { root: distDir })
       return
