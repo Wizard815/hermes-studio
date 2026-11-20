@@ -165,6 +165,28 @@ export function buildActiveSessionMenuOptions(
   ]
 }
 
+/**
+ * The chat header's menu with herdr's actions as a "herdr" group (phones in
+ * herdr mode, where the header row has room for one menu only).
+ */
+export function withHerdrMenuGroup(
+  options: DropdownOption[],
+  label: string,
+  items: Array<{ key: string; label: string; disabled?: boolean }>,
+): DropdownOption[] {
+  if (!items.length) return options
+  return [
+    ...options,
+    { type: 'divider', key: 'herdr-divider' },
+    {
+      type: 'group',
+      key: 'herdr-group',
+      label,
+      children: items.map(item => ({ key: `herdr:${item.key}`, label: item.label, disabled: !!item.disabled })),
+    },
+  ]
+}
+
 export function buildSessionContextMenuOptions({
   pinned,
   includeArchive,

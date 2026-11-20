@@ -82,7 +82,7 @@ import { chatSessionAgentAvatar } from "@/utils/chat-agent-avatar";
 import { isHermesSession } from "@/utils/hermes/session-agent";
 import { buildVisibleSessionCategoryGroups, categoryPathLabel, categorySubtreeIds, partitionRecentSessions } from "./session-category-groups";
 import { buildSessionCategoryMenuChildren, resolveRecentSessionCategoryLabel } from "./session-category-menu";
-import { buildActiveSessionMenuOptions, buildSessionContextMenuOptions } from "./session-menu-options";
+import { buildActiveSessionMenuOptions, buildSessionContextMenuOptions, withHerdrMenuGroup } from "./session-menu-options";
 import PageSidebarNav from "@/components/layout/PageSidebarNav.vue";
 import { getStoredUserId, isStoredSuperAdmin } from "@/api/client";
 import { loadNewChatFormPreferences, saveNewChatFormPreferences } from "@/utils/new-chat-form-preferences";
@@ -1698,7 +1698,10 @@ async function copySessionId(id?: string) {
   }
 }
 
-const activeSessionMenuOptions = computed<DropdownOption[]>(() => buildActiveSessionMenuOptions({
+/** herdr mode on a phone: herdr's actions join this menu (one menu in the header row). */
+const herdrCenterRef = ref<InstanceType<typeof HerdrCenter> | null>(null)
+const herdrMenuItems = computed(() => (showHerdrCenter.value && isMobile.value ? herdrCenterRef.value?.menuItems ?? [] : []))
+const activeSessionMenuOptions = computed<DropdownOption[]>(() => withHerdrMenuGroup(buildActiveSessionMenuOptions({
   outline: t("chat.outlineTitle"),
   rename: t("chat.rename"),
   open: t(desktopChatWindowAvailable
@@ -1708,7 +1711,7 @@ const activeSessionMenuOptions = computed<DropdownOption[]>(() => buildActiveSes
 }, {
   canRename: activeSessionSupportsPersistence.value,
   canOpen: activeSessionSupportsPersistence.value,
-}));
+}), t("herdr.nav"), herdrMenuItems.value));
 
 function activeSessionMenuProps() {
   return {
@@ -1719,6 +1722,7 @@ function activeSessionMenuProps() {
 }
 
 function activeSessionMenuNodeProps(option: DropdownOption) {
+  if (option.type === "group") return { role: "presentation" };
   return {
     id: `${ACTIVE_SESSION_MENU_ID}-${String(option.key || "item")}`,
     role: "menuitem",
@@ -1846,6 +1850,11 @@ function openRenameSession(sessionId: string) {
 }
 
 function handleActiveSessionMenuSelect(key: string) {
+  if (key.startsWith("herdr:")) {
+    restoreActiveSessionMenuTriggerFocus = false;
+    herdrCenterRef.value?.runMenuItem(key.slice("herdr:".length));
+    return;
+  }
   const sessionId = chatStore.activeSessionId;
   if (!sessionId) return;
   restoreActiveSessionMenuTriggerFocus = key !== "rename";
@@ -3342,7 +3351,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
                     class="header-session-menu-trigger"
                     quaternary
                     size="small"
-                    :disabled="!chatStore.activeSessionId"
+                    :disabled="!chatStore.activeSessionId && !herdrMenuItems.length"
                     :aria-label="t('chat.sessionActions')"
                     :aria-expanded="showActiveSessionMenu"
                     aria-controls="active-session-actions-menu"
@@ -3467,7 +3476,9 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               v-show="showHerdrCenter"
               :session-id="herdrSessionId"
               :active="showHerdrCenter"
+              ref="herdrCenterRef"
               :header-target="herdrHeaderSlot"
+              host-menu
               @open-chat="sessionId => handleSessionClick(sessionId)"
               @open-studio-chat="sessionId => { centerMode = 'chat'; void handleSessionClick(sessionId) }"
               @new-chat="openNewChatPage()"

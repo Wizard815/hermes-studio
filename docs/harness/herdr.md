@@ -238,7 +238,8 @@ chat page's header row (one row with the chat title and the Chat | herdr | Code
 pane, Open in Studio (the focused pane's chat in the chat view), + New chat,
 Reopen closed chat and Tools (the dock) stay in the row; herdr sidebar, Search,
 Workspaces, herdr settings and Keys fold into a "More" menu when the header is
-narrower than 1560 px. On a phone the row keeps only More and Tools. The dock's open/closed state and last tab are
+narrower than 1560 px. On a phone the row keeps Tools, and the rest is a
+"herdr" group in the chat header's own ⋯ menu (one menu in the row). The dock's open/closed state and last tab are
 kept per viewer in browser storage (`herdr-layout.ts`, `studio_herdr_dock`).
 At 640 px and below the dock is a drawer over the terminal (it starts closed)
 and herdr uses its own phone layout, where its spaces slide over the pane.

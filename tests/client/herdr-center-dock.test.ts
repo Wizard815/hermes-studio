@@ -125,3 +125,36 @@ describe('the herdr page: herdr with Mission docked', () => {
     expect(wrapper.find('[data-testid="herdr-dock"]').exists()).toBe(false)
   })
 })
+
+describe('the herdr page on a phone, with the chat header\'s own menu', () => {
+  it('has no More button of its own and hands its actions to the page menu', async () => {
+    setWidth(390)
+    const header = document.createElement('div')
+    document.body.appendChild(header)
+    const wrapper = mount(HerdrCenter, { props: { sessionId: 'chat-2', active: true, headerTarget: header, hostMenu: true }, attachTo: document.body })
+    await flushPromises()
+    const bar = header.querySelector('[data-testid="herdr-center-bar"]') as HTMLElement
+    expect(bar.querySelector('[data-testid="herdr-center-more"]')).toBeNull()
+    expect(bar.querySelector('[data-testid="herdr-center-reopen"]')).toBeNull()
+    expect(bar.querySelector('[data-testid="herdr-center-dock-toggle"]')).not.toBeNull()
+    const vm = wrapper.vm as any
+    expect(vm.menuItems.map((item: any) => item.key).slice(0, 3)).toEqual(['open-studio', 'new-chat', 'reopen'])
+    expect(vm.menuItems.map((item: any) => item.key)).toContain('key:search')
+    vm.runMenuItem('open-studio')
+    expect(wrapper.emitted('open-studio-chat')?.[0]).toEqual(['chat-2'])
+    wrapper.unmount()
+    header.remove()
+  })
+
+  it('keeps its actions in its bar on wide screens (nothing for the page menu)', async () => {
+    setWidth(1440)
+    const header = document.createElement('div')
+    document.body.appendChild(header)
+    const wrapper = mount(HerdrCenter, { props: { sessionId: 'chat-2', active: true, headerTarget: header, hostMenu: true }, attachTo: document.body })
+    await flushPromises()
+    expect((wrapper.vm as any).menuItems).toEqual([])
+    expect(header.querySelector('[data-testid="herdr-center-reopen"]')).not.toBeNull()
+    wrapper.unmount()
+    header.remove()
+  })
+})

@@ -172,3 +172,23 @@ test('on a phone the header keeps one row: Tools and More, and the page never sc
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
   expect(errors).toEqual([])
 })
+
+test('on a phone in Studio\'s header there is one menu: herdr\'s actions join the page\'s own', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const { errors, posts } = await openCenter(page, 'herdr-aaa&header=1&hostmenu=1')
+  const header = page.getByTestId('fixture-header')
+  const bar = header.getByTestId('herdr-center-bar')
+  await expect(bar.getByTestId('herdr-center-dock-toggle')).toBeVisible()
+  // A single "more" button in the row: the page's.
+  await expect(header.locator('.header-overflow-trigger, [data-testid="herdr-center-more"], [data-testid="fixture-host-more"]')).toHaveCount(1)
+  await expect(bar.getByTestId('herdr-center-reopen')).toHaveCount(0)
+  await header.getByTestId('fixture-host-more').click()
+  const menu = page.getByTestId('fixture-host-menu')
+  await expect(menu.getByRole('menuitem')).toHaveText(['Open in Studio', '+ New Chat', 'Reopen closed chat', 'herdr sidebar', 'Search', 'Workspaces', 'herdr settings'])
+  await menu.getByTestId('fixture-host-item-reopen').click()
+  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/closed-chats/reopen')
+  const heights = await bar.evaluate(el => ({ bar: el.getBoundingClientRect().height, tools: el.querySelector('[data-testid="herdr-center-dock-toggle"]')!.getBoundingClientRect().height }))
+  expect(heights.bar).toBeLessThan(heights.tools * 1.6)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+  expect(errors).toEqual([])
+})

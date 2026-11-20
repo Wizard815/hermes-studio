@@ -26,7 +26,12 @@ const props = withDefaults(defineProps<{
   active: boolean
   /** The chat page's header row: the herdr bar goes there (one row with the chat title and switch). */
   headerTarget?: HTMLElement | null
-}>(), { headerTarget: null })
+  /**
+   * The page's own "more" menu takes herdr's less-used actions on a phone
+   * (one menu in the row): it reads `menuItems` and calls `runMenuItem`.
+   */
+  hostMenu?: boolean
+}>(), { headerTarget: null, hostMenu: false })
 const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': [] }>()
 /** Below this header width the less-used herdr keys fold into the "more" menu. */
 const HEADER_ROOM = 1560
@@ -206,6 +211,42 @@ watch(() => [props.active, props.sessionId, herdr.enabled, herdr.bridge?.connect
   void openHere()
 }, { immediate: true })
 
+/** herdr's actions for the page's own menu (phones, with `hostMenu`): one menu in the header row. */
+interface HerdrMenuItem { key: string; label: string; disabled?: boolean }
+const menuItems = computed<HerdrMenuItem[]>(() => {
+  if (!props.hostMenu || !props.headerTarget || !dock.phone.value) return []
+  const items: HerdrMenuItem[] = []
+  if (machines.value.length) {
+    items.push({ key: 'machine:', label: `${t('herdr.machineLocal')}${machine.value ? '' : ' ✓'}` })
+    for (const item of machines.value) items.push({ key: `machine:${item.id}`, label: `${item.label || item.target}${machine.value === item.id ? ' ✓' : ''}` })
+  }
+  if (studioChatId.value) items.push({ key: 'open-studio', label: t('mission.openInStudio') })
+  if (!machine.value) {
+    items.push({ key: 'new-chat', label: `+ ${t('chat.newChat')}` })
+    items.push({ key: 'reopen', label: t('herdr.reopenClosed'), disabled: reopening.value })
+  }
+  for (const button of keyButtons.value) items.push({ key: `key:${button.name}`, label: t(`herdr.key.${button.name}`) })
+  return items
+})
+
+function runMenuItem(key: string) {
+  if (key.startsWith('machine:')) {
+    const id = key.slice('machine:'.length)
+    if (id) void openMachine(id)
+    else machine.value = ''
+  } else if (key === 'open-studio') {
+    if (studioChatId.value) emit('open-studio-chat', studioChatId.value)
+  } else if (key === 'new-chat') {
+    newChat()
+  } else if (key === 'reopen') {
+    void reopenClosed()
+  } else if (key.startsWith('key:')) {
+    press(keyButtons.value.find(button => button.name === key.slice(4))?.bytes ?? null)
+  }
+}
+
+defineExpose({ menuItems, runMenuItem })
+
 onMounted(() => {
   void loadMachines()
   herdr.acquire()
@@ -285,7 +326,7 @@ onBeforeUnmount(() => herdr.release())
             >{{ t('herdr.reopenClosed') }}</button>
           </template>
           <!-- Phones in Studio's header: everything but Tools is in this menu (one row, always). -->
-          <NPopover v-if="dock.phone.value && headerTarget" v-model:show="phoneMenu" trigger="click" placement="bottom-end">
+          <NPopover v-if="dock.phone.value && headerTarget && !hostMenu" v-model:show="phoneMenu" trigger="click" placement="bottom-end">
             <template #trigger>
               <NButton size="small" class="header-overflow-trigger herdr-center-more-button" :title="t('chat.more')" :aria-label="t('chat.more')" :aria-expanded="phoneMenu" data-testid="herdr-center-more">
                 <template #icon>
@@ -314,7 +355,7 @@ onBeforeUnmount(() => herdr.release())
               </button>
             </div>
           </NPopover>
-          <HeaderActionOverflow v-else :key="headerTarget ? 'header' : 'inline'" :label="t('chat.more')" :breakpoint="HEADER_ROOM" class="herdr-center-more" data-testid="herdr-center-more">
+          <HeaderActionOverflow v-else-if="!(dock.phone.value && headerTarget && hostMenu)" :key="headerTarget ? 'header' : 'inline'" :label="t('chat.more')" :breakpoint="HEADER_ROOM" class="herdr-center-more" data-testid="herdr-center-more">
             <template v-if="dock.phone.value">
               <button v-if="studioChatId" type="button" class="herdr-center-key" data-testid="herdr-center-open-studio" @click="emit('open-studio-chat', studioChatId)">{{ t('mission.openInStudio') }}</button>
               <button v-if="!machine" type="button" class="herdr-center-key herdr-center-new" data-testid="herdr-center-new-chat" @click="newChat"><span aria-hidden="true">+</span> {{ t('chat.newChat') }}</button>

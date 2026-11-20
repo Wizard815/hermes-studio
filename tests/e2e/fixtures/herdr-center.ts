@@ -14,6 +14,10 @@ const active = ref(true)
 // ?header=1: the bar goes into a page header row, as in Studio's chat page.
 const withHeader = new URLSearchParams(location.search).get('header') === '1'
 const headerSlot = ref<HTMLElement | null>(null)
+// ?hostmenu=1: the page has its own "more" menu (as Studio's chat header does) that lists herdr's actions.
+const hostMenu = new URLSearchParams(location.search).get('hostmenu') === '1'
+const center = ref<any>(null)
+const hostOpen = ref(false)
 const opened: string[] = []
 const fixture: any = { setActive: (value: boolean) => { active.value = value }, opened, newChats: 0 }
 ;(window as any).herdrCenterFixture = fixture
@@ -24,10 +28,15 @@ const app = createApp({
         h('header', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', minWidth: 0 } }, [
           h('span', { style: { flex: '1 1 auto', minWidth: '40px', overflow: 'hidden', whiteSpace: 'nowrap' } }, 'Chat title'),
           h('div', { ref: headerSlot, style: { display: 'flex', minWidth: 0, flex: '0 1 auto' } }),
+          hostMenu ? h('button', { type: 'button', 'aria-label': 'More', 'data-testid': 'fixture-host-more', onClick: () => { hostOpen.value = !hostOpen.value } }, '⋯') : null,
         ]),
+        hostMenu && hostOpen.value ? h('div', { role: 'menu', 'data-testid': 'fixture-host-menu' }, [
+          h('div', { role: 'presentation' }, 'herdr'),
+          ...(center.value?.menuItems || []).map((item: any) => h('button', { role: 'menuitem', type: 'button', disabled: item.disabled, 'data-testid': `fixture-host-item-${item.key}`, onClick: () => { hostOpen.value = false; center.value?.runMenuItem(item.key) } }, item.label)),
+        ]) : null,
       ]) : null,
       h('main', { style: { display: 'flex', flex: '1 1 auto', minHeight: 0 } }, [
-        h(HerdrCenter, { sessionId, active: active.value, headerTarget: headerSlot.value, onOpenChat: (id: string) => opened.push(id), onNewChat: () => { fixture.newChats += 1 } }),
+        h(HerdrCenter, { ref: center, sessionId, active: active.value, headerTarget: headerSlot.value, hostMenu, onOpenChat: (id: string) => opened.push(id), onNewChat: () => { fixture.newChats += 1 } }),
       ]),
     ]),
   }) }),
