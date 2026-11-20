@@ -33,7 +33,7 @@ async function load() {
     try { tsv.value = tsvToCsv((await fetchSessionWorkspaceFileText(props.sessionId, props.path)).content) } catch (err: any) { error.value = err?.message || String(err) } finally { loading.value = false }
     return
   }
-  try { await files.openSessionWorkspacePreview(props.sessionId, props.path, props.name, props.size) } catch (err: any) { error.value = err?.message || String(err) }
+  try { await files.openSessionWorkspacePreview(props.sessionId, props.path, props.name, props.size, undefined, { floating: true }) } catch (err: any) { error.value = err?.message || String(err) }
 }
 
 function close() {
@@ -69,7 +69,7 @@ function endDrag() {
 watch(() => `${props.sessionId}|${props.path}`, () => { void load() })
 onMounted(() => {
   void load()
-  void nextTick(() => closeButton.value?.focus())
+  void nextTick(() => (closeButton.value || document.querySelector<HTMLElement>('[data-testid="cc-float-preview"]'))?.focus())
 })
 onBeforeUnmount(() => {
   endDrag()
@@ -86,11 +86,13 @@ onBeforeUnmount(() => {
       :aria-label="name"
       data-theme-surface="card"
       data-testid="cc-float-preview"
+      tabindex="-1"
       :style="position && !phone ? { left: `${position.x}px`, top: `${position.y}px`, right: 'auto' } : undefined"
       @keydown="onKey"
     >
-      <header class="cc-float-head" @pointerdown="startDrag">
-        <span class="cc-float-name" :title="path">{{ name }}</span>
+      <!-- A grab bar to move it (desktop); Studio's preview below has the name, Download and Close. -->
+      <header v-if="!phone || tsv || error" class="cc-float-head" @pointerdown="startDrag">
+        <span class="cc-float-name" :title="path">{{ tsv || error ? name : '' }}</span>
         <button ref="closeButton" type="button" class="cc-float-close" :aria-label="t('files.closePreview')" :title="t('files.closePreview')" data-testid="cc-float-close" @click="close">×</button>
       </header>
       <div class="cc-float-body">
@@ -143,7 +145,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px 6px 12px;
+  padding: 2px 6px 2px 12px;
   border-bottom: var(--border-width, 1px) solid $border-light;
   cursor: move;
   user-select: none;
@@ -165,8 +167,8 @@ onBeforeUnmount(() => {
 
 .cc-float-close {
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: 0;
   border-radius: 999px;
   background: transparent;

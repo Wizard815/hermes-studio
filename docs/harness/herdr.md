@@ -230,7 +230,8 @@ herdr has one page: Studio's chat page in herdr mode
 left and center is herdr's own full UI (a `client` terminal stream): herdr's
 spaces sidebar, where every Studio chat is a space named after it in its Studio
 folder order, and the focused pane with herdr's keys, search and settings. On
-the right, Mission's tools are docked (`HerdrMissionDock.vue`): Chats (every
+the right, the Tools dock (`HerdrMissionDock.vue`): Command Center's Inbox,
+Agents, Files, Board and Skills with a usage strip (see below), then Mission's tools: Chats (every
 chat, with the "z" asleep marker; Open in herdr wakes it into its space), and
 Pondering Orb's Tasks, Projects, Ideas, Upkeep, plus Control. herdr's bar shares the
 chat page's header row (one row with the chat title and the Chat | herdr | Code
@@ -364,6 +365,57 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   (`herdrChatMode`), so Studio can resume or reopen them after their pane
   closes. Startup repairs older herdr chats stored `scoped` without a model
   (`repairHerdrChatModes`).
+
+## Command Center (the Tools dock's first row)
+
+The dock's first row is Command Center (`mission/command-center/`), the
+behaviour of Herdr App add-ons rebuilt natively for the browser. They are GPUI
+JavaScript mods for herdr's desktop app and cannot run in a page; Studio took
+the ideas, not the code. Credit: [Command Center](https://github.com/digitaltracer/herdr-plugins)
+by digitaltracer (inbox, board, status, usage bars), [Herdr Roundup](https://github.com/carstenlucke/herdr-roundup)
+by Carsten Lucke (agent cards with context meter, file list, floating preview)
+and the [skillshare](https://github.com/runkids/skillshare) herdr panel by runkids.
+
+- **Inbox.** What needs you now (`model.ts` `buildInbox`): Agent work awaiting
+  approval (Approve / Reject inline), blocked agents (herdr panes and Studio
+  chats), failed Hermes jobs, failed CI on your open pull requests and review
+  requests (from the server's `gh`, only when it is signed in; settings: on/off
+  and watched repositories, whose failing workflow runs are added), and agents
+  done since you last looked. A click shows the pane or opens the chat. Seen
+  marks and when each agent entered its state are per viewer in browser
+  storage (`studio_herdr_inbox_seen_v1`, `studio_herdr_agent_since_v1`); a
+  later event is new again. The unseen count badges the Inbox tab and Tools.
+- **Agents.** A card per herdr agent and per working/blocked/done Studio chat:
+  state and time in it, agent, model, folder and git branch, context meter
+  (latest usage row against the model's context window, the same estimate as
+  `/context`), token totals, Codex plan bars on Codex cards; Show pane, Open in
+  Studio, Approve pending Agent work, Stop (closes the pane, after a confirm).
+- **Files.** The focused pane's chat folder through the chat workspace file
+  API, starting at the pane's own folder when it is inside. Double-click or
+  Enter opens a floating, draggable, resizable preview with Studio's
+  `FilePreview` (Markdown, images, PDF, CSV/xlsx, code, JSON); TSV is shown as
+  a table. The preview carries `floating: true` in the files store so the
+  chat page's Files panel does not open for it.
+- **Board.** Agent work, Pondering Orb's open tasks and live agents as lanes
+  (queued, working, blocked, awaiting approval, done); a work item an agent is
+  doing shows that agent's state instead of a second card.
+- **Skills.** With `skillshare` on the server's PATH: Overview (targets waiting,
+  per-kind counts, needs sync and updates) and Library, with Sync, Update and
+  Install from a repo behind a confirmation (the routes refuse writes without
+  `confirm: true`; skillshare audits installs and updates itself). Global scope
+  only. Without it: how to install it. Studio's Hermes skills are counted.
+- **Usage strip.** Today's tokens per agent and cost from Studio's usage stats,
+  and Codex's 5-hour and weekly plan windows from the newest Codex rollout's
+  `rate_limits` (`codex-limits.ts`). Claude Code keeps no plan limits locally.
+- **Not built.** Command Center's Linear and Slack panels need connectors
+  Studio does not have; its standup/handoff ideas are left for later.
+- **Server.** `/api/studio/command-center/*` (super admin): `github`,
+  `settings`, `agents` (contexts and branches), `plan-limits`, `skillshare`
+  (+ `check`, `sync`, `update`, `install`). Programs run with argument arrays
+  (`services/command-center/cli.ts`). Settings live in
+  `HERMES_WEB_UI_HOME/command-center/settings.json`.
+- Tests: `tests/server/command-center.test.ts`,
+  `tests/client/command-center-model.test.ts`, `tests/client/command-center-tabs.test.ts`.
 
 ## Pondering Orb
 

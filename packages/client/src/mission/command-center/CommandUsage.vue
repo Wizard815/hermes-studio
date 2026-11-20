@@ -14,7 +14,14 @@ import PlanBars from './PlanBars.vue'
 const { t } = useI18n()
 const cc = useCommandCenter()
 const KEY = 'studio_herdr_usage_open'
-const open = ref((() => { try { return localStorage.getItem(KEY) !== '0' } catch { return true } })())
+// Open by default on wide screens; folded on a phone, where the drawer is short.
+const open = ref((() => {
+  const wide = typeof window === 'undefined' || window.innerWidth > 640
+  try {
+    const saved = localStorage.getItem(KEY)
+    return saved === null ? wide : saved !== '0'
+  } catch { return wide }
+})())
 const today = ref<UsageStatsResponse | null>(null)
 let timer = 0
 

@@ -714,7 +714,8 @@ watch(
 watch(
   () => filesStore.previewFile,
   (previewFile) => {
-    if (previewFile) {
+    // The herdr page's Files tab previews in its own floating window.
+    if (previewFile && !previewFile.floating) {
       selectedSubagent.value = null;
       activeToolPanel.value = "files";
       showToolPanel.value = true;

@@ -89,6 +89,8 @@ export const useFilesStore = defineStore('files', () => {
     language?: string
     startLine?: number
     endLine?: number
+    /** Shown in the herdr page's floating preview, not the chat's Files panel. */
+    floating?: boolean
   } | null>(null)
 
   function beginPreviewRequest(): number {
@@ -309,6 +311,7 @@ export const useFilesStore = defineStore('files', () => {
     fileName = filePath.split('/').pop() || filePath,
     size = -1,
     location?: FilePreviewLocation,
+    options: { floating?: boolean } = {},
   ) {
     const type = getFilePreviewKind(fileName || filePath)
     if (!type) return
@@ -320,6 +323,7 @@ export const useFilesStore = defineStore('files', () => {
       profile: null,
       workspaceSessionId: sessionId,
       type,
+      ...(options.floating ? { floating: true } : {}),
       ...(location ? {
         startLine: location.startLine,
         endLine: location.endLine ?? location.startLine,

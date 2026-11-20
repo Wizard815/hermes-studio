@@ -267,7 +267,7 @@ export function buildBoard(input: { work: AgentWork[]; orbTasks: OrbTask[]; agen
     const column: BoardColumn | null = agent.status === 'working' ? 'working' : agent.status === 'blocked' ? 'blocked' : agent.status === 'done' ? 'done' : null
     if (!column) continue
     columns[column].push({
-      key: `agent:${agent.key}`, column, source: 'agent', title: agent.title, detail: agent.agent, at: input.since?.[agent.key]?.since || 0,
+      key: `agent:${agent.key}`, column, source: 'agent', title: agent.title, detail: '', at: input.since?.[agent.key]?.since || 0,
       agent: agent.agent, ...(agent.paneId ? { paneId: agent.paneId } : {}), ...(agent.sessionId ? { sessionId: agent.sessionId } : {}), live: agent.status,
     })
   }
