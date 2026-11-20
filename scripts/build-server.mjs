@@ -44,6 +44,11 @@ if (existsSync(serverAssetsSrcDir)) {
   cpSync(serverAssetsSrcDir, resolve(serverOutDir, 'assets'), { recursive: true })
 }
 
+// Herdr App's Space Folders layout installer, shown (and downloadable) from Studio's herdr settings.
+mkdirSync(resolve(serverOutDir, 'assets', 'herdr'), { recursive: true })
+cpSync(resolve(rootDir, 'scripts/install-herdr-app-layout.sh'), resolve(serverOutDir, 'assets', 'herdr', 'install-herdr-app-layout.sh'))
+chmodSync(resolve(serverOutDir, 'assets', 'herdr', 'install-herdr-app-layout.sh'), 0o755)
+
 cpSync(
   resolve(rootDir, 'docs/openapi.json'),
   resolve(serverOutDir, 'openapi.json'),

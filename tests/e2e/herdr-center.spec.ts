@@ -26,14 +26,15 @@ const SPACE_VIEW = {
   ],
 }
 
-async function openCenter(page: Page, session: string, options: { machines?: boolean } = {}) {
+async function openCenter(page: Page, session: string, options: { machines?: boolean; view?: 'app' | 'tui' } = {}) {
   const posts: string[] = []
   const bodies: Array<{ path: string; body: any }> = []
   const spaceView = structuredClone(SPACE_VIEW)
   const errors: string[] = []
   let panes = [...PANES]
   page.on('pageerror', error => errors.push(error.message))
-  await page.addInitScript(() => { localStorage.setItem('hermes_locale', 'en'); (window as any).__APP_VERSION__ = 'test' })
+  // Most tests here are herdr's own terminal UI; the Herdr App layout tests ask for 'app'.
+  await page.addInitScript(view => { localStorage.setItem('hermes_locale', 'en'); localStorage.setItem('studio_herdr_view', view); (window as any).__APP_VERSION__ = 'test' }, options.view || 'tui')
   await page.routeWebSocket('**/socket.io/**', () => {})
   await page.route(url => url.pathname.startsWith('/api/'), route => {
     const request = route.request()
@@ -71,6 +72,19 @@ async function openCenter(page: Page, session: string, options: { machines?: boo
     }
     if (path === '/api/coding-agents/herdr/space-repos') return route.fulfill({ json: { repos: { '/home/me/code/api': { repo: 'api', branch: 'auth', ahead: 2, behind: 0, linked: false } } } })
     if (path === '/api/studio/sessions') return route.fulfill({ json: { sessions: [] } })
+    if (path === '/api/coding-agents/herdr/spaces/w1/view') {
+      return route.fulfill({ json: {
+        workspaceId: 'w1', activeTabId: 'w1:t1', focusedPaneId: 'w1:p1', zoomed: false,
+        tabs: [{ tab_id: 'w1:t1', label: '1', number: 1, focused: true, agent_status: 'working', pane_count: 2 }, { tab_id: 'w1:t2', label: 'logs', number: 2, focused: false, agent_status: 'idle', pane_count: 1 }],
+        panes: [
+          { pane_id: 'w1:p1', focused: true, rect: { x: 0, y: 0, width: 0.5, height: 1 }, process: 'claude' },
+          { pane_id: 'w1:p2', focused: false, rect: { x: 0.5, y: 0, width: 0.5, height: 1 }, process: 'bash' },
+        ],
+      } })
+    }
+    if (path === '/api/coding-agents/herdr/panes/w1:p1/changes' || path === '/api/coding-agents/herdr/panes/w1%3Ap1/changes') {
+      return route.fulfill({ json: { root: '/home/me/code/api', branch: 'auth', changes: [{ path: 'src/a.ts', status: 'M', added: 3, removed: 1 }] } })
+    }
     if (path.endsWith('/open')) {
       panes = [...panes, { pane_id: 'w3:p1', workspace_id: 'w3', agent: 'claude', agent_status: 'idle', label: 'fresh', studioAgent: 'claude-code', studioSessionId: 'chat-new' }]
       return route.fulfill({ json: { link: { paneId: 'w3:p1', workspaceId: 'w3', status: 'idle' } } })
@@ -291,5 +305,80 @@ test('on a phone the Spaces sidebar slides over and closes after a pick', async 
   await page.getByTestId('space-chat-herdr-aaa').click()
   await expect(page.getByTestId('space-sidebar')).toBeHidden()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test('the Herdr App layout: sidebar with Spaces and Agents, the space\'s tabs, its panes as herdr lays them out, a status bar', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { posts, errors } = await openCenter(page, 'herdr-aaa', { view: 'app' })
+  await expect(page.getByTestId('herdr-app')).toBeVisible()
+  const sidebar = page.getByTestId('herdr-app-sidebar')
+  await expect(sidebar).toHaveCSS('width', '268px')
+  await expect(sidebar.getByTestId('space-sidebar')).toBeVisible()
+  await expect(page.getByTestId('herdr-app-agents')).toContainText('Working')
+  await expect(page.getByTestId('herdr-app-agents')).toContainText('Blocked')
+  await expect(page.getByTestId('herdr-app-tabs').getByRole('tab')).toHaveText(['1×', 'logs×'])
+  // Two panes side by side, 8px apart, the focused one framed in the accent.
+  const left = await page.getByTestId('herdr-app-pane-w1:p1').boundingBox()
+  const right = await page.getByTestId('herdr-app-pane-w1:p2').boundingBox()
+  expect(Math.round(right!.x - (left!.x + left!.width))).toBe(8)
+  expect(Math.abs(left!.height - right!.height)).toBeLessThan(1)
+  await expect(page.getByTestId('herdr-app-pane-w1:p1')).toHaveClass(/focused/)
+  await expect(page.getByTestId('herdr-app-pane-w1:p2').locator('.hap-pane-head')).toHaveText(/bash\s*/)
+  await expect(page.getByTestId('herdr-app-pane-w1:p2').locator('.hap-pane-head')).toHaveCSS('height', '30px')
+  await expect(page.getByTestId('herdr-app-pane-w1:p1')).toHaveCSS('border-radius', '10px')
+  await expect(page.getByTestId('herdr-app-status')).toContainText('This computer')
+  await expect(page.getByTestId('herdr-app-status')).toContainText('Ctrl Shift P')
+  // herdr's terminal UI is not running here: one stream per pane instead (no client stream).
+  await expect(page.locator('.herdr-terminal-host[data-mode="client"]')).toHaveCount(0)
+  await expect(page.locator('.herdr-terminal-host[data-mode="control"]')).toHaveCount(2)
+  // A tab click, a pane click and + go to herdr.
+  await page.getByTestId('herdr-app-tab-w1:t2').click()
+  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/tabs/w1%3At2/focus')
+  await page.getByTestId('herdr-app-pane-w1:p2').locator('.hap-pane-head').click()
+  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/panes/w1%3Ap2/focus')
+  await page.getByTestId('herdr-app-new-tab').click()
+  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/spaces/w1/tabs')
+  expect(errors).toEqual([])
+})
+
+test('the Herdr App layout: Changes, Files and Issues panels, the command palette, and the switch to herdr\'s own UI', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { errors } = await openCenter(page, 'herdr-aaa', { view: 'app' })
+  await page.getByTestId('herdr-app-changes-button').click()
+  await expect(page.getByTestId('herdr-app-changes')).toContainText('src/a.ts')
+  await expect(page.getByTestId('herdr-app-panel')).toHaveCSS('width', '368px')
+  await page.getByTestId('herdr-app-issues').click()
+  await expect(page.getByTestId('herdr-dock-tab-inbox')).toHaveAttribute('aria-selected', 'true')
+  await page.getByTestId('herdr-app-issues').click()
+  await expect(page.getByTestId('herdr-app-panel')).toHaveCount(0)
+  await page.keyboard.press('Control+Shift+P')
+  await expect(page.getByTestId('herdr-app-palette')).toBeVisible()
+  await page.getByTestId('herdr-app-palette-input').fill('files')
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('herdr-dock-tab-files')).toHaveAttribute('aria-selected', 'true')
+  await page.getByTestId('herdr-center-view-toggle').click()
+  await expect(page.getByTestId('herdr-app')).toHaveCount(0)
+  await expect(page.locator('.herdr-terminal-host[data-mode="client"]')).toHaveCount(1)
+  await page.getByTestId('herdr-center-view-toggle').click()
+  await expect(page.getByTestId('herdr-app')).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('the Herdr App layout on a phone: one-row header, sidebar drawer, one pane at a time', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const { errors } = await openCenter(page, 'herdr-aaa', { view: 'app' })
+  await expect(page.getByTestId('herdr-app')).toBeVisible()
+  await expect(page.getByTestId('herdr-app-sidebar')).toBeHidden()
+  await expect(page.locator('.hap-pane')).toHaveCount(1)
+  await expect(page.getByTestId('herdr-app-pane-w1:p1')).toBeVisible()
+  await page.getByTestId('herdr-app-pane-next').click()
+  await expect(page.getByTestId('herdr-app-pane-w1:p2')).toBeVisible()
+  await page.getByTestId('herdr-app-expand').click()
+  await expect(page.getByTestId('herdr-app-sidebar')).toBeVisible()
+  await page.getByTestId('herdr-app-backdrop').click({ position: { x: 370, y: 400 } })
+  await expect(page.getByTestId('herdr-app-sidebar')).toBeHidden()
+  const scroll = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(scroll).toBeLessThanOrEqual(0)
   expect(errors).toEqual([])
 })

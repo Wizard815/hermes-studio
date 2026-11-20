@@ -27,11 +27,36 @@ export function clientPane(pane: HerdrPaneView): HerdrPaneView {
   if (pane.focused) out.focused = true
   if (pane.label) out.label = pane.label
   if (pane.terminal_title_stripped && pane.terminal_title_stripped !== pane.label) out.terminal_title_stripped = pane.terminal_title_stripped
+  if (pane.status_since) out.status_since = pane.status_since
   return out
 }
 
-/** The bridge state with only what Studio's pages read. */
-export function clientBridgeState(state: HerdrBridgeState | null): HerdrBridgeState | null {
+/**
+ * When each pane's agent took its status, for the Agents list's "time in
+ * state" (8m, 1h). herdr does not say, so Studio notes when it first sees a
+ * status; panes that are gone are forgotten.
+ */
+export function createStatusClock(now: () => number = Date.now) {
+  const seen = new Map<string, { status: string; since: number }>()
+  return (panes: HerdrPaneView[]): HerdrPaneView[] => {
+    const live = new Set<string>()
+    const out = panes.map(pane => {
+      live.add(pane.pane_id)
+      const status = pane.agent_status || 'unknown'
+      let entry = seen.get(pane.pane_id)
+      if (!entry || entry.status !== status) {
+        entry = { status, since: now() }
+        seen.set(pane.pane_id, entry)
+      }
+      return { ...pane, status_since: entry.since }
+    })
+    for (const id of seen.keys()) if (!live.has(id)) seen.delete(id)
+    return out
+  }
+}
+
+/** The bridge state with only what Studio's pages read (with `clock`, each pane's time in state). */
+export function clientBridgeState(state: HerdrBridgeState | null, clock?: (panes: HerdrPaneView[]) => HerdrPaneView[]): HerdrBridgeState | null {
   if (!state) return null
   return {
     connected: state.connected,
@@ -45,7 +70,7 @@ export function clientBridgeState(state: HerdrBridgeState | null): HerdrBridgeSt
       ...(item.focused ? { focused: true } : {}),
       ...(item.pane_count != null ? { pane_count: item.pane_count } : {}),
     })),
-    panes: state.panes.map(clientPane),
+    panes: (clock ? clock(state.panes) : state.panes).map(clientPane),
     chatSpaces: state.chatSpaces,
   }
 }
@@ -66,9 +91,10 @@ export function createStateFeed(read: () => HerdrBridgeState | null, send: (stat
   let lastAt = 0
   let timer: ReturnType<typeof setTimeout> | null = null
   let current: EncodedState | null = null
+  const clock = createStatusClock()
 
   function encoded(): EncodedState {
-    const state = clientBridgeState(read())
+    const state = clientBridgeState(read(), clock)
     const json = JSON.stringify(state)
     if (!current || current.json !== json) current = { state, json, gzip: gzipSync(json, { level: 6 }) }
     return current

@@ -67,7 +67,8 @@ function setWidth(width: number) {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
 }
 
-beforeEach(() => { localStorage.clear(); api.focusHerdrPane.mockClear() })
+// These are herdr's own terminal UI (the Herdr App layout has its own tests: herdr-app-view).
+beforeEach(() => { localStorage.clear(); localStorage.setItem('studio_herdr_view', 'tui'); api.focusHerdrPane.mockClear() })
 afterEach(() => setWidth(1024))
 
 describe('the herdr page: herdr with Mission docked', () => {
@@ -167,7 +168,7 @@ describe('the herdr page on a phone, with the chat header\'s own menu', () => {
     expect(bar.querySelector('[data-testid="herdr-center-reopen"]')).toBeNull()
     expect(bar.querySelector('[data-testid="herdr-center-dock-toggle"]')).not.toBeNull()
     const vm = wrapper.vm as any
-    expect(vm.menuItems.map((item: any) => item.key).slice(0, 4)).toEqual(['sidebar-mode', 'open-studio', 'new-chat', 'reopen'])
+    expect(vm.menuItems.map((item: any) => item.key).slice(0, 4)).toEqual(['view-mode', 'sidebar-mode', 'open-studio', 'new-chat'])
     expect(vm.menuItems.map((item: any) => item.key)).toContain('key:search')
     vm.runMenuItem('open-studio')
     expect(wrapper.emitted('open-studio-chat')?.[0]).toEqual(['chat-2'])

@@ -161,6 +161,8 @@ export interface HerdrPaneView extends HerdrPane {
   studioAgent: string | null
   studioSessionId: string | null
   nativeSessionId: string | null
+  /** When the pane's agent took its current status (ms; Studio's own clock), for "time in state". */
+  status_since?: number
 }
 
 export interface HerdrBridgeState {
@@ -1530,6 +1532,16 @@ export class HerdrBridge {
 
   async focusPane(paneId: string): Promise<void> {
     await this.requireClient().request('pane.focus', { pane_id: paneId })
+  }
+
+  /**
+   * One herdr socket API call, for the per-space view (tabs, pane layout) that
+   * Studio's Herdr App layout draws itself. A herdr change refreshes the state.
+   */
+  async call<T = any>(method: string, params: Record<string, unknown> = {}, options: { refresh?: boolean } = {}): Promise<T> {
+    const result = await this.requireClient().request<T>(method, params)
+    if (options.refresh) this.scheduleRefresh(0)
+    return result
   }
 
   /** Send a chat message into the live pane instead of starting a second process. */

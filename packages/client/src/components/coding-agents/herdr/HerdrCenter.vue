@@ -6,6 +6,10 @@ import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import HerdrTerminal from './HerdrTerminal.vue'
 import HerdrMissionDock from './HerdrMissionDock.vue'
 import HerdrSpaceSidebar from './HerdrSpaceSidebar.vue'
+import HerdrAppView from './HerdrAppView.vue'
+import HerdrChangesPanel from './HerdrChangesPanel.vue'
+import HerdrCommandPalette from './HerdrCommandPalette.vue'
+import { isPaletteKey, useHerdrView, type PaletteItem } from './herdr-app-layout'
 import HeaderActionOverflow from '@/components/layout/HeaderActionOverflow.vue'
 import { useHerdrDock } from './herdr-layout'
 import { useSpaceSidebar } from './space-sidebar-layout'
@@ -16,7 +20,11 @@ import { fetchHerdrMachines, focusHerdrMachineAgent, focusHerdrPane, openSession
 import { herdrKeyBytes } from '@/utils/herdr-keys'
 
 /**
- * The herdr page (Studio's chat page in herdr mode): herdr's own full UI on
+ * The herdr page (Studio's chat page in herdr mode). By default it is the
+ * Herdr App layout (HerdrAppView: Studio draws herdr's chrome, each pane is its
+ * own terminal); the header's "herdr TUI" switch shows the look below instead.
+ *
+ * herdr's terminal UI look: herdr's own full UI on
  * the left and center (its spaces sidebar, where every Studio chat is a space
  * in its Studio folder, and the focused pane with herdr's keys, search and
  * settings), and Mission's tools docked on the right (Chats, Tasks, Projects,
@@ -63,6 +71,22 @@ const machine = ref('')
 const machineLabel = computed(() => machines.value.find(item => item.id === machine.value)?.label || machine.value)
 const terminal = computed(() => (machine.value ? remoteTerminal.value : localTerminal.value))
 
+/**
+ * The page's look: the Herdr App layout (Studio draws herdr's chrome and each
+ * pane is its own terminal) or herdr's own terminal UI. A saved machine shows
+ * its full herdr either way.
+ */
+const herdrView = useHerdrView()
+const appView = ref<InstanceType<typeof HerdrAppView> | null>(null)
+const appMode = computed(() => herdrView.mode.value === 'app' && !machine.value)
+/** The right-hand panel of the Herdr App layout: Studio's tools, Changes, or none (hidden at first, as in Herdr App). */
+const appPanel = ref<'' | 'dock' | 'changes'>('')
+/** Keys go to the terminal on show: the focused pane's in the Herdr App layout, herdr's UI otherwise. */
+function focusTerminal() {
+  if (appMode.value) appView.value?.focusTerminal()
+  else terminal.value?.focus()
+}
+
 async function loadMachines() {
   try { machines.value = (await fetchHerdrMachines()).machines.filter(item => item.enabled) } catch { machines.value = [] }
   if (machine.value && !machines.value.some(item => item.id === machine.value)) machine.value = ''
@@ -100,7 +124,7 @@ async function openFromSidebar(chat: SidebarChat, asleep: boolean, paneId: strin
   if (paneId && !asleep) {
     void focusHerdrPane(paneId).catch(() => undefined)
     if (chat.id !== props.sessionId) emit('open-chat', chat.id)
-    terminal.value?.focus()
+    focusTerminal()
     return
   }
   if (chat.id !== props.sessionId) emit('open-chat', chat.id)
@@ -108,7 +132,7 @@ async function openFromSidebar(chat: SidebarChat, asleep: boolean, paneId: strin
     const { link } = await openSessionInHerdr(chat.id)
     await herdr.refresh()
     await focusHerdrPane(link.paneId).catch(() => undefined)
-    terminal.value?.focus()
+    focusTerminal()
   } catch (err: any) {
     toast.error(err?.message || String(err))
   }
@@ -118,18 +142,99 @@ function focusFromSidebar(paneId: string) {
   machine.value = ''
   spaces.picked()
   void focusHerdrPane(paneId).catch((err: any) => toast.error(err?.message || String(err)))
-  terminal.value?.focus()
+  focusTerminal()
 }
 
 /** alt+up / alt+down go to the space above or below in the Spaces list, as it shows (folders and all). */
 function onListKeys(event: KeyboardEvent) {
-  if (!props.active || spaces.mode.value !== 'studio' || !spaceSidebar.value) return
+  if (!props.active) return
+  // Ctrl+Shift+P: the Herdr App layout's command palette.
+  if (appMode.value && isPaletteKey(event)) {
+    event.preventDefault()
+    event.stopPropagation()
+    palette.value = !palette.value
+    return
+  }
+  const list = appMode.value ? appView.value : (spaces.mode.value === 'studio' ? spaceSidebar.value : null)
+  if (!list) return
   if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
   event.preventDefault()
   event.stopPropagation()
-  spaceSidebar.value.step(event.key === 'ArrowDown' ? 1 : -1)
+  list.step(event.key === 'ArrowDown' ? 1 : -1)
 }
+
+// ---- the Herdr App layout's command palette ----
+const palette = ref(false)
+const paletteItems = computed<PaletteItem[]>(() => {
+  if (!palette.value) return []
+  const items: PaletteItem[] = [
+    { id: 'action:new-chat', kind: 'action', label: t('herdrApp.actions.newChat') },
+    { id: 'action:reopen', kind: 'action', label: t('herdrApp.actions.reopen'), detail: reopenKey.value ? reopenKey.value.replace(/^prefix\+/i, `${keys.value.prefix} `) : undefined },
+    ...(studioChatId.value ? [{ id: 'action:open-studio', kind: 'action' as const, label: t('herdrApp.actions.openStudio') }] : []),
+    { id: 'action:new-tab', kind: 'action', label: t('herdrApp.actions.newTab') },
+    { id: 'action:next-space', kind: 'action', label: t('herdrApp.actions.nextSpace'), detail: 'Alt ↓' },
+    { id: 'action:prev-space', kind: 'action', label: t('herdrApp.actions.prevSpace'), detail: 'Alt ↑' },
+    { id: 'action:files', kind: 'action', label: t('herdrApp.actions.files') },
+    { id: 'action:changes', kind: 'action', label: t('herdrApp.actions.changes') },
+    { id: 'action:issues', kind: 'action', label: t('herdrApp.actions.issues') },
+    { id: 'action:tools', kind: 'action', label: t('herdrApp.actions.tools') },
+    { id: 'action:sidebar', kind: 'action', label: t('herdrApp.actions.toggleSidebar') },
+    { id: 'action:tui', kind: 'action', label: t('herdrApp.actions.tui'), keywords: 'tui terminal herdr' },
+    { id: 'action:settings', kind: 'action', label: t('herdrApp.actions.settings') },
+  ]
+  const chatSpaces = new Set<string>()
+  for (const pane of panes.value) if (pane.studioSessionId) chatSpaces.add(pane.workspace_id)
+  for (const space of herdrWorkspaces.value) {
+    if (chatSpaces.has(space.workspace_id)) continue
+    items.push({ id: `space:${space.workspace_id}`, kind: 'space', label: space.label || space.workspace_id })
+  }
+  for (const chat of appView.value?.chatList() || []) items.push({ id: `chat:${chat.id}`, kind: 'chat', label: chat.title, detail: chat.folder })
+  return items
+})
+
+function runPalette(item: PaletteItem) {
+  palette.value = false
+  const [kind, ...rest] = item.id.split(':')
+  const id = rest.join(':')
+  if (kind === 'chat') { appView.value?.openChat(id); return }
+  if (kind === 'space') {
+    const pane = panes.value.find(entry => entry.workspace_id === id)
+    if (pane) focusFromSidebar(pane.pane_id)
+    return
+  }
+  if (id === 'new-chat') newChat()
+  else if (id === 'reopen') void reopenClosed()
+  else if (id === 'open-studio') { if (studioChatId.value) emit('open-studio-chat', studioChatId.value) }
+  else if (id === 'new-tab') void appView.value?.newTab()
+  else if (id === 'next-space') appView.value?.step(1)
+  else if (id === 'prev-space') appView.value?.step(-1)
+  else if (id === 'files') onAppPanel('files')
+  else if (id === 'changes') onAppPanel('changes')
+  else if (id === 'issues') onAppPanel('issues')
+  else if (id === 'tools') appPanel.value = 'dock'
+  else if (id === 'sidebar') appView.value?.toggleSidebar()
+  else if (id === 'tui') herdrView.set('tui')
+  else if (id === 'settings') window.location.hash = SETTINGS_HREF.slice(1)
+  if (id !== 'settings' && id !== 'open-studio') focusTerminal()
+}
+
+/** Files and Issues open Studio's tools on that tab (Issues: the Inbox); Changes its own panel. A second click hides it. */
+function onAppPanel(which: 'files' | 'changes' | 'issues') {
+  if (which === 'changes') {
+    appPanel.value = appPanel.value === 'changes' ? '' : 'changes'
+    return
+  }
+  const tab = which === 'files' ? 'files' : 'inbox'
+  if (appPanel.value === 'dock' && dock.tab.value === tab) { appPanel.value = ''; return }
+  dock.tab.value = tab
+  appPanel.value = 'dock'
+}
+function toggleTools() {
+  if (appMode.value) appPanel.value = appPanel.value === 'dock' ? '' : 'dock'
+  else dock.toggle()
+}
+const toolsOpen = computed(() => (appMode.value ? appPanel.value === 'dock' : dock.open.value))
 onMounted(() => window.addEventListener('keydown', onListKeys, true))
 onBeforeUnmount(() => window.removeEventListener('keydown', onListKeys, true))
 /** Command Center's Inbox runs while this page is mounted; its count badges the Tools button. */
@@ -148,7 +253,7 @@ function selectPane(paneId: string) {
   machine.value = ''
   void focusHerdrPane(paneId).catch((err: any) => toast.error(err?.message || String(err)))
   dock.picked()
-  terminal.value?.focus()
+  focusTerminal()
 }
 /** The open chat's pane; with no herdr chat open (sessionId ''), herdr shows its own focus. */
 const linked = computed(() => (props.sessionId ? panes.value.find(pane => pane.studioSessionId === props.sessionId) ?? null : null))
@@ -181,6 +286,9 @@ const newChatKey = computed(() => herdr.status?.keys?.newChat || '')
  * Studio's new chat page.
  */
 function newChat() {
+  // The Herdr App layout has no herdr UI to open its picker in: Studio's new
+  // chat, which opens in herdr by itself (every chat is a herdr space).
+  if (appMode.value) { emit('new-chat'); return }
   const bytes = newChatKey.value ? herdrKeyBytes(newChatKey.value, keys.value.prefix) : null
   if (!bytes || !terminal.value?.send(bytes)) emit('new-chat')
 }
@@ -201,7 +309,7 @@ async function reopenClosed() {
     await herdr.refresh()
     toast.success(t('herdr.reopened', { title: reopened.map(chat => chat.title || chat.sessionId).join(', ') }))
     emit('open-chat', reopened[0].sessionId)
-    terminal.value?.focus()
+    focusTerminal()
   } catch (err: any) {
     toast.error(err?.message || String(err))
   } finally {
@@ -252,7 +360,7 @@ async function openHere() {
     const { link } = await openSessionInHerdr(props.sessionId)
     await herdr.refresh()
     await focusHerdrPane(link.paneId).catch(() => undefined)
-    terminal.value?.focus()
+    focusTerminal()
   } catch (err: any) {
     toast.error(err?.message || String(err))
   } finally {
@@ -280,13 +388,15 @@ const menuItems = computed<HerdrMenuItem[]>(() => {
     items.push({ key: 'machine:', label: `${t('herdr.machineLocal')}${machine.value ? '' : ' ✓'}` })
     for (const item of machines.value) items.push({ key: `machine:${item.id}`, label: `${item.label || item.target}${machine.value === item.id ? ' ✓' : ''}` })
   }
-  items.push({ key: 'sidebar-mode', label: spaces.mode.value === 'studio' ? t('spaceFolders.useHerdrSidebar') : t('spaceFolders.useStudioSidebar') })
+  items.push({ key: 'view-mode', label: herdrView.mode.value === 'app' ? t('herdrApp.useTui') : t('herdrApp.useApp') })
+  if (!appMode.value) items.push({ key: 'sidebar-mode', label: spaces.mode.value === 'studio' ? t('spaceFolders.useHerdrSidebar') : t('spaceFolders.useStudioSidebar') })
   if (studioChatId.value) items.push({ key: 'open-studio', label: t('mission.openInStudio') })
   if (!machine.value) {
     items.push({ key: 'new-chat', label: `+ ${t('chat.newChat')}` })
     items.push({ key: 'reopen', label: t('herdr.reopenClosed'), disabled: reopening.value })
   }
-  for (const button of keyButtons.value) items.push({ key: `key:${button.name}`, label: t(`herdr.key.${button.name}`) })
+  if (appMode.value) items.push({ key: 'palette', label: t('herdrApp.palette.title') })
+  else for (const button of keyButtons.value) items.push({ key: `key:${button.name}`, label: t(`herdr.key.${button.name}`) })
   return items
 })
 
@@ -295,6 +405,10 @@ function runMenuItem(key: string) {
     const id = key.slice('machine:'.length)
     if (id) void openMachine(id)
     else machine.value = ''
+  } else if (key === 'view-mode') {
+    herdrView.set(herdrView.mode.value === 'app' ? 'tui' : 'app')
+  } else if (key === 'palette') {
+    palette.value = true
   } else if (key === 'sidebar-mode') {
     spaces.setMode(spaces.mode.value === 'studio' ? 'herdr' : 'studio')
   } else if (key === 'open-studio') {
@@ -422,7 +536,7 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </NPopover>
-          <HeaderActionOverflow v-else-if="!(dock.phone.value && headerTarget && hostMenu)" :key="headerTarget ? 'header' : 'inline'" :label="t('chat.more')" :breakpoint="HEADER_ROOM" class="herdr-center-more" data-testid="herdr-center-more">
+          <HeaderActionOverflow v-else-if="!appMode && !(dock.phone.value && headerTarget && hostMenu)" :key="headerTarget ? 'header' : 'inline'" :label="t('chat.more')" :breakpoint="HEADER_ROOM" class="herdr-center-more" data-testid="herdr-center-more">
             <template v-if="dock.phone.value">
               <button v-if="studioChatId" type="button" class="herdr-center-key" data-testid="herdr-center-open-studio" @click="emit('open-studio-chat', studioChatId)">{{ t('mission.openInStudio') }}</button>
               <button v-if="!machine" type="button" class="herdr-center-key herdr-center-new" data-testid="herdr-center-new-chat" @click="newChat"><span aria-hidden="true">+</span> {{ t('chat.newChat') }}</button>
@@ -437,7 +551,19 @@ onBeforeUnmount(() => {
               {{ button.combo.replace(/^prefix\+/i, `${keys.prefix} then `) }}
             </NTooltip>
           </HeaderActionOverflow>
+          <!-- The page's look: the Herdr App layout, or herdr's own terminal UI. -->
           <button
+            v-if="!machine && !dock.phone.value"
+            type="button"
+            class="herdr-center-key herdr-center-view-toggle"
+            :class="{ active: herdrView.mode.value === 'tui' }"
+            :aria-pressed="herdrView.mode.value === 'tui'"
+            :title="herdrView.mode.value === 'app' ? t('herdrApp.useTui') : t('herdrApp.useApp')"
+            data-testid="herdr-center-view-toggle"
+            @click="herdrView.set(herdrView.mode.value === 'app' ? 'tui' : 'app')"
+          >{{ t('herdrApp.tuiView') }}</button>
+          <button
+            v-if="!appMode"
             type="button"
             class="herdr-center-key herdr-center-spaces-toggle"
             :aria-expanded="spaces.open.value"
@@ -455,11 +581,11 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="herdr-center-key herdr-center-dock-toggle"
-            :class="{ active: dock.open.value }"
-            :aria-expanded="dock.open.value"
+            :class="{ active: toolsOpen }"
+            :aria-expanded="toolsOpen"
             aria-controls="herdr-dock"
             data-testid="herdr-center-dock-toggle"
-            @click="dock.toggle()"
+            @click="toggleTools()"
           >{{ t('herdr.dock.title') }}<span
             v-if="commandCenter.unseen.value"
             class="herdr-center-badge"
@@ -469,7 +595,46 @@ onBeforeUnmount(() => {
           >{{ commandCenter.unseen.value > 99 ? '99+' : commandCenter.unseen.value }}</span></button>
         </div>
       </Teleport>
-      <div class="herdr-center-body" :class="{ 'is-phone': dock.phone.value }">
+      <!-- The Herdr App layout: Studio draws herdr's chrome, each pane its own terminal. -->
+      <div v-if="appMode && started" class="herdr-center-body is-app" :class="{ 'is-phone': dock.phone.value }">
+        <HerdrAppView
+          ref="appView"
+          :panes="panes"
+          :workspaces="herdrWorkspaces"
+          :focused-pane="herdr.bridge?.focusedPaneId || ''"
+          :awake="awakeChats"
+          :active-chat="sessionId || focusedPane?.studioSessionId || ''"
+          :machines="machines"
+          :phone="dock.phone.value"
+          :home="[herdr.status?.home || '', herdr.status?.homeReal || '']"
+          :panel="appPanel"
+          :dock-tab="dock.tab.value"
+          :connected="herdr.connected"
+          @open-chat="openFromSidebar"
+          @focus-pane="focusFromSidebar"
+          @open-machine="(id, pane) => { void openMachine(id, pane) }"
+          @new-chat="newChat"
+          @panel="onAppPanel"
+          @palette="palette = true"
+        >
+          <template #panel>
+            <HerdrChangesPanel v-if="appPanel === 'changes'" :pane-id="appView?.focusedPaneId || herdr.bridge?.focusedPaneId || ''" @close="appPanel = ''" />
+            <HerdrMissionDock
+              v-else-if="appPanel === 'dock'"
+              id="herdr-dock"
+              :tab="dock.tab.value"
+              :panes="panes"
+              :workspace="dockWorkspace"
+              :drawer="dock.phone.value"
+              @update:tab="value => { dock.tab.value = value }"
+              @select-pane="pane => { appPanel = dock.phone.value ? '' : appPanel; void focusHerdrPane(pane).catch(() => undefined) }"
+              @close="appPanel = ''"
+            />
+          </template>
+        </HerdrAppView>
+        <HerdrCommandPalette v-if="palette" :items="paletteItems" @run="runPalette" @close="palette = false; focusTerminal()" />
+      </div>
+      <div v-else class="herdr-center-body" :class="{ 'is-phone': dock.phone.value }">
         <!--
           Studio's Spaces sidebar (space folders): every chat in its folder, the
           same folders as Herdr App's Space Folders. herdr's own sidebar is hidden

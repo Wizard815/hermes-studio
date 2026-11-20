@@ -67,7 +67,11 @@ describe('herdr state for Studio pages', () => {
     const feed = createStateFeed(() => current, encoded => sent.push(encoded))
     const first = feed.current()
     expect(feed.current()).toBe(first)
-    expect(JSON.parse(gunzipSync(first.gzip).toString('utf8'))).toEqual(clientBridgeState(current))
+    expect(JSON.parse(gunzipSync(first.gzip).toString('utf8'))).toEqual(first.state)
+    // The page's state, plus when each pane's agent took its status (the Agents list's time in state).
+    const { panes: timed, ...rest } = first.state!
+    expect(timed.every(pane => typeof pane.status_since === 'number')).toBe(true)
+    expect({ ...rest, panes: timed.map(({ status_since: _since, ...pane }) => pane) }).toEqual(clientBridgeState(current))
     expect(first.gzip.length).toBeLessThan(first.json.length / 4)
     current = state(50, 'w2:p2')
     expect(feed.current()).not.toBe(first)

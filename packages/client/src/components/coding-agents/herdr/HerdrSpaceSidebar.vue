@@ -60,6 +60,13 @@ const props = defineProps<{
   focusedPane: string
   machines: HerdrMachine[]
   drawer: boolean
+  /**
+   * 'app': the Spaces section of the Herdr App layout's sidebar (no frame of
+   * its own, search behind the brand row's search button, + always shown).
+   */
+  variant?: 'panel' | 'app'
+  /** 'app': the search field shows (the brand row's search button). */
+  searchOpen?: boolean
 }>()
 const emit = defineEmits<{
   'open-chat': [chat: SidebarChat, asleep: boolean, paneId: string]
@@ -187,7 +194,31 @@ function step(dir: 1 | -1): boolean {
   openRow(row)
   return true
 }
-defineExpose({ step, reload: load })
+/** Every chat, for the command palette (folded ones too). */
+const chatList = computed(() => {
+  const names = new Map(view.value.folders.map(folder => [folder.id, folder.name]))
+  return [...view.value.chats]
+    .sort((a, b) => b.lastActive - a.lastActive)
+    .map(chat => ({ id: chat.id, title: chat.title || chat.id, folder: names.get(chat.folderId) || '' }))
+})
+
+/** Open a chat by id (the command palette), waking it if it sleeps. */
+function openChat(id: string): boolean {
+  const chat = view.value.chats.find(item => item.id === id)
+  if (!chat) return false
+  const paneId = props.panes.find(pane => pane.studioSessionId === id)?.pane_id || ''
+  const asleep = props.awake ? !props.awake.has(id) : !paneId
+  emit('open-chat', chat, asleep, paneId)
+  return true
+}
+
+const searchField = ref<HTMLInputElement | null>(null)
+watch(() => props.searchOpen, value => {
+  if (value) window.setTimeout(() => searchField.value?.focus(), 0)
+  else query.value = ''
+})
+
+defineExpose({ step, reload: load, chatList, openChat })
 
 // ---- drag and drop ----
 const dragging = ref<DragItem | null>(null)
@@ -348,7 +379,7 @@ const fileName = computed(() => view.value.file?.path.replace(/^.*\/(\.config\/)
 </script>
 
 <template>
-  <aside class="sf" :class="{ 'is-drawer': drawer }" data-theme-surface="card" data-testid="space-sidebar" :aria-label="t('spaceFolders.title')">
+  <aside class="sf" :class="{ 'is-drawer': drawer, 'is-app': variant === 'app' }" data-theme-surface="card" data-testid="space-sidebar" :aria-label="t('spaceFolders.title')">
     <header class="sf-head">
       <span class="sf-title" :title="fileName ? t('spaceFolders.synced', { file: fileName }) : undefined">{{ t('spaceFolders.title') }}</span>
       <span class="sf-spacer" />
@@ -358,12 +389,12 @@ const fileName = computed(() => view.value.file?.path.replace(/^.*\/(\.config\/)
       <button type="button" class="sf-icon" :title="t('spaceFolders.newChat')" :aria-label="t('spaceFolders.newChat')" data-testid="space-sidebar-new-chat" @click="emit('new-chat')">
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
       </button>
-      <button type="button" class="sf-icon" :title="t('spaceFolders.useHerdrSidebar')" :aria-label="t('spaceFolders.useHerdrSidebar')" data-testid="space-sidebar-use-herdr" @click="emit('use-herdr-sidebar')">
+      <button v-if="variant !== 'app'" type="button" class="sf-icon" :title="t('spaceFolders.useHerdrSidebar')" :aria-label="t('spaceFolders.useHerdrSidebar')" data-testid="space-sidebar-use-herdr" @click="emit('use-herdr-sidebar')">
         <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 5h16v14H4zM9 5v14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg>
       </button>
-      <button v-if="drawer" type="button" class="sf-icon" :title="t('spaceFolders.close')" :aria-label="t('spaceFolders.close')" data-testid="space-sidebar-close" @click="emit('close')">×</button>
+      <button v-if="drawer && variant !== 'app'" type="button" class="sf-icon" :title="t('spaceFolders.close')" :aria-label="t('spaceFolders.close')" data-testid="space-sidebar-close" @click="emit('close')">×</button>
     </header>
-    <input v-model="query" class="sf-search" data-theme-surface="input" type="search" :placeholder="t('spaceFolders.search')" :aria-label="t('spaceFolders.search')" data-testid="space-sidebar-search" />
+    <input v-if="variant !== 'app' || searchOpen" ref="searchField" v-model="query" class="sf-search" data-theme-surface="input" type="search" :placeholder="t('spaceFolders.search')" :aria-label="t('spaceFolders.search')" data-testid="space-sidebar-search" />
 
     <div class="sf-list" role="tree" :aria-label="t('spaceFolders.title')" @dragover="onDragOver($event, 'end')" @drop.prevent="onDrop(null)">
       <div v-if="machines.length" class="sf-machine" data-testid="space-sidebar-machine-local">
@@ -740,6 +771,74 @@ const fileName = computed(() => view.value.file?.path.replace(/^.*\/(\.config\/)
   &.is-drop {
     border-color: $accent-primary;
     color: $text-primary;
+  }
+}
+
+// ---- the Spaces section of the Herdr App layout (space-folders mod) ----
+.sf.is-app {
+  flex: 1 1 auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 13.5px;
+
+  .sf-head {
+    height: 34px;
+    padding: 6px 12px 0 16px;
+  }
+
+  .sf-title {
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+
+  .sf-icon {
+    width: 24px;
+    height: 24px;
+    color: $text-muted;
+  }
+
+  .sf-search {
+    margin: 4px 10px 6px;
+  }
+
+  .sf-list {
+    padding: 2px 8px 8px;
+  }
+
+  .sf-row {
+    height: 30px;
+    margin-bottom: 0;
+    padding-right: 8px;
+    border-radius: 6px;
+    gap: 9px;
+
+    &.active {
+      background: rgba(var(--accent-primary-rgb), 0.12);
+    }
+  }
+
+  .sf-folder {
+    font-weight: 400;
+  }
+
+  .sf-tile,
+  .sf-avatar {
+    width: 17px;
+    height: 17px;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+
+  // Herdr App shows a folder's + and count all the time.
+  .sf-add {
+    visibility: visible;
+    font-size: 15px;
+  }
+
+  .sf-count {
+    font-size: 12px;
   }
 }
 

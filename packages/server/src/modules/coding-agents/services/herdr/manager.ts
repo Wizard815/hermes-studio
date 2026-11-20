@@ -1,6 +1,6 @@
 import { dirname, join } from 'node:path'
 import { HerdrBridge, type HerdrBridgeDeps, type HerdrBridgeState } from './bridge'
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { findPluginScript, HERDR_PLUGIN_ID, installHerdrPlugin, pluginTokenMatches, readOrCreatePluginToken, type PluginInstallResult } from './plugin'
 import { installHerdrRelease } from './install'
 import { installStudioKeybinding, STUDIO_NEW_CHAT_BINDING, STUDIO_REOPEN_BINDING, readHerdrKeys, readHerdrView, readHerdrWelcome, setHerdrWelcome, type HerdrKeys, type HerdrView, type KeybindResult } from './keybind'
@@ -63,6 +63,10 @@ export interface HerdrStatus {
   bridge: HerdrBridgeState | null
   /** Home folder on the herdr machine, for `~` in folder rules. */
   home: string
+  /** The home folder with symlinks resolved, when that differs (herdr reports panes' real folders). */
+  homeReal?: string
+  /** Where the Herdr App layout installer is on this machine ('' if missing). */
+  appLayoutScript?: string
   /** herdr keys for Studio's herdr buttons (search, workspaces, settings, help). */
   keys: HerdrKeys
   /** herdr layout facts for Studio's embedded view. */
@@ -90,6 +94,23 @@ export const HERDR_INTEGRATIONS = ['claude', 'codex', 'pi', 'grok', 'opencode', 
  * Process-wide owner of herdr settings and the live bridge. Bootstrap injects
  * Studio dependencies with `configure`; routes only talk to this object.
  */
+/**
+ * The Herdr App layout installer (scripts/install-herdr-app-layout.sh): next
+ * to the server bundle once built, in the repository when run from source.
+ */
+export function herdrAppLayoutScript(): string {
+  const name = 'install-herdr-app-layout.sh'
+  const candidates = [join(__dirname, 'assets', 'herdr', name), join(process.cwd(), 'dist', 'server', 'assets', 'herdr', name), join(process.cwd(), 'scripts', name)]
+  return candidates.find(path => existsSync(path)) || ''
+}
+
+function realHome(home: string): { homeReal?: string } {
+  try {
+    const real = realpathSync(home)
+    return real !== home ? { homeReal: real } : {}
+  } catch { return {} }
+}
+
 export class HerdrManager {
   private deps: HerdrBridgeDeps | null = null
   private store: HerdrSettingsStore | null = null
@@ -367,6 +388,8 @@ export class HerdrManager {
       error: error || this.bridge?.getState().error || this.serverError || '',
       bridge: this.bridge?.getState() ?? null,
       home: homedir(),
+      ...realHome(homedir()),
+      appLayoutScript: herdrAppLayoutScript(),
       keys: await readHerdrKeys(),
       view: await readHerdrView(),
       welcome: (await readHerdrWelcome()) !== false,
