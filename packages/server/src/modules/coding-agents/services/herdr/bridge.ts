@@ -408,6 +408,11 @@ export class HerdrBridge {
     }
   }
 
+  /** Each awake chat's herdr space (chat id → workspace id). */
+  chatWorkspaces(): Record<string, string> {
+    return Object.fromEntries(Object.entries(this.persisted.chatSpaces || {}).map(([sessionId, record]) => [sessionId, record.workspaceId]))
+  }
+
   /** Whether the chat has its own herdr space (awake). */
   hasChatSpace(sessionId: string): boolean {
     return !!this.persisted.chatSpaces?.[sessionId]

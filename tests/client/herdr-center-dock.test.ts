@@ -40,6 +40,8 @@ vi.mock('@/api/coding-agents/herdr', () => ({
 vi.mock('@/components/coding-agents/herdr/HerdrTerminal.vue', () => ({
   default: defineComponent({ name: 'HerdrTerminal', setup: (_, { expose }) => { expose({ send: () => true, focus: () => undefined }); return () => h('div', { class: 'fake-terminal' }) } }),
 }))
+// Studio's Spaces sidebar has its own tests (herdr-space-folders, e2e herdr-center).
+vi.mock('@/components/coding-agents/herdr/HerdrSpaceSidebar.vue', () => ({ default: defineComponent({ name: 'HerdrSpaceSidebar', setup: (_, { expose }) => { expose({ step: () => true }); return () => h('aside', { class: 'fake-spaces' }) } }) }))
 // The dock's tools have their own tests; here they are placeholders that pick a pane.
 vi.mock('@/mission/sources/SourceChats.vue', () => ({ default: defineComponent({ emits: ['select-pane'], setup: (_, { emit }) => () => h('button', { class: 'fake-chats', onClick: () => emit('select-pane', 'w1:p2') }) }) }))
 vi.mock('@/mission/sources/SourceTasks.vue', () => ({ default: { render: () => null } }))
@@ -138,7 +140,7 @@ describe('the herdr page on a phone, with the chat header\'s own menu', () => {
     expect(bar.querySelector('[data-testid="herdr-center-reopen"]')).toBeNull()
     expect(bar.querySelector('[data-testid="herdr-center-dock-toggle"]')).not.toBeNull()
     const vm = wrapper.vm as any
-    expect(vm.menuItems.map((item: any) => item.key).slice(0, 3)).toEqual(['open-studio', 'new-chat', 'reopen'])
+    expect(vm.menuItems.map((item: any) => item.key).slice(0, 4)).toEqual(['sidebar-mode', 'open-studio', 'new-chat', 'reopen'])
     expect(vm.menuItems.map((item: any) => item.key)).toContain('key:search')
     vm.runMenuItem('open-studio')
     expect(wrapper.emitted('open-studio-chat')?.[0]).toEqual(['chat-2'])

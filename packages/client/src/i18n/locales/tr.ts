@@ -6,6 +6,7 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { spaceFoldersMessages } from '../space-folders-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -49,6 +50,7 @@ export default {
   dshVersions: {"compatibility": "ACP bağdaştırıcısı {revision} · test: 0.2.1-rc.5 / 0.2.2-rc.1", "verified": "Doğrulanmış kurulum: {version}", "pinned": "Sabitlenen sürüm: {version}", "version": "Tam npm sürümü (ör. 0.2.2-rc.1)", "pin": "Yükle ve sabitle", "latest": "En yeniyi denetle ve kullan", "restore": "{version} sürümünü geri yükle", "manage": "Sürüm yönetimi", "current": "Geçerli sürüm: {version}", "notPinned": "Sabitlenmemiş", "fixed": "Sabitlenmiş", "verifiedSummary": "Doğrulandı", "unverified": "Henüz doğrulanmadı", "more": "Daha fazla", "latestHint": "En son sürümü yükler ve doğrular; başarılı olunca sürüm sabitlemesini kaldırır. Normal güncelleme denetimi bunu yapmaz.", "noPrevious": "Geri yüklenecek önceki sürüm yok.", "restoring": "Sürüm geri yükleniyor…", "saving": "Otomatik güncelleme ayarları kaydediliyor…", "updating": "Otomatik güncelleniyor…", "waiting": "Agent boşta olana kadar bekleniyor"},
   person: personMessages['tr'],
   ...herdrMessages['tr'],
+  ...spaceFoldersMessages['tr'],
   ...vscodeMessages['tr'],
   ...screenMessages['tr'],
   ...hermesModelsMessages['tr'],

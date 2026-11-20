@@ -2,6 +2,7 @@ import type { OrbWorkRef } from '../studio/orb'
 import { io, type Socket } from 'socket.io-client'
 import { getApiKey, getBaseUrlValue, request } from '../client'
 import { socketEndpoint } from '@/utils/deployment-url'
+import type { SpaceFolderViewData, SpaceRepo } from '@/components/coding-agents/herdr/space-folders'
 
 export type HerdrStatusValue = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 
@@ -227,3 +228,32 @@ export const saveSpaceFolders = (state: SpaceFolderState) =>
 
 export const createHerdrWorkspace = (input: { cwd?: string; label?: string }) =>
   request<{ workspaceId: string; paneId: string }>(`${base}/workspaces`, { method: 'POST', body: JSON.stringify(input) })
+
+// ---- Studio's Spaces sidebar (space folders) ----
+
+export const fetchSpaceFolderView = () => request<SpaceFolderViewData>(`${base}/space-folders`)
+
+export const createSpaceFolder = (input: { name: string; parentId?: string; color?: string; start?: string; rules?: string }) =>
+  request<{ id: string }>(`${base}/space-folders/folders`, { method: 'POST', body: JSON.stringify(input) })
+
+export const updateSpaceFolder = (id: string, patch: Partial<Pick<SpaceFolder, 'name' | 'color' | 'folded' | 'start' | 'rules'>>) =>
+  request<{ ok: boolean }>(`${base}/space-folders/folders/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) })
+
+export const deleteSpaceFolder = (id: string) =>
+  request<{ ok: boolean }>(`${base}/space-folders/folders/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
+export const orderSpaceFolders = (ids: string[], move?: { id: string; parentId: string }) =>
+  request<{ ok: boolean }>(`${base}/space-folders/order`, { method: 'PUT', body: JSON.stringify({ ids, move }) })
+
+/** folderId: a folder, '' for out of every folder, null to let the folders' rules decide. */
+export const placeChatInFolder = (sessionId: string, folderId: string | null) =>
+  request<{ ok: boolean }>(`${base}/space-folders/chats/${encodeURIComponent(sessionId)}`, { method: 'PUT', body: JSON.stringify({ folderId }) })
+
+export const placeSpaceInFolder = (workspaceId: string, folderId: string | null) =>
+  request<{ ok: boolean }>(`${base}/space-folders/spaces/${encodeURIComponent(workspaceId)}`, { method: 'PUT', body: JSON.stringify({ folderId }) })
+
+export const newSpaceInFolder = (folderId: string) =>
+  request<{ workspaceId: string; paneId: string }>(`${base}/space-folders/folders/${encodeURIComponent(folderId)}/space`, { method: 'POST', body: '{}' })
+
+export const fetchSpaceRepos = (cwds: string[]) =>
+  request<{ repos: Record<string, SpaceRepo | null> }>(`${base}/space-repos`, { method: 'POST', body: JSON.stringify({ cwds }) })

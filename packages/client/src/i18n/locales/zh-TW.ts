@@ -6,6 +6,7 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { spaceFoldersMessages } from '../space-folders-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -23,6 +24,7 @@ export default {
   dshVersions: {"compatibility": "ACP 適配器 {revision} · 已測試：0.2.1-rc.5 / 0.2.2-rc.1", "verified": "已驗證安裝：{version}", "pinned": "固定版本：{version}", "version": "精確 npm 版本（如 0.2.2-rc.1）", "pin": "安裝並固定", "latest": "檢查並使用最新版", "restore": "還原 {version}", "manage": "版本管理", "current": "目前版本：{version}", "notPinned": "未固定", "fixed": "已固定", "verifiedSummary": "已驗證", "unverified": "待驗證", "more": "更多", "latestHint": "將安裝並驗證最新版，成功後解除版本固定；一般「檢查更新」不會執行此操作。", "noPrevious": "沒有可還原的版本。", "restoring": "正在還原版本…", "saving": "正在儲存自動更新設定…", "updating": "正在自動更新…", "waiting": "等待 Agent 閒置後更新"},
   person: personMessages['zh-TW'],
   ...herdrMessages['zh-TW'],
+  ...spaceFoldersMessages['zh-TW'],
   ...vscodeMessages['zh-TW'],
   ...screenMessages['zh-TW'],
   ...hermesModelsMessages['zh-TW'],

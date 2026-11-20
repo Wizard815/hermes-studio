@@ -6,6 +6,7 @@ import { installHerdrRelease } from './install'
 import { installStudioKeybinding, STUDIO_NEW_CHAT_BINDING, STUDIO_REOPEN_BINDING, readHerdrKeys, readHerdrView, readHerdrWelcome, setHerdrWelcome, type HerdrKeys, type HerdrView, type KeybindResult } from './keybind'
 import { herdrKindForStudioAgent } from './protocol'
 import { SpaceFolderStore } from './folders'
+import type { SpaceFolderSync } from './space-folder-sync'
 import { addHerdrMachine, changeHerdrMachine, focusRemoteAgent, listHerdrMachines, listRemoteAgents, remoteAttachArgs, type HerdrMachine, type HerdrRemoteAgent } from './machines'
 import { homedir } from 'node:os'
 import {
@@ -116,6 +117,30 @@ export class HerdrManager {
   folders(): SpaceFolderStore {
     if (!this.folderStore) this.folderStore = new SpaceFolderStore(join(this.settingsDir, 'space-folders.json'))
     return this.folderStore
+  }
+
+  private folderSync: SpaceFolderSync | null = null
+
+  /** Studio's space folders and their sync with herdr-space-folders' file (set up at startup). */
+  setSpaceFolders(sync: SpaceFolderSync | null): void { this.folderSync = sync }
+
+  private folderListeners = new Set<() => void>()
+
+  /** Space folders changed (Studio's herdr pages reload them). */
+  onFoldersChanged(listener: () => void): () => void {
+    this.folderListeners.add(listener)
+    return () => this.folderListeners.delete(listener)
+  }
+
+  foldersChanged(): void {
+    for (const listener of this.folderListeners) {
+      try { listener() } catch { /* ignore */ }
+    }
+  }
+
+  spaceFolders(): SpaceFolderSync {
+    if (!this.folderSync) throw Object.assign(new Error('Space folders are not set up'), { status: 503 })
+    return this.folderSync
   }
 
   getPluginDeps(): HerdrPluginDeps {
