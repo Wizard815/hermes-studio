@@ -39,6 +39,43 @@
   }
 }
 
+// The same colors for the folder menu's swatches (teleported out of the component's scope).
+@mixin menu-palette {
+  :global(.sf-menu-swatch.sf-color-none) {
+    background: $text-muted;
+  }
+
+  :global(.sf-menu-swatch.sf-color-teal) {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #22a99a;
+  }
+
+  :global(.sf-menu-swatch.sf-color-orange) {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #e3814f;
+  }
+
+  :global(.sf-menu-swatch.sf-color-blue) {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #5b8def;
+  }
+
+  :global(.sf-menu-swatch.sf-color-violet) {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #8b7cf6;
+  }
+
+  :global(.sf-menu-swatch.sf-color-green) {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #3fae6a;
+  }
+
+  :global(.sf-menu-swatch.sf-color-pink) {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #d9649a;
+  }
+}
+
 @mixin on-color {
   /* theme-exception: artwork -- the white mark on a colored folder tile or avatar, as in Herdr App */
   color: #fff;

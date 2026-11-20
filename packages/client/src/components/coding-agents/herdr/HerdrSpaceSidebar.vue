@@ -762,7 +762,5 @@ const fileName = computed(() => view.value.file?.path.replace(/^.*\/(\.config\/)
   border-color: $text-primary;
 }
 
-:global(.sf-menu-colors) {
-  @include colors.palette;
-}
+@include colors.menu-palette;
 </style>

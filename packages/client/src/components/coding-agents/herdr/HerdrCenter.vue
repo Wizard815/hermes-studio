@@ -433,13 +433,18 @@ onBeforeUnmount(() => herdr.release())
           <button
             type="button"
             class="herdr-center-key herdr-center-spaces-toggle"
-            :class="{ active: spaces.open.value }"
             :aria-expanded="spaces.open.value"
             aria-controls="herdr-spaces"
-            :title="spaces.mode.value === 'herdr' ? t('spaceFolders.useStudioSidebar') : undefined"
+            :class="{ active: spaces.open.value, 'is-icon': dock.phone.value }"
+            :title="spaces.mode.value === 'herdr' ? t('spaceFolders.useStudioSidebar') : t('spaceFolders.open')"
+            :aria-label="t('spaceFolders.open')"
             data-testid="herdr-center-spaces-toggle"
             @click="spaces.toggle()"
-          >{{ t('spaceFolders.open') }}</button>
+          >
+            <!-- A phone's one-row header has no room for the word: the sidebar glyph. -->
+            <svg v-if="dock.phone.value" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 5h16v14H4zM9 5v14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" /></svg>
+            <template v-else>{{ t('spaceFolders.open') }}</template>
+          </button>
           <button
             type="button"
             class="herdr-center-key herdr-center-dock-toggle"
@@ -690,6 +695,12 @@ onBeforeUnmount(() => herdr.release())
     width: min(360px, 88vw);
     box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18);
   }
+}
+
+.herdr-center-spaces-toggle.is-icon {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
 }
 
 .herdr-center-spaces {
