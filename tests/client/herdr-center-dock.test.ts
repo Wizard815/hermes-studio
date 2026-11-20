@@ -49,6 +49,15 @@ vi.mock('@/mission/sources/SourceUpkeep.vue', () => ({ default: { render: () => 
 vi.mock('@/mission/sources/ControlPanel.vue', () => ({ default: { render: () => null } }))
 vi.mock('@/mission/sources/OrbNotConnected.vue', () => ({ default: { render: () => null } }))
 vi.mock('@/mission/useMission', () => ({ useOrbConnection: () => ({ state: { checked: true, configured: false } }) }))
+// Command Center (the dock's first row) has its own tests; here: its shared state and placeholders.
+const commandCenter = vi.hoisted(() => ({ acquire: vi.fn(), release: vi.fn(), unseen: { value: 0 } }))
+vi.mock('@/mission/command-center/useCommandCenter', () => ({ useCommandCenter: () => commandCenter }))
+vi.mock('@/mission/command-center/CommandInbox.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/mission/command-center/CommandAgents.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/mission/command-center/CommandFiles.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/mission/command-center/CommandBoard.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/mission/command-center/CommandSkills.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/mission/command-center/CommandUsage.vue', () => ({ default: { render: () => null } }))
 
 import HerdrCenter from '@/components/coding-agents/herdr/HerdrCenter.vue'
 
@@ -68,13 +77,31 @@ describe('the herdr page: herdr with Mission docked', () => {
     const dock = wrapper.find('[data-testid="herdr-dock"]')
     expect(dock.exists()).toBe(true)
     expect(dock.classes()).not.toContain('is-drawer')
-    expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toEqual(
-      ['mission.sources.chats', 'mission.sources.tasks', 'mission.sources.projects', 'mission.sources.ideas', 'mission.sources.upkeep', 'mission.sources.control'])
+    expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toEqual([
+      'commandCenter.tabs.inbox', 'commandCenter.tabs.agents', 'commandCenter.tabs.files', 'commandCenter.tabs.board', 'commandCenter.tabs.skills',
+      'mission.sources.chats', 'mission.sources.tasks', 'mission.sources.projects', 'mission.sources.ideas', 'mission.sources.upkeep', 'mission.sources.control'])
+    expect(commandCenter.acquire).toHaveBeenCalled()
+    // Arrow keys move along the tabs (Chats → its left neighbour, Skills).
+    await wrapper.find('[data-testid="herdr-dock-tab-chats"]').trigger('keydown', { key: 'ArrowLeft' })
+    expect(wrapper.find('[data-testid="herdr-dock-tab-skills"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.find('[data-testid="herdr-dock-tab-skills"]').attributes('tabindex')).toBe('0')
     await wrapper.find('[data-testid="herdr-dock-tab-control"]').trigger('click')
     expect(JSON.parse(localStorage.getItem('studio_herdr_dock')!)).toEqual({ open: true, tab: 'control' })
     await wrapper.find('[data-testid="herdr-center-dock-toggle"]').trigger('click')
     expect(wrapper.find('[data-testid="herdr-dock"]').exists()).toBe(false)
     expect(JSON.parse(localStorage.getItem('studio_herdr_dock')!).open).toBe(false)
+  })
+
+  it('badges the Tools button and the Inbox tab with what is new', async () => {
+    setWidth(1440)
+    commandCenter.unseen.value = 3
+    const wrapper = mount(HerdrCenter, { props: { sessionId: 'chat-2', active: true } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="herdr-center-inbox-badge"]').text()).toBe('3')
+    expect(wrapper.find('[data-testid="herdr-dock-inbox-badge"]').text()).toBe('3')
+    wrapper.unmount()
+    expect(commandCenter.release).toHaveBeenCalled()
+    commandCenter.unseen.value = 0
   })
 
   it('has Open in Studio for the pane herdr shows, New chat and Reopen (no second Back to chat)', async () => {
