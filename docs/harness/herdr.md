@@ -227,9 +227,9 @@ stay separate apps; this integration links them.
 
 herdr has one page: Studio's chat page in herdr mode
 (`components/coding-agents/herdr/HerdrCenter.vue` in `ChatPanel.vue`). On the
-left and center is herdr's own full UI (a `client` terminal stream): herdr's
-spaces sidebar, where every Studio chat is a space named after it in its Studio
-folder order, and the focused pane with herdr's keys, search and settings. On
+left is Studio's Spaces sidebar (space folders, below; herdr's own sidebar on
+request) and in the center herdr's own full UI (a `client` terminal stream):
+the focused pane with herdr's keys, search and settings. On
 the right, Mission's tools are docked (`HerdrMissionDock.vue`): Chats (every
 chat, with the "z" asleep marker; Open in herdr wakes it into its space), and
 Pondering Orb's Tasks, Projects, Ideas, Upkeep, plus Control. herdr's bar shares the
@@ -258,7 +258,72 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   gzipped too. The terminal stream shares that socket, so before this the
   first herdr screen waited behind the full state.
 - **Folders are Studio's chat folders, 1:1** (`mission/useFolders.ts`,
-  `services/herdr/folders.ts`): herdr's spaces follow Studio's folder order.
+  `services/herdr/folders.ts`): herdr's spaces follow Studio's folder order
+  (the order of the Spaces sidebar, `ChatSpaceChat.folderRank`).
+- **Spaces sidebar (space folders).** The left column is Studio's own Spaces
+  sidebar (`HerdrSpaceSidebar.vue`, logic in `space-folders.ts`), rebuilt
+  natively after Herdr App's **Herdr Space Folders** mod
+  (github.com/jankeesvw/herdr-space-folders, MIT) and **Herdr Roundup**'s
+  spaces list (github.com/carstenlucke/herdr-roundup); ideas, not code. Those
+  mods are GPUI JavaScript for herdr's desktop app and cannot run in a browser.
+  Folders are Studio's chat folders: a colored tile, a count, fold/unfold (a
+  folded folder still shows when an agent in it is blocked, done or working),
+  a `+` that opens a herdr space in the folder's start folder, already in the
+  folder (`POST …/space-folders/folders/:id/space`), and a right-click menu
+  (color, New space here, New folder inside, Edit folder…, Delete folder).
+  Edit folder sets the name, the parent, the start folder (Choose… is Studio's
+  server-side folder picker; home is written `~`) and the rules: `wbso-ai`
+  (a folder name anywhere in the path), `~/code/client-*` (a path, `*` one
+  name); the most specific rule wins and what you dragged wins over rules; a
+  folder with no rules collects by its start folder. Drag a chat onto a folder
+  (files it), onto a chat (into that chat's folder), below the list (out of
+  every folder; kept out when a rule would collect it), and drag folders to
+  reorder them (dropped on a folder under another parent, it moves there). Rows
+  show a stable colored avatar, the name, repo / branch and ahead/behind only
+  when unusual (`POST …/space-repos`, `services/herdr/space-git.ts`, cached
+  30 s), and the agent's status; asleep chats are listed with "z" and a click
+  wakes them (`openSessionInHerdr`). Search filters chats and spaces (a match
+  opens its folder). alt+up / alt+down go to the row above/below as the list
+  shows (past folded folders, round the ends) and are taken before the
+  terminal sees them. With saved remote machines a "This computer" header and a
+  group per machine (its agents, click opens that machine's herdr) show. On a
+  phone the sidebar is a drawer (the header's Spaces button).
+- **herdr's own sidebar instead.** The sidebar's ▯ button, the header's ⋯ menu
+  on a phone ("Use herdr's own sidebar") and the Spaces button (back) switch
+  per viewer (`space-sidebar-layout.ts`, `studio_herdr_spaces`). Under Studio's
+  Spaces the embedded herdr client starts with its sidebar collapsed and reads
+  a copy of the user's herdr config with `sidebar_collapsed_mode = "hidden"`
+  (`HERDR_CONFIG_PATH` in `client-view.ts`, so it is gone, not a rail); with
+  herdr's own sidebar it starts shown and reads the user's config. A terminal
+  herdr is never affected. Relative paths in that config resolve next to the
+  copy (Studio's link folder); Studio's client picks up config edits when it
+  reconnects.
+- **One set of folders with Herdr App.** `~/.config/herdr-space-folders.json`
+  in the home of the machine herdr runs on (the Studio server's;
+  `HERMES_HERDR_SPACE_FOLDERS_FILE` overrides it, `off` turns it off) is kept
+  in two-way sync with Studio's folders and each awake chat's folder
+  (`services/herdr/space-folder-sync.ts`, pure merge in
+  `space-folder-file.ts`). The mod's format is `{ list: [{ id, name, color,
+  path, match, folded }], of: { spaceId: folderId | "" }, at }`. Studio writes
+  folder `c<category id>`, colors as the mod's `ansi1…6`, `path` = start
+  folder, `match` = rules (or the start folder while a folder has none, as the
+  mod's dialog mirrors it). Nested Studio folders are written flat, right after
+  their parent, named with their path ("Clients / Acme"); renaming one in the
+  mod renames its last part; a folder made in the mod becomes a top-level
+  Studio folder (its `f…` id is remembered as an alias of the new `c<id>`). A
+  space's `of` is its chat's folder, `""` when taken out by hand, absent when
+  rules decide; placements of spaces that are no chat are kept too. Fields and
+  folders Studio does not use (extra keys, unknown top-level keys) are kept.
+  Merging is three-way against what Studio last wrote (`synced` in Studio's
+  `space-folders.json`): only fields the file changed are applied; when both
+  sides changed the same field the newer side wins (`file.at` against Studio's
+  last change); a copy older than Studio's last write is replaced. The first
+  sync adds the mod's folders and placements and keeps Studio's own. Studio
+  watches the file (and looks every 5 s) and writes it at once after a change
+  in Studio. Limits: Herdr App re-reads the file every 15 s, so changes made
+  in both apps within that window can lose one side; asleep chats have no herdr
+  space, so the file only places awake chats (their folder is kept in Studio);
+  remote machines keep their own files, which Studio does not sync.
 - **Start from a card.** Each task, project or idea card has a button per
   installed agent. Studio opens a herdr space for it and types the card as the
   agent's first prompt once herdr reports the agent idle
@@ -313,8 +378,8 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   client connects through Studio's own links to herdr's sockets
   (`services/herdr/client-view.ts`, `HERDR_SOCKET_PATH`), and herdr keeps
   client preferences per socket path, so hiding herdr's sidebar in Studio does
-  not hide it in a terminal herdr. Studio seeds that file with the sidebar
-  shown (and undoes, once, the hidden-sidebar file older versions wrote).
+  not hide it in a terminal herdr. Studio sets that file's `sidebar_collapsed`
+  at each launch from the sidebar picked (see "Spaces sidebar").
   Windows (named pipes) keeps the shared preferences.
 - **Chats made in herdr are Studio chats.** herdr's Studio chats picker and
   "New Studio chat" are bound to free herdr keys at setup (`STUDIO_CHATS_BINDING`,

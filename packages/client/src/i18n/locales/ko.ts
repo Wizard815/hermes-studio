@@ -6,6 +6,7 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { spaceFoldersMessages } from '../space-folders-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -23,6 +24,7 @@ export default {
   dshVersions: {"compatibility": "ACP 어댑터 {revision} · 테스트: 0.2.1-rc.5 / 0.2.2-rc.1", "verified": "검증된 설치: {version}", "pinned": "고정 버전: {version}", "version": "정확한 npm 버전 (예: 0.2.2-rc.1)", "pin": "설치 및 고정", "latest": "최신 버전 검사 및 사용", "restore": "{version} 복원", "manage": "버전 관리", "current": "현재 버전: {version}", "notPinned": "고정 안 됨", "fixed": "고정됨", "verifiedSummary": "검증됨", "unverified": "검증 대기", "more": "더 보기", "latestHint": "최신 버전을 설치하고 검증한 뒤 성공하면 버전 고정을 해제합니다. 일반 업데이트 확인은 이 작업을 수행하지 않습니다.", "noPrevious": "복원할 이전 버전이 없습니다.", "restoring": "버전 복원 중…", "saving": "자동 업데이트 설정 저장 중…", "updating": "자동 업데이트 중…", "waiting": "Agent가 유휴 상태가 되기를 기다리는 중"},
   person: personMessages['ko'],
   ...herdrMessages['ko'],
+  ...spaceFoldersMessages['ko'],
   ...vscodeMessages['ko'],
   ...screenMessages['ko'],
   ...hermesModelsMessages['ko'],

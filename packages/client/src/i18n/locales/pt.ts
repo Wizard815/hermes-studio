@@ -6,6 +6,7 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { spaceFoldersMessages } from '../space-folders-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -23,6 +24,7 @@ export default {
   dshVersions: {"compatibility": "Adaptador ACP {revision} · testado: 0.2.1-rc.5 / 0.2.2-rc.1", "verified": "Instalação verificada: {version}", "pinned": "Versão fixada: {version}", "version": "Versão npm exata (ex.: 0.2.2-rc.1)", "pin": "Instalar e fixar", "latest": "Verificar e usar a mais recente", "restore": "Restaurar {version}", "manage": "Gestão de versões", "current": "Versão atual: {version}", "notPinned": "Não fixada", "fixed": "Fixada", "verifiedSummary": "Verificada", "unverified": "Por verificar", "more": "Mais", "latestHint": "Instala e verifica a versão mais recente e remove a fixação após o sucesso. A verificação normal de atualizações não faz isso.", "noPrevious": "Não há versão anterior para restaurar.", "restoring": "Restaurando versão…", "saving": "Salvando atualizações automáticas…", "updating": "Atualizando automaticamente…", "waiting": "Aguardando o Agent ficar inativo"},
   person: personMessages['pt'],
   ...herdrMessages['pt'],
+  ...spaceFoldersMessages['pt'],
   ...vscodeMessages['pt'],
   ...screenMessages['pt'],
   ...hermesModelsMessages['pt'],

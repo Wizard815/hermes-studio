@@ -18,7 +18,9 @@ const props = withDefaults(defineProps<{
   mode: 'client' | 'observe' | 'control'
   target?: string
   takeover?: boolean
-}>(), { target: '', takeover: false })
+  /** client mode: which sidebar Studio's page shows (herdr's own is hidden under Studio's Spaces). */
+  sidebar?: 'studio' | 'herdr'
+}>(), { target: '', takeover: false, sidebar: undefined })
 
 const emit = defineEmits<{ closed: [reason: string]; error: [message: string] }>()
 
@@ -74,6 +76,7 @@ function open() {
     mode: props.mode,
     target: props.target,
     takeover: props.takeover,
+    ...(props.sidebar ? { sidebar: props.sidebar } : {}),
     cols: term.cols,
     rows: term.rows,
   }, (result: { ok: boolean; error?: string }) => {
@@ -129,7 +132,7 @@ watch([customization, isDark], () => {
   sizeNow()
 })
 
-watch(() => [props.mode, props.target, props.takeover], () => {
+watch(() => [props.mode, props.target, props.takeover, props.sidebar], () => {
   if (!socket || !term) return
   socket.emit('terminal.close', { streamId })
   if (term) term.options.disableStdin = readOnly.value

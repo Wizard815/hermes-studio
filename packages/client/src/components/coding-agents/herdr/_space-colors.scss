@@ -1,0 +1,45 @@
+// herdr-space-folders' folder and avatar colors (one strong color per hue, the
+// same in light and dark, as Herdr App draws them): a folder keeps its color in
+// both apps. `palette` emits the color classes where it is included.
+@use '@/styles/variables' as *;
+
+@mixin palette {
+  .sf-color-none {
+    background: $text-muted;
+  }
+
+  .sf-color-teal {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #22a99a;
+  }
+
+  .sf-color-orange {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #e3814f;
+  }
+
+  .sf-color-blue {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #5b8def;
+  }
+
+  .sf-color-violet {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #8b7cf6;
+  }
+
+  .sf-color-green {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #3fae6a;
+  }
+
+  .sf-color-pink {
+    /* theme-exception: semantic -- folder color shared with Herdr App's Space Folders file */
+    background: #d9649a;
+  }
+}
+
+@mixin on-color {
+  /* theme-exception: artwork -- the white mark on a colored folder tile or avatar, as in Herdr App */
+  color: #fff;
+}

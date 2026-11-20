@@ -5,8 +5,11 @@ import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import HerdrTerminal from './HerdrTerminal.vue'
 import HerdrMissionDock from './HerdrMissionDock.vue'
+import HerdrSpaceSidebar from './HerdrSpaceSidebar.vue'
 import HeaderActionOverflow from '@/components/layout/HeaderActionOverflow.vue'
 import { useHerdrDock } from './herdr-layout'
+import { useSpaceSidebar } from './space-sidebar-layout'
+import type { SidebarChat } from './space-folders'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { fetchHerdrMachines, focusHerdrMachineAgent, focusHerdrPane, openSessionInHerdr, reopenClosedHerdrChat, studioFocusRequest, type HerdrMachine, type HerdrPaneView } from '@/api/coding-agents/herdr'
 import { herdrKeyBytes } from '@/utils/herdr-keys'
@@ -74,6 +77,60 @@ const started = ref(false)
 
 const panes = computed<HerdrPaneView[]>(() => herdr.bridge?.panes || [])
 const dock = useHerdrDock()
+
+/**
+ * The left column: Studio's Spaces sidebar (space folders, the same folders
+ * as Herdr App's Space Folders) with herdr's own sidebar hidden, or herdr's
+ * own sidebar instead. On a phone Studio's sidebar is a drawer.
+ */
+const spaces = useSpaceSidebar(dock.phone)
+const spaceSidebar = ref<InstanceType<typeof HerdrSpaceSidebar> | null>(null)
+const herdrWorkspaces = computed(() => herdr.bridge?.workspaces || [])
+/** Chats awake in herdr (they have a space now); null while herdr's state is unknown. */
+const awakeChats = computed(() => {
+  const list = herdr.bridge?.connected ? herdr.bridge.chatSpaces : undefined
+  return Array.isArray(list) ? new Set(list) : null
+})
+
+/** A chat picked in the Spaces sidebar: herdr shows it (waking it if asleep) and the chat follows. */
+async function openFromSidebar(chat: SidebarChat, asleep: boolean, paneId: string) {
+  machine.value = ''
+  spaces.picked()
+  if (paneId && !asleep) {
+    void focusHerdrPane(paneId).catch(() => undefined)
+    if (chat.id !== props.sessionId) emit('open-chat', chat.id)
+    terminal.value?.focus()
+    return
+  }
+  if (chat.id !== props.sessionId) emit('open-chat', chat.id)
+  try {
+    const { link } = await openSessionInHerdr(chat.id)
+    await herdr.refresh()
+    await focusHerdrPane(link.paneId).catch(() => undefined)
+    terminal.value?.focus()
+  } catch (err: any) {
+    toast.error(err?.message || String(err))
+  }
+}
+
+function focusFromSidebar(paneId: string) {
+  machine.value = ''
+  spaces.picked()
+  void focusHerdrPane(paneId).catch((err: any) => toast.error(err?.message || String(err)))
+  terminal.value?.focus()
+}
+
+/** alt+up / alt+down go to the space above or below in the Spaces list, as it shows (folders and all). */
+function onListKeys(event: KeyboardEvent) {
+  if (!props.active || spaces.mode.value !== 'studio' || !spaceSidebar.value) return
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+  event.preventDefault()
+  event.stopPropagation()
+  spaceSidebar.value.step(event.key === 'ArrowDown' ? 1 : -1)
+}
+onMounted(() => window.addEventListener('keydown', onListKeys, true))
+onBeforeUnmount(() => window.removeEventListener('keydown', onListKeys, true))
 /** The pane herdr shows now, and its chat: what "Open in Studio" opens. */
 const focusedPane = computed(() => {
   const id = herdr.bridge?.focusedPaneId || ''
@@ -220,6 +277,7 @@ const menuItems = computed<HerdrMenuItem[]>(() => {
     items.push({ key: 'machine:', label: `${t('herdr.machineLocal')}${machine.value ? '' : ' ✓'}` })
     for (const item of machines.value) items.push({ key: `machine:${item.id}`, label: `${item.label || item.target}${machine.value === item.id ? ' ✓' : ''}` })
   }
+  items.push({ key: 'sidebar-mode', label: spaces.mode.value === 'studio' ? t('spaceFolders.useHerdrSidebar') : t('spaceFolders.useStudioSidebar') })
   if (studioChatId.value) items.push({ key: 'open-studio', label: t('mission.openInStudio') })
   if (!machine.value) {
     items.push({ key: 'new-chat', label: `+ ${t('chat.newChat')}` })
@@ -234,6 +292,8 @@ function runMenuItem(key: string) {
     const id = key.slice('machine:'.length)
     if (id) void openMachine(id)
     else machine.value = ''
+  } else if (key === 'sidebar-mode') {
+    spaces.setMode(spaces.mode.value === 'studio' ? 'herdr' : 'studio')
   } else if (key === 'open-studio') {
     if (studioChatId.value) emit('open-studio-chat', studioChatId.value)
   } else if (key === 'new-chat') {
@@ -372,6 +432,16 @@ onBeforeUnmount(() => herdr.release())
           </HeaderActionOverflow>
           <button
             type="button"
+            class="herdr-center-key herdr-center-spaces-toggle"
+            :class="{ active: spaces.open.value }"
+            :aria-expanded="spaces.open.value"
+            aria-controls="herdr-spaces"
+            :title="spaces.mode.value === 'herdr' ? t('spaceFolders.useStudioSidebar') : undefined"
+            data-testid="herdr-center-spaces-toggle"
+            @click="spaces.toggle()"
+          >{{ t('spaceFolders.open') }}</button>
+          <button
+            type="button"
             class="herdr-center-key herdr-center-dock-toggle"
             :class="{ active: dock.open.value }"
             :aria-expanded="dock.open.value"
@@ -382,13 +452,40 @@ onBeforeUnmount(() => herdr.release())
         </div>
       </Teleport>
       <div class="herdr-center-body" :class="{ 'is-phone': dock.phone.value }">
-        <!-- herdr's own sidebar lists every Studio chat as a space (folder path in its name). -->
+        <!--
+          Studio's Spaces sidebar (space folders): every chat in its folder, the
+          same folders as Herdr App's Space Folders. herdr's own sidebar is hidden
+          under it, or shows instead when picked. On a phone it slides over.
+        -->
+        <div v-if="dock.phone.value && spaces.open.value" class="herdr-spaces-backdrop" data-testid="herdr-spaces-backdrop" @click="spaces.setOpen(false)" />
+        <HerdrSpaceSidebar
+          v-if="spaces.mode.value === 'studio' && started"
+          v-show="spaces.open.value"
+          id="herdr-spaces"
+          ref="spaceSidebar"
+          class="herdr-center-spaces"
+          :class="{ 'is-drawer': dock.phone.value }"
+          :panes="panes"
+          :workspaces="herdrWorkspaces"
+          :awake="awakeChats"
+          :active-chat="machine ? '' : (sessionId || focusedPane?.studioSessionId || '')"
+          :focused-pane="herdr.bridge?.focusedPaneId || ''"
+          :machines="machines"
+          :drawer="dock.phone.value"
+          @open-chat="openFromSidebar"
+          @focus-pane="focusFromSidebar"
+          @open-machine="(id, pane) => { spaces.picked(); void openMachine(id, pane) }"
+          @new-chat="newChat"
+          @use-herdr-sidebar="spaces.setMode('herdr')"
+          @close="spaces.setOpen(false)"
+        />
         <HerdrTerminal
           v-if="started"
           v-show="!machine"
           ref="localTerminal"
           class="herdr-center-terminal"
           mode="client"
+          :sidebar="spaces.mode.value"
         />
         <!-- A saved machine's full herdr (its own sidebar included: it is that machine's UI). -->
         <HerdrTerminal
@@ -595,6 +692,21 @@ onBeforeUnmount(() => herdr.release())
   }
 }
 
+.herdr-center-spaces {
+  flex: 0 0 clamp(230px, 20vw, 300px);
+
+  &.is-drawer {
+    position: absolute;
+    z-index: 5;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, 86vw);
+    /* theme-exception: state -- the drawer's edge shadow over the terminal, as the Tools drawer has */
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.18);
+  }
+}
+
 .herdr-dock-backdrop {
   position: absolute;
   z-index: 4;
@@ -602,6 +714,15 @@ onBeforeUnmount(() => herdr.release())
   background: rgba(0, 0, 0, 0.28);
 }
 
+.herdr-spaces-backdrop {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  /* theme-exception: state -- dims the terminal under the open Spaces drawer, like the Tools drawer */
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.herdr-center-spaces-toggle.active,
 .herdr-center-dock-toggle.active,
 .herdr-center-back:hover {
   color: $text-primary;
