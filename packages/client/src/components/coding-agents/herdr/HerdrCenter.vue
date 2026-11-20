@@ -10,6 +10,7 @@ import HeaderActionOverflow from '@/components/layout/HeaderActionOverflow.vue'
 import { useHerdrDock } from './herdr-layout'
 import { useSpaceSidebar } from './space-sidebar-layout'
 import type { SidebarChat } from './space-folders'
+import { useCommandCenter } from '@/mission/command-center/useCommandCenter'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { fetchHerdrMachines, focusHerdrMachineAgent, focusHerdrPane, openSessionInHerdr, reopenClosedHerdrChat, studioFocusRequest, type HerdrMachine, type HerdrPaneView } from '@/api/coding-agents/herdr'
 import { herdrKeyBytes } from '@/utils/herdr-keys'
@@ -131,6 +132,8 @@ function onListKeys(event: KeyboardEvent) {
 }
 onMounted(() => window.addEventListener('keydown', onListKeys, true))
 onBeforeUnmount(() => window.removeEventListener('keydown', onListKeys, true))
+/** Command Center's Inbox runs while this page is mounted; its count badges the Tools button. */
+const commandCenter = useCommandCenter()
 /** The pane herdr shows now, and its chat: what "Open in Studio" opens. */
 const focusedPane = computed(() => {
   const id = herdr.bridge?.focusedPaneId || ''
@@ -310,9 +313,13 @@ defineExpose({ menuItems, runMenuItem })
 onMounted(() => {
   void loadMachines()
   herdr.acquire()
+  commandCenter.acquire()
   if (!herdr.status) void herdr.refresh()
 })
-onBeforeUnmount(() => herdr.release())
+onBeforeUnmount(() => {
+  herdr.release()
+  commandCenter.release()
+})
 </script>
 
 <template>
@@ -453,7 +460,13 @@ onBeforeUnmount(() => herdr.release())
             aria-controls="herdr-dock"
             data-testid="herdr-center-dock-toggle"
             @click="dock.toggle()"
-          >{{ t('herdr.dock.title') }}</button>
+          >{{ t('herdr.dock.title') }}<span
+            v-if="commandCenter.unseen.value"
+            class="herdr-center-badge"
+            data-testid="herdr-center-inbox-badge"
+            :aria-label="t('commandCenter.inbox.new', { n: commandCenter.unseen.value })"
+            :title="t('commandCenter.inbox.new', { n: commandCenter.unseen.value })"
+          >{{ commandCenter.unseen.value > 99 ? '99+' : commandCenter.unseen.value }}</span></button>
         </div>
       </Teleport>
       <div class="herdr-center-body" :class="{ 'is-phone': dock.phone.value }">
@@ -731,6 +744,20 @@ onBeforeUnmount(() => herdr.release())
   inset: 0;
   /* theme-exception: state -- dims the terminal under the open Spaces drawer, like the Tools drawer */
   background: rgba(0, 0, 0, 0.28);
+}
+
+.herdr-center-badge {
+  display: inline-block;
+  min-width: 16px;
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: $warning;
+  color: $bg-card;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
 }
 
 .herdr-center-spaces-toggle.active,

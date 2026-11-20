@@ -5,8 +5,20 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
  * pane) with Mission's tools docked on the right. This is the dock's state.
  */
 
-export const DOCK_TABS = ['chats', 'tasks', 'projects', 'ideas', 'upkeep', 'control'] as const
+/** Command Center's tabs (first row), then Mission's (second row). */
+export const COMMAND_TABS = ['inbox', 'agents', 'files', 'board', 'skills'] as const
+export const MISSION_TABS = ['chats', 'tasks', 'projects', 'ideas', 'upkeep', 'control'] as const
+export const DOCK_TABS = [...COMMAND_TABS, ...MISSION_TABS] as const
 export type DockTab = typeof DOCK_TABS[number]
+
+export function isCommandTab(tab: DockTab): boolean {
+  return (COMMAND_TABS as readonly string[]).includes(tab)
+}
+
+/** The tab's label key: Command Center's own, or Mission's source names. */
+export function dockTabLabelKey(tab: DockTab): string {
+  return isCommandTab(tab) ? `commandCenter.tabs.${tab}` : `mission.sources.${tab}`
+}
 
 /** Tabs that need Pondering Orb (Chats and Control work without it). */
 export const ORB_TABS: ReadonlySet<DockTab> = new Set<DockTab>(['tasks', 'projects', 'ideas', 'upkeep'])
@@ -34,6 +46,20 @@ function storage(): StorageLike | null {
 
 export function isDockTab(value: unknown): value is DockTab {
   return typeof value === 'string' && (DOCK_TABS as readonly string[]).includes(value)
+}
+
+/**
+ * Arrow keys in the tab list (one list over both rows): Left/Right move one
+ * tab and wrap, Home/End go to the ends. Other keys: null.
+ */
+export function nextDockTab(current: DockTab, key: string): DockTab | null {
+  const index = DOCK_TABS.indexOf(current)
+  const last = DOCK_TABS.length - 1
+  if (key === 'ArrowRight' || key === 'ArrowDown') return DOCK_TABS[index >= last ? 0 : index + 1]
+  if (key === 'ArrowLeft' || key === 'ArrowUp') return DOCK_TABS[index <= 0 ? last : index - 1]
+  if (key === 'Home') return DOCK_TABS[0]
+  if (key === 'End') return DOCK_TABS[last]
+  return null
 }
 
 /** This viewer's dock, from browser storage (any failure: the defaults). */

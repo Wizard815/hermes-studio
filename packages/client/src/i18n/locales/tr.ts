@@ -7,6 +7,7 @@ import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
 import { spaceFoldersMessages } from '../space-folders-messages'
+import { commandCenterMessages } from '../command-center-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -51,6 +52,7 @@ export default {
   person: personMessages['tr'],
   ...herdrMessages['tr'],
   ...spaceFoldersMessages['tr'],
+  ...commandCenterMessages['tr'],
   ...vscodeMessages['tr'],
   ...screenMessages['tr'],
   ...hermesModelsMessages['tr'],
