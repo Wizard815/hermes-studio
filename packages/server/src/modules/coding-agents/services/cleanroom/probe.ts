@@ -46,7 +46,7 @@ export const CAPABILITY_NAMES = [
 
 /**
  * The probe itself (plain node, no packages). Its settings come in
- * STUDIO_PROBE (JSON: studioPort, proxyPort, blockedHost, allowedHost).
+ * STUDIO_PROBE (JSON: studioPort, proxyPort, blockedHost, allowedHost; direct: false skips the direct tries).
  */
 export const PROBE_SCRIPT = `// Studio clean room self-check. Prints one JSON line; never prints env values.
 import { accessSync, constants, existsSync, readFileSync } from 'node:fs'
@@ -80,8 +80,10 @@ const tcp = (host, port, send, ms = 5000) => new Promise(done => {
   socket.on('error', error => finish({ reached: false, error: error.code || error.message }))
 })
 const network = []
-network.push({ target: '1.1.1.1:443', via: 'direct', ...await tcp('1.1.1.1', 443) })
-network.push({ target: (cfg.blockedHost || 'example.com') + ':443', via: 'direct', ...await tcp(cfg.blockedHost || 'example.com', 443) })
+if (cfg.direct !== false) {
+  network.push({ target: '1.1.1.1:443', via: 'direct', ...await tcp('1.1.1.1', 443) })
+  network.push({ target: (cfg.blockedHost || 'example.com') + ':443', via: 'direct', ...await tcp(cfg.blockedHost || 'example.com', 443) })
+}
 if (cfg.proxyPort) {
   const through = async host => { const r = await tcp('127.0.0.1', cfg.proxyPort, 'CONNECT ' + host + ':443 HTTP/1.1\\r\\nHost: ' + host + ':443\\r\\n\\r\\n', 10000); return { ...r, reached: r.status === 200 } }
   network.push({ target: (cfg.blockedHost || 'example.com') + ':443', via: 'proxy', ...await through(cfg.blockedHost || 'example.com') })

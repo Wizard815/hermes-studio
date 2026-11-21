@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { chatApprovalMode, launchAsks, withApprovals } from '../approvals'
 import { needsApproval, type AgentAction } from '../approval-policy'
 import { CodexAppServerTurn } from '../codex/app-server-turn'
-import { parseCleanRoomCommand, spawnInCleanRoom } from '../cleanroom'
+import { cleanRoomNeedsRestart, parseCleanRoomCommand, spawnInCleanRoom } from '../cleanroom'
 import { startAcpChatTurn } from './acp-chat-turn'
 import type { NativeTurnHost } from './turn-host'
 import { codingAgentWorkingDirectory } from './workspace'
@@ -811,6 +811,8 @@ export class CodingAgentRunManager {
     }
     if (String(run.launch.reasoningEffort || '').trim() !== String(launch.reasoningEffort || '').trim()) return false
     if (!hasManagedHermesMcpConfig(run)) return false
+    // A clean room whose container went away or whose walls changed is made again on the next start.
+    if (parseCleanRoomCommand(run.launch.command) && cleanRoomNeedsRestart(sessionId)) return false
     return true
   }
 

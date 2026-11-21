@@ -259,9 +259,13 @@ function listenSockets(sessionId: string): void {
 
 /** The only Studio paths a clean room may reach: its agent's model proxies (not Studio's API or tools). */
 export const CLEANROOM_STUDIO_PATHS = /^\/api\/(codex-proxy|claude-code-proxy)\//
+/** Studio's model gateway, inference and model listing only (run-scoped tokens; see model-gateway-adapters). */
+const CLEANROOM_GATEWAY_PATHS = /^\/api\/ekko-studio\/models\/(v1\/(responses|chat\/completions|messages(\/count_tokens)?|models)|v1beta\/models\/[^/]+:(streamGenerateContent|generateContent))\/?$/
 
-export function studioPathAllowed(path: string): boolean {
-  return CLEANROOM_STUDIO_PATHS.test(path) && !path.includes('..')
+export function studioPathAllowed(target: string): boolean {
+  if (target.includes('..') || target.includes('%2e') || target.includes('%2E')) return false
+  const path = target.split('?')[0]
+  return CLEANROOM_STUDIO_PATHS.test(path) || CLEANROOM_GATEWAY_PATHS.test(path)
 }
 
 /** One HTTP request per connection to Studio, and only to the model proxies. */
@@ -480,6 +484,22 @@ export function hardeningArgs(settings: CleanRoomSettings, user: { uid: number; 
 
 const pendingChecks = new Map<string, Promise<SelfCheckResult>>()
 
+/** What a room was made with, by chat: a reused agent run must not outlive a change of walls. */
+const roomSettings = new Map<string, string>()
+function settingsKey(settings: CleanRoomSettings): string {
+  return JSON.stringify([settings.image, settings.network, settings.readOnlyRoot, settings.dropAllCaps, settings.capAdd, settings.user, settings.allowWebTools, settings.cpus, settings.memory, settings.pids])
+}
+
+/**
+ * The chat's agent run must start again (and so pass through ensureCleanRoom):
+ * its container was thrown away, or the clean-room settings changed since.
+ */
+export function cleanRoomNeedsRestart(sessionId: string): boolean {
+  if (!isCleanRoom(sessionId)) return false
+  const made = roomSettings.get(sessionId)
+  return !made || made !== settingsKey(readCleanRoomSettings())
+}
+
 /** Start (or reuse) the chat's container. `env` is the agent's launch environment (only its names reach the self-check). */
 export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts, options: { env?: Record<string, string | undefined> } = {}): Promise<string> {
   const settings = readCleanRoomSettings()
@@ -504,6 +524,7 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
   const paths = [mounts.workspace, ...(mounts.configs || []), ...readOnlyConfigs.map(path => `ro:${path}`), mounts.program, `home:${roomHome}`, `walls:${hardening}`].filter(Boolean).join('|')
   let existing: any = null
   try { existing = (await dockerJson(['inspect', name]))[0] } catch { existing = null }
+  if (process.env.STUDIO_CLEANROOM_DEBUG) process.stderr.write(`[cleanroom] ${name}: ${existing ? (existing.Config?.Labels?.['studio.cleanroom.paths'] === paths ? 'reuse' : 'remake') : 'make'} ${paths}\n`)
   if (existing && existing.Config?.Labels?.['studio.cleanroom.paths'] !== paths) {
     // A room from before its home folder: keep what the agent kept in /root (its sessions).
     if (homeIsNew) await run('docker', ['cp', `${name}:/root/.`, roomHome], { timeout: 120000 }).catch(() => undefined)
@@ -511,19 +532,22 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
     await run('docker', ['rm', '-f', name], { timeout: 30000 }).catch(() => undefined)
     existing = null
   }
+  // Its config folders too, every turn (Studio writes its prompt files again, mode 600):
+  // the agent can read them, and the read-only mount keeps it from changing them.
+  if (studioUser.uid === 0 && user.uid !== 0) {
+    for (const path of [...(mounts.configs || []), ...readOnlyConfigs]) chownTree(path, user.uid, user.gid)
+  }
   if (existing) {
     if (!existing.State?.Running) await run('docker', ['start', name], { timeout: 30000 })
+    roomSettings.set(sessionId, settingsKey(settings))
     return name
   }
   // Leak check before the chat's folder goes in: warn, do not block.
   if (settings.leakCheck) {
     try { updateCleanRoomState(sessionId, { leaks: scanForLeaks(mounts.workspace) }) } catch { /* the room still starts */ }
   } else updateCleanRoomState(sessionId, { leaks: undefined })
-  // The agent's own files (home, the config folders it writes) belong to the user it runs as.
-  if (studioUser.uid === 0 && user.uid !== 0) {
-    chownTree(roomHome, user.uid, user.gid)
-    for (const path of mounts.configs || []) chownTree(path, user.uid, user.gid)
-  }
+  // The room's home belongs to the user the agent runs as.
+  if (studioUser.uid === 0 && user.uid !== 0) chownTree(roomHome, user.uid, user.gid)
   const files: string[] = []
   if (user.uid !== 0) {
     const account = roomAccountFiles(user.uid, user.gid)
@@ -562,6 +586,7 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
     'node', `${SOCKET_DIR_IN_CONTAINER}/tunnel.mjs`,
   ]
   await run('docker', args, { timeout: 120000 })
+  roomSettings.set(sessionId, settingsKey(settings))
   const expect: SelfCheckExpectations = {
     network: settings.network,
     readOnlyRoot: settings.readOnlyRoot,
@@ -590,17 +615,23 @@ export function runCleanRoomSelfCheck(sessionId: string): Promise<SelfCheckResul
     if (!state.probe) throw Object.assign(new Error('The room has not started yet: it runs its check when the agent next starts'), { status: 409 })
     const { expect, envNames } = state.probe
     const at = new Date().toISOString()
+    // After a Studio restart the room's tunnel waits for its next turn: open it for the check.
+    listenSockets(sessionId)
+    await sockets.get(sessionId)?.ready
     let result: SelfCheckResult
     try {
       const probeConfig = JSON.stringify({ studioPort: config.port, proxyPort: CLEANROOM_PROXY_PORT, blockedHost: expect.blockedHost, allowedHost: expect.allowedHost })
       // The agent's variable names with empty values: the probe reports names only.
-      const env = envNames.filter(key => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)).flatMap(key => ['-e', `${key}=`])
+      // PATH and HOME keep the container's own values (an empty PATH would not find node).
+      const env = envNames.filter(key => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && key !== 'PATH' && key !== 'HOME').flatMap(key => ['-e', `${key}=`])
       const { stdout } = await run('docker', ['exec', '-i', ...env, '-e', `STUDIO_PROBE=${probeConfig}`, container, 'node', `${SOCKET_DIR_IN_CONTAINER}/probe.mjs`], { timeout: 90000 })
       const probe = normalizeProbe(JSON.parse(stdout.trim().split('\n').pop() || '{}'))
       const checks = judgeProbe(probe, expect)
       result = { at, container, state: overallState(checks), checks, probe }
     } catch (error) {
-      result = { at, container, state: 'fail', checks: [], error: error instanceof Error ? error.message.slice(0, 500) : String(error) }
+      // What docker or the probe said, not the command line (it lists every variable name).
+      const said = String((error as { stderr?: string })?.stderr || '').trim() || (error instanceof Error ? error.message : String(error))
+      result = { at, container, state: 'fail', checks: [], error: said.slice(-500) }
     }
     updateCleanRoomState(sessionId, { selfCheck: result })
     return result
@@ -618,6 +649,7 @@ export function readCleanRoomEgress(sessionId: string, limit = 200): { entries: 
 /** Remove the chat's container; it stays a clean room and gets a fresh container next turn. */
 export async function removeCleanRoomContainer(sessionId: string): Promise<void> {
   await run('docker', ['rm', '-f', containerName(sessionId)], { timeout: 30000 }).catch(() => undefined)
+  roomSettings.delete(sessionId)
   const open = sockets.get(sessionId)
   if (open) { open.studio.close(); open.egress.close(); sockets.delete(sessionId) }
 }
@@ -740,15 +772,21 @@ export function spawnInCleanRoom(command: string, args: string[], options: { cwd
 
 /**
  * The agent's Studio config folders a launch points at (prompt files, config
- * homes), each cut to its agent folder (coding-agent/model/<profile>/<provider>/<agent>).
+ * homes), each cut to its agent folder (coding-agent/model/<profile>/<provider>/<agent>,
+ * in Studio's tree or a provider account's), or to the run's folder in it (…/runs/<id>).
  */
 export function studioConfigDirs(args: readonly string[], env: Record<string, string | undefined> = {}): string[] {
-  const root = join(getWebUiHome(), 'coding-agent', 'model')
+  const home = getWebUiHome()
+  // Studio's own tree, or a provider account's (providers/users/<id>/coding-agent/model/...).
+  // A run's own folder (runs/<id>) when the value is in one: other chats' runs stay outside.
+  const root = /^(?:providers\/users\/[^/]+\/)?coding-agent\/model\/([^/]+\/[^/]+\/[^/]+(?:\/runs\/[^/]+(?=\/))?)(?:\/|$)/
   const dirs = new Set<string>()
   for (const value of [...args, ...Object.values(env)]) {
-    if (typeof value !== 'string' || !value.startsWith(`${root}/`)) continue
-    const parts = value.slice(root.length + 1).split('/')
-    if (parts.length >= 3) dirs.add(join(root, ...parts.slice(0, 3)))
+    if (typeof value !== 'string' || !value.startsWith(`${home}/`)) continue
+    const relative = value.slice(home.length + 1)
+    const match = root.exec(relative)
+    if (!match || match[1].split('/').some(part => part === '..' || part === '.')) continue
+    dirs.add(join(home, relative.slice(0, match.index + match[0].length).replace(/\/$/, '')))
   }
   return [...dirs]
 }

@@ -1433,6 +1433,76 @@
         ]
       }
     },
+    "/api/coding-agents/cleanroom/sessions/{sessionId}/check": {
+      "get": {
+        "tags": [
+          "Coding Agents"
+        ],
+        "summary": "Get check",
+        "description": "GET /api/coding-agents/cleanroom/sessions/:sessionId/check",
+        "operationId": "cleanRoomReport",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Coding Agents"
+        ],
+        "summary": "Create check",
+        "description": "POST /api/coding-agents/cleanroom/sessions/:sessionId/check",
+        "operationId": "rerunCleanRoomCheck",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/coding-agents/cleanroom/sessions/{sessionId}/container": {
       "delete": {
         "tags": [
@@ -1461,6 +1531,50 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/coding-agents/cleanroom/sessions/{sessionId}/egress": {
+      "get": {
+        "tags": [
+          "Coding Agents"
+        ],
+        "summary": "Get egress",
+        "description": "GET /api/coding-agents/cleanroom/sessions/:sessionId/egress",
+        "operationId": "cleanRoomEgress",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
             }
           }
         ]
