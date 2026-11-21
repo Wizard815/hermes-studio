@@ -122,3 +122,35 @@ Mattermost, Home Assistant demo, Pondering Orb, ALLGlance, Studio) with test
 data, runs one agent in a clean room on a model the user picks (OpenRouter,
 pinned, with a spending cap per run), and reports results, screenshots, logs
 and cost, then cleans up. Waiting on the user's answers.
+
+### Decisions (2026-11-21)
+
+In progress (each on its own branch, screenshots before merging):
+
+- Clean-room hardening: `cleanroom-hardening`.
+- Run limits (cost, tokens, time, loop catcher): `agent-limits`.
+- Official plugins turned on once per profile: agent-importers, homeassistant,
+  langfuse, mcp-serve (also added to the MCP page), bubblewrap (installed, not
+  switched on), rea, print3d: `recommended-plugins`.
+- Herdr App layout in the herdr page + install script for the desktop app:
+  `herdr-app-ui`.
+
+Next:
+
+- **UI skills for every agent**: the UI/design skills from jakubkrehel/skills,
+  installed for Hermes, Ekko and every coding agent.
+- **ESP 4-inch screen as a Hermes tool**: use the gadget plugin's ideas with
+  Studio's `packages/mcu`. Needs the board model.
+- **Whiteboard logic in Pondering Orb's Ideas tab (Milaclone)**: agents make and
+  edit boards, turn cards into Orb tasks. Repos: pondering-orb, milaclone-mcp.
+- **Phone tools for agents**: phone-harness ideas on top of Studio's Android
+  page (screenshot, UI tree, tap by element, approvals per action).
+- **Watcher**: combine Hermes's built-in watcher and approvals with InnerWarden,
+  pipelock (secret and prompt-injection scanning) and langfuse traces, plus an
+  approvals/denials audit log and Mattermost alerts.
+- **Import chats**: learn from agent-importers how to bring Hermes chats from
+  other installs (and other agents' sessions) in as Studio/herdr chats.
+
+Not adding: sem-weave (the watcher covers it), hermes-speech, Apollo Watcher,
+omh (its checks run on the host without approvals, which works against clean
+rooms; its LSP tools could be revisited later).
