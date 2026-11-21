@@ -9,6 +9,7 @@ import { startHerdrIntegration } from './herdr'
 import { startAndroidDevices } from './android'
 import { startOrbIntegration } from './orb'
 import { startAgentWork } from './agent-work'
+import { startRunLimits } from './run-limits'
 import { startCleanRoomCleanup } from './cleanroom'
 import { getSessionMetadata as getTerminalSessionMetadata } from '../modules/studio/public/sessions'
 import Koa from 'koa'
@@ -670,6 +671,8 @@ export async function bootstrap() {
   additionalShutdownSteps.push({ name: 'Pondering Orb work', close: () => orbIntegration.close() })
   const agentWork = startAgentWork()
   additionalShutdownSteps.push({ name: 'Agent work', close: () => agentWork.close() })
+  const runLimits = startRunLimits()
+  additionalShutdownSteps.push({ name: 'Run limits', close: () => runLimits.close() })
   const herdrIntegration = startHerdrIntegration(activeGroupChatServer.getIO(), loopbackBaseUrl)
   additionalShutdownSteps.push({ name: 'herdr bridge', close: () => herdrIntegration.close() })
   const androidDevices = startAndroidDevices(activeGroupChatServer.getIO())

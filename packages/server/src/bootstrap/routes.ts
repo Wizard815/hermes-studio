@@ -39,6 +39,7 @@ import { mcuDevicePublicRoutes, mcuDeviceRoutes } from '../modules/studio/routes
 import { sessionRoutes } from '../modules/studio/routes/sessions'
 import { orbRoutes } from '../modules/studio/routes/orb'
 import { agentWorkPublicRoutes, agentWorkRoutes } from '../modules/studio/routes/agent-work'
+import { runLimitRoutes } from '../modules/studio/routes/run-limits'
 import { vscodeRoutes } from '../modules/studio/routes/vscode'
 import { screenRoutes } from '../modules/studio/routes/screen'
 import { modelApiRoutes } from '../modules/studio/routes/model-api'
@@ -149,6 +150,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(sessionRoutes.routes())
   app.use(orbRoutes.routes())
   app.use(agentWorkRoutes.routes())
+  app.use(runLimitRoutes.routes())
   app.use(vscodeRoutes.routes())
   app.use(screenRoutes.routes())
   app.use(hermesApiRoutes.routes())

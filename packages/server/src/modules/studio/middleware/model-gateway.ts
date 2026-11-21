@@ -1,8 +1,16 @@
 import type { Context, Next } from 'koa'
-import { gatewayProtocol, gatewayToken, modelGatewayAdapters } from '../public/model-gateway-adapters'
+import { gatewayProtocol, gatewayToken, modelGatewayAdapters, type ModelGatewayProtocol } from '../public/model-gateway-adapters'
 import { withProviderAccount } from '../public/provider-account'
 import { findUserById, userCanAccessProfile } from '../public/users'
 import { toAuthenticatedUser } from './auth'
+import { checkGatewayRunLimits } from '../services/run-limits'
+
+/** The error each protocol's clients understand; 400 so agents show it and end the turn instead of retrying. */
+export function gatewayRefusalBody(protocol: ModelGatewayProtocol, message: string): Record<string, unknown> {
+  if (protocol === 'anthropic_messages') return { type: 'error', error: { type: 'invalid_request_error', message } }
+  if (protocol === 'gemini_contents') return { error: { code: 400, message, status: 'FAILED_PRECONDITION' } }
+  return { error: { message, type: 'invalid_request_error', code: 'studio_run_limit' } }
+}
 
 /** Run-scoped model credentials authenticate only inference, never management. */
 export async function modelGatewayMiddleware(ctx: Context, next: Next): Promise<void> {
@@ -20,6 +28,11 @@ export async function modelGatewayMiddleware(ctx: Context, next: Next): Promise<
   if (listing) {
     ctx.body = { object: 'list', data: [{ id: binding.model, object: 'model', owned_by: 'ekkostudio', type: 'model', display_name: binding.model, created_at: '1970-01-01T00:00:00Z' }], has_more: false, first_id: binding.model, last_id: binding.model }
     return
+  }
+  // Run limits (docs/agent-limits.md): a loop, the time limit or a limit already hit ends the agent's turn here.
+  if (!ctx.path.endsWith('/count_tokens')) {
+    const refusal = checkGatewayRunLimits({ sessionId: binding.sessionId, runId: binding.runId, protocol: protocol!, body: ctx.request.body })
+    if (refusal) { ctx.status = refusal.status; ctx.body = gatewayRefusalBody(protocol!, refusal.message); return }
   }
   await withProviderAccount(binding.userId, () => modelGatewayAdapters().handle(protocol!, ctx), binding.profile)
 }

@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { AGENT_WORK_STATUSES, DECISION_VIAS, type AgentActivity, type AgentWork, type AgentWorkStatus, type AgentWorkStore, type DecisionVia, type MattermostPostRef } from './store'
 import { parseMentions, type AgentWorkPublicSettings, type AgentWorkSettings } from './settings'
-import { approvalProps, composeResolvedMessage, composeStatusMessage, decisionFromReactions, type MattermostPort } from './mattermost'
+import { approvalProps, composeResolvedMessage, composeStatusMessage, decisionFromReactions, mentionsFor, type MattermostPort } from './mattermost'
 import type { OrbSharePort } from './orb-share'
 import type { AllGlancePort } from './allglance'
 import { buildDigest, dayBounds, localDay, type WikiPort } from './wiki'
@@ -221,6 +221,22 @@ export class AgentWorkService {
       this.deps.store.log(work.id, { kind: 'orb_failed', status: work.status, message: errorText(error) }, this.now())
       this.fail('orb', error)
     }
+  }
+
+  /**
+   * A one-off #blocked alert in Agent work's Mattermost channel (run limits use
+   * it, docs/agent-limits.md), with the usual @mentions. False when no channel is set.
+   */
+  async alertBlocked(title: string, text: string): Promise<boolean> {
+    const settings = await this.deps.settings.load()
+    const mm = settings.mattermost
+    if (!mm.channel) return false
+    const channelId = mm.channelId || (await this.deps.mattermost.findChannel(mm.channel, mm.teamId || this.deps.setupRecord()?.teamId))?.id
+    if (!channelId) throw new Error(`Mattermost has no channel ~${mm.channel}`)
+    const mention = mentionsFor('blocked', mm)
+    const quoted = text.trim().replace(/\n+/g, '\n> ')
+    await this.deps.mattermost.createPost(channelId, `#agentlimit #blocked${mention ? ` ${mention}` : ''} **${title}** was stopped by a run limit and needs you\n> ${quoted}`)
+    return true
   }
 
   // --- Mattermost decisions --------------------------------------------------
