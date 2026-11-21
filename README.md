@@ -100,6 +100,16 @@ What happens on the first start:
 - Scheduled job posts no longer carry Hermes's "Cronjob Response" header and
   "To stop or manage this job" footer. Turn them back on in **Hermes Settings →
   Session → Job post header and footer**.
+- About 30 seconds after start, Studio installs and enables seven Hermes
+  plugins from Hermes's plugin catalog (pinned versions), once per profile:
+  agent-importers, homeassistant, langfuse, mcp-serve, bubblewrap, rea and
+  print3d. It only enables them: no keys, no terminal backend change, no
+  import. It also adds `hermes-chats` (mcp-serve, read-only tools) on the
+  **MCP** page. A plugin or server you remove later stays removed. If the
+  catalog cannot be reached, or Hermes is too old, Studio tries again on its
+  next start. Turn it off in **Hermes Settings → Agent → Recommended Hermes
+  plugins**, or set `STUDIO_RECOMMENDED_HERMES_PLUGINS=0` on the container.
+  Details: [docs/hermes-integrations.md](docs/hermes-integrations.md#recommended-plugins).
 
 ### Agent work: Vikunja tasks, approvals and alerts
 

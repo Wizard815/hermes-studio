@@ -10355,6 +10355,71 @@
         }
       }
     },
+    "/api/hermes/plugins/recommended": {
+      "get": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Get recommended",
+        "description": "GET /api/hermes/plugins/recommended",
+        "operationId": "recommended",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Update recommended",
+        "description": "PUT /api/hermes/plugins/recommended",
+        "operationId": "setRecommended",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "autoInstall": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/hermes/plugins/{key}/disable": {
       "post": {
         "tags": [

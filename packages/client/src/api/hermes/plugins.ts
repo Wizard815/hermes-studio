@@ -52,7 +52,18 @@ export interface RecommendedPluginsInfo {
   disabledByEnv: boolean
   env: string
   envFile: string
-  profile: { done: Record<string, { outcome: string; at: string }>; lastFailure?: Record<string, { at: string; error: string; attempts: number }> } | null
+  /** Name of the MCP server added for mcp-serve (MCP page). */
+  mcpServerName: string
+  profile: {
+    done: Record<string, { outcome: string; at: string; missingEnv?: string[] }>
+    lastFailure?: Record<string, { at: string; error: string; attempts: number }>
+    mcpServer?: { outcome: 'added' | 'already-present'; at: string }
+  } | null
+}
+
+/** Whether a plugin (by key or name) is one Studio recommends. */
+export function isRecommendedPlugin(recommended: readonly string[], ...names: Array<string | null | undefined>): boolean {
+  return names.some(name => !!name && recommended.includes(name))
 }
 
 export const fetchRecommendedPlugins = () => request<RecommendedPluginsInfo>('/api/hermes/plugins/recommended')

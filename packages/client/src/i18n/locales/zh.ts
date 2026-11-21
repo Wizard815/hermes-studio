@@ -9,6 +9,7 @@ import { herdrMessages } from '../herdr-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
+import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { navigationMessages } from '../navigation-locales'
 import { personMessages } from '../person-messages'
 import { remoteDeviceMessages } from '../remote-device-messages'
@@ -33,6 +34,7 @@ export default {
   ...androidMessages['zh'],
   ...orbMessages['zh'],
   ...systemMessages['zh'],
+  ...recommendedPluginsMessages['zh'],
   sessionTasks: {
       "title": "任务",
       "task": "任务",

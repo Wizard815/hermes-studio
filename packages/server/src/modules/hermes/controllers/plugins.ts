@@ -1,9 +1,10 @@
 import { join, resolve } from 'node:path'
 import { listHermesPlugins, setHermesPluginEnabled } from '../services/plugins/plugins'
 import {
-  RECOMMENDED_HERMES_PLUGINS, RECOMMENDED_PLUGINS_ENV, readRecommendedState, recommendedAutoInstallSetting, scheduleRecommendedPlugins,
+  MCP_SERVE_SERVER_NAME, RECOMMENDED_HERMES_PLUGINS, RECOMMENDED_PLUGINS_ENV, readRecommendedState, recommendedAutoInstallSetting,
+  scheduleRecommendedPlugins,
 } from '../services/plugins/recommended'
-import { getProfileDir } from '../services/profiles/profile'
+import { getActiveProfileName, getProfileDir } from '../services/profiles/profile'
 import { writeAppConfig } from '../../studio/public/app-config'
 
 export async function list(ctx: any) {
@@ -42,7 +43,7 @@ async function setPluginEnabled(ctx: any, enabled: boolean) {
 /** The recommended official plugins, the auto-install switch and what was done for this profile. */
 export async function recommended(ctx: any) {
   try {
-    const profile = ctx.state?.profile?.name || 'default'
+    const profile = ctx.state?.profile?.name || getActiveProfileName() || 'default'
     const [setting, state] = await Promise.all([
       recommendedAutoInstallSetting(),
       readRecommendedState().catch(() => null),
@@ -54,6 +55,7 @@ export async function recommended(ctx: any) {
       disabledByEnv: setting.disabledByEnv,
       env: RECOMMENDED_PLUGINS_ENV,
       envFile: join(home, '.env'),
+      mcpServerName: MCP_SERVE_SERVER_NAME,
       profile: state?.homes?.[home] || null,
     }
   } catch (err: any) {

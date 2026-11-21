@@ -12,6 +12,13 @@ import {
 
 /** Hermes's plugin hub on Studio's Plugins page: browse, install, update, remove. */
 const emit = defineEmits<{ changed: [] }>()
+const props = withDefaults(defineProps<{
+  /** Catalog names Studio recommends (badge). */
+  recommended?: string[]
+  /** Required keys not set yet, by plugin name (installed plugins only). */
+  missingEnv?: Record<string, string[]>
+  envFile?: string
+}>(), { recommended: () => [], missingEnv: () => ({}), envFile: '.env' })
 
 const { t, te } = useI18n()
 const message = useMessage()
@@ -256,6 +263,7 @@ void load()
               <span v-if="entry.title && entry.title !== entry.name" class="hub-sub">{{ entry.name }}</span>
             </div>
             <div class="hub-tags">
+              <NTag v-if="props.recommended.includes(entry.name)" size="small" type="info" round>{{ t('recommendedPlugins.badge') }}</NTag>
               <NTag v-if="entry.installed" size="small" type="success" round>{{ t('hermesExtensions.common.installed') }}</NTag>
               <NTag v-if="entry.update_available" size="small" type="warning" round>{{ t('hermesExtensions.hub.updateAvailable') }}</NTag>
               <NTag size="small" round :type="tierType(entry.tier)">{{ label('tier', entry.tier) }}</NTag>
@@ -267,6 +275,9 @@ void load()
             <span v-if="entry.maintainer">{{ entry.maintainer }}</span>
             <span v-if="entry.version">v{{ entry.version }}</span>
             <span v-if="entry.capabilities?.requires_env?.length">{{ t('hermesExtensions.hub.needsKeys', { keys: entry.capabilities.requires_env.join(', ') }) }}</span>
+          </div>
+          <div v-if="entry.installed && props.missingEnv[entry.name]?.length" class="hub-issues">
+            {{ t('recommendedPlugins.missingEnv', { keys: props.missingEnv[entry.name].join(', '), file: props.envFile }) }}
           </div>
           <div v-if="entry.known_issues?.length" class="hub-issues">{{ t('hermesExtensions.hub.knownIssues') }}: {{ entry.known_issues.join(' · ') }}</div>
           <div class="hub-actions">

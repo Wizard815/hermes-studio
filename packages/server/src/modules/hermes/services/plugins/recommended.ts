@@ -1,22 +1,38 @@
-import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { config } from '../../../studio/public/config'
 import { logger } from '../../../studio/public/logging'
 import { safeFileStore } from '../../../studio/public/safe-file-store'
 import { readAppConfig } from '../../../studio/public/app-config'
-import { getProfileDir, listProfileNamesFromDisk } from '../profiles/profile'
+import { getHermesBaseDir, getProfileDir, listProfileNamesFromDisk } from '../profiles/profile'
+import { updateConfigYamlForProfile } from '../profiles/config'
+import { findHermesCli } from '../herdr-launch'
 import { hermesApi } from '../hermes-api'
 
 /**
- * Official Hermes plugins Studio installs and enables once per Hermes profile
+ * Hermes plugins Studio installs and enables once per Hermes profile
  * (docs/hermes-integrations.md, "Recommended plugins"). Installs go through
- * Hermes's own plugin hub at the catalog's pinned commit, exactly like the
- * Install button on the Plugins page. Only enabling: no terminal backend
- * switch, no import run, no keys.
+ * Hermes's own plugin hub by catalog name, so only the catalog's pinned
+ * commit is ever installed, exactly like the Install button on the Plugins
+ * page. Only enabling: no terminal backend switch, no import run, no keys.
  */
-export const RECOMMENDED_HERMES_PLUGINS = ['agent-importers', 'homeassistant', 'langfuse', 'mcp-serve', 'bubblewrap'] as const
+export const RECOMMENDED_HERMES_PLUGINS = [
+  'agent-importers', 'homeassistant', 'langfuse', 'mcp-serve', 'bubblewrap', 'rea', 'print3d',
+] as const
 
 export const RECOMMENDED_PLUGINS_ENV = 'STUDIO_RECOMMENDED_HERMES_PLUGINS'
+
+/** The MCP server Studio adds once mcp-serve is installed (MCP page). */
+export const MCP_SERVE_SERVER_NAME = 'hermes-chats'
+
+/**
+ * Read-only tools of `hermes mcp-serve`. Sending messages as the user's
+ * accounts (messages_send) and answering approvals (permissions_respond)
+ * stay off until the user turns them on on the MCP page.
+ */
+export const MCP_SERVE_READ_TOOLS = [
+  'conversations_list', 'conversation_get', 'messages_read', 'attachments_fetch',
+  'events_poll', 'events_wait', 'channels_list', 'permissions_list_open',
+] as const
 
 /** Why a plugin is done for a profile; anything else is retried on a later start. */
 export type RecommendedOutcome = 'installed' | 'enabled' | 'already-enabled' | 'kept-disabled' | 'not-for-this-platform'
@@ -28,6 +44,8 @@ export interface RecommendedProfileState {
   profile: string
   done: Record<string, RecommendedRecord>
   lastFailure?: Record<string, RecommendedAttempt>
+  /** Set once the mcp-serve MCP server was added (or found); never added again after that. */
+  mcpServer?: { outcome: 'added' | 'already-present'; at: string }
 }
 
 export interface RecommendedPluginsState {
@@ -48,7 +66,11 @@ export interface HermesCall { status: number; body: any }
 
 export interface RecommendedDeps {
   call: (method: string, path: string, body: unknown, profile: string) => Promise<HermesCall>
+  hermesAvailable: () => boolean
   hermesVersion: () => string | null
+  /** Adds the MCP server unless one of that name exists; true when it was added. */
+  addMcpServer: (profile: string, name: string, server: Record<string, unknown>) => Promise<boolean>
+  hermesCommand: () => string
   stateFile: string
   platform: NodeJS.Platform
   homeOf: (profile: string) => string
@@ -56,6 +78,17 @@ export interface RecommendedDeps {
 
 function stateFilePath(): string {
   return join(config.appHome, 'recommended-hermes-plugins.json')
+}
+
+export async function addMcpServerToConfig(profile: string, name: string, server: Record<string, unknown>): Promise<boolean> {
+  const added = await updateConfigYamlForProfile<boolean>(profile, (current) => {
+    const cfg = current && typeof current === 'object' ? current : {}
+    const servers = cfg.mcp_servers && typeof cfg.mcp_servers === 'object' && !Array.isArray(cfg.mcp_servers) ? cfg.mcp_servers : {}
+    if (Object.keys(servers).some(key => key.toLowerCase() === name.toLowerCase())) return { data: cfg, result: false, write: false }
+    cfg.mcp_servers = { ...servers, [name]: server }
+    return { data: cfg, result: true }
+  })
+  return added === true
 }
 
 function defaultDeps(): RecommendedDeps {
@@ -67,7 +100,10 @@ function defaultDeps(): RecommendedDeps {
       try { parsed = JSON.parse(text) } catch { /* not JSON */ }
       return { status: result.status, body: parsed }
     },
+    hermesAvailable: () => hermesApi.status().available,
     hermesVersion: () => hermesApi.status().version,
+    addMcpServer: addMcpServerToConfig,
+    hermesCommand: () => findHermesCli() || 'hermes',
     stateFile: stateFilePath(),
     platform: process.platform,
     homeOf: profile => resolve(getProfileDir(profile)),
@@ -148,10 +184,27 @@ export function satisfiesHermes(spec: string | undefined, version: string | null
   return true
 }
 
+/** The catalog names platforms "linux", "macos", "windows"; Node says linux, darwin, win32. */
+export function platformAllowed(platforms: string[] | undefined, platform: NodeJS.Platform): boolean {
+  if (!Array.isArray(platforms) || !platforms.length) return true
+  const names = new Set([platform, platform === 'darwin' ? 'macos' : platform === 'win32' ? 'windows' : platform])
+  return platforms.some(value => names.has(String(value).toLowerCase() as NodeJS.Platform))
+}
+
 function errorText(call: HermesCall): string {
   const body = call.body
   const detail = body && typeof body === 'object' ? (body.error || body.detail || body.message) : body
-  return String(detail || `HTTP ${call.status}`).slice(0, 300)
+  return String(typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : `HTTP ${call.status}`).replace(/\s+/g, ' ').slice(0, 300)
+}
+
+/** The stdio server for `hermes mcp-serve` (read-only tools) for this profile. */
+export function mcpServeServerConfig(profile: string, command: string, hermesBase: string): Record<string, unknown> {
+  return {
+    command,
+    args: profile && profile !== 'default' ? ['-p', profile, 'mcp-serve'] : ['mcp-serve'],
+    env: { HERMES_HOME: hermesBase },
+    tools: { include: [...MCP_SERVE_READ_TOOLS] },
+  }
 }
 
 export interface RecommendedRunResult {
@@ -159,7 +212,10 @@ export interface RecommendedRunResult {
   done: string[]
   failed: Record<string, string>
   skipped?: string
+  mcpServer?: 'added' | 'already-present'
 }
+
+const failureFrom = (err: any): HermesCall => ({ status: 599, body: { error: String(err?.message || err) } })
 
 /**
  * Installs and enables the recommended plugins a profile has not had yet.
@@ -169,6 +225,7 @@ export interface RecommendedRunResult {
  */
 export async function applyRecommendedPlugins(profile: string, deps: RecommendedDeps = defaultDeps()): Promise<RecommendedRunResult> {
   const result: RecommendedRunResult = { profile, done: [], failed: {} }
+  if (!deps.hermesAvailable()) { result.skipped = 'no-hermes'; return result }
   const home = deps.homeOf(profile)
   let state: RecommendedPluginsState
   try {
@@ -178,64 +235,83 @@ export async function applyRecommendedPlugins(profile: string, deps: Recommended
     result.skipped = 'state'
     return result
   }
-  const doneBefore = state.homes[home]?.done || {}
+  const before = state.homes[home]
+  const doneBefore = before?.done || {}
   const pending = RECOMMENDED_HERMES_PLUGINS.filter(name => !doneBefore[name])
-  if (!pending.length) { result.skipped = 'done'; return result }
+  const records: Record<string, RecommendedRecord> = {}
 
-  let catalog: CatalogEntry[]
-  try {
-    const answer = await deps.call('GET', 'dashboard/plugins/catalog', undefined, profile)
-    if (answer.status >= 400 || !Array.isArray(answer.body?.entries)) throw new Error(errorText(answer))
-    catalog = answer.body.entries
-  } catch (err: any) {
-    const message = String(err?.message || err).slice(0, 300)
-    logger.warn('[recommended-plugins] plugin catalog not reachable profile=%s: %s (retry on next start)', profile, message)
-    for (const name of pending) result.failed[name] = message
-    await recordFailures(deps.stateFile, home, profile, result.failed)
+  if (pending.length) {
+    let catalog: CatalogEntry[] | null = null
+    try {
+      const answer = await deps.call('GET', 'dashboard/plugins/catalog', undefined, profile)
+      if (answer.status >= 400 || !Array.isArray(answer.body?.entries)) throw new Error(errorText(answer))
+      catalog = answer.body.entries
+    } catch (err: any) {
+      const message = String(err?.message || err).replace(/\s+/g, ' ').slice(0, 300)
+      logger.warn('[recommended-plugins] plugin catalog not reachable profile=%s: %s (retry on next start)', profile, message)
+      for (const name of pending) result.failed[name] = message
+    }
+
+    const version = deps.hermesVersion()
+    for (const name of catalog ? pending : []) {
+      const at = new Date().toISOString()
+      const entry = catalog!.find(item => item.name === name)
+      if (!entry) { result.failed[name] = 'not in the Hermes plugin catalog'; continue }
+      if (!platformAllowed(entry.platforms, deps.platform)) {
+        records[name] = { outcome: 'not-for-this-platform', at }
+        continue
+      }
+      if (entry.installed) {
+        // Installed before Studio got to it: an explicit disable is the user's choice.
+        if (entry.runtime_status === 'disabled') { records[name] = { outcome: 'kept-disabled', at }; continue }
+        if (entry.runtime_status === 'enabled') { records[name] = { outcome: 'already-enabled', at }; continue }
+        const answer = await deps.call('POST', `dashboard/agent-plugins/${encodeURIComponent(name)}/enable`, {}, profile).catch(failureFrom)
+        if (answer.status >= 400 || answer.body?.ok === false) { result.failed[name] = errorText(answer); continue }
+        records[name] = { outcome: 'enabled', at }
+        continue
+      }
+      if (satisfiesHermes(entry.requires_hermes, version) === false) {
+        result.failed[name] = `needs Hermes ${entry.requires_hermes}; this is ${version}`
+        continue
+      }
+      // Catalog name only: Hermes installs the entry's pinned commit.
+      const answer = await deps.call('POST', 'dashboard/agent-plugins/install', { identifier: '', catalog_name: name, enable: true }, profile).catch(failureFrom)
+      const body = answer.body && typeof answer.body === 'object' ? answer.body : {}
+      if (answer.status >= 400 || body.ok === false || body.consent_required || body.scan_blocked) {
+        result.failed[name] = body.consent_required ? 'Hermes asks for consent; install it from the Plugins page'
+          : body.scan_blocked ? 'blocked by Hermes security scan' : errorText(answer)
+        continue
+      }
+      const missingEnv = Array.isArray(body.missing_env) ? body.missing_env.map(String) : []
+      records[name] = { outcome: 'installed', at, ...(missingEnv.length ? { missingEnv } : {}) }
+    }
+  }
+  result.done = Object.keys(records)
+
+  // mcp-serve on the MCP page, once: a server the user removes later stays removed.
+  const mcpServe = records['mcp-serve'] || doneBefore['mcp-serve']
+  let mcpServer: RecommendedProfileState['mcpServer']
+  if (!before?.mcpServer && mcpServe && ['installed', 'enabled', 'already-enabled'].includes(mcpServe.outcome)) {
+    try {
+      const server = mcpServeServerConfig(profile, deps.hermesCommand(), resolve(getHermesBaseDir()))
+      const added = await deps.addMcpServer(profile, MCP_SERVE_SERVER_NAME, server)
+      mcpServer = { outcome: added ? 'added' : 'already-present', at: new Date().toISOString() }
+      result.mcpServer = mcpServer.outcome
+    } catch (err: any) {
+      logger.warn('[recommended-plugins] could not add the %s MCP server profile=%s: %s (retry on next start)', MCP_SERVE_SERVER_NAME, profile, String(err?.message || err))
+    }
+  }
+
+  if (!result.done.length && !Object.keys(result.failed).length && !mcpServer) {
+    if (!pending.length) result.skipped = 'done'
     return result
   }
-
-  const version = deps.hermesVersion()
-  const records: Record<string, RecommendedRecord> = {}
-  for (const name of pending) {
-    const at = new Date().toISOString()
-    const entry = catalog.find(item => item.name === name)
-    if (!entry) { result.failed[name] = 'not in the Hermes plugin catalog'; continue }
-    if (Array.isArray(entry.platforms) && entry.platforms.length && !entry.platforms.includes(deps.platform)) {
-      records[name] = { outcome: 'not-for-this-platform', at }
-      continue
-    }
-    if (entry.installed) {
-      // Installed before Studio got to it: an explicit disable is the user's choice.
-      if (entry.runtime_status === 'disabled') { records[name] = { outcome: 'kept-disabled', at }; continue }
-      if (entry.runtime_status === 'enabled') { records[name] = { outcome: 'already-enabled', at }; continue }
-      const answer = await deps.call('POST', `dashboard/agent-plugins/${encodeURIComponent(name)}/enable`, {}, profile).catch(err => ({ status: 599, body: { error: String(err?.message || err) } }))
-      if (answer.status >= 400 || answer.body?.ok === false) { result.failed[name] = errorText(answer); continue }
-      records[name] = { outcome: 'enabled', at }
-      continue
-    }
-    if (satisfiesHermes(entry.requires_hermes, version) === false) {
-      result.failed[name] = `needs Hermes ${entry.requires_hermes}; this is ${version}`
-      continue
-    }
-    const answer = await deps.call('POST', 'dashboard/agent-plugins/install', { identifier: '', catalog_name: name, enable: true }, profile)
-      .catch(err => ({ status: 599, body: { error: String(err?.message || err) } }))
-    const body = answer.body && typeof answer.body === 'object' ? answer.body : {}
-    if (answer.status >= 400 || body.ok === false || body.consent_required || body.scan_blocked) {
-      result.failed[name] = body.consent_required ? 'Hermes asks for consent; install it from the Plugins page'
-        : body.scan_blocked ? 'blocked by Hermes security scan' : errorText(answer)
-      continue
-    }
-    const missingEnv = Array.isArray(body.missing_env) ? body.missing_env.map(String) : []
-    records[name] = { outcome: 'installed', at, ...(missingEnv.length ? { missingEnv } : {}) }
-  }
-
-  result.done = Object.keys(records)
   try {
     await updateState(deps.stateFile, (next) => {
       const current = next.homes[home] || { profile, done: {} }
       current.profile = profile
       current.done = { ...current.done, ...records }
+      if (mcpServer) current.mcpServer = mcpServer
       const failures = { ...(current.lastFailure || {}) }
       for (const name of result.done) delete failures[name]
       for (const [name, error] of Object.entries(result.failed)) {
@@ -249,26 +325,14 @@ export async function applyRecommendedPlugins(profile: string, deps: Recommended
     logger.warn(err, '[recommended-plugins] could not save state profile=%s', profile)
   }
   for (const name of result.done) logger.info('[recommended-plugins] %s profile=%s: %s', name, profile, records[name].outcome)
-  for (const [name, error] of Object.entries(result.failed)) {
-    logger.warn('[recommended-plugins] %s not installed profile=%s: %s (retry on next start)', name, profile, error)
+  if (result.mcpServer === 'added') logger.info('[recommended-plugins] MCP server %s added profile=%s', MCP_SERVE_SERVER_NAME, profile)
+  // One line per start, not one per plugin: an offline server must not fill the log.
+  const failed = Object.entries(result.failed)
+  if (failed.length) {
+    logger.warn('[recommended-plugins] not installed yet profile=%s (retry on next start): %s', profile,
+      failed.map(([name, error]) => `${name}: ${error}`).join('; '))
   }
   return result
-}
-
-async function recordFailures(stateFile: string, home: string, profile: string, failed: Record<string, string>) {
-  try {
-    await updateState(stateFile, (next) => {
-      const current = next.homes[home] || { profile, done: {} }
-      const failures = { ...(current.lastFailure || {}) }
-      for (const [name, error] of Object.entries(failed)) {
-        failures[name] = { at: new Date().toISOString(), error, attempts: (failures[name]?.attempts || 0) + 1 }
-      }
-      current.lastFailure = failures
-      next.homes[home] = current
-    })
-  } catch (err) {
-    logger.warn(err, '[recommended-plugins] could not save state profile=%s', profile)
-  }
 }
 
 let running: Promise<void> = Promise.resolve()
@@ -286,7 +350,6 @@ export function scheduleRecommendedPlugins(profiles?: string[], deps?: Recommend
         return
       }
       for (const profile of profiles || listProfileNamesFromDisk()) {
-        if (!existsSync(getProfileDir(profile))) continue
         await applyRecommendedPlugins(profile, deps)
       }
     } catch (err) {
@@ -294,35 +357,4 @@ export function scheduleRecommendedPlugins(profiles?: string[], deps?: Recommend
     }
   })
   return running
-}
-
-/** Required env names a plugin.yaml lists (strings or {name: ...}). */
-export function requiredEnvNames(requiresEnv: Array<string | Record<string, unknown>> | undefined): string[] {
-  return (requiresEnv || [])
-    .map(item => typeof item === 'string' ? item : String((item as any)?.name || ''))
-    .map(name => name.trim())
-    .filter(Boolean)
-}
-
-function parseEnvFile(text: string): Record<string, string> {
-  const env: Record<string, string> = {}
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eq = trimmed.indexOf('=')
-    if (eq <= 0) continue
-    let value = trimmed.slice(eq + 1).trim()
-    if (value.length >= 2 && (value[0] === '"' || value[0] === "'") && value.endsWith(value[0])) value = value.slice(1, -1)
-    env[trimmed.slice(0, eq).replace(/^export\s+/, '').trim()] = value
-  }
-  return env
-}
-
-/** The profile's .env file and which of `names` are set neither there nor in Studio's environment. */
-export function missingEnvFor(profileDir: string, names: string[], env: NodeJS.ProcessEnv = process.env): string[] {
-  if (!names.length) return []
-  const file = join(profileDir, '.env')
-  let saved: Record<string, string> = {}
-  try { if (existsSync(file)) saved = parseEnvFile(readFileSync(file, 'utf-8')) } catch { /* unreadable: treat as unset */ }
-  return names.filter(name => !String(saved[name] || env[name] || '').trim())
 }

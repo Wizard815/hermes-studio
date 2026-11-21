@@ -4,7 +4,7 @@ import { join } from 'path'
 import { getActiveProfileDir, getHermesBaseDir, getProfileDir } from '../profiles/profile'
 import { resolveAgentBridgeCommand } from '../bridge/manager'
 import { safeFileStore } from '../../../studio/public/safe-file-store'
-import { missingEnvFor, requiredEnvNames } from './recommended'
+import { missingEnvFor, requiredEnvNames } from './plugin-env'
 
 const execFileAsync = promisify(execFile)
 
