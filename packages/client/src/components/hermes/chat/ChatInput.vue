@@ -366,9 +366,14 @@ const filteredBridgeCommands = computed(() => {
       : isForkCommandSession.value
         ? bridgeCommands.value.filter(command => command.name === 'fork')
         : []
+  // "/limits": this chat's run limits, in every chat type (docs/agent-limits.md).
+  const limitsCommand: SlashCommandOption[] = props.draft || /^person-(main|task)-/.test(composerSession.value?.id || '')
+    ? []
+    : [{ key: 'command:limits', name: 'limits', args: '', description: t('runLimits.slashCommand') }]
+  const withLimits = [...agentCommands, ...limitsCommand]
   const commands = herdrCommandAvailable.value
-    ? [...agentCommands, { ...HERDR_SESSION_COMMAND_DEFINITION, args: '', description: t(HERDR_SESSION_COMMAND_DEFINITION.descriptionKey) }]
-    : agentCommands
+    ? [...withLimits, { ...HERDR_SESSION_COMMAND_DEFINITION, args: '', description: t(HERDR_SESSION_COMMAND_DEFINITION.descriptionKey) }]
+    : withLimits
   if (!query) return commands
   return commands.filter((command) => {
     const name = command.name.toLowerCase()

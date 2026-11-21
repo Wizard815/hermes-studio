@@ -6,6 +6,7 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { runLimitsMessages } from '../run-limits-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -23,6 +24,7 @@ export default {
   dshVersions: {"compatibility": "Адаптер ACP {revision} · проверено: 0.2.1-rc.5 / 0.2.2-rc.1", "verified": "Проверенная установка: {version}", "pinned": "Закреплённая версия: {version}", "version": "Точная версия npm (например, 0.2.2-rc.1)", "pin": "Установить и закрепить", "latest": "Проверить и использовать новую", "restore": "Восстановить {version}", "manage": "Управление версиями", "current": "Текущая версия: {version}", "notPinned": "Не закреплена", "fixed": "Закреплена", "verifiedSummary": "Проверена", "unverified": "Не проверена", "more": "Ещё", "latestHint": "Устанавливает и проверяет последнюю версию, затем снимает закрепление при успехе. Обычная проверка обновлений этого не делает.", "noPrevious": "Нет предыдущей версии для восстановления.", "restoring": "Восстановление версии…", "saving": "Сохранение автообновлений…", "updating": "Автоматическое обновление…", "waiting": "Ожидание завершения работы Agent"},
   person: personMessages['ru'],
   ...herdrMessages['ru'],
+  ...runLimitsMessages['ru'],
   ...vscodeMessages['ru'],
   ...screenMessages['ru'],
   ...hermesModelsMessages['ru'],

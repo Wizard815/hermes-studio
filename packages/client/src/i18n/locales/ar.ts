@@ -6,6 +6,7 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { runLimitsMessages } from '../run-limits-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -23,6 +24,7 @@ export default {
   dshVersions: {"compatibility": "محوّل ACP {revision} · تم اختباره: 0.2.1-rc.5 / 0.2.2-rc.1", "verified": "التثبيت المتحقق منه: {version}", "pinned": "الإصدار المثبت: {version}", "version": "إصدار npm دقيق (مثل 0.2.2-rc.1)", "pin": "تثبيت وتثبيت الإصدار", "latest": "فحص واستخدام الأحدث", "restore": "استعادة {version}", "manage": "إدارة الإصدارات", "current": "الإصدار الحالي: {version}", "notPinned": "غير مثبت على إصدار", "fixed": "مثبت على إصدار", "verifiedSummary": "تم التحقق", "unverified": "لم يتم التحقق بعد", "more": "المزيد", "latestHint": "يثبت أحدث إصدار ويتحقق منه، ثم يلغي تثبيت الإصدار عند النجاح. التحقق العادي من التحديثات لا ينفذ ذلك.", "noPrevious": "لا يوجد إصدار سابق للاستعادة.", "restoring": "جارٍ استعادة الإصدار…", "saving": "جارٍ حفظ إعدادات التحديث التلقائي…", "updating": "جارٍ التحديث تلقائيًا…", "waiting": "بانتظار أن يصبح Agent غير مشغول"},
   person: personMessages['ar'],
   ...herdrMessages['ar'],
+  ...runLimitsMessages['ar'],
   ...vscodeMessages['ar'],
   ...screenMessages['ar'],
   ...hermesModelsMessages['ar'],

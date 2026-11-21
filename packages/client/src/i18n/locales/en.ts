@@ -6,6 +6,7 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { runLimitsMessages } from '../run-limits-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { agentWorkMessages } from '../agent-work-messages'
@@ -24,6 +25,7 @@ export default {
   dshVersions: {"compatibility": "ACP adapter {revision} · tested: 0.2.1-rc.5 / 0.2.2-rc.1", "verified": "Verified installation: {version}", "pinned": "Pinned version: {version}", "version": "Exact npm version (e.g. 0.2.2-rc.1)", "pin": "Install and pin", "latest": "Check and use latest", "restore": "Restore {version}", "manage": "Version management", "current": "Current version: {version}", "notPinned": "Not pinned", "fixed": "Pinned", "verifiedSummary": "Verified", "unverified": "Not yet verified", "more": "More", "latestHint": "Installs and verifies the latest version, then removes the version pin on success. Ordinary update checks do not do this.", "noPrevious": "No previous version is available to restore.", "restoring": "Restoring version…", "saving": "Saving automatic update settings…", "updating": "Updating automatically…", "waiting": "Waiting for the Agent to become idle"},
   person: personMessages['en'],
   ...herdrMessages['en'],
+  ...runLimitsMessages['en'],
   ...vscodeMessages['en'],
   ...screenMessages['en'],
   ...hermesModelsMessages['en'],

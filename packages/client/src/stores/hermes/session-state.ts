@@ -94,6 +94,8 @@ export const useSessionStateStore = defineStore('sessionState', () => {
 
   return { sessions, connected, start, stop, markRead, onListChanged, isWorking, statusOf,
     herdrLink: (id: string) => sessions.value.get(id)?.herdr,
+    /** A run limit stopped the chat's run; it waits for Continue or Stop (docs/agent-limits.md). */
+    limitHit: (id: string) => sessions.value.get(id)?.limit,
     isUnread: (id: string, initialUnread = false) => {
       const state = sessions.value.get(id)
       return state ? !state.working && state.unread : initialUnread

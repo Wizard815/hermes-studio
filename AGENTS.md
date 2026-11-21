@@ -22,6 +22,7 @@ and keep this file small enough to fit into every task context.
 - `docs/android-devices.md` - Android page: adb devices, emulator stream, BlueStacks, phones, Termux bridge in the Android app.
 - `docs/pondering-orb.md` - Pondering Orb: Connections tab, Orb tools for Studio agents, and Orb sending work to Studio chats.
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.
+- `docs/agent-limits.md` - run limits: cost, tokens, time and loop detector per run, for every chat type.
 
 ## Common Commands
 

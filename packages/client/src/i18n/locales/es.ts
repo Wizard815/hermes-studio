@@ -6,6 +6,7 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { runLimitsMessages } from '../run-limits-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -23,6 +24,7 @@ export default {
   dshVersions: {"compatibility": "Adaptador ACP {revision} · probado: 0.2.1-rc.5 / 0.2.2-rc.1", "verified": "Instalación verificada: {version}", "pinned": "Versión fijada: {version}", "version": "Versión npm exacta (p. ej. 0.2.2-rc.1)", "pin": "Instalar y fijar", "latest": "Comprobar y usar la última", "restore": "Restaurar {version}", "manage": "Gestión de versiones", "current": "Versión actual: {version}", "notPinned": "Sin fijar", "fixed": "Fijada", "verifiedSummary": "Verificada", "unverified": "Sin verificar", "more": "Más", "latestHint": "Instala y verifica la última versión y elimina la fijación al completarse. La búsqueda normal de actualizaciones no hace esto.", "noPrevious": "No hay una versión anterior para restaurar.", "restoring": "Restaurando versión…", "saving": "Guardando actualizaciones automáticas…", "updating": "Actualizando automáticamente…", "waiting": "Esperando a que el Agent esté inactivo"},
   person: personMessages['es'],
   ...herdrMessages['es'],
+  ...runLimitsMessages['es'],
   ...vscodeMessages['es'],
   ...screenMessages['es'],
   ...hermesModelsMessages['es'],

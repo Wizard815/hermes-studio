@@ -14,12 +14,15 @@ export type SessionMenuIconName =
   | 'link'
   | 'copy'
   | 'herdr'
+  | 'limits'
 
 interface ActiveSessionMenuLabels {
   outline: string
   rename: string
   open: string
   copyId: string
+  /** "Run limits" (docs/agent-limits.md); left out when not given. */
+  runLimits?: string
 }
 
 interface ActiveSessionMenuAvailability {
@@ -115,6 +118,12 @@ function iconChildren(name: SessionMenuIconName): VNodeChild[] {
         h('rect', { x: 9, y: 9, width: 12, height: 12, rx: 2 }),
         h('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
       ]
+    case 'limits':
+      // A gauge: the run's limits.
+      return [
+        h('path', { d: 'M4 18a8 8 0 1 1 16 0' }),
+        h('path', { d: 'm12 18 4-6' }),
+      ]
     case 'herdr':
       // The header's "Open in herdr" button icon: a split terminal.
       return [
@@ -162,6 +171,7 @@ export function buildActiveSessionMenuOptions(
     actionOption(labels.copyId, 'copy-id', 'copy'),
     actionOption(labels.rename, 'rename', 'rename', { disabled: !availability.canRename }),
     actionOption(labels.open, 'open-link', 'open-new', { disabled: !availability.canOpen }),
+    ...(labels.runLimits ? [actionOption(labels.runLimits, 'run-limits', 'limits', { disabled: !availability.canRename })] : []),
   ]
 }
 
