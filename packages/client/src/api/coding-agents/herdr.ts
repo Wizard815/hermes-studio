@@ -59,6 +59,8 @@ export interface HerdrBridgeState {
   panes: HerdrPaneView[]
   /** Studio chats with a herdr space now; other top-level chats sleep until opened (older servers leave it out). */
   chatSpaces?: string[]
+  /** Waiting panes of chat spaces (the chat's agent is not running yet): not counted as agents. */
+  waitingPanes?: string[]
 }
 
 export interface HerdrStatus {

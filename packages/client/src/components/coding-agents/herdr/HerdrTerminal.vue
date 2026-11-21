@@ -238,8 +238,12 @@ defineExpose({ reopen: open, focus: () => term?.focus(), send, state })
   border-radius: 0;
   background: transparent;
 
+  // The padding sits on the frame, not the host: FitAddon sizes the terminal
+  // to the host's box, and padding there (border-box) cut off the last row.
+  padding: 10px 12px 8px 14px;
+
   .herdr-terminal-host {
-    padding: 10px 12px 8px 14px;
+    padding: 0;
   }
 
   // No xterm scrollback here (herdr scrolls the pane): no scrollbar to eat a column.

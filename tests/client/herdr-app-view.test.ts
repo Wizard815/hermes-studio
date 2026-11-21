@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
 import {
+  agentPanes,
   agentSections,
   isPaletteKey,
   paletteMatches,
@@ -97,6 +98,9 @@ describe('Herdr App layout logic', () => {
     const sections = agentSections(PANES, { sort: 'priority', spaceName: name, chatTitle: id => (id === 'chat-1' ? 'Auth chat' : '') })
     expect(sections.map(section => [section.status, section.rows.map(row => row.name)])).toEqual([['working', ['Auth chat']], ['idle', ['docs']]])
     expect(agentSections(PANES, { sort: 'space', spaceName: name }).map(section => section.label)).toEqual(['api', 'site'])
+    // A chat's waiting pane reports itself as the chat's idle agent; it is not one.
+    expect(agentSections(PANES, { sort: 'priority', spaceName: name, waiting: new Set([PANES[2].pane_id]) }).map(section => section.status)).toEqual(['working'])
+    expect(agentPanes(PANES, new Set([PANES[2].pane_id])).map(pane => pane.pane_id)).toEqual([PANES[1].pane_id])
     expect(shortDuration(3000)).toBe('now')
     expect(shortDuration(8 * 60_000)).toBe('8m')
     expect(shortDuration(90 * 60_000)).toBe('1h')

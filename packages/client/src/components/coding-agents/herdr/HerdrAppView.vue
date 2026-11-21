@@ -5,7 +5,7 @@ import HerdrTerminal from './HerdrTerminal.vue'
 import HerdrSpaceSidebar from './HerdrSpaceSidebar.vue'
 import HerdrAgentsList from './HerdrAgentsList.vue'
 import type { SidebarChat } from './space-folders'
-import { paneBox, paneHeader, phonePane } from './herdr-app-layout'
+import { agentPanes, paneBox, paneHeader, phonePane } from './herdr-app-layout'
 import {
   closeHerdrTab,
   createHerdrTab,
@@ -17,6 +17,7 @@ import {
   type HerdrSpaceView,
 } from '@/api/coding-agents/herdr'
 import { deploymentUrl } from '@/utils/deployment-url'
+import { chatSessionAgentAvatar } from '@/utils/chat-agent-avatar'
 
 /**
  * Studio's herdr page in the Herdr App layout: the Herdr desktop app's chrome
@@ -45,6 +46,8 @@ const props = defineProps<{
   /** The dock's tab while it shows (Files and Issues light up their buttons). */
   dockTab: string
   connected: boolean
+  /** Chats' waiting panes (no agent running yet). */
+  waiting?: ReadonlySet<string>
 }>()
 const emit = defineEmits<{
   'open-chat': [chat: SidebarChat, asleep: boolean, paneId: string]
@@ -146,7 +149,16 @@ function box(pane: { rect: HerdrSpaceView['panes'][number]['rect'] }) {
   return props.phone ? { left: '0', top: '0', width: '100%', height: '100%' } : paneBox(pane.rect)
 }
 function header(pane: HerdrSpaceView['panes'][number]) {
-  return paneHeader(paneById.value.get(pane.pane_id) ?? null, pane.process, props.home)
+  const info = paneById.value.get(pane.pane_id) ?? null
+  const base = paneHeader(info, pane.process, props.home)
+  // A chat's waiting pane (its agent starts when you press Enter): the chat's name.
+  if (props.waiting?.has(pane.pane_id) && info?.label) return { ...base, title: info.label, agent: false }
+  // A chat's agent that herdr does not name (it runs under Studio's chat
+  // wrapper, so its program is "sh"): the chat's agent, as Studio knows it.
+  if (!base.agent && info?.studioSessionId && info.studioAgent && !props.waiting?.has(pane.pane_id)) {
+    return { ...base, title: chatSessionAgentAvatar({ agent: info.studioAgent, codingAgentId: info.studioAgent, source: 'coding_agent' }).label, agent: true }
+  }
+  return base
 }
 
 const terminals = ref<Record<string, InstanceType<typeof HerdrTerminal> | null>>({})
@@ -178,7 +190,7 @@ async function newTab() {
 }
 
 // ---- status bar ----
-const agentCount = computed(() => props.panes.filter(pane => !!pane.agent).length)
+const agentCount = computed(() => agentPanes(props.panes, props.waiting).length)
 const logo = deploymentUrl('/coding-agents/herdr-logo.svg')
 const SETTINGS_HREF = '#/studio/agents/herdr/settings'
 
@@ -225,7 +237,7 @@ defineExpose({
           @open-machine="(id, pane) => { picked(); emit('open-machine', id, pane) }"
           @new-chat="emit('new-chat')"
         />
-        <HerdrAgentsList :panes="panes" :focused-pane="focusedPane" :space-name="spaceName" :chat-title="chatTitle" @focus-pane="onFocusPane" />
+        <HerdrAgentsList :panes="panes" :focused-pane="focusedPane" :space-name="spaceName" :chat-title="chatTitle" :waiting="waiting" @focus-pane="onFocusPane" />
       </div>
       <nav class="hap-foot">
         <a :href="SETTINGS_HREF" class="hap-foot-item" data-testid="herdr-app-settings">

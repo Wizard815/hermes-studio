@@ -7,7 +7,7 @@ import { herdrKindForStudioAgent } from '../services/herdr/protocol'
 import { herdrChatProfile } from '../services/herdr/runtime'
 import { HERDR_PLUGIN_TOKEN_HEADER } from '../services/herdr/plugin'
 import type { HerdrWorkRef } from '../services/herdr/bridge'
-import { clientBridgeState } from '../services/herdr/client-state'
+import { clientBridgeState, studioStatusClock } from '../services/herdr/client-state'
 import { readSpaceView } from '../services/herdr/space-view'
 import { readSpaceChanges, readSpaceDiff } from '../services/herdr/space-changes'
 
@@ -54,7 +54,7 @@ export async function status(ctx: Context) {
     herdrManager.noteUser(ctx.state.user)
     await herdrManager.noteStudioProfile(ctx.state.profile?.name)
     const current = await herdrManager.status()
-    sendJson(ctx, { ...current, bridge: clientBridgeState(current.bridge), integrations: HERDR_INTEGRATIONS })
+    sendJson(ctx, { ...current, bridge: clientBridgeState(current.bridge, studioStatusClock), integrations: HERDR_INTEGRATIONS })
   } catch (error) { fail(ctx, error, 'Failed to read herdr status') }
 }
 

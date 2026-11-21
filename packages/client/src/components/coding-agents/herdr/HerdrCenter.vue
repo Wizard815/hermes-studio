@@ -111,6 +111,8 @@ const dock = useHerdrDock()
 const spaces = useSpaceSidebar(dock.phone)
 const spaceSidebar = ref<InstanceType<typeof HerdrSpaceSidebar> | null>(null)
 const herdrWorkspaces = computed(() => herdr.bridge?.workspaces || [])
+/** Chats' waiting panes: their spaces' placeholders, not running agents. */
+const waitingPanes = computed(() => new Set(herdr.bridge?.waitingPanes || []))
 /** Chats awake in herdr (they have a space now); null while herdr's state is unknown. */
 const awakeChats = computed(() => {
   const list = herdr.bridge?.connected ? herdr.bridge.chatSpaces : undefined
@@ -610,6 +612,7 @@ onBeforeUnmount(() => {
           :panel="appPanel"
           :dock-tab="dock.tab.value"
           :connected="herdr.connected"
+          :waiting="waitingPanes"
           @open-chat="openFromSidebar"
           @focus-pane="focusFromSidebar"
           @open-machine="(id, pane) => { void openMachine(id, pane) }"

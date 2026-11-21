@@ -80,6 +80,26 @@ echo "Copied layout to $CONFIG/layouts/main-folders.json"
 KEYS="$CONFIG/keys.json"
 if [ "$DRY" = 1 ]; then
   echo "would merge layout:main-folders of $SRC/keys.json into $KEYS"
+elif ! command -v node >/dev/null 2>&1; then
+  python3 - "$SRC/keys.json" "$KEYS" <<'PY'
+import json, os, sys
+source, target = sys.argv[1:3]
+ours = json.load(open(source)).get('layout:main-folders', {})
+before = open(target).read() if os.path.exists(target) else None
+try:
+    theirs = json.loads(before) if before and before.strip() else {}
+except ValueError as error:
+    sys.exit(f'install-herdr-app-layout: {target} is not plain JSON ({error}); add the layout:main-folders section of {source} yourself')
+theirs['layout:main-folders'] = {**ours, **theirs.get('layout:main-folders', {})}
+text = json.dumps(theirs, indent=2) + '\n'
+if before == text:
+    print(f'Keys already set in {target}')
+    sys.exit(0)
+if before is not None:
+    open(target + '.bak', 'w').write(before)
+open(target, 'w').write(text)
+print(f'Merged {len(ours)} keys into {target}')
+PY
 else
   node - "$SRC/keys.json" "$KEYS" <<'NODE'
 const fs = require('fs')

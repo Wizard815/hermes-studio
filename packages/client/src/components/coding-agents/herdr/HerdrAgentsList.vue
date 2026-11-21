@@ -17,6 +17,8 @@ const props = defineProps<{
   focusedPane: string
   spaceName: (workspaceId: string) => string
   chatTitle: (sessionId: string) => string
+  /** Chats' waiting panes: not agents. */
+  waiting?: ReadonlySet<string>
 }>()
 const emit = defineEmits<{ 'focus-pane': [paneId: string] }>()
 const { t } = useI18n()
@@ -33,7 +35,7 @@ function setSort(value: AgentSort) {
   try { localStorage.setItem(SORT_KEY, value) } catch { /* private mode */ }
 }
 
-const sections = computed(() => agentSections(props.panes, { sort: sort.value, spaceName: props.spaceName, chatTitle: props.chatTitle }))
+const sections = computed(() => agentSections(props.panes, { sort: sort.value, spaceName: props.spaceName, chatTitle: props.chatTitle, waiting: props.waiting }))
 const folded = ref(new Set<string>())
 function toggle(id: string) {
   const next = new Set(folded.value)

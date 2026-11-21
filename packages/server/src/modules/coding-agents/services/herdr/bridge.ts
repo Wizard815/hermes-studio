@@ -174,6 +174,8 @@ export interface HerdrBridgeState {
   panes: HerdrPaneView[]
   /** Studio chats with a herdr space now (awake); other top-level chats sleep until opened. */
   chatSpaces: string[]
+  /** Waiting panes of chat spaces (the chat's agent is not running): not agents in the Agents list. */
+  waitingPanes?: string[]
 }
 
 interface PersistedState {
@@ -407,6 +409,7 @@ export class HerdrBridge {
       workspaces: this.snapshot.workspaces,
       panes: this.panes,
       chatSpaces: Object.keys(this.persisted.chatSpaces || {}),
+      waitingPanes: Object.values(this.persisted.chatSpaces || {}).map(record => record.stubPaneId).filter(Boolean),
     }
   }
 

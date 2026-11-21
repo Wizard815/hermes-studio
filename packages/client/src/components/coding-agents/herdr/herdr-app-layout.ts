@@ -124,6 +124,14 @@ export function phonePane(ids: string[], focused: string, step = 0): string {
 
 // ---- agents ----
 
+/**
+ * Panes running an agent. A chat's waiting pane (its space before the agent
+ * starts) reports itself to herdr as the chat's idle agent; it is not one.
+ */
+export function agentPanes(panes: HerdrPaneView[], waiting?: ReadonlySet<string>): HerdrPaneView[] {
+  return panes.filter(pane => !!pane.agent && !waiting?.has(pane.pane_id))
+}
+
 /** The Agents list's sections, most urgent first (Herdr App's agents mod, priority view). */
 export const AGENT_GROUPS = ['blocked', 'working', 'done', 'idle'] as const
 export type AgentGroup = typeof AGENT_GROUPS[number]
@@ -160,9 +168,8 @@ function groupOf(status: HerdrStatusValue): AgentGroup {
  * shown order is the status order in the picture: Working before Idle,
  * Blocked first because it needs you.
  */
-export function agentSections(panes: HerdrPaneView[], options: { sort: AgentSort; spaceName: (workspaceId: string) => string; chatTitle?: (sessionId: string) => string }): AgentSection[] {
-  const rows: AgentRow[] = panes
-    .filter(pane => !!pane.agent)
+export function agentSections(panes: HerdrPaneView[], options: { sort: AgentSort; spaceName: (workspaceId: string) => string; chatTitle?: (sessionId: string) => string; waiting?: ReadonlySet<string> }): AgentSection[] {
+  const rows: AgentRow[] = agentPanes(panes, options.waiting)
     .map(pane => ({
       paneId: pane.pane_id,
       workspaceId: pane.workspace_id,

@@ -55,6 +55,12 @@ export function createStatusClock(now: () => number = Date.now) {
   }
 }
 
+/**
+ * The one status clock for this Studio: the state feed and the status route
+ * (a page's first load and its refreshes) give the same times in state.
+ */
+export const studioStatusClock = createStatusClock()
+
 /** The bridge state with only what Studio's pages read (with `clock`, each pane's time in state). */
 export function clientBridgeState(state: HerdrBridgeState | null, clock?: (panes: HerdrPaneView[]) => HerdrPaneView[]): HerdrBridgeState | null {
   if (!state) return null
@@ -72,6 +78,7 @@ export function clientBridgeState(state: HerdrBridgeState | null, clock?: (panes
     })),
     panes: (clock ? clock(state.panes) : state.panes).map(clientPane),
     chatSpaces: state.chatSpaces,
+    ...(state.waitingPanes?.length ? { waitingPanes: state.waitingPanes } : {}),
   }
 }
 
@@ -91,7 +98,7 @@ export function createStateFeed(read: () => HerdrBridgeState | null, send: (stat
   let lastAt = 0
   let timer: ReturnType<typeof setTimeout> | null = null
   let current: EncodedState | null = null
-  const clock = createStatusClock()
+  const clock = studioStatusClock
 
   function encoded(): EncodedState {
     const state = clientBridgeState(read(), clock)

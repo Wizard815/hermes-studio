@@ -1,6 +1,6 @@
 import { gunzipSync } from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { clientBridgeState, clientPane, createStateFeed } from '../../packages/server/src/modules/coding-agents/services/herdr/client-state'
+import { clientBridgeState, clientPane, createStateFeed, studioStatusClock } from '../../packages/server/src/modules/coding-agents/services/herdr/client-state'
 import type { HerdrBridgeState, HerdrPaneView } from '../../packages/server/src/modules/coding-agents/services/herdr/bridge'
 
 function pane(i: number, extra: Partial<HerdrPaneView> = {}): HerdrPaneView {
@@ -96,6 +96,18 @@ describe('herdr state for Studio pages', () => {
     feed.changed()
     vi.advanceTimersByTime(1000)
     expect(sent).toEqual(['w1:p2', 'w0:p2'])
+    feed.stop()
+  })
+
+  it('passes chats\' waiting panes on, and times states with one clock for the route and the feed', () => {
+    const current = { ...state(2), waitingPanes: ['w1:p2'] }
+    const slim = clientBridgeState(current, studioStatusClock)!
+    expect(slim.waitingPanes).toEqual(['w1:p2'])
+    expect(clientBridgeState(state(2))).not.toHaveProperty('waitingPanes')
+    const since = slim.panes[0].status_since
+    expect(since).toBeGreaterThan(0)
+    const feed = createStateFeed(() => current, () => undefined)
+    expect(feed.current().state!.panes[0].status_since).toBe(since)
     feed.stop()
   })
 })
