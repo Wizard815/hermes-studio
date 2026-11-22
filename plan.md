@@ -142,7 +142,12 @@ Next:
 - **Gadget plugin for D.A.S.H** (Wizard815/D.A.S.H, the 4-inch ESP32 hub;
   the firmware is worked on in another chat): Studio installs and turns on the
   Hermes Gadget plugin, exposes its WebSocket (`:8765/gadget`) in Docker, and
-  shows its status. Part of the plugins job.
+  shows its status. Part of the plugins job. D.A.S.H also talks to FAITH
+  (Wizard815/F.A.I.T.H: family view, Yes/No for held actions, voice fallback),
+  Pondering Orb and Studio itself (Socket.IO `/global-agent`,
+  `mcu.events.subscribe`); FAITH in turn uses Hermes (`hermes_ask`) and Studio
+  (`studio_start`). The plugins job checks the Studio side of those links works
+  with the Gadget plugin on.
 - **Whiteboard logic in Pondering Orb's Ideas tab (Milaclone)**: agents make and
   edit boards, turn cards into Orb tasks. Repos: pondering-orb, milaclone-mcp.
 - **Phone tools for agents**: phone-harness ideas on top of Studio's Android
