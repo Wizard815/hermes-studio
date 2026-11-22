@@ -48,7 +48,7 @@ async function open(next: string) {
   try {
     const result = await listSessionWorkspaceFiles(id, next)
     if (mine !== generation) return
-    entries.value = result.entries
+    entries.value = Array.isArray(result?.entries) ? result.entries : []
     path.value = next
     if (!next && result.absolutePath) root.value = result.absolutePath
     error.value = ''

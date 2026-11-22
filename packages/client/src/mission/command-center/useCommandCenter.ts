@@ -58,18 +58,20 @@ let stopList: (() => void) | null = null
 let chatTimer = 0
 
 const message = (error: unknown) => (error as any)?.message || String(error)
+/** A list from an answer that may lack it (an older or a different server): never undefined. */
+const list = <T>(value: T[] | null | undefined): T[] => (Array.isArray(value) ? value : [])
 
 async function loadWork() {
-  try { state.work = (await fetchAgentWork()).work; state.errors.work = '' } catch (error) { state.errors.work = message(error) }
+  try { state.work = list((await fetchAgentWork())?.work); state.errors.work = '' } catch (error) { state.errors.work = message(error) }
 }
 async function loadJobs() {
-  try { state.jobs = await listJobs(); state.errors.jobs = '' } catch (error) { state.errors.jobs = message(error) }
+  try { state.jobs = list(await listJobs()); state.errors.jobs = '' } catch (error) { state.errors.jobs = message(error) }
 }
 async function loadGithub(refresh = false) {
   try { state.github = await fetchGithubInbox(refresh); state.errors.github = '' } catch (error) { state.errors.github = message(error) }
 }
 async function loadLimits() {
-  try { state.limits = (await fetchPlanLimits()).limits } catch { state.limits = [] }
+  try { state.limits = list((await fetchPlanLimits())?.limits) } catch { state.limits = [] }
 }
 async function loadChats() {
   try {

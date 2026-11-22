@@ -108,7 +108,7 @@ export interface PaneHeader {
  */
 export function paneHeader(pane: Pick<HerdrPaneView, 'agent' | 'label' | 'cwd' | 'foreground_cwd' | 'terminal_title_stripped'> | null, process: string, home: string | string[]): PaneHeader {
   const cwd = tildePath(pane?.foreground_cwd || pane?.cwd || '', home)
-  if (pane?.agent) return { title: pane.agent, detail: pane.label && pane.label !== pane.agent ? `${pane.label} · ${cwd}` : cwd, agent: true }
+  if (pane?.agent) return { title: pane.agent, detail: [pane.label && pane.label !== pane.agent ? pane.label : '', cwd].filter(Boolean).join(' · '), agent: true }
   return { title: process || 'shell', detail: cwd, agent: false }
 }
 

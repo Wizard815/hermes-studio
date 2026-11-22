@@ -231,7 +231,7 @@ test('on a phone in Studio\'s header there is one menu: herdr\'s actions join th
   await expect(bar.getByTestId('herdr-center-reopen')).toHaveCount(0)
   await header.getByTestId('fixture-host-more').click()
   const menu = page.getByTestId('fixture-host-menu')
-  await expect(menu.getByRole('menuitem')).toHaveText(['Use herdr’s own sidebar', 'Open in Studio', '+ New Chat', 'Reopen closed chat', 'herdr sidebar', 'Search', 'Workspaces', 'herdr settings'])
+  await expect(menu.getByRole('menuitem')).toHaveText(['Show the Herdr App layout', 'Use herdr’s own sidebar', 'Open in Studio', '+ New Chat', 'Reopen closed chat', 'herdr sidebar', 'Search', 'Workspaces', 'herdr settings'])
   await menu.getByTestId('fixture-host-item-reopen').click()
   await expect.poll(() => posts).toContain('/api/coding-agents/herdr/closed-chats/reopen')
   const heights = await bar.evaluate(el => ({ bar: el.getBoundingClientRect().height, tools: el.querySelector('[data-testid="herdr-center-dock-toggle"]')!.getBoundingClientRect().height }))
@@ -324,7 +324,8 @@ test('the Herdr App layout: sidebar with Spaces and Agents, the space\'s tabs, i
   expect(Math.round(right!.x - (left!.x + left!.width))).toBe(8)
   expect(Math.abs(left!.height - right!.height)).toBeLessThan(1)
   await expect(page.getByTestId('herdr-app-pane-w1:p1')).toHaveClass(/focused/)
-  await expect(page.getByTestId('herdr-app-pane-w1:p2').locator('.hap-pane-head')).toHaveText(/bash\s*/)
+  // An agent's pane shows the agent and its name (no trailing separator without a folder).
+  await expect(page.getByTestId('herdr-app-pane-w1:p2').locator('.hap-pane-head')).toHaveText(/^codex\s*tests$/)
   await expect(page.getByTestId('herdr-app-pane-w1:p2').locator('.hap-pane-head')).toHaveCSS('height', '30px')
   await expect(page.getByTestId('herdr-app-pane-w1:p1')).toHaveCSS('border-radius', '10px')
   await expect(page.getByTestId('herdr-app-status')).toContainText('This computer')

@@ -91,6 +91,7 @@ describe('Herdr App layout logic', () => {
     expect(tildePath('/srv', '/home/me')).toBe('/srv')
     expect(paneHeader(PANES[0], 'bash', '/home/me')).toEqual({ title: 'bash', detail: '~/code/x', agent: false })
     expect(paneHeader(PANES[1], 'node', '/home/me')).toEqual({ title: 'claude', detail: 'auth · ~/code/x', agent: true })
+    expect(paneHeader({ ...PANES[1], cwd: '', foreground_cwd: '' } as any, 'node', '/home/me')).toEqual({ title: 'claude', detail: 'auth', agent: true })
   })
 
   it('groups agents Working, Blocked, Done, Idle (newest first), or by space', () => {
