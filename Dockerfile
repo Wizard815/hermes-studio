@@ -68,6 +68,8 @@ ENV NPM_CONFIG_PREFIX=/home/agent/.hermes-web-ui/coding-agent/npm
 ENV PATH=/home/agent/.hermes-web-ui/coding-agent/npm/bin:/opt/hermes/.venv/bin:$PATH
 
 EXPOSE 6060
+# Hermes Gadget WebSocket (ws://<host>:8765/gadget); publish it on the LAN only.
+EXPOSE 8765
 EXPOSE 50000-50127/udp
 
 # 强制覆盖基础镜像的默认启动脚本，让镜像本身具备独立运行的能力

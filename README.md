@@ -100,12 +100,16 @@ What happens on the first start:
 - Scheduled job posts no longer carry Hermes's "Cronjob Response" header and
   "To stop or manage this job" footer. Turn them back on in **Hermes Settings →
   Session → Job post header and footer**.
-- About 30 seconds after start, Studio installs and enables seven Hermes
+- About 30 seconds after start, Studio installs and enables eight Hermes
   plugins from Hermes's plugin catalog (pinned versions), once per profile:
-  agent-importers, homeassistant, langfuse, mcp-serve, bubblewrap, rea and
-  print3d. It only enables them: no keys, no terminal backend change, no
-  import. It also adds `hermes-chats` (mcp-serve, read-only tools) on the
-  **MCP** page. A plugin or server you remove later stays removed. If the
+  agent-importers, homeassistant, langfuse, mcp-serve, bubblewrap, rea,
+  print3d and gadget. It only enables them: no keys, no terminal backend
+  change, no import. It also adds `hermes-chats` (mcp-serve, read-only tools)
+  on the **MCP** page, and turns the Hermes Gadget platform on so devices such
+  as D.A.S.H can connect to `ws://<host>:8765/gadget` after the gateway's next
+  start (Docker publishes 8765; keep it on your LAN). Its status is under
+  **Connections → MCU devices**. A plugin, server or platform you remove or
+  turn off later stays that way. If the
   catalog cannot be reached, or Hermes is too old, Studio tries again on its
   next start. Turn it off in **Hermes Settings → Agent → Recommended Hermes
   plugins**, or set `STUDIO_RECOMMENDED_HERMES_PLUGINS=0` on the container.

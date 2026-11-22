@@ -7,6 +7,7 @@ import { getHermesBaseDir, getProfileDir, listProfileNamesFromDisk } from '../pr
 import { updateConfigYamlForProfile } from '../profiles/config'
 import { findHermesCli } from '../herdr-launch'
 import { hermesApi } from '../hermes-api'
+import { GADGET_PLUGIN, enableGadgetPlatformOnce } from './gadget'
 
 /**
  * Hermes plugins Studio installs and enables once per Hermes profile
@@ -16,7 +17,7 @@ import { hermesApi } from '../hermes-api'
  * page. Only enabling: no terminal backend switch, no import run, no keys.
  */
 export const RECOMMENDED_HERMES_PLUGINS = [
-  'agent-importers', 'homeassistant', 'langfuse', 'mcp-serve', 'bubblewrap', 'rea', 'print3d',
+  'agent-importers', 'homeassistant', 'langfuse', 'mcp-serve', 'bubblewrap', 'rea', 'print3d', 'gadget',
 ] as const
 
 export const RECOMMENDED_PLUGINS_ENV = 'STUDIO_RECOMMENDED_HERMES_PLUGINS'
@@ -46,6 +47,8 @@ export interface RecommendedProfileState {
   lastFailure?: Record<string, RecommendedAttempt>
   /** Set once the mcp-serve MCP server was added (or found); never added again after that. */
   mcpServer?: { outcome: 'added' | 'already-present'; at: string }
+  /** Set once the gadget platform was switched on (or found set); never switched again after that. */
+  gadgetPlatform?: { outcome: 'enabled' | 'already-set'; at: string }
 }
 
 export interface RecommendedPluginsState {
@@ -70,6 +73,8 @@ export interface RecommendedDeps {
   hermesVersion: () => string | null
   /** Adds the MCP server unless one of that name exists; true when it was added. */
   addMcpServer: (profile: string, name: string, server: Record<string, unknown>) => Promise<boolean>
+  /** Switches the gadget gateway platform on unless the user already set it. */
+  enableGadgetPlatform: (profile: string) => Promise<'enabled' | 'already-set'>
   hermesCommand: () => string
   stateFile: string
   platform: NodeJS.Platform
@@ -103,6 +108,7 @@ function defaultDeps(): RecommendedDeps {
     hermesAvailable: () => hermesApi.status().available,
     hermesVersion: () => hermesApi.status().version,
     addMcpServer: addMcpServerToConfig,
+    enableGadgetPlatform: profile => enableGadgetPlatformOnce(profile),
     hermesCommand: () => findHermesCli() || 'hermes',
     stateFile: stateFilePath(),
     platform: process.platform,
@@ -213,6 +219,7 @@ export interface RecommendedRunResult {
   failed: Record<string, string>
   skipped?: string
   mcpServer?: 'added' | 'already-present'
+  gadgetPlatform?: 'enabled' | 'already-set'
 }
 
 const failureFrom = (err: any): HermesCall => ({ status: 599, body: { error: String(err?.message || err) } })
@@ -302,7 +309,19 @@ export async function applyRecommendedPlugins(profile: string, deps: Recommended
     }
   }
 
-  if (!result.done.length && !Object.keys(result.failed).length && !mcpServer) {
+  // The gadget platform (devices such as D.A.S.H connect to it), once: a platform the user turns off stays off.
+  const gadget = records[GADGET_PLUGIN] || doneBefore[GADGET_PLUGIN]
+  let gadgetPlatform: RecommendedProfileState['gadgetPlatform']
+  if (!before?.gadgetPlatform && gadget && ['installed', 'enabled', 'already-enabled'].includes(gadget.outcome)) {
+    try {
+      gadgetPlatform = { outcome: await deps.enableGadgetPlatform(profile), at: new Date().toISOString() }
+      result.gadgetPlatform = gadgetPlatform.outcome
+    } catch (err: any) {
+      logger.warn('[recommended-plugins] could not turn the gadget platform on profile=%s: %s (retry on next start)', profile, String(err?.message || err))
+    }
+  }
+
+  if (!result.done.length && !Object.keys(result.failed).length && !mcpServer && !gadgetPlatform) {
     if (!pending.length) result.skipped = 'done'
     return result
   }
@@ -312,6 +331,7 @@ export async function applyRecommendedPlugins(profile: string, deps: Recommended
       current.profile = profile
       current.done = { ...current.done, ...records }
       if (mcpServer) current.mcpServer = mcpServer
+      if (gadgetPlatform) current.gadgetPlatform = gadgetPlatform
       const failures = { ...(current.lastFailure || {}) }
       for (const name of result.done) delete failures[name]
       for (const [name, error] of Object.entries(result.failed)) {
@@ -325,6 +345,7 @@ export async function applyRecommendedPlugins(profile: string, deps: Recommended
     logger.warn(err, '[recommended-plugins] could not save state profile=%s', profile)
   }
   for (const name of result.done) logger.info('[recommended-plugins] %s profile=%s: %s', name, profile, records[name].outcome)
+  if (result.gadgetPlatform === 'enabled') logger.info('[recommended-plugins] gadget platform on profile=%s (starts listening when the gateway restarts)', profile)
   if (result.mcpServer === 'added') logger.info('[recommended-plugins] MCP server %s added profile=%s', MCP_SERVE_SERVER_NAME, profile)
   // One line per start, not one per plugin: an offline server must not fill the log.
   const failed = Object.entries(result.failed)

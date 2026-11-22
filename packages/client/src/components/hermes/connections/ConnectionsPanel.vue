@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import AppConnectionsPanel from '@/components/hermes/connections/AppConnectionsPanel.vue'
 import McuDevicesPanel from '@/components/hermes/connections/McuDevicesPanel.vue'
+import GadgetStatusPanel from '@/components/hermes/connections/GadgetStatusPanel.vue'
 import RemoteDevicesPanel from '@/components/hermes/connections/RemoteDevicesPanel.vue'
 import OrbConnectionPanel from '@/components/hermes/connections/OrbConnectionPanel.vue'
 import AgentWorkPanel from '@/components/hermes/connections/AgentWorkPanel.vue'
@@ -69,7 +70,10 @@ function updateTab(value: string | number) {
         <AppConnectionsPanel />
       </NTabPane>
       <NTabPane name="mcu" :tab="t('connections.tabs.mcu')" display-directive="if">
-        <McuDevicesPanel />
+        <div class="mcu-tab">
+          <GadgetStatusPanel />
+          <McuDevicesPanel class="mcu-tab-devices" />
+        </div>
       </NTabPane>
       <NTabPane name="orb" :tab="t('orb.tab')" display-directive="if">
         <OrbConnectionPanel />
@@ -105,6 +109,19 @@ function updateTab(value: string | number) {
   font-size: 11px;
   line-height: 18px;
   text-align: center;
+}
+
+.mcu-tab {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.mcu-tab-devices {
+  flex: 1 0 360px;
+  height: auto;
 }
 
 .connections-panel {

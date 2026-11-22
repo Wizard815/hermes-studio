@@ -49,6 +49,7 @@ function catalog(overrides: Record<string, Partial<FakeEntry>> = {}): FakeEntry[
 function fakeHermes(entries: FakeEntry[] | (() => FakeEntry[]), opts: { version?: string; install?: (name: string) => HermesCall; available?: boolean } = {}) {
   const calls: Array<{ method: string; path: string; body: unknown }> = []
   const servers: Array<{ profile: string; name: string; server: Record<string, unknown> }> = []
+  const gadgetPlatforms: string[] = []
   const deps: RecommendedDeps = {
     async call(method, path, body) {
       calls.push({ method, path, body })
@@ -63,12 +64,13 @@ function fakeHermes(entries: FakeEntry[] | (() => FakeEntry[]), opts: { version?
     hermesAvailable: () => opts.available !== false,
     hermesVersion: () => opts.version ?? '0.22.7 (2026.11.20)',
     addMcpServer: async (profile, name, server) => { servers.push({ profile, name, server }); return true },
+    enableGadgetPlatform: async (profile) => { gadgetPlatforms.push(profile); return 'enabled' },
     hermesCommand: () => '/usr/local/bin/hermes',
     stateFile: join(base, 'state', 'recommended-hermes-plugins.json'),
     platform: 'linux',
     homeOf: profile => (profile === 'default' ? base : join(base, 'profiles', profile)),
   }
-  return { deps, calls, servers }
+  return { deps, calls, servers, gadgetPlatforms }
 }
 
 const installs = (calls: Array<{ path: string; body: unknown }>) =>
@@ -81,7 +83,7 @@ beforeEach(() => {
 afterEach(() => rmSync(base, { recursive: true, force: true }))
 
 describe('recommended Hermes plugins', () => {
-  it('installs the seven by catalog name only (pinned entry), enables them, and adds mcp-serve once', async () => {
+  it('installs the eight by catalog name only (pinned entry), enables them, and adds mcp-serve once', async () => {
     const hermes = fakeHermes(catalog())
     const result = await applyRecommendedPlugins('default', hermes.deps)
     expect(installs(hermes.calls)).toEqual([...RECOMMENDED_HERMES_PLUGINS])
@@ -112,7 +114,7 @@ describe('recommended Hermes plugins', () => {
       'mcp-serve': { installed: true, runtime_status: 'disabled' },
     }))
     await applyRecommendedPlugins('default', hermes.deps)
-    expect(installs(hermes.calls)).toEqual(['agent-importers', 'bubblewrap', 'print3d'])
+    expect(installs(hermes.calls)).toEqual(['agent-importers', 'bubblewrap', 'print3d', 'gadget'])
     expect(hermes.calls.filter(c => c.path.endsWith('/enable')).map(c => c.path)).toEqual(['dashboard/agent-plugins/langfuse/enable'])
     const done = (await readRecommendedState(hermes.deps.stateFile)).homes[base].done
     expect(done.homeassistant.outcome).toBe('kept-disabled')
@@ -139,7 +141,7 @@ describe('recommended Hermes plugins', () => {
 
     online = true
     const later = await applyRecommendedPlugins('default', hermes.deps)
-    expect(later.done).toHaveLength(7)
+    expect(later.done).toHaveLength(8)
     state = await readRecommendedState(hermes.deps.stateFile)
     expect(state.homes[base].lastFailure).toBeUndefined()
   })
@@ -164,7 +166,7 @@ describe('recommended Hermes plugins', () => {
     })
     const result = await applyRecommendedPlugins('default', hermes.deps)
     expect(result.failed).toEqual({ print3d: 'Blender 4.2+ not found. Install Blender first.' })
-    expect(result.done).toHaveLength(6)
+    expect(result.done).toHaveLength(7)
     hermes.calls.length = 0
     await applyRecommendedPlugins('default', hermes.deps)
     expect(installs(hermes.calls)).toEqual(['print3d'])
@@ -195,6 +197,28 @@ describe('recommended Hermes plugins', () => {
     })
     const result = await applyRecommendedPlugins('default', hermes.deps)
     expect(result.failed.rea).toMatch(/consent/)
+  })
+})
+
+describe('gadget platform', () => {
+  it('is turned on once after gadget is installed, and not again after the user turns it off', async () => {
+    const hermes = fakeHermes(catalog())
+    const result = await applyRecommendedPlugins('default', hermes.deps)
+    expect(result.gadgetPlatform).toBe('enabled')
+    expect(hermes.gadgetPlatforms).toEqual(['default'])
+    expect((await readRecommendedState(hermes.deps.stateFile)).homes[base].gadgetPlatform?.outcome).toBe('enabled')
+    const state = JSON.parse(readFileSync(hermes.deps.stateFile, 'utf8'))
+    delete state.homes[base].done.rea
+    writeFileSync(hermes.deps.stateFile, JSON.stringify(state))
+    await applyRecommendedPlugins('default', hermes.deps)
+    expect(hermes.gadgetPlatforms).toEqual(['default'])
+  })
+
+  it('is left off when the user had gadget installed and disabled', async () => {
+    const hermes = fakeHermes(catalog({ gadget: { installed: true, runtime_status: 'disabled' } }))
+    const result = await applyRecommendedPlugins('default', hermes.deps)
+    expect(result.gadgetPlatform).toBeUndefined()
+    expect(hermes.gadgetPlatforms).toEqual([])
   })
 })
 
