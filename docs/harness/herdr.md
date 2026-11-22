@@ -452,7 +452,9 @@ follows `layouts/main-folders.json`:
   the agent's icon, its chat's title, the time in its state (Studio notes when
   it first sees a status: `status_since` from `createStatusClock` in
   `client-state.ts`) and a status ring (a spinner while working, "Needs you"
-  when blocked, a dot when done, a hollow ring when idle).
+  when blocked, a dot when done, a hollow ring when idle). A chat's waiting
+  pane (its space before Enter starts the agent; the bridge's `waitingPanes`)
+  is not an agent; once the chat's agent runs there it is one.
 - **Tab bar, 42 px**: the space's herdr tabs (`tab.list`; a click is
   `tab.focus`, × is `tab.close`), + (`tab.create`), and Files / Changes /
   Issues. Files opens Studio's Tools on Files, Issues on the Inbox, Changes
@@ -478,7 +480,8 @@ follows `layouts/main-folders.json`:
   Studio chat (it opens in herdr by itself: every chat is a herdr space);
   herdr's prefix keys reach the pane's program, not herdr.
 - **Phone** (≤ 640 px): the sidebar is a drawer (the tab bar's sidebar
-  button; it closes after a pick), the header stays one row, one pane shows
+  button; it closes after a pick), the header stays one row (the chat's
+  title gives way to herdr's bar; the tab and pane name the space), one pane shows
   at a time (the focused one; ‹ n of N › in the tab bar steps through the
   tab's panes) and Studio's tools are a drawer.
 - **herdr's own UI is one switch away**: the header's "herdr TUI" button (on
