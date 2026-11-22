@@ -139,17 +139,24 @@ Next:
 
 - **UI skills for every agent**: the UI/design skills from jakubkrehel/skills,
   installed for Hermes, Ekko and every coding agent.
-- **ESP 4-inch screen as a Hermes tool**: use the gadget plugin's ideas with
-  Studio's `packages/mcu`. Needs the board model.
+- **Gadget plugin for D.A.S.H** (Wizard815/D.A.S.H, the 4-inch ESP32 hub;
+  the firmware is worked on in another chat): Studio installs and turns on the
+  Hermes Gadget plugin, exposes its WebSocket (`:8765/gadget`) in Docker, and
+  shows its status. Part of the plugins job.
 - **Whiteboard logic in Pondering Orb's Ideas tab (Milaclone)**: agents make and
   edit boards, turn cards into Orb tasks. Repos: pondering-orb, milaclone-mcp.
 - **Phone tools for agents**: phone-harness ideas on top of Studio's Android
   page (screenshot, UI tree, tap by element, approvals per action).
-- **Watcher**: combine Hermes's built-in watcher and approvals with InnerWarden,
-  pipelock (secret and prompt-injection scanning) and langfuse traces, plus an
-  approvals/denials audit log and Mattermost alerts.
+- **Watcher** (a Settings section, not a page): combine Hermes's built-in
+  approvals with InnerWarden, pipelock (secret and prompt-injection scanning)
+  and langfuse traces, plus an approvals/denials audit log and Mattermost
+  alerts. A bell in Studio's top bar, like Unraid's notifications, lists recent
+  alerts (blocked actions, limits hit, leaks found) with read/clear.
 - **Import chats**: learn from agent-importers how to bring Hermes chats from
   other installs (and other agents' sessions) in as Studio/herdr chats.
+
+Order: herdr-app-ui, then plugins (with Gadget), then limits, then clean room,
+then watcher.
 
 Not adding: sem-weave (the watcher covers it), hermes-speech, Apollo Watcher,
 omh (its checks run on the host without approvals, which works against clean
