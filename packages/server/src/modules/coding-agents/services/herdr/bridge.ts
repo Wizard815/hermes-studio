@@ -409,7 +409,8 @@ export class HerdrBridge {
       workspaces: this.snapshot.workspaces,
       panes: this.panes,
       chatSpaces: Object.keys(this.persisted.chatSpaces || {}),
-      waitingPanes: Object.values(this.persisted.chatSpaces || {}).map(record => record.stubPaneId).filter(Boolean),
+      // A chat whose agent runs (in its waiting pane after Enter, or elsewhere) has no waiting pane.
+      waitingPanes: Object.entries(this.persisted.chatSpaces || {}).filter(([sessionId, record]) => record.stubPaneId && !this.liveChats.has(sessionId)).map(([, record]) => record.stubPaneId),
     }
   }
 

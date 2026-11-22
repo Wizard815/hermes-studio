@@ -533,9 +533,13 @@ onBeforeUnmount(() => {
               <button v-if="studioChatId" type="button" class="herdr-center-key" data-testid="herdr-center-open-studio" @click="fromMenu(() => emit('open-studio-chat', studioChatId))">{{ t('mission.openInStudio') }}</button>
               <button v-if="!machine" type="button" class="herdr-center-key herdr-center-new" data-testid="herdr-center-new-chat" @click="fromMenu(newChat)"><span aria-hidden="true">+</span> {{ t('chat.newChat') }}</button>
               <button v-if="!machine" type="button" class="herdr-center-key" data-testid="herdr-center-reopen" :disabled="reopening" @click="fromMenu(reopenClosed)">{{ t('herdr.reopenClosed') }}</button>
-              <button v-for="button in keyButtons" :key="button.name" type="button" class="herdr-center-key" :data-testid="`herdr-center-key-${button.name}`" @click="fromMenu(() => press(button.bytes))">
-                {{ t(`herdr.key.${button.name}`) }}
-              </button>
+              <button v-if="!machine" type="button" class="herdr-center-key" data-testid="herdr-center-view-toggle" @click="fromMenu(() => herdrView.set(herdrView.mode.value === 'app' ? 'tui' : 'app'))">{{ herdrView.mode.value === 'app' ? t('herdrApp.useTui') : t('herdrApp.useApp') }}</button>
+              <button v-if="appMode" type="button" class="herdr-center-key" data-testid="herdr-center-palette" @click="fromMenu(() => { palette = true })">{{ t('herdrApp.palette.title') }}</button>
+              <template v-else>
+                <button v-for="button in keyButtons" :key="button.name" type="button" class="herdr-center-key" :data-testid="`herdr-center-key-${button.name}`" @click="fromMenu(() => press(button.bytes))">
+                  {{ t(`herdr.key.${button.name}`) }}
+                </button>
+              </template>
             </div>
           </NPopover>
           <HeaderActionOverflow v-else-if="!appMode && !(dock.phone.value && headerTarget && hostMenu)" :key="headerTarget ? 'header' : 'inline'" :label="t('chat.more')" :breakpoint="HEADER_ROOM" class="herdr-center-more" data-testid="herdr-center-more">
