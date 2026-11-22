@@ -350,6 +350,22 @@ describe('herdr bridge: closed chats and reopening them', () => {
     expect(bridge.closedChats()).toEqual([])
   })
 
+  it('lists a chat\'s waiting pane until its agent runs there (Herdr App layout: not an agent)', async () => {
+    const { deps, sessions } = makeDeps()
+    sessions.set('chat-w', { id: 'chat-w', agent: 'claude-code', title: 'W', workspace: null, agent_native_session_id: uuid(8) })
+    deps.chatPane = async () => ({ script: '/opt/studio-chat.sh', env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
+    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true, chatSpaces: true, chatSpacesAwakeDays: 0 }, deps, join(dir, 'state.json'), async () => herdr.path)
+    await bridge.start()
+    await until(() => bridge!.getState().panes.some(pane => pane.studioSessionId === 'chat-w'))
+    const paneId = bridge.getState().panes.find(pane => pane.studioSessionId === 'chat-w')!.pane_id
+    expect(bridge.getState().waitingPanes).toEqual([paneId])
+    // Enter in the waiting pane: the chat's own agent runs there now.
+    Object.assign(herdr.panes.find(pane => pane.pane_id === paneId)!, { agent: 'claude', agent_status: 'working', agent_session: { kind: 'id', value: uuid(8) } })
+    herdr.emit()
+    await until(() => (bridge!.getState().waitingPanes || []).length === 0)
+    expect(bridge.getState().panes.find(pane => pane.pane_id === paneId)?.studioSessionId).toBe('chat-w')
+  })
+
   it('does not count a herdr restart as closes', async () => {
     const { deps, sessions } = makeDeps()
     threeChats(sessions)
