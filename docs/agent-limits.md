@@ -49,7 +49,8 @@ block. They end after 15 minutes without a request.
 
 - Shared types: `packages/shared/run-limits.ts` (`RunLimits`, `RunLimitHit`).
 - Server: `modules/studio/services/run-limits/` — `settings.ts`
-  (`HERMES_WEB_UI_HOME/run-limits.json`: Settings' limits and chats' own),
+  (`HERMES_WEB_UI_HOME/run-limits.json`: Settings' limits, chats' own, and
+  chats still blocked by a limit),
   `tracker.ts` (one active run per chat), `loop-detector.ts`,
   `gateway-history.ts` (reads the current turn from chat-completions,
   Responses, Anthropic and Gemini bodies), `service.ts` (what a hit does,
@@ -80,8 +81,10 @@ block. They end after 15 minutes without a request.
   gateway: their tool events still feed the loop detector and time limit.
 - Hermes chats opened in herdr run Hermes's own CLI (not through Studio), and
   agents started in herdr without a Studio chat have no chat to limit.
-- Hits are kept in memory: after a restart the chat is not blocked any more,
-  but its own limits (the file) stay.
+- A blocked chat stays blocked after Studio restarts, until Continue or Stop:
+  the hit (and the agent turn it caught) is saved in `run-limits.json`
+  (`blocked`) and restored on start (`RunLimitService.restoreBlocked`). A run
+  that was running when Studio stopped is not counted on; only the block is.
 - The limit is checked after each model call or tool event, so a run can go
   one call past it (the token limit in a run of 42k-token calls stops at 126k
   for a 100k limit). The time limit is checked every 5 seconds.

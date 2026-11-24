@@ -19,11 +19,11 @@ import { useToolTraceVisibility } from '@/composables/useToolTraceVisibility'
 import { extractClipboardFiles } from '@/utils/clipboard-files'
 import VoiceDialogueControls from './VoiceDialogueControls.vue'
 import BundleCreateModal from './BundleCreateModal.vue'
-import { BRIDGE_SESSION_COMMAND_DEFINITIONS, HERDR_SESSION_COMMAND_DEFINITION, isHerdrSessionCommand } from '@/utils/hermes/bridge-session-commands'
+import { BRIDGE_SESSION_COMMAND_DEFINITIONS, HERDR_SESSION_COMMAND_DEFINITION, STUDIO_SESSION_COMMAND_DEFINITION, isHerdrSessionCommand, isStudioSessionCommand } from '@/utils/hermes/bridge-session-commands'
 import { isStoredSuperAdmin } from '@/api/client'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { herdrCanOpenChat } from '@/mission/useFolders'
-import { openChatInHerdr } from '@/utils/mission-url'
+import { openChatInHerdr, returnChatToStudio } from '@/utils/mission-url'
 import { clampChatInputHeight, isMobileChatInputViewport } from '@/utils/chat-input-height'
 import { normalizeComposerVoiceTranscript, useComposerVoiceInput } from '@/composables/useComposerVoiceInput'
 import { extractRepresentativeVideoFrames, isVideoFile } from '@/utils/video-frame-extraction'
@@ -325,9 +325,11 @@ const isCursorSession = computed(() => (composerSession.value?.codingAgentId ===
 const showSessionUsage = computed(() => isCodingAgentSession.value)
 const isForkCommandSession = computed(() => !!composerSession.value && !isEkkoSession.value && !isCodingAgentSession.value)
 const herdrStore = useHerdrStore()
-/** `/herdr` opens this chat in herdr: super admins, herdr on, a chat with a herdr space (any agent). */
+/** `/herdr` elevates this chat to herdr: super admins, herdr on, a chat that can be a herdr space (any agent). */
 const herdrCommandAvailable = computed(() => !props.draft && !props.submit && isStoredSuperAdmin()
   && herdrStore.enabled && herdrCanOpenChat(composerSession.value))
+/** `/studio` returns an elevated chat to Studio. */
+const studioCommandAvailable = computed(() => herdrCommandAvailable.value && herdrStore.isElevated(composerSession.value?.id))
 const skillPickerItems = computed(() => {
   const byName = new Map<string, SkillInfo>()
   for (const category of skillCategories.value) {
@@ -372,7 +374,11 @@ const filteredBridgeCommands = computed(() => {
     : [{ key: 'command:limits', name: 'limits', args: '', description: t('runLimits.slashCommand') }]
   const withLimits = [...agentCommands, ...limitsCommand]
   const commands = herdrCommandAvailable.value
-    ? [...withLimits, { ...HERDR_SESSION_COMMAND_DEFINITION, args: '', description: t(HERDR_SESSION_COMMAND_DEFINITION.descriptionKey) }]
+    ? [
+        ...withLimits,
+        { ...HERDR_SESSION_COMMAND_DEFINITION, args: '', description: t(HERDR_SESSION_COMMAND_DEFINITION.descriptionKey) },
+        ...(studioCommandAvailable.value ? [{ ...STUDIO_SESSION_COMMAND_DEFINITION, args: '', description: t(STUDIO_SESSION_COMMAND_DEFINITION.descriptionKey) }] : []),
+      ]
     : withLimits
   if (!query) return commands
   return commands.filter((command) => {
@@ -1084,6 +1090,11 @@ async function handleSend() {
     await openComposerChatInHerdr()
     return
   }
+  // `/studio` too: return this elevated chat to Studio (its herdr space closes).
+  if (attachments.value.length === 0 && isStudioSessionCommand(text) && studioCommandAvailable.value) {
+    await returnComposerChatToStudio()
+    return
+  }
   if (isBridgeSession.value && text === '/skill' && attachments.value.length === 0) {
     void openSkillPicker()
     return
@@ -1130,7 +1141,25 @@ async function openComposerChatInHerdr() {
   try {
     await openChatInHerdr(sessionId)
   } catch (error: any) {
-    message.error(error?.message || String(error))
+    message.error(t('herdr.elevateFailed', { error: error?.message || String(error) }))
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function returnComposerChatToStudio() {
+  const sessionId = composerSession.value?.id
+  if (!sessionId) return
+  inputText.value = ''
+  saveDraftForActiveSession('')
+  slashActive.value = false
+  if (textareaRef.value) textareaRef.value.style.height = 'auto'
+  submitting.value = true
+  try {
+    await returnChatToStudio(sessionId)
+    message.success(t('herdr.returned'))
+  } catch (error: any) {
+    message.error(t('herdr.returnFailed', { error: error?.message || String(error) }))
   } finally {
     submitting.value = false
   }

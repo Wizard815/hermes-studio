@@ -26,6 +26,19 @@ export const useHerdrStore = defineStore('herdr', () => {
 
   const enabled = computed(() => status.value?.settings.enabled === true)
   const connected = computed(() => bridge.value?.connected === true)
+  /** Chats elevated to herdr; null until herdr's state is known (or from an older server). */
+  const elevatedChats = computed<Set<string> | null>(() => (Array.isArray(bridge.value?.elevatedChats) ? new Set(bridge.value!.elevatedChats) : null))
+  function isElevated(sessionId: string | null | undefined): boolean {
+    return !!sessionId && !!elevatedChats.value?.has(sessionId)
+  }
+  /** Mark a chat elevated or not at once (the server's state follows). */
+  function noteElevated(sessionId: string, elevated: boolean) {
+    if (!bridge.value) return
+    const list = new Set(bridge.value.elevatedChats || [])
+    if (elevated) list.add(sessionId)
+    else list.delete(sessionId)
+    bridge.value = { ...bridge.value, elevatedChats: [...list] }
+  }
 
   async function refresh() {
     loading.value = true
@@ -86,5 +99,5 @@ export const useHerdrStore = defineStore('herdr', () => {
     bridge.value = status.value.bridge
   }
 
-  return { status, bridge, loading, error, foldersVersion, enabled, connected, refresh, acquire, release, updateSettings, startServer }
+  return { status, bridge, loading, error, foldersVersion, enabled, connected, elevatedChats, isElevated, noteElevated, refresh, acquire, release, updateSettings, startServer }
 })

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 
-const herdr = reactive<any>({ bridge: { connected: true, chatSpaces: ['awake'] } })
+const herdr = reactive<any>({ elevated: new Set(['awake']), isElevated(id: string) { return this.elevated.has(id) } })
 const links: Record<string, { paneId: string }> = { live: { paneId: 'p1' } }
 
 vi.mock('naive-ui', async importOriginal => ({
@@ -27,21 +27,23 @@ vi.mock('@/mission/useMission', () => ({ studioUrl: () => null }))
 
 import SourceChats from '@/mission/sources/SourceChats.vue'
 
-const asleepTitles = (wrapper: ReturnType<typeof mount>) => wrapper.findAll('article')
-  .filter(card => card.find('[data-testid="mission-chat-asleep"]').exists())
+const elevatedTitles = (wrapper: ReturnType<typeof mount>) => wrapper.findAll('article')
+  .filter(card => card.find('[data-testid="mission-chat-elevated"]').exists())
   .map(card => card.find('.source-card-title').text())
 
-describe('Mission chats: asleep in herdr', () => {
-  it('marks only chats with no herdr space and no live pane', async () => {
+describe('Mission chats: elevated to herdr', () => {
+  it('marks elevated chats and chats with a live pane; the rest are Studio-only', async () => {
     const wrapper = mount(SourceChats)
     await flushPromises()
-    expect(asleepTitles(wrapper)).toEqual(['Sleepy'])
+    expect(elevatedTitles(wrapper)).toEqual(['Awake', 'Live'])
+    const buttons = wrapper.findAll('article').map(card => card.find('button').text())
+    expect(buttons).toEqual(['mission.openInHerdr', 'herdr.elevate', 'mission.showPane'])
   })
 
-  it('marks nothing while herdr is not connected', async () => {
-    herdr.bridge = { connected: false, chatSpaces: [] }
+  it('marks only live panes while nothing is elevated', async () => {
+    herdr.elevated = new Set()
     const wrapper = mount(SourceChats)
     await flushPromises()
-    expect(asleepTitles(wrapper)).toEqual([])
+    expect(elevatedTitles(wrapper)).toEqual(['Live'])
   })
 })

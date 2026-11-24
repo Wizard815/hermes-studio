@@ -18,6 +18,17 @@ describe('chat list menu: Open in herdr', () => {
     expect(keys(false)).not.toContain('open-herdr')
     expect(keys(undefined)).not.toContain('open-herdr')
   })
+
+  it('offers Return to Studio for an elevated chat, in the chat list and the header menu', () => {
+    const elevated = buildSessionContextMenuOptions({
+      pinned: false, includeArchive: true, includeModel: true, categoryChildren: [], labels: { ...labels, returnToStudio: 'Return to Studio' }, includeHerdr: true, elevated: true,
+    }).map(option => option.key)
+    expect(elevated.indexOf('return-studio')).toBe(elevated.indexOf('open-herdr') + 1)
+    expect(keys(true)).not.toContain('return-studio')
+    const header = buildActiveSessionMenuOptions({ outline: 'Outline', rename: 'Rename', open: 'Open', copyId: 'Copy id', returnToStudio: 'Return to Studio' })
+    expect(header.map(option => option.key)).toContain('return-studio')
+    expect(buildActiveSessionMenuOptions({ outline: 'Outline', rename: 'Rename', open: 'Open', copyId: 'Copy id' }).map(option => option.key)).not.toContain('return-studio')
+  })
 })
 
 describe('/herdr command', () => {

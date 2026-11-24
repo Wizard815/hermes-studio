@@ -16,12 +16,16 @@ const herdr = reactive<any>({
     panes: [{ pane_id: 'w1:p2', workspace_id: 'w1', agent: 'claude', agent_status: 'idle', label: 'One', studioSessionId: 'chat-1', studioAgent: 'claude-code', nativeSessionId: null },
       { pane_id: 'w9:p1', workspace_id: 'w9', studioSessionId: null, studioAgent: null, nativeSessionId: null }],
     chatSpaces: ['chat-1'],
+    elevatedChats: ['chat-1'],
   },
+  elevatedChats: new Set(['chat-1']),
+  isElevated(id: string) { return this.elevatedChats?.has(id) ?? false },
+  noteElevated: vi.fn(),
   acquire: vi.fn(),
   release: vi.fn(),
   refresh: vi.fn(async () => undefined),
 })
-const api = vi.hoisted(() => ({ focusHerdrPane: vi.fn(async () => undefined), reopen: vi.fn(async () => ({ reopened: [], remaining: 0 })) }))
+const api = vi.hoisted(() => ({ focusHerdrPane: vi.fn(async () => undefined), reopen: vi.fn(async () => ({ reopened: [], remaining: 0 })), open: vi.fn(async () => ({ link: { paneId: 'w1:p2' } })) }))
 const app = vi.hoisted(() => ({ step: vi.fn(() => true), openChat: vi.fn(() => true), newTab: vi.fn(async () => undefined), toggleSidebar: vi.fn() }))
 
 vi.mock('naive-ui', async importOriginal => ({
@@ -34,7 +38,7 @@ vi.mock('@/api/coding-agents/herdr', () => ({
   fetchHerdrMachines: vi.fn(async () => ({ machines: [] })),
   focusHerdrMachineAgent: vi.fn(),
   focusHerdrPane: api.focusHerdrPane,
-  openSessionInHerdr: vi.fn(async () => ({ link: { paneId: 'w1:p2' } })),
+  openSessionInHerdr: api.open,
   reopenClosedHerdrChat: api.reopen,
   studioFocusRequest: { at: 0, paneId: '' },
 }))
@@ -146,5 +150,49 @@ describe('the herdr page in the Herdr App layout', () => {
     await wrapper.find('[data-testid="herdr-center-new-chat"]').trigger('click')
     expect(wrapper.emitted('new-chat')).toHaveLength(1)
     wrapper.unmount()
+  })
+
+  it('never elevates the open chat by itself; "Elevate this chat" does', async () => {
+    const saved = { bridge: herdr.bridge, elevated: herdr.elevatedChats }
+    herdr.bridge = { ...saved.bridge, panes: saved.bridge.panes.filter((pane: any) => !pane.studioSessionId) }
+    herdr.elevatedChats = new Set(['chat-1'])
+    try {
+      const wrapper = mount(HerdrCenter, { props: { sessionId: 'chat-2', active: true }, attachTo: document.body })
+      await flushPromises()
+      expect(api.open).not.toHaveBeenCalled()
+      const button = wrapper.find('[data-testid="herdr-center-open"]')
+      expect(button.text()).toBe('herdr.elevateThis')
+      await button.trigger('click')
+      await flushPromises()
+      expect(api.open).toHaveBeenCalledWith('chat-2')
+      wrapper.unmount()
+    } finally { herdr.bridge = saved.bridge; herdr.elevatedChats = saved.elevated }
+  })
+
+  it('with nothing in herdr, explains how chats get there and offers "Elevate this chat"', async () => {
+    const saved = { bridge: herdr.bridge, elevated: herdr.elevatedChats }
+    herdr.bridge = { ...saved.bridge, workspaces: [], panes: [], elevatedChats: [] }
+    herdr.elevatedChats = new Set()
+    try {
+      const wrapper = mount(HerdrCenter, { props: { sessionId: 'chat-2', active: true }, attachTo: document.body })
+      await flushPromises()
+      const nothing = wrapper.find('[data-testid="herdr-center-nothing"]')
+      expect(nothing.exists()).toBe(true)
+      expect(nothing.attributes('role')).toBe('status')
+      expect(nothing.text()).toContain('herdr.nothingTitle')
+      expect(wrapper.find('.fake-app').exists()).toBe(false)
+      await wrapper.find('[data-testid="herdr-center-elevate"]').trigger('click')
+      await flushPromises()
+      expect(api.open).toHaveBeenCalledWith('chat-2')
+      await wrapper.find('[data-testid="herdr-center-back"]').trigger('click')
+      expect(wrapper.emitted('back')).toHaveLength(1)
+      wrapper.unmount()
+      // No chat open (a fresh install): still the explanation, no elevate button.
+      const empty = mount(HerdrCenter, { props: { sessionId: '', active: true }, attachTo: document.body })
+      await flushPromises()
+      expect(empty.find('[data-testid="herdr-center-nothing"]').exists()).toBe(true)
+      expect(empty.find('[data-testid="herdr-center-elevate"]').exists()).toBe(false)
+      empty.unmount()
+    } finally { herdr.bridge = saved.bridge; herdr.elevatedChats = saved.elevated }
   })
 })

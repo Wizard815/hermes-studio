@@ -21,7 +21,7 @@ const chat = reactive<any>({
   clearMessageReference: vi.fn(),
   setSessionReasoningEffort: vi.fn(),
 })
-const herdr = reactive({ enabled: true })
+const herdr = reactive({ enabled: true, isElevated: () => false })
 
 vi.mock('naive-ui', async importOriginal => ({
   ...(await importOriginal<typeof import('naive-ui')>()),

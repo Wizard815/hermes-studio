@@ -68,7 +68,7 @@ function shown(wrapper: ReturnType<typeof mountView>) {
 
 function mountView(props: Record<string, unknown> = {}) {
   return mount(HerdrAppView, {
-    props: { panes: PANES, workspaces: [{ workspace_id: 'w1', label: 'api' }, { workspace_id: 'w2', label: 'site' }], focusedPane: 'w1:p2', awake: null, activeChat: 'chat-1', machines: [], phone: false, home: ['/home/me'], panel: '', dockTab: 'chats', connected: true, ...props },
+    props: { panes: PANES, workspaces: [{ workspace_id: 'w1', label: 'api' }, { workspace_id: 'w2', label: 'site' }], focusedPane: 'w1:p2', elevated: null, activeChat: 'chat-1', machines: [], phone: false, home: ['/home/me'], panel: '', dockTab: 'chats', connected: true, ...props },
   })
 }
 

@@ -35,7 +35,8 @@ const props = defineProps<{
   panes: HerdrPaneView[]
   workspaces: Array<{ workspace_id: string; label?: string; agent_status?: string }>
   focusedPane: string
-  awake: Set<string> | null
+  /** Chats elevated to herdr (null: unknown). */
+  elevated: Set<string> | null
   activeChat: string
   machines: HerdrMachine[]
   phone: boolean
@@ -227,7 +228,7 @@ defineExpose({
           :search-open="searchOpen"
           :panes="panes"
           :workspaces="workspaces"
-          :awake="awake"
+          :elevated="elevated"
           :active-chat="activeChat"
           :focused-pane="focusedPane"
           :machines="machines"

@@ -4,6 +4,51 @@
 panes, working/blocked/idle detection, and a local socket API. Studio and herdr
 stay separate apps; this integration links them.
 
+## Elevated chats: how chats use herdr
+
+Chats are Studio-only until they are **elevated** to herdr. You start in
+Studio and elevate a chat when you want its agent in a terminal.
+
+- **New chats get nothing in herdr**: no space, no waiting pane, no process.
+- **Elevate to herdr**: the chat header's Elevate button
+  (`HerdrOpenButton.vue`), *Elevate to herdr* in the chat list's right-click
+  menu, `/herdr` in the chat box, "Elevate this chat" on the herdr page, or
+  herdr's own Studio chats picker. All of them call
+  `POST /api/coding-agents/herdr/sessions/:id/open` (`bridge.openSession`):
+  the chat is marked elevated, gets its herdr space with its waiting pane
+  (`bridge.elevateChat` → chat sync), and Enter is pressed there so its agent
+  starts (or resumes) in place.
+- **Elevated** means: in the bridge state's `elevatedChats` (chat id → when,
+  `HERMES_WEB_UI_HOME/herdr/bridge-state.json`), or the chat's own agent runs
+  in a herdr pane (started there, or resumed there by hand). Chats started in
+  herdr are elevated the same way. `GET /api/coding-agents/herdr` and the
+  `/herdr` socket send the list as `bridge.elevatedChats`.
+- **Return to Studio**: the chat header's menu, the right-click menu, or
+  `/studio` (`POST …/sessions/:id/return`, `bridge.returnToStudio`). The
+  chat's space closes (`workspace.close`; when the space has other panes the
+  user opened, only the chat's panes close). The agent stops the way closing
+  a pane stops it; the chat and its history stay. For 30 s the bridge does
+  not count the chat's still-running agent as "elevated again".
+- **Closed in herdr**: a chat whose space or pane the user closes in herdr
+  goes back to Studio (no longer elevated) and onto the "Reopen closed chat"
+  stack; reopening it elevates it again. Spaces Studio closes itself (return,
+  deleted chats) are not "closed chats".
+- Elevated chats keep the two-way sync below: messages, status, approvals,
+  run limits and folder placement (space-folders file).
+- **Moving old installs over** (`separateOnce`, once, with herdr connected;
+  marker `separatedAt` in the bridge state): chats whose agent runs in herdr
+  become elevated; the waiting spaces of the others close (a waiting pane
+  counts only when herdr says it still runs `studio-chat.sh` and nothing it
+  started, `planSeparation`); herdr-only spaces have no record and stay. Chat
+  history is in Studio's database and is not touched. Logged as "chats are
+  Studio-only now". With herdr down nothing runs; it runs on the next
+  connection.
+- **Settings**: the old "every chat is a herdr space" switch (`chatSpaces`)
+  and the sleep window (`chatSpacesAwakeDays`) are gone: only elevated chats
+  are in herdr, so there is nothing to put to sleep. Old settings files keep
+  the fields; Studio ignores them. The settings page explains the model
+  ("How chats use herdr").
+
 ## What it does
 
 - **Chats follow agents both ways.** A chat is linked to a herdr pane through
@@ -20,8 +65,8 @@ stay separate apps; this integration links them.
   `hermes` integration reports it back for linking. Replies typed in the pane
   reach Studio's chat view only for agents with transcript mirroring
   (claude-code, codex today).
-- **Ekko (and Hermes without its CLI) in herdr.** These agents have no
-  terminal CLI, so their chat's pane talks to Studio instead:
+- **Ekko (and Hermes without its CLI) in herdr**, once elevated. These
+  agents have no terminal CLI, so their chat's pane talks to Studio instead:
   `studio-herdr.mjs chat <id>` gets a short-lived login and the chat's run
   fields (`POST /plugin/chat`, `bridge.prepareChat`, `chatAccess` and
   `chatRunFields` in `bootstrap/herdr.ts`) and sends each line as a turn of
@@ -30,12 +75,11 @@ stay separate apps; this integration links them.
   the next line (`once`, `session`, `always` or `deny`; anything else denies).
   The pane reports itself to herdr as `hermes`
   (working, blocked, idle). Ctrl-C stops a reply, Ctrl-D goes back to the card.
-- **Every chat is a herdr space.** With `chatSpaces` on (default), each
-  Studio chat (not archived, not a sub-chat, group chat or workflow) has its
-  own herdr space, named after the chat and
-  kept in Studio's folder order (`services/herdr/chat-spaces.ts` plans,
-  `bridge.syncChatSpaces` applies). A chat whose agent is not running sits in
-  a waiting pane (`bin/herdr-plugin/studio-chat.sh`, plain `sh`, ~0.2 MB
+- **Each elevated chat is a herdr space.** An elevated chat (not archived,
+  not a sub-chat, group chat or workflow) has its own herdr space, named
+  after the chat and kept in Studio's folder order
+  (`services/herdr/chat-spaces.ts` plans, `bridge.syncChatSpaces` applies).
+  An elevated chat whose agent is not running sits in a waiting pane (`bin/herdr-plugin/studio-chat.sh`, plain `sh`, ~0.2 MB
   each): it shows the chat's last messages, reports itself to herdr as the
   chat's idle agent (Ekko and Hermes chats as `hermes`: herdr keeps live
   reports only for agent names it knows) and, on Enter, resumes the agent
@@ -54,14 +98,14 @@ stay separate apps; this integration links them.
   mirror. A blocked agent (approval/question on screen) is never typed into.
   A chat whose space only has its waiting pane (link `waiting: true`) has no
   agent there, so its messages run through Studio as usual.
-- **Open in herdr resumes.** Opening a chat whose space only has its waiting
+- **Elevate resumes.** Elevating (or opening) a chat whose space only has its waiting
   pane presses Enter there (`openSession`), so its agent resumes in place (or
   Studio's chat client starts, for Ekko/Hermes without the CLI); not while the
   pane already runs `studio-herdr.mjs` (resuming or chatting).
 - **Clean rooms in herdr.** See `docs/cleanroom.md`: the pane's docker client
   runs under the agent's name so herdr detects the agent and its status.
 - **Limits.** The chat-space list reads every chat in pages (`chatSpaceRows`)
-  before the awake filter; a subscription herdr never confirms fails after 5 s
+  before the elevated filter; a subscription herdr never confirms fails after 5 s
   (`subscribe_timeout`) and the bridge reconnects.
 - **One space per chat.** Each chat sync reads a fresh `session.snapshot`
   and remembers the spaces it just made for 30 s, so syncs that follow each
@@ -189,9 +233,8 @@ stay separate apps; this integration links them.
 - **Profile.** Chats created from herdr go to the `default` profile. Change it in
   Studio's herdr settings or inside herdr: Studio chats → `s`, or the
   "Studio settings" plugin action.
-- **Upgrading and containers.** Old chats need no migration: once the new
-  build starts and herdr is connected, the chat-space sync gives every chat
-  its space (304 chats took about 35 s). Studio re-runs setup when herdr's
+- **Upgrading and containers.** Installs from the every-chat-is-a-space
+  builds move over once (see "Elevated chats"). Studio re-runs setup when herdr's
   config was lost (the `studio.hermes` plugin is missing), even if its own
   settings say setup is done. When herdr starts over and reuses space ids, a
   waiting space only counts while its own pane is there (`planChatSpaces`
@@ -199,34 +242,43 @@ stay separate apps; this integration links them.
   in the data volume, so spaces and agent sessions survive a recreated
   container. The hermes CLI is found through `HERMES_BIN` (set in the image),
   `~/.local/bin` or PATH.
-- **Sleep.** Chats used in the last `chatSpacesAwakeDays` days (default 7,
-  0 = all) keep a space; older ones sleep with no pane or process
-  (`awakeChats`). A sleeping chat wakes into its space when it is opened in
-  herdr (Studio's herdr view, Open in herdr, herdr's Studio chats picker,
-  which lists every chat with search and pages and marks sleeping ones `z`),
-  or when it is used (a message moves its last activity). Any chat herdr has
-  a space for can be opened, whatever its agent: chats with no stored agent
-  are Hermes chats (older Studio chats), and Ekko chats talk to Studio from
-  their waiting pane. Studio offers it in the chat header, the chat list's
-  right-click menu (Open in herdr) and the `/herdr` command in the chat box
-  (handled by the chat box, never sent to the agent). A chat opened by hand
-  (`openSession`) keeps its space after the awake window (`openedChats`;
-  older `wokenChats` are read into it) until its space is closed in herdr
-  (`closedChatSpaces`: gone while other chat spaces are still there) or the
-  chat is archived or deleted. The herdr state lists the chats with a space
-  (`chatSpaces`); Studio's chat list marks the others with a small `z`
-  (asleep in herdr). A chat whose folder is gone gets its space in the home
-  folder (`chatSpaceCwd`). Studio stores chat times in seconds; the chat
-  list converts them (`toMs`).
-- **Cost.** herdr's own cost is about 0.12% CPU per open pane (304 panes: 41%;
-  10: 4%), plus about 0.13 MB per waiting pane. Status updates are followed
+- **Which chats can be elevated.** Any chat, whatever its agent: chats with
+  no stored agent are Hermes chats (older Studio chats), and Ekko chats talk
+  to Studio from their waiting pane. herdr's Studio chats picker lists every
+  chat with search and pages and marks Studio-only ones `z` (picking one
+  elevates it). Studio's chat list marks elevated chats with a small "herdr"
+  badge. `/herdr` and `/studio` are handled by the chat box, never sent to the
+  agent. An elevated chat stays elevated until it returns to Studio, its
+  space is closed in herdr, or the chat is archived or deleted. A chat whose
+  folder is gone gets its space in the home folder (`chatSpaceCwd`). Studio
+  stores chat times in seconds; the chat list converts them (`toMs`).
+- **Cost.** herdr's own cost is about 0.12% CPU per open pane, plus about
+  0.13 MB per waiting pane; with only elevated chats in herdr that stays small.
+  Status updates are followed
   only for panes where an agent really runs: herdr's per-pane status
   subscription costs CPU per pane (10 waiting panes cost 16% before).
 
 ## The herdr page (Mission docked)
 
 herdr has one page: Studio's chat page in herdr mode
-(`components/coding-agents/herdr/HerdrCenter.vue` in `ChatPanel.vue`). By default
+(`components/coding-agents/herdr/HerdrCenter.vue` in `ChatPanel.vue`). It
+shows only elevated chats and spaces made in herdr itself; Studio-only chats
+are not in its Spaces sidebar, and folders with neither are hidden
+(`buildRows` in `space-folders.ts`). With nothing in herdr (no elevated chat
+and no herdr space of its own) the page shows a short explanation with
+"Elevate this chat" for the open chat and "Back to Chat"
+(`herdr-center-nothing`). Showing the herdr page never elevates the open chat
+by itself; for a Studio-only chat the bar offers "Elevate this chat". The page
+opens with no chats at all too (a fresh install: the empty-chat watcher that
+opens New Chat leaves herdr mode alone).
+
+**Studio's top bar is hidden on the herdr page** (desktop), so it looks like the
+Herdr App window. A small button at the top right shows it again ("Show
+Studio's top bar"); Esc and the palette's "Show Studio's top bar" do too, and
+the choice is kept per viewer (`studio_herdr_topbar`). Phones keep their
+one-row header with the ⋯ menu.
+
+By default
 it shows the Herdr App layout (next section); this section is the other look,
 herdr's own terminal UI (the header's "herdr TUI" switch). On the
 left is Studio's Spaces sidebar (space folders, below; herdr's own sidebar on
@@ -234,7 +286,7 @@ request) and in the center herdr's own full UI (a `client` terminal stream):
 the focused pane with herdr's keys, search and settings. On
 the right, the Tools dock (`HerdrMissionDock.vue`): Command Center's Inbox,
 Agents, Files, Board and Skills with a usage strip (see below), then Mission's tools: Chats (every
-chat, with the "z" asleep marker; Open in herdr wakes it into its space), and
+chat, elevated ones marked "herdr"; Elevate to herdr makes its space), and
 Pondering Orb's Tasks, Projects, Ideas, Upkeep, plus Control. herdr's bar shares the
 chat page's header row (one row with the chat title and the Chat | herdr | Code
 | Screen switch, which is the way back to the chat view): the chat's agent and
@@ -253,8 +305,8 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   `utils/herdr-page-url.ts`); Studio's `?center=herdr&pane=…` and `/herdr`
   links land on the same page and pane. "Open in herdr" (header button, chat
   menu, `/herdr`) opens the chat there (`utils/mission-url.ts`).
-- **Speed with hundreds of chats.** herdr's state lists every chat's space and
-  pane (about 250 kB with 360 chats). Pages get only the fields they read
+- **Speed with hundreds of chats.** herdr's state lists every elevated chat's space and
+  pane (it was about 250 kB with 360 chats when every chat had a space). Pages get only the fields they read
   (`services/herdr/client-state.ts`), changes are coalesced (150 ms), unchanged
   states are not sent, and pages that can unzip get `herdr.state.gz` (gzipped,
   about 11 kB) instead of `herdr.state`; `GET /api/coding-agents/herdr` is
@@ -284,8 +336,8 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   reorder them (dropped on a folder under another parent, it moves there). Rows
   show a stable colored avatar, the name, repo / branch and ahead/behind only
   when unusual (`POST …/space-repos`, `services/herdr/space-git.ts`, cached
-  30 s), and the agent's status; asleep chats are listed with "z" and a click
-  wakes them (`openSessionInHerdr`). Search filters chats and spaces (a match
+  30 s), and the agent's status (only elevated chats and herdr spaces are listed;
+  folders with neither are hidden). Search filters chats and spaces (a match
   opens its folder). alt+up / alt+down go to the row above/below as the list
   shows (past folded folders, round the ends) and are taken before the
   terminal sees them. With saved remote machines a "This computer" header and a
@@ -304,7 +356,7 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
 - **One set of folders with Herdr App.** `~/.config/herdr-space-folders.json`
   in the home of the machine herdr runs on (the Studio server's;
   `HERMES_HERDR_SPACE_FOLDERS_FILE` overrides it, `off` turns it off) is kept
-  in two-way sync with Studio's folders and each awake chat's folder
+  in two-way sync with Studio's folders and each elevated chat's folder
   (`services/herdr/space-folder-sync.ts`, pure merge in
   `space-folder-file.ts`). The mod's format is `{ list: [{ id, name, color,
   path, match, folded }], of: { spaceId: folderId | "" }, at }`. Studio writes
@@ -324,8 +376,8 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   sync adds the mod's folders and placements and keeps Studio's own. Studio
   watches the file (and looks every 5 s) and writes it at once after a change
   in Studio. Limits: Herdr App re-reads the file every 15 s, so changes made
-  in both apps within that window can lose one side; asleep chats have no herdr
-  space, so the file only places awake chats (their folder is kept in Studio);
+  in both apps within that window can lose one side; Studio-only chats have no herdr
+  space, so the file only places elevated chats (their folder is kept in Studio);
   remote machines keep their own files, which Studio does not sync.
 - **Start from a card.** Each task, project or idea card has a button per
   installed agent. Studio opens a herdr space for it and types the card as the
@@ -357,24 +409,21 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   this chat in herdr" for a chat not running there. Sidebar, header and tool
   panel stay; both centers stay mounted once opened and herdr stays connected,
   so swapping is instant; the choice is remembered (`studio_chat_center`).
-- **Every Studio chat in herdr mode.** The Spaces tree also lists Studio chats
-  that are not running in herdr, in their folders (`TreeChat`, `useStudioFolders().chats`;
-  chats not in a folder under "Other chats"). Picking a coding-agent chat opens
-  it and herdr mode starts it in herdr, resuming its native session, so chats
-  made before herdr (or after herdr restarted empty) need no remaking; their
-  history is already in Studio. Hermes/Ekko chats open in the Chat view.
+- **Only elevated chats in herdr mode.** The Spaces tree lists elevated chats
+  (and chats whose agent runs in a pane), in their folders. Studio-only chats
+  are elevated from the chat view, the chat list or `/herdr`.
 - **Switch availability.** Chat | herdr shows for super admins whenever herdr
   is on, whichever chat is open (`herdrCenterAvailable` in `ChatPanel.vue`).
-  With no herdr chat open (a Hermes chat, nothing selected, or the New Chat
-  page, which herdr mode closes), the herdr center shows herdr's own focus, the
-  Spaces tree and a hint (`sessionId` ''); picking an agent or switching
+  With no herdr chat open (nothing selected, or the New Chat page, which
+  herdr mode closes), the herdr center shows herdr's own focus, the Spaces
+  tree and a hint (`sessionId` ''); picking an agent or switching
   agents inside herdr opens that agent's Studio chat. While the next chat
   loads, the center keeps its chat, so herdr does not reconnect; a saved herdr
   mode stays while herdr's status loads.
 - **herdr mode layout.** In herdr mode the chat list closes (the page sidebar
   is not shown) and the center is herdr's own full UI. herdr's sidebar is the
-  chat list: every Studio chat is a space named after it, in folder order (see
-  "Every chat is a herdr space"), and its Agents list shows each chat's agent.
+  list of elevated chats: each is a space named after it, in folder order (see
+  "Each elevated chat is a herdr space"), and its Agents list shows each chat's agent.
   The bar above has New chat (herdr's New Studio chat picker when bound, else
   Studio's new chat page) and one-tap keys, including the herdr sidebar
   toggle. On phones the chat list stays in the menu drawer. The embedded
@@ -402,9 +451,8 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   switch. The plugin focuses through Studio (`POST /plugin/focus`, again after
   its popup closes, since herdr gives focus back to the pane under a popup);
   `herdr pane focus` only moves by direction.
-- **Opening chats in herdr mode.** A chat whose agent is not running in herdr
-  opens there by itself when shown in herdr mode (once per chat;
-  `HerdrCenter` keeps "Open this chat in herdr" for a retry).
+- **Opening chats in herdr mode.** Showing a Studio-only chat in herdr mode
+  does not elevate it; the bar's "Elevate this chat" does.
 - **herdr's welcome screen.** Studio's setup sets herdr's top-level
   `onboarding = false` when the config does not say either way (Studio has
   already installed the agent integrations the welcome walks through). The
@@ -443,7 +491,7 @@ follows `layouts/main-folders.json`:
 
 - **Sidebar, 268 px** (`hap-side`): brand row (46 px: herdr's logo, Search,
   hide sidebar), then **Spaces** (`HerdrSpaceSidebar.vue` with
-  `variant="app"`: the space folders, + and count always shown, search behind
+  `variant="app"`: the space folders holding elevated chats or herdr spaces, + and count always shown, search behind
   the brand row's search button) and **Agents** (`HerdrAgentsList.vue`), each
   half of the column (at least 90 px), then the footer (69 px: Settings, Add
   machine; both open herdr's settings page). Agents lists every pane running an
@@ -476,8 +524,8 @@ follows `layouts/main-folders.json`:
   Reopen closed chat, Open in Studio, New tab, Next/Previous space, Files,
   Changes, Issues, Tools, hide the sidebar, herdr's own UI, herdr settings);
   alt+up / alt+down go through the Spaces list as it shows. Both are taken
-  before the pane's terminal sees them. In this layout New chat starts a
-  Studio chat (it opens in herdr by itself: every chat is a herdr space);
+  before the pane's terminal sees them. In this layout New chat opens
+  Studio's New Chat page; the new chat is Studio-only until it is elevated.
   herdr's prefix keys reach the pane's program, not herdr.
 - **Phone** (≤ 640 px): the sidebar is a drawer (the tab bar's sidebar
   button; it closes after a pick), the header stays one row (the chat's
@@ -627,7 +675,7 @@ an API token from Orb's `ORB_API_TOKENS`, set in Mission → Control or with
 | herdr page (Mission docked) | `components/coding-agents/herdr/HerdrCenter.vue`, `HerdrMissionDock.vue`, `herdr-layout.ts`, `packages/client/src/mission/sources/*`; old `/mission/` redirect: `packages/client/mission.html`, `src/mission/main.ts`, `bootstrap/http.ts` |
 | Space folders | `services/herdr/folders.ts` |
 | Herdr App layout | `components/coding-agents/herdr/HerdrAppView.vue`, `herdr-app-layout.ts`, `HerdrAgentsList.vue`, `HerdrChangesPanel.vue`, `HerdrCommandPalette.vue`, `HerdrAppInstall.vue`; server `services/herdr/space-view.ts`, `space-changes.ts`, `pane-stream.ts`; `scripts/install-herdr-app-layout.sh` |
-| Chat spaces, waiting pane | `services/herdr/chat-spaces.ts`, `bin/herdr-plugin/studio-chat.sh` |
+| Elevated chats, chat spaces, waiting pane, move-over | `services/herdr/chat-spaces.ts` (`elevatedChatList`, `planSeparation`), `bridge.ts` (`returnToStudio`, `separateOnce`), `bin/herdr-plugin/studio-chat.sh` |
 | Pondering Orb | `modules/studio/services/orb/client.ts`, `studio/routes/orb.ts`, `studio/controllers/orb.ts` |
 
 Rules that keep it safe:
@@ -646,6 +694,11 @@ Rules that keep it safe:
 
 ## Testing
 
+- Unit: elevated chats in `tests/server/herdr-bridge.test.ts` (no space for
+  new chats, elevate/return, closed in herdr, the move-over with herdr up and
+  down) and `tests/server/herdr-chat-spaces.test.ts`; the herdr page's
+  filtering and empty state in `tests/client/herdr-space-folders.test.ts` and
+  `tests/client/herdr-center-app.test.ts`.
 - Unit: `tests/server/herdr-*.test.ts` (fake herdr socket server, installer
   with a fake manifest, key choice against `fixtures/herdr-default-config.toml`),
   `tests/server/session-state-sync.test.ts`, `tests/client/agent-status.test.ts`.

@@ -3,7 +3,7 @@ import { getCleanRoomStatus } from '@/api/coding-agents'
 import { agentSupportsSurface } from "@/utils/agent-catalog"
 import { agentMetadata, isNativeCodingAgent, isGlobalOnlyCodingAgent, isPluginAgentId } from '@/utils/agent-catalog'
 import { herdrCanOpenChat } from '@/mission/useFolders'
-import { openChatInHerdr } from '@/utils/mission-url'
+import { openChatInHerdr, returnChatToStudio } from '@/utils/mission-url'
 import SessionListSidebar from "./SessionListSidebar.vue"
 import SessionSelectionToolbar from "./SessionSelectionToolbar.vue"
 import { usePageSidebarState } from "@/composables/usePageSidebar"
@@ -169,17 +169,14 @@ const herdrChatState = computed<'eligible' | 'other' | 'unknown' | 'none'>(() =>
 })
 const herdrEligible = computed(() => herdrChatState.value === 'eligible')
 /**
- * Chats asleep in herdr (no space now; they get one when opened there), from
- * the herdr state Studio already has. Super admins with herdr on only.
+ * Chats elevated to herdr (the chat list marks them "herdr"), from the herdr
+ * state Studio already has. Super admins with herdr on only.
  */
-const herdrSpaceIds = computed(() => {
-  const spaces = herdrStore.bridge?.connected ? herdrStore.bridge.chatSpaces : undefined
-  return isSuperAdmin.value && herdrStore.enabled && Array.isArray(spaces) ? new Set(spaces) : null
-})
-function herdrAsleep(session: Session): boolean {
-  const spaces = herdrSpaceIds.value
-  return !!spaces && !spaces.has(session.id) && !sessionStates.herdrLink(session.id) && herdrCanOpenChat(session)
+function herdrElevated(session: Session): boolean {
+  return isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(session.id)
 }
+/** The open chat is elevated to herdr: the header offers Return to Studio. */
+const activeChatElevated = computed(() => isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(chatStore.activeSessionId))
 
 // The center column swaps between the chat and its herdr agent; the sidebar,
 // header and tool panel stay. Both stay mounted once opened, so swapping is instant.
@@ -223,7 +220,11 @@ watch(() => [chatStore.activeSessionId, herdrChatState.value] as const, ([id, st
   if (state === 'eligible') herdrSessionId.value = id || ''
   else if (state !== 'unknown') herdrSessionId.value = ''
 }, { immediate: true })
-/** herdr from the New Chat page leaves it: herdr has its own New Studio chat. */
+/**
+ * herdr from the New Chat page leaves it: herdr has its own New Studio chat.
+ * On a fresh install with no chats the New Chat page is the empty state; herdr
+ * still opens (the empty-chat watcher below leaves herdr mode alone).
+ */
 function selectCenter(mode: ChatCenter) {
   centerMode.value = mode
   if (mode === 'herdr' && showNewChatPage.value) closeNewChatPage()
@@ -1713,6 +1714,7 @@ const activeSessionMenuOptions = computed<DropdownOption[]>(() => withHerdrMenuG
     : "chat.openSessionInNewTab"),
   copyId: t("chat.copySessionId"),
   runLimits: t("runLimits.menu"),
+  ...(activeChatElevated.value ? { returnToStudio: t("herdr.returnToStudio") } : {}),
 }, {
   canRename: activeSessionSupportsPersistence.value,
   canOpen: activeSessionSupportsPersistence.value,
@@ -1879,6 +1881,22 @@ function handleActiveSessionMenuSelect(key: string) {
   } else if (key === "run-limits") {
     if (!activeSessionSupportsPersistence.value) return;
     showRunLimits.value = true;
+  } else if (key === "return-studio") {
+    void returnToStudio(sessionId);
+  }
+}
+
+/**
+ * Return to Studio: the chat's herdr space closes (its agent stops the normal
+ * way), its history stays, and the chat shows in Studio's chat view again.
+ */
+async function returnToStudio(sessionId: string) {
+  try {
+    await returnChatToStudio(sessionId);
+    if (chatStore.activeSessionId === sessionId) centerMode.value = 'chat';
+    message.success(t("herdr.returned"));
+  } catch (error: any) {
+    message.error(t("herdr.returnFailed", { error: error?.message || String(error) }));
   }
 }
 
@@ -2176,8 +2194,9 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
   pinned: contextSessionPinned.value,
   includeArchive: contextSession.value?.source !== "global_agent",
   includeModel: canSetContextSessionModel.value,
-  // Same rule as the header's "Open in herdr" button, with herdr on.
+  // Same rule as the header's "Elevate to herdr" button, with herdr on.
   includeHerdr: isSuperAdmin.value && herdrStore.enabled && herdrCanOpenChat(contextSession.value),
+  elevated: isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(contextSession.value?.id),
   categoryChildren: buildSessionCategoryMenuChildren({
     categories: [...sessionCategories.value].sort((a, b) =>
       categoryPathLabel(sessionCategories.value, a.id).localeCompare(categoryPathLabel(sessionCategories.value, b.id))),
@@ -2205,7 +2224,8 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
       : "chat.openSessionInNewTab"),
     copyLink: t("chat.copySessionLink"),
     copyId: t("chat.copySessionId"),
-    openInHerdr: t("herdr.openInHerdr"),
+    openInHerdr: herdrStore.isElevated(contextSession.value?.id) ? t("herdr.openLive") : t("herdr.elevate"),
+    returnToStudio: t("herdr.returnToStudio"),
   },
 }).map(option => option.key === "pin"
   ? { ...option, disabled: Boolean(contextSession.value?.isLocalOnly) }
@@ -2297,8 +2317,10 @@ async function handleContextMenuSelect(key: string) {
     try {
       await openChatInHerdr(contextSessionId.value);
     } catch (error: any) {
-      message.error(error?.message || String(error));
+      message.error(t("herdr.elevateFailed", { error: error?.message || String(error) }));
     }
+  } else if (key === "return-studio") {
+    await returnToStudio(contextSessionId.value);
   } else if (key === "archive") {
     const archivedSession = contextSession.value;
     const ok = await chatStore.archiveSession(contextSessionId.value);
@@ -2727,8 +2749,9 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
 
 // Wait for route cleanup and session loading before opening the empty state;
 // explicit session links may still be resolving outside the sidebar list.
-watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
-  if (empty && !showNewChatPage.value) void openNewChatPage({ preserveSidebar: true });
+// The herdr page does not need a chat: with no chats yet it must still open.
+watch([isEmptySingleChat, () => route.fullPath, () => centerMode.value === 'herdr' && herdrCenterAvailable.value], ([empty, , herdrShown]) => {
+  if (empty && !herdrShown && !showNewChatPage.value) void openNewChatPage({ preserveSidebar: true });
 }, { immediate: true, flush: "post" });
 
 /** A clean-room chat runs its coding agent in its own container (shown next to the title). */
@@ -2818,7 +2841,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
-              :herdr-asleep="herdrAsleep(s)"
+              :herdr-elevated="herdrElevated(s)"
             :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
             :selectable="isBatchMode"
             :selected="isSessionSelected(s)"
@@ -2875,7 +2898,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
-              :herdr-asleep="herdrAsleep(s)"
+              :herdr-elevated="herdrElevated(s)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -2982,7 +3005,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
-              :herdr-asleep="herdrAsleep(s)"
+              :herdr-elevated="herdrElevated(s)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -3337,7 +3360,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             >{{ mode === 'chat' ? t('herdr.centerChat') : mode === 'herdr' ? t('herdr.centerHerdr') : mode === 'code' ? t('vscode.centerCode') : t('screen.centerScreen') }}</button>
           </div>
           <HerdrOpenButton
-            v-if="isSuperAdmin && !showNewChatPage && chatStore.activeSessionId && herdrEligible && !showHerdrCenter"
+            v-if="isSuperAdmin && herdrStore.enabled && !showNewChatPage && chatStore.activeSessionId && herdrEligible && !showHerdrCenter"
             :session-id="chatStore.activeSessionId"
           />
           <!-- chat/live mode toggle hidden -->
@@ -3494,6 +3517,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               host-menu
               @open-chat="sessionId => handleSessionClick(sessionId)"
               @open-studio-chat="sessionId => { centerMode = 'chat'; void handleSessionClick(sessionId) }"
+              @back="centerMode = 'chat'"
               @new-chat="openNewChatPage()"
             />
             <VsCodeCenter

@@ -22,8 +22,8 @@ export function ruleDepth(rule: string, cwd: string, home: string): number {
  * Studio's Spaces sidebar on the herdr page, after herdr-space-folders
  * (github.com/jankeesvw/herdr-space-folders) and Herdr Roundup's spaces list
  * (github.com/carstenlucke/herdr-roundup): Studio's chat folders as colored,
- * foldable folders holding every chat (awake or asleep) and other herdr
- * spaces. This file is the list's logic: which row goes where, what a drop
+ * foldable folders holding the chats elevated to herdr and other herdr
+ * spaces (Studio-only chats are not listed; folders with neither are hidden). This file is the list's logic: which row goes where, what a drop
  * does, where the keys go. HerdrSpaceSidebar.vue draws it.
  */
 
@@ -54,7 +54,7 @@ export interface SidebarChat {
   /** Taken out of every folder by hand: rules leave it alone. */
   out: boolean
   workspace: string | null
-  /** Its herdr space while awake. */
+  /** Its herdr space (elevated chats). */
   workspaceId: string | null
   lastActive: number
 }
@@ -138,8 +138,8 @@ export interface RowsInput {
   panes: HerdrPaneView[]
   /** herdr spaces with their labels (from herdr's state). */
   workspaces: Array<{ workspace_id: string; label?: string }>
-  /** Chats with a herdr space now; null when herdr's state is unknown (none is marked asleep). */
-  awake: Set<string> | null
+  /** Chats elevated to herdr; null when herdr's state is unknown (only chats with a pane are listed then). */
+  elevated: Set<string> | null
   query?: string
   /** Folders opened for this viewer while searching are not needed: a search opens every folder with a match. */
 }
@@ -168,10 +168,12 @@ export function buildRows(input: RowsInput): { rows: SidebarRow[]; seen: Array<{
   const items: Item[] = []
   for (const chat of view.chats) {
     const panes = panesBySession.get(chat.id) || []
+    // Only chats in herdr: elevated, or with their agent in a pane. Studio-only chats stay out.
+    if (!panes.length && !input.elevated?.has(chat.id)) continue
     const live = spaceStatus(panes)
     const cwd = live.cwd || chat.workspace || ''
     const folderId = chatFolder(chat, cwd, folders, view.home)
-    const asleep = !!input.awake && !input.awake.has(chat.id) && !panes.length
+    const asleep = false
     items.push({ kind: 'chat', key: `chat:${chat.id}`, depth: 0, chat, folderId, asleep, status: panes.length ? live.status : 'unknown', paneId: live.paneId, cwd })
   }
   for (const workspace of input.workspaces) {
@@ -181,9 +183,9 @@ export function buildRows(input: RowsInput): { rows: SidebarRow[]; seen: Array<{
     const folderId = spaceFolder(workspace.workspace_id, live.cwd, view.spaces, folders, view.home)
     items.push({ kind: 'space', key: `space:${workspace.workspace_id}`, depth: 0, space: { workspaceId: workspace.workspace_id, label: workspace.label || workspace.workspace_id }, folderId, status: live.status, paneId: live.paneId, cwd: live.cwd })
   }
-  // Awake ones first (as herdr lists them), then newest first.
+  // Spaces made in herdr first (as herdr lists them), then chats newest first.
   const itemTime = (item: Item) => (item.kind === 'chat' ? item.chat.lastActive : Number.MAX_SAFE_INTEGER)
-  items.sort((a, b) => Number(a.kind === 'chat' && a.asleep) - Number(b.kind === 'chat' && b.asleep) || itemTime(b) - itemTime(a))
+  items.sort((a, b) => itemTime(b) - itemTime(a))
   const matches = (item: Item) => !query || (item.kind === 'chat'
     ? `${item.chat.title} ${item.chat.agent}`.toLowerCase().includes(query)
     : item.space.label.toLowerCase().includes(query))
@@ -199,6 +201,8 @@ export function buildRows(input: RowsInput): { rows: SidebarRow[]; seen: Array<{
   const walk = (parentId: string, depth: number, hidden: boolean) => {
     for (const folder of children.get(parentId) || []) {
       const inside = subtree(folder)
+      // Only folders that hold something in herdr (an elevated chat or a herdr space) show.
+      if (!inside.length) continue
       const shownInside = inside.filter(matches)
       if (query && !shownInside.length && !folder.name.toLowerCase().includes(query)) continue
       // A search opens every folder with a match.

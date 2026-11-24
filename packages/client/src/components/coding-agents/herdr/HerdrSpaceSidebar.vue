@@ -46,14 +46,15 @@ import {
  * spaces list (carstenlucke/herdr-roundup). Studio's chat folders are the
  * folders: colored tiles with a count that fold (a folded folder still shows
  * an agent that is blocked, done or working), filled by dragging or by their
- * rules. Every chat is listed, asleep ones marked "z" (a click wakes them).
+ * rules. Chats elevated to herdr and herdr's own spaces are listed; Studio-only
+ * chats are not (Elevate to herdr brings one here).
  * The same folders show in Herdr App through herdr-space-folders' file.
  */
 const props = defineProps<{
   panes: HerdrPaneView[]
   workspaces: Array<{ workspace_id: string; label?: string }>
-  /** Chats awake in herdr (null: unknown). */
-  awake: Set<string> | null
+  /** Chats elevated to herdr (null: unknown). */
+  elevated: Set<string> | null
   /** The chat shown now. */
   activeChat: string
   /** The pane herdr shows now. */
@@ -115,7 +116,7 @@ const built = computed(() => buildRows({
   view: view.value,
   panes: props.panes,
   workspaces: props.workspaces,
-  awake: props.awake,
+  elevated: props.elevated,
   query: query.value,
 }))
 const rows = computed(() => built.value.rows)
@@ -207,7 +208,7 @@ function openChat(id: string): boolean {
   const chat = view.value.chats.find(item => item.id === id)
   if (!chat) return false
   const paneId = props.panes.find(pane => pane.studioSessionId === id)?.pane_id || ''
-  const asleep = props.awake ? !props.awake.has(id) : !paneId
+  const asleep = !paneId
   emit('open-chat', chat, asleep, paneId)
   return true
 }

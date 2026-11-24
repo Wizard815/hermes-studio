@@ -14,6 +14,7 @@ export type SessionMenuIconName =
   | 'link'
   | 'copy'
   | 'herdr'
+  | 'studio'
   | 'limits'
 
 interface ActiveSessionMenuLabels {
@@ -23,6 +24,8 @@ interface ActiveSessionMenuLabels {
   copyId: string
   /** "Run limits" (docs/agent-limits.md); left out when not given. */
   runLimits?: string
+  /** "Return to Studio" for a chat elevated to herdr; left out when not given. */
+  returnToStudio?: string
 }
 
 interface ActiveSessionMenuAvailability {
@@ -44,16 +47,20 @@ interface SessionContextMenuLabels {
   open: string
   copyLink: string
   copyId: string
-  /** Needed when `includeHerdr` is set. */
+  /** "Elevate to herdr" (or "Open in herdr" once elevated); needed when `includeHerdr` is set. */
   openInHerdr?: string
+  /** "Return to Studio"; needed when `elevated` is set. */
+  returnToStudio?: string
 }
 
 interface BuildSessionContextMenuOptions {
   pinned: boolean
   includeArchive: boolean
   includeModel: boolean
-  /** "Open in herdr" (super admins, herdr on, a chat with a herdr space). */
+  /** "Elevate to herdr" (super admins, herdr on, a chat that can be a herdr space). */
   includeHerdr?: boolean
+  /** The chat is elevated to herdr: "Return to Studio" is offered too. */
+  elevated?: boolean
   categoryChildren: DropdownOption[]
   labels: SessionContextMenuLabels
 }
@@ -125,9 +132,15 @@ function iconChildren(name: SessionMenuIconName): VNodeChild[] {
         h('path', { d: 'm12 18 4-6' }),
       ]
     case 'herdr':
-      // The header's "Open in herdr" button icon: a split terminal.
+      // The header's "Elevate to herdr" button icon: a split terminal.
       return [
         h('path', { d: 'M3 4h18v16H3zM12 4v16M3 12h9M7 8l2 2-2 2' }),
+      ]
+    case 'studio':
+      // Back to Studio: an arrow out of the terminal.
+      return [
+        h('path', { d: 'M14 4h7v16h-7' }),
+        h('path', { d: 'M10 12H3m3-3-3 3 3 3' }),
       ]
   }
 }
@@ -172,6 +185,7 @@ export function buildActiveSessionMenuOptions(
     actionOption(labels.rename, 'rename', 'rename', { disabled: !availability.canRename }),
     actionOption(labels.open, 'open-link', 'open-new', { disabled: !availability.canOpen }),
     ...(labels.runLimits ? [actionOption(labels.runLimits, 'run-limits', 'limits', { disabled: !availability.canRename })] : []),
+    ...(labels.returnToStudio ? [actionOption(labels.returnToStudio, 'return-studio', 'studio')] : []),
   ]
 }
 
@@ -202,6 +216,7 @@ export function buildSessionContextMenuOptions({
   includeArchive,
   includeModel,
   includeHerdr = false,
+  elevated = false,
   categoryChildren,
   labels,
 }: BuildSessionContextMenuOptions): DropdownOption[] {
@@ -245,6 +260,7 @@ export function buildSessionContextMenuOptions({
   }))
   if (includeHerdr && labels.openInHerdr) {
     options.push(actionOption(labels.openInHerdr, 'open-herdr', 'herdr'))
+    if (elevated && labels.returnToStudio) options.push(actionOption(labels.returnToStudio, 'return-studio', 'studio'))
   }
   options.push(actionOption(labels.open, 'open-link', 'open-new'))
   options.push(actionOption(labels.copyLink, 'copy-link', 'link'))

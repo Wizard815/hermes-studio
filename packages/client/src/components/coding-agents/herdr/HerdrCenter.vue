@@ -24,8 +24,12 @@ import { herdrKeyBytes } from '@/utils/herdr-keys'
  * Herdr App layout (HerdrAppView: Studio draws herdr's chrome, each pane is its
  * own terminal); the header's "herdr TUI" switch shows the look below instead.
  *
+ * Only chats elevated to herdr are here (and spaces made in herdr itself);
+ * every other chat is Studio-only. With nothing in herdr the page explains
+ * that and offers "Elevate this chat".
+ *
  * herdr's terminal UI look: herdr's own full UI on
- * the left and center (its spaces sidebar, where every Studio chat is a space
+ * the left and center (its spaces sidebar, where each elevated chat is a space
  * in its Studio folder, and the focused pane with herdr's keys, search and
  * settings), and Mission's tools docked on the right (Chats, Tasks, Projects,
  * Ideas, Upkeep, Control). Old Mission links land here. ChatPanel keeps this
@@ -44,7 +48,7 @@ const props = withDefaults(defineProps<{
    */
   hostMenu?: boolean
 }>(), { headerTarget: null, hostMenu: false })
-const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': [] }>()
+const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': []; back: [] }>()
 /** Below this header width the less-used herdr keys fold into the "more" menu. */
 const HEADER_ROOM = 1560
 /** The phone header's "more" menu: a pick closes it. */
@@ -113,13 +117,25 @@ const spaceSidebar = ref<InstanceType<typeof HerdrSpaceSidebar> | null>(null)
 const herdrWorkspaces = computed(() => herdr.bridge?.workspaces || [])
 /** Chats' waiting panes: their spaces' placeholders, not running agents. */
 const waitingPanes = computed(() => new Set(herdr.bridge?.waitingPanes || []))
-/** Chats awake in herdr (they have a space now); null while herdr's state is unknown. */
-const awakeChats = computed(() => {
-  const list = herdr.bridge?.connected ? herdr.bridge.chatSpaces : undefined
-  return Array.isArray(list) ? new Set(list) : null
+/** Chats elevated to herdr; null while herdr's state is unknown. */
+const elevatedChats = computed(() => herdr.elevatedChats)
+/** Spaces made in herdr itself (no Studio chat in them). */
+const herdrOnlySpaces = computed(() => {
+  const chatSpaces = new Set<string>()
+  for (const pane of panes.value) if (pane.studioSessionId) chatSpaces.add(pane.workspace_id)
+  return herdrWorkspaces.value.filter(space => !chatSpaces.has(space.workspace_id))
 })
+/**
+ * Nothing in herdr yet: no chat is elevated and herdr has no spaces of its
+ * own. The page says how chats get here instead of an empty herdr.
+ */
+const nothingInHerdr = computed(() => herdr.connected && !machine.value
+  && elevatedChats.value !== null && elevatedChats.value.size === 0 && !herdrOnlySpaces.value.length
+  && !panes.value.some(pane => pane.studioSessionId))
+/** The open chat is elevated (or its agent runs in herdr). */
+const chatElevated = computed(() => !!props.sessionId && (herdr.isElevated(props.sessionId) || !!linked.value))
 
-/** A chat picked in the Spaces sidebar: herdr shows it (waking it if asleep) and the chat follows. */
+/** A chat picked in the Spaces sidebar: herdr shows it (making its space if needed) and the chat follows. */
 async function openFromSidebar(chat: SidebarChat, asleep: boolean, paneId: string) {
   machine.value = ''
   spaces.picked()
@@ -356,30 +372,24 @@ watch(() => `${props.sessionId}|${linked.value?.pane_id || ''}`, () => {
   if (started.value) void focusChat()
 })
 
+/** Elevate this chat: its herdr space is made and its agent starts there. */
 async function openHere() {
   opening.value = true
   try {
     const { link } = await openSessionInHerdr(props.sessionId)
+    herdr.noteElevated(props.sessionId, true)
     await herdr.refresh()
     await focusHerdrPane(link.paneId).catch(() => undefined)
     focusTerminal()
   } catch (err: any) {
-    toast.error(err?.message || String(err))
+    toast.error(t('herdr.elevateFailed', { error: err?.message || String(err) }))
   } finally {
     opening.value = false
   }
 }
 
-/**
- * In herdr mode, a chat whose agent is not running in herdr opens there by
- * itself (once per chat; the button stays for a retry if that fails).
- */
-const autoOpened = new Set<string>()
-watch(() => [props.active, props.sessionId, herdr.enabled, herdr.bridge?.connected, !!linked.value] as const, ([active, sessionId, enabled, connected, isLinked]) => {
-  if (!active || machine.value || !sessionId || !enabled || !connected || isLinked || opening.value || autoOpened.has(sessionId)) return
-  autoOpened.add(sessionId)
-  void openHere()
-}, { immediate: true })
+// Chats are Studio-only until elevated: showing herdr mode never elevates the
+// open chat by itself ("Elevate this chat" does).
 
 /** herdr's actions for the page's own menu (phones, with `hostMenu`): one menu in the header row. */
 interface HerdrMenuItem { key: string; label: string; disabled?: boolean }
@@ -479,7 +489,7 @@ onBeforeUnmount(() => {
             <span>{{ headerTarget ? linked.agent : (linked.label || linked.agent) }}</span>
             <small>{{ linked.pane_id }}</small>
           </span>
-          <NButton v-else-if="sessionId && !machine && !linked" size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ t('herdr.centerOpenChat') }}</NButton>
+          <NButton v-else-if="sessionId && !machine && !linked && !nothingInHerdr" size="small" type="primary" :loading="opening" data-testid="herdr-center-open" @click="openHere">{{ chatElevated ? t('herdr.centerOpenChat') : t('herdr.elevateThis') }}</NButton>
           <span v-else-if="!machine && !linked && !headerTarget" class="herdr-center-landing" data-testid="herdr-center-landing">{{ t('herdr.centerLanding') }}</span>
           <span v-if="!headerTarget" class="herdr-center-spacer" />
           <template v-if="!dock.phone.value">
@@ -601,14 +611,27 @@ onBeforeUnmount(() => {
           >{{ commandCenter.unseen.value > 99 ? '99+' : commandCenter.unseen.value }}</span></button>
         </div>
       </Teleport>
+      <!-- Nothing in herdr yet: how chats get here, and the way to elevate this one. -->
+      <div v-if="nothingInHerdr" class="herdr-center-body herdr-center-nothing" role="status" data-testid="herdr-center-nothing">
+        <div class="herdr-nothing-card" data-theme-surface="card">
+          <h2>{{ t('herdr.nothingTitle') }}</h2>
+          <p>{{ t('herdr.nothingText') }}</p>
+          <p>{{ t('herdr.nothingReturn') }}</p>
+          <div class="herdr-nothing-actions">
+            <NButton v-if="sessionId" type="primary" :loading="opening" data-testid="herdr-center-elevate" @click="openHere">{{ t('herdr.elevateThis') }}</NButton>
+            <span v-else class="herdr-nothing-hint">{{ t('herdr.nothingNoChat') }}</span>
+            <NButton secondary data-testid="herdr-center-back" @click="emit('back')">{{ t('herdr.backToChat') }}</NButton>
+          </div>
+        </div>
+      </div>
       <!-- The Herdr App layout: Studio draws herdr's chrome, each pane its own terminal. -->
-      <div v-if="appMode && started" class="herdr-center-body is-app" :class="{ 'is-phone': dock.phone.value }">
+      <div v-else-if="appMode && started" class="herdr-center-body is-app" :class="{ 'is-phone': dock.phone.value }">
         <HerdrAppView
           ref="appView"
           :panes="panes"
           :workspaces="herdrWorkspaces"
           :focused-pane="herdr.bridge?.focusedPaneId || ''"
-          :awake="awakeChats"
+          :elevated="elevatedChats"
           :active-chat="sessionId || focusedPane?.studioSessionId || ''"
           :machines="machines"
           :phone="dock.phone.value"
@@ -657,7 +680,7 @@ onBeforeUnmount(() => {
           :class="{ 'is-drawer': dock.phone.value }"
           :panes="panes"
           :workspaces="herdrWorkspaces"
-          :awake="awakeChats"
+          :elevated="elevatedChats"
           :active-chat="machine ? '' : (sessionId || focusedPane?.studioSessionId || '')"
           :focused-pane="herdr.bridge?.focusedPaneId || ''"
           :machines="machines"
@@ -709,6 +732,46 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 @use '@/styles/variables' as *;
+
+.herdr-center-nothing {
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  overflow: auto;
+}
+
+.herdr-nothing-card {
+  max-width: 520px;
+  padding: 24px;
+  border: var(--border-width, 1px) solid $border-light;
+  border-radius: var(--radius-component, 8px);
+  background: $bg-card;
+  color: $text-primary;
+
+  h2 {
+    margin: 0 0 8px;
+    font-size: 18px;
+  }
+
+  p {
+    margin: 0 0 8px;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+}
+
+.herdr-nothing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.herdr-nothing-hint {
+  align-self: center;
+  color: $text-muted;
+  font-size: 13px;
+}
 
 .herdr-center {
   display: flex;

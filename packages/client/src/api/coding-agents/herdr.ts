@@ -14,10 +14,6 @@ export interface HerdrSettings {
   session: string
   autoImport: boolean
   mirrorTranscripts: boolean
-  /** Every chat is a herdr space. */
-  chatSpaces?: boolean
-  /** Chats used within this many days stay awake in herdr (0: all). */
-  chatSpacesAwakeDays?: number
   /** Studio profile for chats and agents started from herdr; '' follows Studio's profile. */
   profile: string
   /** The profile last picked in Studio. */
@@ -57,8 +53,10 @@ export interface HerdrBridgeState {
   focusedPaneId: string | null
   workspaces: HerdrWorkspace[]
   panes: HerdrPaneView[]
-  /** Studio chats with a herdr space now; other top-level chats sleep until opened (older servers leave it out). */
+  /** Studio chats with a herdr space now (older servers leave it out). */
   chatSpaces?: string[]
+  /** Chats elevated to herdr (by hand, or with their agent running there); every other chat is Studio-only. */
+  elevatedChats?: string[]
   /** Waiting panes of chat spaces (the chat's agent is not running yet): not counted as agents. */
   waitingPanes?: string[]
 }
@@ -169,6 +167,10 @@ export const openSessionInHerdr = (sessionId: string) =>
 /** Reopen the newest closed herdr chat (Studio's "Reopen closed chat"); `reopened` is empty when none is left. */
 export const reopenClosedHerdrChat = () =>
   request<{ reopened: Array<{ sessionId: string; title: string; link: HerdrLink }>; remaining: number }>(`${base}/closed-chats/reopen`, { method: 'POST', body: '{}' })
+
+/** Return to Studio: the elevated chat's herdr space closes; the chat and its history stay. */
+export const returnHerdrSession = (sessionId: string) =>
+  request<{ closed: boolean }>(`${base}/sessions/${encodeURIComponent(sessionId)}/return`, { method: 'POST', body: '{}' })
 
 export const promptHerdrSession = (sessionId: string, text: string) =>
   request<{ paneId: string }>(`${base}/sessions/${encodeURIComponent(sessionId)}/prompt`, { method: 'POST', body: JSON.stringify({ text }) })

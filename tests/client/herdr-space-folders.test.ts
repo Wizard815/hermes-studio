@@ -73,8 +73,8 @@ describe('Spaces sidebar: rules', () => {
 })
 
 describe('Spaces sidebar: rows', () => {
-  it('lists folders (subfolders first), every chat in its folder, asleep chats marked, other spaces too', () => {
-    const { rows } = buildRows({ view: view(), panes, workspaces: [{ workspace_id: 'wg' }, { workspace_id: 'wshell', label: 'shell' }], awake: new Set(['game']) })
+  it('lists folders (subfolders first), every elevated chat in its folder, other spaces too', () => {
+    const { rows } = buildRows({ view: view(), panes, workspaces: [{ workspace_id: 'wg' }, { workspace_id: 'wshell', label: 'shell' }], elevated: new Set(['dragged', 'ruled', 'deepest', 'client', 'taken-out', 'asleep', 'game']) })
     expect(rows.map(row => row.key)).toEqual([
       'folder:c1', 'space:wshell', 'chat:ruled',
       'folder:c2', 'folder:c3', 'chat:deepest', 'chat:client',
@@ -87,27 +87,35 @@ describe('Spaces sidebar: rows', () => {
     expect(rows.find(row => row.key === 'folder:c4')).toMatchObject({ count: 3, open: false, status: 'blocked' })
     const clients = rows.find(row => row.key === 'folder:c2')!
     expect(clients).toMatchObject({ count: 2 })
-    expect(rows.find(row => row.key === 'chat:deepest')).toMatchObject({ depth: 2, asleep: true })
+    expect(rows.find(row => row.key === 'chat:deepest')).toMatchObject({ depth: 2 })
+  })
+
+  it('lists only chats in herdr: elevated ones and ones with a pane; folders with nothing in herdr are hidden', () => {
+    const { rows } = buildRows({ view: view(), panes, workspaces: [{ workspace_id: 'wg' }, { workspace_id: 'wshell', label: 'shell' }], elevated: new Set(['ruled']) })
+    // game has a pane (its agent runs in herdr); ruled is elevated; the rest are Studio-only.
+    expect(rows.map(row => row.key)).toEqual(['folder:c1', 'space:wshell', 'chat:ruled', 'folder:c4'])
+    expect(rows.find(row => row.key === 'folder:c4')).toMatchObject({ count: 1 })
+    // Nothing elevated and no herdr spaces: no folders at all.
+    expect(buildRows({ view: view(), panes: [], workspaces: [], elevated: new Set() }).rows).toEqual([])
   })
 
   it('a search opens every folder with a match and hides the rest', () => {
-    const { rows } = buildRows({ view: view(), panes, workspaces: [], awake: null, query: 'gam' })
+    const { rows } = buildRows({ view: view(), panes, workspaces: [], elevated: new Set(['dragged', 'ruled', 'deepest', 'client', 'taken-out', 'asleep', 'game']), query: 'gam' })
     expect(rows.map(row => row.key)).toEqual(['folder:c4', 'chat:game'])
-    expect(buildRows({ view: view(), panes, workspaces: [], awake: null, query: 'nothing at all' }).rows).toEqual([])
+    expect(buildRows({ view: view(), panes, workspaces: [], elevated: new Set(['dragged', 'ruled', 'deepest', 'client', 'taken-out', 'asleep', 'game']), query: 'nothing at all' }).rows).toEqual([])
   })
 
-  it('awake chats come before asleep ones, newest first', () => {
+  it('chats come newest first', () => {
     const data = view()
     data.folders = []
-    const { rows } = buildRows({ view: data, panes, workspaces: [], awake: new Set(['game']) })
-    expect(rows.map(row => row.key)[0]).toBe('chat:game')
-    expect(rows.filter(row => row.kind === 'chat' && row.asleep).length).toBe(6)
+    const { rows } = buildRows({ view: data, panes, workspaces: [], elevated: new Set(['dragged', 'ruled', 'deepest', 'client', 'taken-out', 'asleep', 'game']) })
+    expect(rows.map(row => row.key)).toEqual(['chat:taken-out', 'chat:game', 'chat:dragged', 'chat:ruled', 'chat:deepest', 'chat:client', 'chat:asleep'])
   })
 })
 
 describe('Spaces sidebar: keys follow the list', () => {
   it('alt+down / alt+up go to the next shown row, past folded folders, round the ends', () => {
-    const { seen } = buildRows({ view: view(), panes, workspaces: [{ workspace_id: 'wshell' }], awake: null })
+    const { seen } = buildRows({ view: view(), panes, workspaces: [{ workspace_id: 'wshell' }], elevated: new Set(['dragged', 'ruled', 'deepest', 'client', 'taken-out', 'asleep', 'game']) })
     expect(seen.filter(item => !item.shown).map(item => item.key)).toEqual(['chat:game', 'chat:dragged', 'chat:asleep'])
     expect(stepRow(seen, 'chat:ruled', 1)).toBe('chat:deepest')
     expect(stepRow(seen, 'chat:client', 1)).toBe('chat:taken-out')

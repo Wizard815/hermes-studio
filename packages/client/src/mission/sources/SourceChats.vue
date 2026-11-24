@@ -11,23 +11,18 @@ import { studioUrl } from '../useMission'
 import { herdrCanOpenChat } from '../useFolders'
 
 /**
- * Every Studio chat with live status (every chat is a herdr space too; asleep
- * ones are marked "z" and wake when opened): open one as a herdr pane or in
- * Studio's chat view.
+ * Every Studio chat with live status. Chats elevated to herdr are marked
+ * "herdr"; the others are Studio-only until "Elevate to herdr" (which makes
+ * their herdr space and starts their agent there).
  */
 const emit = defineEmits<{ 'select-pane': [paneId: string] }>()
 const { t } = useI18n()
 const toast = useMessage()
 const states = useSessionStateStore()
 const herdr = useHerdrStore()
-/** Chats with no herdr space now (asleep): they get one when opened in herdr. */
-const spaceIds = computed(() => {
-  const spaces = herdr.bridge?.connected ? herdr.bridge.chatSpaces : undefined
-  return Array.isArray(spaces) ? new Set(spaces) : null
-})
-function asleep(chat: SessionSummary): boolean {
-  const spaces = spaceIds.value
-  return !!spaces && !spaces.has(chat.id) && !states.herdrLink(chat.id)
+/** Chats elevated to herdr (or with their agent running there). */
+function elevated(chat: SessionSummary): boolean {
+  return herdr.isElevated(chat.id) || !!states.herdrLink(chat.id)
 }
 const chats = ref<SessionSummary[]>([])
 const error = ref('')
@@ -92,14 +87,14 @@ onBeforeUnmount(() => {
       <div class="source-card-meta">
         <AgentStatusIcon :status="states.statusOf(chat.id)" :live="!!states.herdrLink(chat.id)" :size="12" />
         <span class="source-card-title">{{ chat.title || chat.id }}</span>
-        <span v-if="asleep(chat)" class="source-asleep" data-testid="mission-chat-asleep" :title="t('herdr.asleep')" :aria-label="t('herdr.asleep')">z</span>
+        <span v-if="elevated(chat)" class="source-elevated" data-testid="mission-chat-elevated" :title="t('herdr.elevatedBadgeHint')">herdr</span>
       </div>
       <div class="source-card-meta">
         <span class="source-chip">{{ chat.agent || chat.source }}</span>
         <span v-if="states.herdrLink(chat.id)" class="source-chip is-good">{{ t('mission.liveIn', { pane: states.herdrLink(chat.id)?.paneId }) }}</span>
       </div>
       <div class="source-card-actions">
-        <NButton size="tiny" @click="openInHerdr(chat)">{{ states.herdrLink(chat.id) ? t('mission.showPane') : t('mission.openInHerdr') }}</NButton>
+        <NButton size="tiny" @click="openInHerdr(chat)">{{ states.herdrLink(chat.id) ? t('mission.showPane') : elevated(chat) ? t('mission.openInHerdr') : t('herdr.elevate') }}</NButton>
         <a v-if="studioUrl(`/hermes/session/${chat.id}?center=chat`)" class="source-link" :href="studioUrl(`/hermes/session/${chat.id}?center=chat`)!">{{ t('mission.openInStudio') }}</a>
       </div>
     </article>
@@ -110,12 +105,14 @@ onBeforeUnmount(() => {
 @use '@/styles/variables' as *;
 @use './source';
 
-.source-asleep {
+.source-elevated {
   flex: none;
+  padding: 1px 4px;
+  border: var(--border-width, 1px) solid $border-light;
+  border-radius: 4px;
+  color: $text-muted;
   font-size: 10px;
-  font-style: italic;
-  line-height: 1;
-  opacity: 0.55;
+  line-height: 1.2;
   cursor: default;
 }
 

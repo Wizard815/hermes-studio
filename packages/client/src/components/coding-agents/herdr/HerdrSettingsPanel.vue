@@ -2,7 +2,7 @@
 import HerdrMachinesSettings from './HerdrMachinesSettings.vue'
 import HerdrAppInstall from './HerdrAppInstall.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { NButton, NInput, NInputNumber, NSelect, NSwitch, useMessage } from 'naive-ui'
+import { NButton, NInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { fetchHerdrProfiles, installHerdr, installHerdrIntegrations, installHerdrStudioPlugin, setHerdrWelcome, setupHerdr, type HerdrSetupResult } from '@/api/coding-agents/herdr'
 import { useHerdrStore } from '@/stores/hermes/herdr'
@@ -142,6 +142,12 @@ async function startServer() {
       <p>{{ t('herdr.settings.description') }}</p>
     </header>
 
+    <!-- Chats are Studio-only until elevated (the old every-chat spaces and their sleep window are gone). -->
+    <section class="herdr-settings-how" data-theme-surface="card" data-testid="herdr-settings-how">
+      <h4>{{ t('herdr.settings.howTitle') }}</h4>
+      <p>{{ t('herdr.settings.howText') }}</p>
+    </section>
+
     <div class="herdr-settings-facts">
       <span>{{ t('herdr.settings.binary') }}: <code>{{ herdr.status?.binary || t('herdr.settings.notFound') }}</code></span>
       <span>{{ t('herdr.settings.version') }}: <code>{{ herdr.status?.version || '—' }}</code></span>
@@ -183,19 +189,6 @@ async function startServer() {
       <span>{{ t('herdr.settings.mirror') }}</span>
       <NSwitch :value="settings?.mirrorTranscripts !== false" @update:value="value => save({ mirrorTranscripts: value })" />
     </label>
-    <label class="herdr-settings-row">
-      <span>{{ t('herdr.settings.awakeDays') }}</span>
-      <NInputNumber
-        class="herdr-settings-days"
-        size="small"
-        :min="0"
-        :max="3650"
-        :value="settings?.chatSpacesAwakeDays ?? 7"
-        data-testid="herdr-awake-days"
-        @update:value="value => value != null && save({ chatSpacesAwakeDays: value })"
-      />
-    </label>
-    <p class="herdr-settings-hint">{{ t('herdr.settings.awakeDaysHint') }}</p>
     <label v-if="herdr.status?.installed" class="herdr-settings-row">
       <span>{{ t('herdr.settings.welcome') }}</span>
       <NSwitch :value="herdr.status?.welcome !== false" :disabled="saving" data-testid="herdr-welcome" @update:value="saveWelcome" />
@@ -258,6 +251,26 @@ async function startServer() {
 }
 
 .herdr-settings-head p,
+.herdr-settings-how {
+  padding: 10px 12px;
+  border: var(--border-width, 1px) solid $border-light;
+  border-radius: var(--radius-component, 8px);
+  background: $bg-card;
+
+  h4 {
+    margin: 0 0 4px;
+    font-size: 13px;
+    color: $text-primary;
+  }
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
 .herdr-settings-hint {
   margin: 0;
   color: $text-secondary;
@@ -315,10 +328,6 @@ async function startServer() {
 
 .herdr-settings-profile {
   width: min(220px, 50%);
-}
-
-.herdr-settings-days {
-  width: 110px;
 }
 
 .herdr-settings-actions {

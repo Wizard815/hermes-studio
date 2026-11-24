@@ -2,24 +2,29 @@
 import { computed, ref } from 'vue'
 import { NButton, NTooltip, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { useSessionStateStore } from '@/stores/hermes/session-state'
+import { useHerdrStore } from '@/stores/hermes/herdr'
 import { openChatInHerdr } from '@/utils/mission-url'
 
-/** Studio → herdr swap for one chat: opens (or focuses) its live pane, then switches to the herdr view. */
+/**
+ * The chat header's way into herdr. A Studio-only chat shows "Elevate to
+ * herdr" (its herdr space is made and its agent starts there); an elevated
+ * chat shows "Open in herdr" (the herdr page on its pane).
+ */
 const props = defineProps<{ sessionId: string }>()
 
 const { t } = useI18n()
 const toast = useMessage()
-const states = useSessionStateStore()
+const herdr = useHerdrStore()
 const busy = ref(false)
-const link = computed(() => states.herdrLink(props.sessionId))
+const elevated = computed(() => herdr.isElevated(props.sessionId))
+const label = computed(() => (elevated.value ? t('herdr.openLive') : t('herdr.elevate')))
 
 async function open() {
   busy.value = true
   try {
     await openChatInHerdr(props.sessionId)
   } catch (err: any) {
-    toast.error(err?.message || String(err))
+    toast.error(t('herdr.elevateFailed', { error: err?.message || String(err) }))
   } finally {
     busy.value = false
   }
@@ -31,11 +36,13 @@ async function open() {
     <template #trigger>
       <NButton
         class="herdr-open-button"
+        :class="{ 'is-elevate': !elevated }"
         quaternary
         size="small"
-        circle
+        :circle="elevated"
         :loading="busy"
-        :aria-label="link ? t('herdr.openLive') : t('herdr.openInHerdr')"
+        :aria-label="label"
+        :data-elevated="elevated ? 'true' : 'false'"
         data-testid="herdr-open-chat"
         @click="open"
       >
@@ -44,8 +51,20 @@ async function open() {
             <path d="M3 4h18v16H3zM12 4v16M3 12h9M7 8l2 2-2 2" />
           </svg>
         </template>
+        <span v-if="!elevated" class="herdr-open-label">{{ t('herdr.elevateShort') }}</span>
       </NButton>
     </template>
-    {{ link ? t('herdr.openLive') : t('herdr.openInHerdr') }}
+    {{ elevated ? t('herdr.openLive') : t('herdr.elevateHint') }}
   </NTooltip>
 </template>
+
+<style scoped>
+.herdr-open-button.is-elevate {
+  min-height: 32px;
+  padding: 0 8px;
+}
+
+.herdr-open-label {
+  font-size: 12px;
+}
+</style>

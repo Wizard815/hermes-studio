@@ -23,6 +23,7 @@ export type BridgeSessionCommandName =
   | 'reload-mcp'
   | 'reload-skills'
   | 'herdr'
+  | 'studio'
 
 export interface BridgeSessionCommandDefinition {
   key: string
@@ -125,4 +126,13 @@ export const HERDR_SESSION_COMMAND_DEFINITION: BridgeSessionCommandDefinition = 
 
 export function isHerdrSessionCommand(input: string): boolean {
   return /^\/herdr$/i.test(input.trim())
+}
+
+/** `/studio`: return a chat elevated to herdr to Studio (handled by the chat box, never sent to the agent). */
+export const STUDIO_SESSION_COMMAND_DEFINITION: BridgeSessionCommandDefinition = {
+  key: 'command:studio', name: 'studio', args: '', descriptionKey: 'herdr.studioSlashCommand',
+}
+
+export function isStudioSessionCommand(input: string): boolean {
+  return /^\/studio$/i.test(input.trim())
 }

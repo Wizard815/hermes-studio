@@ -5,6 +5,7 @@ import { reactive } from 'vue'
 
 const mocks = vi.hoisted(() => ({
   openChatInHerdr: vi.fn(async (_id: string) => undefined),
+  returnChatToStudio: vi.fn(async (_id: string) => undefined),
   superAdmin: { value: true },
 }))
 
@@ -21,7 +22,7 @@ const chat = reactive<any>({
   clearMessageReference: vi.fn(),
   setSessionReasoningEffort: vi.fn(),
 })
-const herdr = reactive({ enabled: true })
+const herdr = reactive({ enabled: true, elevated: [] as string[], isElevated(id: string) { return this.elevated.includes(id) } })
 
 vi.mock('naive-ui', async importOriginal => ({
   ...(await importOriginal<typeof import('naive-ui')>()),
@@ -39,7 +40,7 @@ vi.mock('@/api/hermes/model-context', () => ({ setModelContext: vi.fn() }))
 vi.mock('@/api/hermes/skills', () => ({ fetchSkills: vi.fn(async () => []) }))
 vi.mock('@/api/hermes/skill-bundles', () => ({ fetchSkillBundles: vi.fn(async () => []), deleteSkillBundleApi: vi.fn() }))
 vi.mock('@/api/client', () => ({ isStoredSuperAdmin: () => mocks.superAdmin.value }))
-vi.mock('@/utils/mission-url', () => ({ openChatInHerdr: mocks.openChatInHerdr }))
+vi.mock('@/utils/mission-url', () => ({ openChatInHerdr: mocks.openChatInHerdr, returnChatToStudio: mocks.returnChatToStudio }))
 vi.mock('@/api/coding-agents/herdr', () => ({}))
 vi.mock('@/api/coding-agents', () => ({}))
 vi.mock('@/api/studio/orb', () => ({}))
@@ -61,13 +62,32 @@ async function typeAndSend(text: string) {
 describe('/herdr in the chat box', () => {
   beforeEach(() => {
     mocks.openChatInHerdr.mockClear()
+    mocks.returnChatToStudio.mockClear()
+    herdr.elevated = []
     chat.sendMessage.mockClear()
     mocks.superAdmin.value = true
     herdr.enabled = true
     chat.activeSession = { id: 'chat-1', source: 'cli', title: 'Old Hermes chat', messages: [] }
   })
 
-  it('opens the chat in herdr and is not sent to the agent', async () => {
+  it('/studio returns an elevated chat to Studio and is not sent to the agent', async () => {
+    herdr.elevated = ['chat-1']
+    const wrapper = mount(ChatInput, { global: { stubs } })
+    await flushPromises()
+    const names = ((wrapper.vm as any).$.setupState.filteredBridgeCommands as { name: string; description: string }[])
+    expect(names.find(command => command.name === 'studio')?.description).toBe('herdr.studioSlashCommand')
+    await typeAndSend('/studio')
+    expect(mocks.returnChatToStudio).toHaveBeenCalledWith('chat-1')
+    expect(chat.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('/studio is not offered for a chat that is not elevated', async () => {
+    const wrapper = mount(ChatInput, { global: { stubs } })
+    await flushPromises()
+    expect((wrapper.vm as any).$.setupState.filteredBridgeCommands.some((command: { name: string }) => command.name === 'studio')).toBe(false)
+  })
+
+  it('elevates the chat to herdr and is not sent to the agent', async () => {
     const wrapper = await typeAndSend('/herdr')
     expect(mocks.openChatInHerdr).toHaveBeenCalledWith('chat-1')
     expect(chat.sendMessage).not.toHaveBeenCalled()

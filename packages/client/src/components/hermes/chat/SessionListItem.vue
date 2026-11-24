@@ -26,8 +26,8 @@ const props = withDefaults(defineProps<{
   status?: AgentDisplayStatus
   /** The chat is open in a live herdr pane. */
   herdrLinked?: boolean
-  /** The chat has no herdr space now (it sleeps there until it is opened). */
-  herdrAsleep?: boolean
+  /** The chat is elevated to herdr (it has a herdr space); every other chat is Studio-only. */
+  herdrElevated?: boolean
   selectable?: boolean
   selected?: boolean
   showProfile?: boolean
@@ -157,12 +157,11 @@ onUnmounted(() => {
             {{ session.title }}
           </span>
           <span
-            v-if="herdrAsleep"
-            class="session-item-herdr-asleep"
-            data-testid="session-herdr-asleep"
-            :title="t('herdr.asleep')"
-            :aria-label="t('herdr.asleep')"
-          >z</span>
+            v-if="herdrElevated"
+            class="session-item-herdr-elevated"
+            data-testid="session-herdr-elevated"
+            :title="t('herdr.elevatedBadgeHint')"
+          >herdr</span>
           <NTooltip v-if="profileModelsMissing" trigger="click" placement="top">
             <template #trigger>
               <button class="session-item-warning" type="button" @click.stop.prevent>
@@ -227,6 +226,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
+@use '@/styles/variables' as *;
 @use '@/styles/person-avatar' as *;
 
 .session-item {
@@ -485,13 +485,15 @@ onUnmounted(() => {
   border-radius: inherit;
 }
 
-.session-item-herdr-asleep {
+.session-item-herdr-elevated {
   flex: none;
   margin-left: 4px;
+  padding: 1px 4px;
+  border: var(--border-width, 1px) solid $border-light;
+  border-radius: 4px;
+  color: $text-muted;
   font-size: 10px;
-  font-style: italic;
-  line-height: 1;
-  opacity: 0.55;
+  line-height: 1.2;
   cursor: default;
 }
 </style>

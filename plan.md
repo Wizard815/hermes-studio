@@ -2,24 +2,34 @@
 
 Branch: `herdr-integration` (kept apart from `main` until the herdr work is finished).
 
-## Now: finish the shared Studio/herdr UI
+## Now: Studio and herdr, separate but together
 
-Goal: every chat is both a Studio chat and a herdr chat. It looks like Studio
-in Studio and like herdr in herdr.
+Goal (changed 2026-11-24): Studio and herdr are separate apps that work
+together. You start in Studio and elevate a chat to herdr when you need its
+agent in a terminal. Before this, every chat was a herdr space at once, which
+was buggy and not how the two are meant to be used.
 
 Done:
 
-- Every chat is a herdr space named after the chat, in Studio's folder order.
-- Chats whose agent is not running wait in a small pane. Press Enter there to
-  resume the agent in place (Claude, Codex, Hermes with its CLI) or to talk to
-  it through Studio (Ekko, Hermes without its CLI).
-- Studio's herdr mode is herdr's own UI. herdr's sidebar is the chat list.
-- Old chats join without any steps. After `npm run build` and a (re)started
-  Studio or container, every existing chat gets its space within about a
-  minute. This was tested with 304 old chats.
-- herdr restarts bring every chat back. If herdr's config was lost, Studio
-  sets herdr up again on its own.
-- docker-compose keeps herdr's config and sessions in the data volume.
+- New chats are Studio-only: no herdr space, no waiting pane, no process.
+- Elevate to herdr (chat header button, right-click menu, `/herdr`) makes the
+  chat's herdr space and starts its agent there. Elevated chats keep the
+  two-way sync: messages, status, approvals, run limits and folders.
+- Return to Studio (header menu, right-click menu, `/studio`) closes the space
+  and keeps the chat. A chat closed in herdr returns to Studio too, and
+  "Reopen closed chat" elevates it again.
+- The herdr page shows only elevated chats and spaces made in herdr. With
+  nothing there it explains how chats get there. Studio's top bar is hidden on
+  the herdr page (the Herdr App window look); a button or Esc shows it.
+- Old installs move over once, with herdr connected: chats with a running
+  agent stay elevated, waiting spaces close, history is not touched.
+- Sleep mode and the "days awake" setting are gone (nothing sleeps: only
+  elevated chats are in herdr).
+- A chat blocked by a run limit stays blocked after a restart until Continue
+  or Stop.
+- Studio's herdr mode can still show herdr's own UI. herdr restarts bring
+  elevated chats back. docker-compose keeps herdr's config and sessions in
+  the data volume.
 
 Open:
 
@@ -35,9 +45,8 @@ Open:
   where they are logged in; Cursor, Antigravity and Zcode can only refuse
   (not ask) until they offer a way to ask from a headless run.
 - Check approvals on a real setup with a real model.
-- Sleep mode (done): chats used in the last 7 days (setting) are awake in
-  herdr; older ones sleep with no process and wake when opened or messaged.
-  With 304 chats herdr uses about 4% CPU (all awake: 41%).
+- Sleep mode: replaced by elevated chats (only chats you elevate are in
+  herdr, so there is nothing to put to sleep).
 
 - VS Code (done): the chat header's Chat / herdr / Code switch. Code shows VS
   Code (code-server, installed by Studio into its data folder) on the chat's

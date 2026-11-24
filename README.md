@@ -46,6 +46,24 @@ one test branch, **`herdr-integration`**. `main` stays as it is until
 | `main` | Current stable build (Pondering Orb through Studio, no herdr) |
 | **`herdr-integration`** | **Test this one.** Everything in this fork + newest Ekko Studio |
 
+### How chats use herdr
+
+Studio and herdr are separate but work together. You start in Studio and
+move a chat to herdr only when you want its agent in a terminal.
+
+- **New chats are Studio-only.** They get no herdr space and no process.
+- **Elevate to herdr**: the chat header's Elevate button, *Elevate to herdr*
+  in the chat list's right-click menu, or `/herdr` in the chat box. The chat
+  gets its own herdr space and its agent starts there. Messages, status,
+  approvals, run limits and its folder stay in sync with Studio.
+- **Return to Studio**: the chat header's menu, the right-click menu, or
+  `/studio`. Its herdr space closes; the chat and its history stay.
+- **The herdr page** (Chat | herdr at the top of Chats) shows only elevated
+  chats and spaces you made in herdr itself. Studio's top bar is hidden there,
+  so it looks like the Herdr App window; the small button at the top right
+  (or Esc) brings it back.
+- Agents you start in herdr itself are elevated chats too.
+
 ### Install on a Linux machine (for example an Intel NUC)
 
 Needs Docker with the compose plugin and about 7 GB of disk.
@@ -88,6 +106,11 @@ git pull && docker compose up -d --build
 
 What happens on the first start:
 
+- **herdr chats move to the new model once** (logged as "chats are Studio-only
+  now"). Chats whose agent is running in herdr stay elevated. The waiting
+  "press Enter" spaces of all other chats close. No chat history is touched,
+  and spaces you made in herdr yourself stay. If herdr is not running yet,
+  this happens the first time Studio reaches it.
 - Chats, profiles, MCP servers and their tokens, Mattermost and herdr settings
   and scheduled jobs are kept.
 - Each profile's model settings move onto Studio's **model gateway**: profile
@@ -208,7 +231,8 @@ your own services:
 - [ ] Hermes local works with a downloaded model (if you use it)
 - [ ] Old chats, jobs and Mattermost still work as before
 - [ ] Agent work: approve one item from each of Studio, Mattermost and Orb; the Vikunja task is marked done
-- [ ] herdr: open a Hermes chat in herdr, send a message, restart the container, and check the pane is still linked
+- [ ] herdr: elevate a Hermes chat (`/herdr`), send a message, restart the container, and check the pane is still linked
+- [ ] herdr: `/studio` on that chat closes its herdr space and the chat keeps its messages
 
 Known issues on this branch:
 
