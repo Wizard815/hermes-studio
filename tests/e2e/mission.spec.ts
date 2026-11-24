@@ -30,7 +30,7 @@ async function openMission(page: Page, options: { orbUrl?: string } = {}) {
   let folders: any = { list: [], of: {}, at: 1 }
   const categories: any[] = [{ id: 5, name: 'Docs', parent_id: null, created_at: 1, updated_at: 1 }, { id: 6, name: 'site', parent_id: 5, created_at: 1, updated_at: 1 }]
   page.on('pageerror', error => errors.push(error.message))
-  await page.addInitScript(() => { localStorage.setItem('hermes_locale', 'en'); localStorage.setItem('hermes_api_key', 'test-key') })
+  await page.addInitScript(() => { localStorage.setItem('hermes_locale', 'en'); localStorage.setItem('hermes_api_key', 'test-key'); localStorage.setItem('studio_herdr_view', 'tui') })
   await page.routeWebSocket('**/socket.io/**', () => {})
   await page.route(url => url.pathname.startsWith('/api/'), route => {
     const request = route.request()
