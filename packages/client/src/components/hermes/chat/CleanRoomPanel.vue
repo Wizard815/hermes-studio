@@ -95,7 +95,7 @@ defineExpose({ toggle, expanded })
         <div class="cleanroom-section-head"><h4>{{ t('chat.cleanRoomPanel.folder') }}</h4></div>
         <template v-if="leakCount">
           <p class="cleanroom-text-warn">{{ t('chat.cleanRoomPanel.leaksHint') }}</p>
-          <ul class="cleanroom-list">
+          <ul class="cleanroom-list cleanroom-leak-list">
             <li v-for="finding in leaks.findings" :key="finding.path" class="cleanroom-item--warn">
               <span class="cleanroom-label cleanroom-code">{{ finding.path }}</span>
               <span class="cleanroom-detail">{{ t(`chat.cleanRoomPanel.kinds.${finding.kind}`) }}</span>
@@ -198,6 +198,7 @@ defineExpose({ toggle, expanded })
   li { display: grid; grid-template-columns: 56px minmax(120px, max-content) minmax(0, 1fr); gap: 8px; align-items: baseline; }
 }
 .cleanroom-egress-list { max-height: 200px; overflow: auto; }
+.cleanroom-list.cleanroom-leak-list li { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
 .cleanroom-state { font-size: 11px; color: $text-muted; }
 .cleanroom-item--pass .cleanroom-state { color: $success; }
 .cleanroom-item--warn .cleanroom-state { color: $warning; }
@@ -209,5 +210,7 @@ defineExpose({ toggle, expanded })
   .cleanroom-panel { margin: 6px 8px 0; }
   .cleanroom-list li { grid-template-columns: 52px minmax(0, 1fr); }
   .cleanroom-list li .cleanroom-detail { grid-column: 2; }
+  .cleanroom-list.cleanroom-leak-list li { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
+  .cleanroom-list.cleanroom-leak-list li .cleanroom-detail { grid-column: auto; }
 }
 </style>
