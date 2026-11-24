@@ -17,6 +17,8 @@ export interface HermesPluginInfo {
   providesTools: string[]
   providesHooks: string[]
   requiresEnv: Array<string | Record<string, unknown>>
+  /** Required env names not set for this profile (empty when all are set). */
+  missingEnv?: string[]
 }
 
 export interface HermesPluginsMetadata {
@@ -24,6 +26,7 @@ export interface HermesPluginsMetadata {
   pythonExecutable: string
   cwd: string
   projectPluginsEnabled: boolean
+  envFile?: string
 }
 
 export interface HermesPluginsResponse {
@@ -41,3 +44,29 @@ export async function setPluginEnabled(key: string, enabled: boolean): Promise<{
     method: 'POST',
   })
 }
+
+export interface RecommendedPluginsInfo {
+  /** Catalog names of the official plugins Studio installs and enables once per profile. */
+  plugins: string[]
+  autoInstall: boolean
+  disabledByEnv: boolean
+  env: string
+  envFile: string
+  /** Name of the MCP server added for mcp-serve (MCP page). */
+  mcpServerName: string
+  profile: {
+    done: Record<string, { outcome: string; at: string; missingEnv?: string[] }>
+    lastFailure?: Record<string, { at: string; error: string; attempts: number }>
+    mcpServer?: { outcome: 'added' | 'already-present'; at: string }
+  } | null
+}
+
+/** Whether a plugin (by key or name) is one Studio recommends. */
+export function isRecommendedPlugin(recommended: readonly string[], ...names: Array<string | null | undefined>): boolean {
+  return names.some(name => !!name && recommended.includes(name))
+}
+
+export const fetchRecommendedPlugins = () => request<RecommendedPluginsInfo>('/api/hermes/plugins/recommended')
+
+export const setRecommendedAutoInstall = (autoInstall: boolean) =>
+  request<{ autoInstall: boolean; disabledByEnv: boolean }>('/api/hermes/plugins/recommended', { method: 'PUT', body: JSON.stringify({ autoInstall }) })

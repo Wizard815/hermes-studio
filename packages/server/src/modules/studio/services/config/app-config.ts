@@ -84,6 +84,11 @@ export interface AppConfig {
   // Disabled by default; users must explicitly enable it. This is a
   // Web UI-level setting, not the active Hermes profile's config.yaml.
   gatewayAutoStart?: GatewayAutoStartConfig
+
+  // Install and enable the recommended official Hermes plugins once per
+  // profile (on unless explicitly false; STUDIO_RECOMMENDED_HERMES_PLUGINS=0
+  // also turns it off).
+  recommendedHermesPlugins?: boolean
 }
 
 let cache: AppConfig | null = null

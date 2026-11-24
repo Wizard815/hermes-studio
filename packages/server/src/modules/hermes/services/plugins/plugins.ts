@@ -4,6 +4,7 @@ import { join } from 'path'
 import { getActiveProfileDir, getHermesBaseDir, getProfileDir } from '../profiles/profile'
 import { resolveAgentBridgeCommand } from '../bridge/manager'
 import { safeFileStore } from '../../../studio/public/safe-file-store'
+import { missingEnvFor, requiredEnvNames } from './plugin-env'
 
 const execFileAsync = promisify(execFile)
 
@@ -26,6 +27,8 @@ export interface HermesPluginInfo {
   providesTools: string[]
   providesHooks: string[]
   requiresEnv: Array<string | Record<string, unknown>>
+  /** Required env names set neither in the profile's .env nor in Studio's environment. */
+  missingEnv?: string[]
 }
 
 export interface HermesPluginsMetadata {
@@ -33,6 +36,8 @@ export interface HermesPluginsMetadata {
   pythonExecutable: string
   cwd: string
   projectPluginsEnabled: boolean
+  /** The profile's .env file, where required plugin keys go. */
+  envFile?: string
 }
 
 export interface HermesPluginsResponse {
@@ -330,6 +335,10 @@ export async function listHermesPlugins(profile?: string): Promise<HermesPlugins
     if (stderr?.trim()) {
       parsed.warnings = [...(parsed.warnings || []), stderr.trim()]
     }
+    for (const plugin of parsed.plugins || []) {
+      plugin.missingEnv = missingEnvFor(hermesHome, requiredEnvNames(plugin.requiresEnv))
+    }
+    if (parsed.metadata) parsed.metadata.envFile = join(hermesHome, '.env')
     return parsed
   } catch (err: any) {
     errors.push(`${command.command} ${displayArgs}: ${extractError(err)}`)

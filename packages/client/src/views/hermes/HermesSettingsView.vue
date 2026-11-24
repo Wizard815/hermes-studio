@@ -7,6 +7,7 @@ import { NTabPane, NTabs } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import AgentSettings from '@/components/hermes/settings/AgentSettings.vue'
 import GatewayAutoStartSettings from '@/components/hermes/settings/GatewayAutoStartSettings.vue'
+import RecommendedPluginsSettings from '@/components/hermes/settings/RecommendedPluginsSettings.vue'
 import MemorySettings from '@/components/hermes/settings/MemorySettings.vue'
 import SessionSettings from '@/components/hermes/settings/SessionSettings.vue'
 import HermesToolsetsSettings from '@/components/hermes/settings/HermesToolsetsSettings.vue'
@@ -77,6 +78,7 @@ onMounted(() => {
           <NTabPane name="agent" :tab="t('settings.tabs.agent')">
             <AgentSettings />
             <GatewayAutoStartSettings />
+            <RecommendedPluginsSettings v-if="canUseHermesAgent" />
           </NTabPane>
           <NTabPane name="memory" :tab="t('settings.tabs.memory')">
             <MemorySettings />

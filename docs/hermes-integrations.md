@@ -20,10 +20,99 @@ error messages that say "in the dashboard" say "in Studio".
 | Memory | Memory provider picker (Honcho, Mem0, RetainDB, ByteRover, … and any future provider), its settings and setup |
 | Skills | Skill hub (browse, preview, install, uninstall), curator card, skill lock |
 | MCP | "Your home" (Home Assistant, Unraid) short forms, then the catalog of curated servers with one-click install and OAuth sign-in |
-| Plugins | Plugin hub (browse, install, update, update all, uninstall, auto-update, install from Git) |
+| Plugins | Plugin hub (browse, install, update, update all, uninstall, auto-update, install from Git), [recommended plugins](#recommended-plugins) |
 | Settings (Hermes) | Tools (toolsets and their keys/models), Terminal (local, docker, SSH, …), Subagents (delegation), Maintenance (doctor, security audit, backup/restore, checkpoints, hooks, version) |
 | Jobs | Create a job from Hermes's templates |
 | Models | Local models (llama.cpp: hardware, catalog, Hugging Face, downloads, activate/eject), API key pools, sign-ins Studio has no window for |
+
+## Recommended plugins
+
+Studio installs and enables eight Hermes plugins once per Hermes profile, about 30 seconds
+after it starts (`STUDIO_RECOMMENDED_HERMES_PLUGINS_DELAY_MS`) and when a profile is created.
+They come from Hermes's own plugin catalog by name, so Hermes installs the commit the
+catalog pins, the same as the Install button on the Plugins page. They carry a
+"Recommended" badge on the Plugins page (Installed and Browse tabs).
+
+| Plugin | What it adds | What it needs before it does anything |
+|---|---|---|
+| agent-importers | `hermes import-agent` (OpenClaw, Claude Code, Codex, Cursor) | Nothing; Studio does not run an import. Run `hermes import-agent claude --dry-run` in a terminal yourself |
+| homeassistant | Home Assistant platform and the `ha_*` tools | `HASS_TOKEN` (and `HASS_URL`) in the profile's `.env` |
+| langfuse | A Langfuse trace per turn, LLM call and tool call | `HERMES_LANGFUSE_PUBLIC_KEY` and `HERMES_LANGFUSE_SECRET_KEY` (and `HERMES_LANGFUSE_BASE_URL` for your own server) |
+| mcp-serve | `hermes mcp-serve`: Hermes's messaging chats as an MCP server | Nothing (see below) |
+| bubblewrap | The `bubblewrap` terminal backend (Linux only) | Not used until you pick it in **Hermes Settings → Terminal → Backend**. Docker on Unraid may block `bwrap` (user namespaces); test a command there before you keep it |
+| rea | REA's reverse-engineering MCP server (`npx rea-agents@6.7.0 mcp`) and two skills | Node.js 22.19+ on the Hermes host; npx downloads the package on first use. Ghidra/IDA/Hopper are your own installs |
+| print3d | Idea or photo to a sliced Bambu Studio `.3mf` (community plugin) | Blender 4.2+ and `uv` on the Hermes host (Hermes refuses the install without Blender), Bambu Studio to slice. Blender runs the Python the agent writes, outside Hermes's terminal sandbox; Hermes asks before each such tool |
+| gadget | Hermes Gadget (Adolanium/hermes-gadget-sdk, community): a `gadget` gateway platform for ESP32 devices such as D.A.S.H, the `gadget_*` tools and `hermes gadget` | Hermes 0.21.6+. A device to pair (`hermes gadget pair`); see [Hermes Gadget](#hermes-gadget-dash) |
+
+Studio only enables them: it sets no keys, does not switch the terminal backend and does
+not run an import. When an installed plugin's `requires_env` keys are not set, its row on
+the Plugins page says which keys and that they go in the profile's `.env` file (the path is
+shown), followed by a gateway restart.
+
+**Once means once.** What Studio did is kept per profile in
+`<HERMES_WEB_UI_HOME>/recommended-hermes-plugins.json`. A plugin that is done is never
+touched again, so one you disable or uninstall later stays that way. A plugin that was
+already installed and disabled before Studio got to it is left disabled. A plugin whose
+catalog `platforms` excludes this machine (bubblewrap off Linux) is skipped for good.
+
+**Disk.** Hermes 0.23 gives plugins with Python dependencies (homeassistant, langfuse)
+their own dependency environment under `<HERMES_HOME>/installs/` plus a uv cache under
+`<HERMES_HOME>/cache/uv`: plan on about 1-1.5 GB free in the Hermes data folder. With the
+disk full, Hermes's own install state can end up half written; `hermes pm repair` fixes it.
+
+**Failures are retried.** If the catalog cannot be reached (offline), a plugin needs a
+newer Hermes than this one (`requires_hermes`), or Hermes refuses the install (print3d
+without Blender), Studio logs one `[recommended-plugins]` warning, shows "not installed yet"
+on the Plugins page and tries again on its next start. It never blocks startup or a chat.
+
+**mcp-serve on the MCP page.** Once mcp-serve is installed, Studio adds one stdio MCP
+server named `hermes-chats` to the profile (`hermes [-p <profile>] mcp-serve`), with only
+its read tools on (`conversations_list`, `conversation_get`, `messages_read`,
+`attachments_fetch`, `events_poll`, `events_wait`, `channels_list`,
+`permissions_list_open`). `messages_send` (sends as your connected accounts) and
+`permissions_respond` stay off until you allow them under the server's tools on the MCP
+page. Studio adds it once: remove it and it stays removed. A coding agent reads Hermes's
+chats the same way: add a stdio server with that command under **Coding agents → MCP**.
+
+**The gadget platform, once.** After gadget is installed, Studio sets
+`platforms.gadget.enabled: true` in the profile's `config.yaml` (as `hermes gateway setup`
+does), with `extra.host` / `extra.port` from `STUDIO_GADGET_HOST` / `STUDIO_GADGET_PORT`
+when set. A platform that is already set on or off is left alone, and Studio never sets
+it again, so switching it off stays off. The gateway listens after its next start.
+
+**Turning it off.** **Hermes Settings → Agent → Recommended Hermes plugins → Install on
+startup** (super administrators), or `STUDIO_RECOMMENDED_HERMES_PLUGINS=0` on the server
+(the switch then shows as off and cannot be turned on). Turning it off installs nothing
+more; plugins already installed stay. Turning the switch back on runs the install for
+whatever is not done yet.
+
+## Hermes Gadget (D.A.S.H)
+
+D.A.S.H and other Hermes Gadget devices talk to Hermes
+through the Gadget plugin's WebSocket, protocol `hermes-gadget.v1`, on
+`ws://<host>:8765/gadget`. The same device can also follow Studio's own agent activity:
+it connects to Studio's Socket.IO namespace `/global-agent` and sends
+`mcu.events.subscribe` (see [MCU webhook events](mcu-webhook-events.md)). The two links
+are separate: Gadget runs inside the Hermes gateway, `/global-agent` inside Studio, so
+turning Gadget on changes nothing on Studio's side. A device connects to `/global-agent`
+with `auth: { token: <Studio login JWT>, profile, role: 'agent' }`; without `role: 'agent'`
+the connection is treated as a browser and `mcu.events.subscribe` gets no answer.
+
+- **Status:** **Connections → MCU devices → Hermes Gadget** shows whether the plugin and
+  platform are on, whether the gateway listens (the plugin's `status.json` is fresh), the
+  connected devices (from `plugin-data/gadget/`; device keys are never read out) and
+  Hermes's own error for the platform, if any. **Restart gateway** applies a change.
+- **Bind address and port:** the same panel (super administrators) writes
+  `platforms.gadget.extra.host` and `.port`. Defaults: `0.0.0.0` and `8765`, or
+  `STUDIO_GADGET_HOST` / `STUDIO_GADGET_PORT` the first time Studio turns the platform on.
+- **Docker:** `docker-compose.yml` publishes `${STUDIO_GADGET_PUBLISH:-8765}` to the
+  container's 8765 and the Dockerfile `EXPOSE`s 8765. Keep `0.0.0.0` inside the container
+  and publish on one LAN address (`STUDIO_GADGET_PUBLISH=192.168.1.20:8765`); see
+  [Docker](docker.md#hermes-gadget-devices-such-as-dash).
+- **Safety:** plain `ws://` unless `tls_cert`/`tls_key` are set in the platform's
+  `extra`; new devices need a pairing code. Never set `GADGET_ALLOW_ALL_USERS` outside
+  development. A paired device can answer command approvals (allow once / deny) for its
+  own chat.
 
 ## Your home: Home Assistant and Unraid
 
