@@ -29,7 +29,7 @@ export function checkGatewayRunLimits(input: GatewayRequestInput): GatewayRefusa
   return service?.checkGatewayRequest(input) ?? null
 }
 
-export function observeGatewayRunUsage(input: { sessionId?: string; provider?: string; model?: string; usage: GatewayUsage }): void {
+export function observeGatewayRunUsage(input: { sessionId?: string; profile?: string; provider?: string; model?: string; usage: GatewayUsage }): void {
   service?.observeGatewayUsage(input)
 }
 

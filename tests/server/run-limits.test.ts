@@ -7,6 +7,7 @@ import { LoopDetector, detectLoopInCalls } from '../../packages/server/src/modul
 import { readGatewayTurn } from '../../packages/server/src/modules/studio/services/run-limits/gateway-history'
 import { RunLimitSettingsStore } from '../../packages/server/src/modules/studio/services/run-limits/settings'
 import { RunLimitService, describeHit } from '../../packages/server/src/modules/studio/services/run-limits/service'
+import { priceGatewayRunUsage } from '../../packages/server/src/modules/studio/services/run-limits/pricing'
 
 let dir = ''
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'run-limits-')) })
@@ -225,5 +226,20 @@ describe('run limit service', () => {
   it('describes a failing-call loop', () => {
     expect(describeHit({ kind: 'loop', limit: 5, value: 5, failing: true, detail: 'shell({"cmd":"npm test"})', via: 'run', at: 0, suggested: 10 }))
       .toContain('the same call failed 5 times in a row')
+  })
+})
+
+describe('gateway run pricing', () => {
+  const usage = { inputTokens: 40_000, outputTokens: 2_000, cacheReadTokens: 0, cacheWriteTokens: 0 }
+
+  it('uses the manual price for the exact provider and model, like recorded usage', () => {
+    const rates = [{ provider: 'custom:stub', model: 'stub-model', input: 3, output: 15 }]
+    expect(priceGatewayRunUsage({ provider: 'custom:stub', model: 'stub-model', usage }, rates, undefined)).toBeCloseTo(0.15, 6)
+  })
+
+  it('has no price when neither a manual price nor the catalog knows the model', () => {
+    const rates = [{ provider: 'custom:other', model: 'stub-model', input: 3, output: 15 }]
+    expect(priceGatewayRunUsage({ provider: 'custom:stub', model: 'stub-model', usage }, rates, undefined)).toBeUndefined()
+    expect(priceGatewayRunUsage({ provider: 'custom:stub', usage }, rates, undefined)).toBeUndefined()
   })
 })

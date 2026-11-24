@@ -15,6 +15,6 @@ export function reportRunLimitUsage(target: AgentTargetInput, event: CanonicalRe
     if (!final?.usage) return
     const usage = normalizeTokenUsage(final.usage, {}, { inputIncludesCache: target.apiMode !== 'anthropic_messages' })
     if (usage.isEstimated) return
-    observeGatewayRunUsage({ sessionId: target.chatSessionId, provider: target.provider, model: final.model || target.model, usage })
+    observeGatewayRunUsage({ sessionId: target.chatSessionId, profile: target.profile, provider: target.provider, model: target.model || final.model, usage })
   } catch { /* limits never break the response */ }
 }

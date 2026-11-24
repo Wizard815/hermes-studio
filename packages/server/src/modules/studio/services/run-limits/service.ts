@@ -30,7 +30,7 @@ export interface RunLimitDeps {
   /** Optional alert (Mattermost, when Agent work's channel is set). */
   alert?: (sessionId: string, text: string, hit: RunLimitHit) => Promise<void> | void
   /** Price of a gateway call an agent outside Studio's runs made (undefined when the model has no known price). */
-  priceGatewayUsage?: (input: { provider?: string; model?: string; usage: GatewayUsage }) => number | undefined
+  priceGatewayUsage?: (input: { profile?: string; provider?: string; model?: string; usage: GatewayUsage }) => number | undefined
   onError?: (what: string, error: unknown) => void
   now?: () => number
 }
@@ -196,7 +196,7 @@ export class RunLimitService {
   }
 
   /** A response that passed through the gateway for an agent outside Studio's runs (a herdr pane). */
-  observeGatewayUsage(input: { sessionId?: string; provider?: string; model?: string; usage: GatewayUsage }) {
+  observeGatewayUsage(input: { sessionId?: string; profile?: string; provider?: string; model?: string; usage: GatewayUsage }) {
     if (!input.sessionId) return
     try {
       const run = this.tracker.get(input.sessionId)

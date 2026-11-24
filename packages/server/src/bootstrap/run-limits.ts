@@ -5,7 +5,8 @@ import { getChatRunServer } from '../modules/studio/public/chat-run'
 import { getSessionLimitHit, onSessionListChanged, setSessionLimitHit, onSessionLimitHitChanged } from '../modules/studio/public/session-status'
 import { onSessionUsageRecorded } from '../modules/studio/public/usage'
 import { getModelCatalogSnapshot } from '../modules/studio/public/model-catalog'
-import { estimateCatalogUsageCost } from '../modules/studio/services/usage/catalog-pricing'
+import { priceGatewayRunUsage } from '../modules/studio/services/run-limits/pricing'
+import { getUsagePricing } from '../modules/studio/repositories/usage-pricing-store'
 import { getSession } from '../modules/studio/repositories/session-store'
 import { closeRunLimits, configureRunLimits, RunLimitSettingsStore } from '../modules/studio/services/run-limits'
 import { getAgentWork } from '../modules/studio/services/agent-work'
@@ -33,9 +34,7 @@ export function startRunLimits(): { close: () => void } {
       const title = getSession(sessionId)?.title?.trim() || `Chat ${sessionId.slice(0, 8)}`
       await agentWork.alertBlocked(title, text)
     },
-    priceGatewayUsage: ({ provider, model, usage }) => model
-      ? estimateCatalogUsageCost(getModelCatalogSnapshot(), provider || '', model, usage, 'model_call', 1)?.costUsd
-      : undefined,
+    priceGatewayUsage: input => priceGatewayRunUsage(input, getUsagePricing(input.profile || 'default'), getModelCatalogSnapshot()),
     onError: (what, error) => logger.warn({ err: error }, '[run-limits] %s failed', what),
   })
   const stops = [
