@@ -38,6 +38,12 @@ describe('clean rooms', () => {
     expect(studioPathAllowed('/api/claude-code-proxy/abc/v1/messages')).toBe(true)
     expect(studioPathAllowed('/api/auth/status')).toBe(false)
     expect(studioPathAllowed('/api/codex-proxy/../terminals')).toBe(false)
+    expect(studioPathAllowed('/api/ekko-studio/models/v1/messages?beta=true')).toBe(true)
+    expect(studioPathAllowed('/api/ekko-studio/models/v1/responses')).toBe(true)
+    expect(studioPathAllowed('/api/ekko-studio/models/v1/models')).toBe(true)
+    expect(studioPathAllowed('/api/ekko-studio/models/v1beta/models/gemini-pro:streamGenerateContent')).toBe(true)
+    expect(studioPathAllowed('/api/ekko-studio/models/admin')).toBe(false)
+    expect(studioPathAllowed('/api/ekko-studio/models/v1/%2e%2e/x')).toBe(false)
     const settings = { network: 'allowlist' as const, allowHosts: ['registry.npmjs.org', 'github.com'] }
     expect(hostAllowed('registry.npmjs.org', settings)).toBe(true)
     expect(hostAllowed('codeload.github.com', settings)).toBe(true)

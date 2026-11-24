@@ -74,6 +74,7 @@ import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vu
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
 import VsCodeCenter from "./VsCodeCenter.vue";
 import ScreenCenter from "./ScreenCenter.vue";
+import CleanRoomPanel from "./CleanRoomPanel.vue";
 import ListActionsMenu from "@/components/layout/ListActionsMenu.vue";
 import OutlinePanel from "./OutlinePanel.vue";
 import ChatToolsPanel from "./ChatToolsPanel.vue";
@@ -2732,6 +2733,7 @@ watch([isEmptySingleChat, () => route.fullPath], ([empty]) => {
 
 /** A clean-room chat runs its coding agent in its own container (shown next to the title). */
 const cleanRoom = ref(false)
+const cleanRoomPanelRef = ref<{ toggle: () => void } | null>(null)
 watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.messages?.length || 0}`, async (_key, previous) => {
   const id = chatStore.activeSession?.id || ''
   if (!id) { cleanRoom.value = false; return }
@@ -3278,7 +3280,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           />
           <span class="header-session-title" dir="auto">{{ headerTitle }}</span>
           <NTooltip v-if="cleanRoom" trigger="hover">
-            <template #trigger><span class="header-cleanroom-badge" data-testid="chat-cleanroom-badge">{{ t('chat.cleanRoom') }}</span></template>
+            <template #trigger><button type="button" class="header-cleanroom-badge" data-testid="chat-cleanroom-badge" @click="cleanRoomPanelRef?.toggle()">{{ t('chat.cleanRoom') }}</button></template>
             {{ t('chat.cleanRoomHint') }}
           </NTooltip>
           <NTooltip v-if="upstreamTask" trigger="hover">
@@ -3506,6 +3508,13 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               v-show="showScreenCenter"
               class="code-center"
               :active="showScreenCenter"
+            />
+            <CleanRoomPanel
+              v-if="cleanRoom && chatStore.activeSessionId && !showSplitCenter"
+              v-show="!showHerdrCenter"
+              ref="cleanRoomPanelRef"
+              :session-id="chatStore.activeSessionId"
+              :can-rerun="isSuperAdmin"
             />
             <MessageList
               v-show="!showHerdrCenter"
@@ -4065,6 +4074,10 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
 
 .header-cleanroom-badge {
   margin-inline-start: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 11px;

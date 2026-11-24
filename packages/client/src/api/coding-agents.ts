@@ -283,3 +283,21 @@ export function setAgentAutoUpdate(id: CodingAgentId, autoUpdate: boolean) { ret
 
 /** Whether a chat is a clean room (its coding agent runs in its own container). */
 export function getCleanRoomStatus(sessionId: string) { return request<{ cleanRoom: boolean; container: string | null }>(`/api/coding-agents/cleanroom/sessions/${encodeURIComponent(sessionId)}`) }
+
+export type CleanRoomCheckState = 'pass' | 'warn' | 'fail' | 'info'
+export interface CleanRoomCheckItem { id: string; state: CleanRoomCheckState; detail: string }
+/** What the room's self-check saw from inside (names only, never values). */
+export interface CleanRoomSelfCheck { at: string; container: string; state: 'pass' | 'warn' | 'fail'; checks: CleanRoomCheckItem[]; error?: string }
+export type CleanRoomLeakKind = 'env' | 'ssh-key' | 'private-key' | 'credentials' | 'token-config' | 'keystore'
+/** Files in the chat's folder that may hold secrets (names only), found before the folder was mounted. */
+export interface CleanRoomLeakReport { at: string; workspace: string; findings: Array<{ path: string; kind: CleanRoomLeakKind }>; truncated: boolean; scanned: number }
+export interface CleanRoomEgressEntry { time: string; host: string; port: number; allowed: boolean; reason?: string; hash?: string }
+export interface CleanRoomEgress { entries: CleanRoomEgressEntry[]; chain: { ok: boolean; lines: number; chained: number; brokenAt?: number } }
+
+const cleanRoomPath = (sessionId: string, tail: string) => `/api/coding-agents/cleanroom/sessions/${encodeURIComponent(sessionId)}/${tail}`
+/** The room's last self-check and leak check. */
+export function getCleanRoomCheck(sessionId: string) { return request<{ selfCheck: CleanRoomSelfCheck | null; leaks: CleanRoomLeakReport | null }>(cleanRoomPath(sessionId, 'check')) }
+/** Run the self-check again in the room's running container. */
+export function rerunCleanRoomCheck(sessionId: string) { return request<{ selfCheck: CleanRoomSelfCheck }>(cleanRoomPath(sessionId, 'check'), { method: 'POST' }) }
+/** The room's outside connection attempts, newest last. */
+export function getCleanRoomEgress(sessionId: string, limit = 200) { return request<CleanRoomEgress>(`${cleanRoomPath(sessionId, 'egress')}?limit=${limit}`) }

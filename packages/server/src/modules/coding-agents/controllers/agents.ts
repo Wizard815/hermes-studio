@@ -1,7 +1,7 @@
 import { getAgentUpdateManager, checkAgentUpdateAndPublish, installAgentAndPublish } from '../services/update-manager'
 import type { Context } from 'koa'
 import { readAgentApprovalSettings, writeAgentApprovalSettings } from '../services/approvals'
-import { containerName, isCleanRoom, readCleanRoomSettings, removeCleanRoomContainer, writeCleanRoomSettings } from '../services/cleanroom'
+import { containerName, isCleanRoom, readCleanRoomEgress, readCleanRoomSettings, readCleanRoomState, removeCleanRoomContainer, runCleanRoomSelfCheck, writeCleanRoomSettings } from '../services/cleanroom'
 import { enterCleanRoom } from '../services/session-command'
 import {
   deleteCodingAgent,
@@ -293,6 +293,34 @@ export async function startCleanRoom(ctx: Context) {
     ctx.status = err?.status || 500
     ctx.body = { error: err?.message || 'Failed to make a clean room' }
   }
+}
+
+/** The room's last self-check (what the agent sees from inside) and leak check (secret-looking files in its folder). */
+export async function cleanRoomReport(ctx: Context) {
+  const sessionId = String(ctx.params.sessionId || '')
+  if (!isCleanRoom(sessionId)) { ctx.status = 404; ctx.body = { error: 'Not a clean room' }; return }
+  const { selfCheck = null, leaks = null } = readCleanRoomState(sessionId)
+  ctx.body = { selfCheck, leaks }
+}
+
+/** Run the self-check again in the room's running container. */
+export async function rerunCleanRoomCheck(ctx: Context) {
+  const sessionId = String(ctx.params.sessionId || '')
+  if (!isCleanRoom(sessionId)) { ctx.status = 404; ctx.body = { error: 'Not a clean room' }; return }
+  try {
+    ctx.body = { selfCheck: await runCleanRoomSelfCheck(sessionId) }
+  } catch (err: any) {
+    ctx.status = err?.status || 500
+    ctx.body = { error: err?.message || 'Self-check failed' }
+  }
+}
+
+/** The room's outside connection attempts (newest last) and whether the hash chain holds. */
+export async function cleanRoomEgress(ctx: Context) {
+  const sessionId = String(ctx.params.sessionId || '')
+  if (!isCleanRoom(sessionId)) { ctx.status = 404; ctx.body = { error: 'Not a clean room' }; return }
+  const limit = Math.max(1, Math.min(1000, Number(ctx.query.limit) || 200))
+  ctx.body = readCleanRoomEgress(sessionId, limit)
 }
 
 /** Throw away the chat's container (the next turn starts a fresh one; the chat's folder stays). */
