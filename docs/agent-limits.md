@@ -20,9 +20,10 @@ gateway. The idea comes from [Hermeskill](planning/ideas/hermeskill.md)
   - `/limits off` turns every limit off for this chat (yolo), `/limits reset` follows Settings
 - **When a limit is hit:** the run stops the way Stop stops it for that chat
   type; the chat gets a line saying which limit and the numbers (a command
-  result, so it never reaches the model); the chat shows **blocked** in the
-  chat list, the Inbox (Command Center, which lists blocked chats) and herdr
-  (its pane reports `blocked`); a card above the composer offers **Continue
+  result, so it never reaches the model); the chat shows **blocked** (×) in
+  the chat list and in every view that reads the chat's state
+  (`SessionListState.blocked`, which an Inbox of blocked chats uses too), and
+  in herdr (its linked pane reports `blocked`); a card above the composer offers **Continue
   with a higher limit** (double the limit, saved as the chat's own) and **Stop**.
   Continue sends "Continue where you left off." to the agent the usual way for
   that chat (Studio run, or its herdr pane). Sending any new message also
@@ -81,6 +82,31 @@ block. They end after 15 minutes without a request.
   agents started in herdr without a Studio chat have no chat to limit.
 - Hits are kept in memory: after a restart the chat is not blocked any more,
   but its own limits (the file) stay.
+- The limit is checked after each model call or tool event, so a run can go
+  one call past it (the token limit in a run of 42k-token calls stops at 126k
+  for a 100k limit). The time limit is checked every 5 seconds.
+- A gateway-only run counts cost with the Usage page's manual price for the
+  exact provider and model, then the models.dev catalog, like recorded usage.
+
+## Live test with a stub model
+
+No paid calls: point a test Studio's Hermes config at a local
+OpenAI-compatible stub that answers with a tool call. The same call with `{}`
+each time trips the loop detector; big `usage` numbers trip tokens and cost
+(set a manual price on the Usage page); a 4 s delay per answer trips a time
+limit of `0.2` minutes. A coding agent outside Studio's runs (as in a herdr
+pane) can be tried with `claude -p … --settings <run settings.json>` from
+`HERMES_WEB_UI_HOME/providers/…/claude-code/runs/`: the agent prints
+`API Error: 400 Run stopped by Studio: …` and ends its turn.
+
+What goes wrong when setting it up:
+
+- Hermes Agent's dependencies are pinned for Python 3.14 only; a 3.13 venv
+  installs none and the bridge fails with `No module named 'dotenv'`.
+- The bridge socket defaults to `/tmp/hermes-agent-bridge.sock`, shared by
+  every Studio on the machine; set `HERMES_AGENT_BRIDGE_ENDPOINT` per test
+  Studio. If the bridge starts without `--agent-root`, link the Hermes Agent
+  source to `<HERMES_HOME>/hermes-agent`.
 
 ## Tests
 

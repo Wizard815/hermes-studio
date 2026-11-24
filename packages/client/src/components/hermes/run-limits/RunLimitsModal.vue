@@ -171,7 +171,7 @@ function followSettings() {
 }
 
 .run-limits-modal__input {
-  width: 160px;
+  width: 200px;
 }
 
 .run-limits-modal__run {

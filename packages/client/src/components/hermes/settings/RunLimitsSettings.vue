@@ -126,11 +126,11 @@ const LABEL: Record<RunLimitKind, string> = { cost: 'cost', tokens: 'tokens', ti
 }
 
 .run-limit-input {
-  width: 170px;
+  width: 200px;
 }
 
 .run-limit-off {
-  min-width: 170px;
+  min-width: 200px;
   color: $text-muted;
   font-size: 13px;
 }
@@ -138,8 +138,8 @@ const LABEL: Record<RunLimitKind, string> = { cost: 'cost', tokens: 'tokens', ti
 @media (max-width: 640px) {
   .run-limit-input,
   .run-limit-off {
-    width: 140px;
-    min-width: 140px;
+    width: 170px;
+    min-width: 170px;
   }
 }
 </style>
