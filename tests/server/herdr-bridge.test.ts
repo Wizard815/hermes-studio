@@ -520,6 +520,12 @@ describe('herdr bridge', () => {
     expect(bridge!.isElevated('a')).toBe(false)
     expect(herdr.requests.filter(r => r.method === 'workspace.create')).toHaveLength(1)
     expect(bridge!.closedChats().flatMap(entry => entry.chats.map(chat => chat.sessionId))).toEqual(['a'])
+    // Reopen closed chat elevates it again, in a new space.
+    const result = await bridge!.reopenClosed()
+    expect(result.reopened.map(chat => chat.sessionId)).toEqual(['a'])
+    expect(bridge!.isElevated('a')).toBe(true)
+    expect(herdr.requests.filter(r => r.method === 'workspace.create')).toHaveLength(2)
+    expect(bridge!.hasChatSpace('a')).toBe(true)
   })
 
   it('moves an old install over once: live agents stay, waiting spaces close, history and herdr-only spaces are untouched', async () => {

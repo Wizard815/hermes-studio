@@ -237,6 +237,9 @@ const showHerdrCenter = computed(() => centerMode.value === 'herdr' && herdrCent
  */
 const herdrTopBarShown = ref((() => { try { return localStorage.getItem('studio_herdr_topbar') === 'shown' } catch { return false } })())
 const herdrTopBarHidden = computed(() => showHerdrCenter.value && !isMobile.value && !herdrTopBarShown.value)
+// The shell's header row (App.vue) goes too; see global.scss.
+watch(herdrTopBarHidden, hidden => { document.body.classList.toggle('herdr-topbar-hidden', hidden) }, { immediate: true })
+onUnmounted(() => document.body.classList.remove('herdr-topbar-hidden'))
 function setHerdrTopBar(shown: boolean) {
   herdrTopBarShown.value = shown
   try { localStorage.setItem('studio_herdr_topbar', shown ? 'shown' : 'hidden') } catch { /* private mode */ }

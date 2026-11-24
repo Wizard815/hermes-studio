@@ -1248,6 +1248,13 @@ export class HerdrBridge {
   /** Elevate a chat: it is in herdr from now on (until it returns to Studio, is closed there or goes away). */
   private async markElevated(sessionId: string): Promise<void> {
     this.returning.delete(sessionId)
+    // A space of this chat that herdr no longer has (closed there): forget it, so the
+    // chat gets a new space instead of counting as "closed in herdr" again.
+    const stale = this.persisted.chatSpaces?.[sessionId]
+    if (stale && !this.recentChatSpaces.has(stale.workspaceId) && !this.snapshot.workspaces.some(space => space.workspace_id === stale.workspaceId)) {
+      delete this.persisted.chatSpaces![sessionId]
+      await this.savePersisted()
+    }
     if (this.persisted.elevatedChats?.[sessionId] != null) return
     this.persisted.elevatedChats = { ...(this.persisted.elevatedChats || {}), [sessionId]: Date.now() }
     await this.savePersisted()
