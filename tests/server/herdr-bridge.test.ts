@@ -82,6 +82,17 @@ class FakeHerdr {
       case 'pane.report_agent':
       case 'pane.report_agent_session':
         return reply({ type: 'ok' })
+      case 'workspace.close':
+        this.workspaces = this.workspaces.filter(w => w.workspace_id !== request.params.workspace_id)
+        this.panes = this.panes.filter(p => p.workspace_id !== request.params.workspace_id)
+        return reply({ type: 'ok' })
+      case 'pane.close':
+        this.panes = this.panes.filter(p => p.pane_id !== request.params.pane_id)
+        return reply({ type: 'ok' })
+      case 'workspace.rename':
+      case 'workspace.move_block':
+      case 'pane.rename':
+        return reply({ type: 'ok' })
       case 'pane.process_info':
         return reply({ type: 'pane_process_info', process_info: { foreground_processes: this.processes[request.params.pane_id] ?? [] } })
       default:
@@ -429,54 +440,151 @@ describe('herdr bridge', () => {
     const chats = ['a', 'b', 'c'].map(id => ({ id, title: `Chat ${id}`, folderPath: [], agent: 'claude-code', hostable: true, workspace: dir, lastActive: Date.now() }))
     deps.listChatSpaces = async () => chats
     deps.chatPane = async () => ({ script: join(dir, 'studio-chat.sh'), env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
-    await startBridge(deps, { ...DEFAULT_HERDR_SETTINGS, chatSpaces: true } as any)
+    await startBridge(deps)
+    ;(bridge as any).persisted.elevatedChats = { a: 1, b: 1, c: 1 }
     const sync = () => (bridge as any).runChatSync()
     await sync()
     await sync()
-    await Promise.all([sync(), bridge!.wakeChat('a')])
+    await Promise.all([sync(), bridge!.elevateChat('a')])
     expect(herdr.requests.filter(r => r.method === 'workspace.create')).toHaveLength(3)
   })
 
-  it('keeps a chat opened by hand awake after its awake window, until its space is closed in herdr', async () => {
-    const { deps, sessions } = makeDeps(dir)
-    const day = 24 * 60 * 60 * 1000
-    sessions.set('old', { id: 'old', agent: 'hermes', title: 'Old chat', workspace: dir, agent_native_session_id: '' })
-    deps.listChatSpaces = async () => [
-      { id: 'recent', title: 'Recent chat', folderPath: [], agent: 'claude-code', hostable: true, workspace: dir, lastActive: Date.now() },
-      { id: 'old', title: 'Old chat', folderPath: [], agent: 'hermes', hostable: true, workspace: dir, lastActive: Date.now() - 30 * day },
-    ]
+  it('makes no herdr space for new chats: chats are Studio-only until elevated', async () => {
+    const { deps } = makeDeps(dir)
+    const chats = ['a', 'b', 'c'].map(id => ({ id, title: `Chat ${id}`, folderPath: [], agent: 'claude-code', hostable: true, workspace: dir, lastActive: Date.now() }))
+    deps.listChatSpaces = async () => chats
     deps.chatPane = async () => ({ script: join(dir, 'studio-chat.sh'), env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
-    await startBridge(deps, { ...DEFAULT_HERDR_SETTINGS, chatSpaces: true, chatSpacesAwakeDays: 7 } as any)
+    await startBridge(deps)
     const sync = () => (bridge as any).runChatSync()
-    const creates = () => herdr.requests.filter(r => r.method === 'workspace.create')
     await sync()
-    expect(creates().map(r => r.params.label)).toEqual(['Recent chat'])
-    expect(bridge!.getState().chatSpaces).toEqual(['recent'])
-    // Opening the sleeping chat wakes it into its own space...
-    await bridge!.openSession('old')
-    expect(creates().map(r => r.params.label)).toEqual(['Recent chat', 'Old chat'])
-    expect(bridge!.getState().chatSpaces.sort()).toEqual(['old', 'recent'])
-    // ...which it keeps, though it was last used 30 days ago (the awake window is 7).
+    bridge!.scheduleChatSync(0)
+    await new Promise(resolve => setTimeout(resolve, 100))
     await sync()
-    await sync()
-    expect(herdr.requests.filter(r => r.method === 'workspace.close')).toHaveLength(0)
-    expect(bridge!.hasChatSpace('old')).toBe(true)
-    const oldSpace = (bridge as any).persisted.chatSpaces.old.workspaceId
-    // Closing its space in herdr puts it back to sleep (no new space for it).
-    herdr.workspaces = herdr.workspaces.filter(w => w.workspace_id !== oldSpace)
-    herdr.panes = herdr.panes.filter(p => p.workspace_id !== oldSpace)
-    ;(bridge as any).recentChatSpaces.clear() // spaces made in the last 30 s count as there
-    await sync()
-    expect(creates()).toHaveLength(2)
-    expect(bridge!.hasChatSpace('old')).toBe(false)
-    expect((bridge as any).persisted.openedChats).toEqual({})
+    expect(herdr.requests.filter(r => r.method === 'workspace.create' || r.method === 'layout.apply')).toHaveLength(0)
+    expect(bridge!.getState().chatSpaces).toEqual([])
+    expect(bridge!.getState().elevatedChats).toEqual([])
+  })
+
+  it('elevating a chat makes its space and starts its agent; returning it closes the space and keeps the chat', async () => {
+    const { deps, sessions, messages } = makeDeps(dir)
+    sessions.set('a', { id: 'a', agent: 'claude-code', title: 'Chat a', workspace: dir, agent_native_session_id: 'n-a' })
+    sessions.set('b', { id: 'b', agent: 'claude-code', title: 'Chat b', workspace: dir, agent_native_session_id: '' })
+    messages.set('a', [{ role: 'user', content: 'hi', timestamp: 1 } as any])
+    deps.listChatSpaces = async () => ['a', 'b'].map(id => ({ id, title: `Chat ${id}`, folderPath: [], agent: 'claude-code', hostable: true, workspace: dir, lastActive: Date.now() }))
+    deps.chatPane = async () => ({ script: join(dir, 'studio-chat.sh'), env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
+    await startBridge(deps)
+    herdr.processes['w9:p2'] = [{ argv: ['sh', join(dir, 'studio-chat.sh'), 'a'] }]
+    const link = await bridge!.openSession('a')
+    expect(link).toMatchObject({ paneId: 'w9:p2', workspaceId: 'w9' })
+    expect(herdr.requests.filter(r => r.method === 'workspace.create').map(r => r.params.label)).toEqual(['Chat a'])
+    // Its waiting pane resumes the agent (Enter), as Open in herdr always did.
+    expect(herdr.requests.filter(r => r.method === 'pane.send_keys').map(r => r.params)).toEqual([{ pane_id: 'w9:p2', keys: ['Enter'] }])
+    expect(bridge!.getState().elevatedChats).toEqual(['a'])
+    expect(bridge!.isElevated('a')).toBe(true)
+    expect(bridge!.isElevated('b')).toBe(false)
+    // The agent runs there now.
+    Object.assign(herdr.panes.find(p => p.pane_id === 'w9:p2'), { agent: 'claude', agent_status: 'idle', agent_session: { kind: 'id', value: 'n-a' } })
+    await bridge!.refresh()
+    expect(bridge!.linkFor('a')).toMatchObject({ paneId: 'w9:p2' })
+
+    await expect(bridge!.returnToStudio('a')).resolves.toEqual({ closed: true })
+    expect(herdr.requests.filter(r => r.method === 'workspace.close').map(r => r.params)).toEqual([{ workspace_id: 'w9' }])
+    expect(herdr.workspaces.map(w => w.workspace_id)).toEqual(['w1'])
+    expect(bridge!.isElevated('a')).toBe(false)
+    expect(bridge!.linkFor('a')).toBeUndefined()
+    // The chat and its history stay in Studio; Studio closed it, so it is not a "closed chat" to reopen.
+    expect(sessions.has('a')).toBe(true)
+    expect(messages.get('a')).toHaveLength(1)
+    await bridge!.refresh()
+    await (bridge as any).runChatSync()
+    expect(herdr.requests.filter(r => r.method === 'workspace.create')).toHaveLength(1)
+    expect(bridge!.closedChats()).toEqual([])
+    expect(bridge!.getState().elevatedChats).toEqual([])
+  })
+
+  it('a chat whose space is closed in herdr goes back to Studio and can be reopened', async () => {
+    const { deps, sessions } = makeDeps(dir)
+    sessions.set('a', { id: 'a', agent: 'claude-code', title: 'Chat a', workspace: dir, agent_native_session_id: '' })
+    deps.listChatSpaces = async () => [{ id: 'a', title: 'Chat a', folderPath: [], agent: 'claude-code', hostable: true, workspace: dir, lastActive: Date.now() }]
+    deps.chatPane = async () => ({ script: join(dir, 'studio-chat.sh'), env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
+    await startBridge(deps)
+    await bridge!.elevateChat('a')
+    await bridge!.refresh()
+    expect(bridge!.hasChatSpace('a')).toBe(true)
+    // Closed in herdr (not by Studio).
+    herdr.workspaces = herdr.workspaces.filter(w => w.workspace_id !== 'w9')
+    herdr.panes = herdr.panes.filter(p => p.workspace_id !== 'w9')
+    ;(bridge as any).recentChatSpaces.clear()
+    await bridge!.refresh()
+    await (bridge as any).runChatSync()
+    expect(bridge!.isElevated('a')).toBe(false)
+    expect(herdr.requests.filter(r => r.method === 'workspace.create')).toHaveLength(1)
+    expect(bridge!.closedChats().flatMap(entry => entry.chats.map(chat => chat.sessionId))).toEqual(['a'])
+  })
+
+  it('moves an old install over once: live agents stay, waiting spaces close, history and herdr-only spaces are untouched', async () => {
+    const liveId = '56565656-2222-3333-4444-555555555555'
+    const { deps, sessions, messages } = makeDeps(dir)
+    sessions.set('live', { id: 'live', agent: 'claude-code', title: 'Live', workspace: dir, agent_native_session_id: liveId, message_count: 2 })
+    sessions.set('waiting', { id: 'waiting', agent: 'claude-code', title: 'Waiting', workspace: dir, agent_native_session_id: '', message_count: 3 })
+    messages.set('waiting', [{ role: 'user', content: 'keep me', timestamp: 1 } as any])
+    deps.listChatSpaces = async () => ['live', 'waiting'].map(id => ({ id, title: id, folderPath: [], agent: 'claude-code', hostable: true, workspace: dir, lastActive: Date.now() }))
+    deps.chatPane = async () => ({ script: join(dir, 'studio-chat.sh'), env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
+    // An install from before: every chat had a space; one runs its agent, one waits; w1 is herdr's own.
+    herdr.workspaces.push({ workspace_id: 'wl', label: 'Live' }, { workspace_id: 'ww', label: 'Waiting' })
+    herdr.panes = [
+      { pane_id: 'wl:p1', workspace_id: 'wl', agent: 'claude', agent_status: 'idle', agent_session: { kind: 'id', value: liveId } },
+      { pane_id: 'ww:p1', workspace_id: 'ww', agent: 'claude', agent_status: 'idle' },
+      { pane_id: 'w1:p1', workspace_id: 'w1' },
+    ]
+    herdr.processes['ww:p1'] = [{ argv: ['sh', join(dir, 'studio-chat.sh'), 'waiting'] }]
+    herdr.processes['wl:p1'] = [{ argv: ['sh', join(dir, 'studio-chat.sh'), 'live'] }, { argv: ['claude', '--resume', liveId] }]
+    await writeFile(join(dir, 'state.json'), JSON.stringify({
+      offsets: {}, dismissed: [],
+      chatSpaces: { live: { workspaceId: 'wl', stubPaneId: 'wl:p1', label: 'Live' }, waiting: { workspaceId: 'ww', stubPaneId: 'ww:p1', label: 'Waiting' } },
+      openedChats: { waiting: 1 },
+    }))
+    const logs: string[] = []
+    deps.log = (_level, message) => { logs.push(message) }
+    await startBridge(deps)
+    await (bridge as any).runChatSync()
+    expect(herdr.requests.filter(r => r.method === 'workspace.close').map(r => r.params.workspace_id)).toEqual(['ww'])
+    expect(herdr.workspaces.map(w => w.workspace_id).sort()).toEqual(['w1', 'wl'])
+    expect(bridge!.getState().elevatedChats).toEqual(['live'])
+    expect(messages.get('waiting')).toHaveLength(1)
+    expect(sessions.get('waiting')?.message_count).toBe(3)
+    expect(logs.some(line => line.includes('Studio-only'))).toBe(true)
+    // Once: a later sync changes nothing, and the marker is saved.
+    await (bridge as any).runChatSync()
+    expect(herdr.requests.filter(r => r.method === 'workspace.close')).toHaveLength(1)
+    expect(JSON.parse(await (await import('node:fs/promises')).readFile(join(dir, 'state.json'), 'utf8')).separatedAt).toEqual(expect.any(Number))
+  })
+
+  it('waits for herdr to run the move over', async () => {
+    const { deps } = makeDeps(dir)
+    deps.listChatSpaces = async () => []
+    deps.chatPane = async () => ({ script: join(dir, 'studio-chat.sh'), env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
+    await writeFile(join(dir, 'state.json'), JSON.stringify({ offsets: {}, dismissed: [], chatSpaces: { a: { workspaceId: 'wa', stubPaneId: 'wa:p1', label: 'A' } } }))
+    await herdr.close()
+    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true }, deps, join(dir, 'state.json'), async () => herdr.path)
+    await bridge.start()
+    expect(bridge.getState().connected).toBe(false)
+    await (bridge as any).runChatSync()
+    expect((bridge as any).persisted.separatedAt).toBeUndefined()
+    // herdr is back: the next connection runs it.
+    herdr = new FakeHerdr(join(dir, 'herdr.sock'))
+    await herdr.listen()
+    await (bridge as any).connect()
+    await (bridge as any).runChatSync()
+    expect((bridge as any).persisted.separatedAt).toEqual(expect.any(Number))
   })
 
   it('makes a chat\'s space in the home folder when the chat\'s folder is gone', async () => {
     const { deps } = makeDeps(dir)
     deps.listChatSpaces = async () => [{ id: 'a', title: 'Moved chat', folderPath: [], agent: 'claude-code', hostable: true, workspace: join(dir, 'gone', 'folder'), lastActive: Date.now() }]
     deps.chatPane = async () => ({ script: join(dir, 'studio-chat.sh'), env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
-    await startBridge(deps, { ...DEFAULT_HERDR_SETTINGS, chatSpaces: true } as any)
+    await startBridge(deps)
+    ;(bridge as any).persisted.elevatedChats = { a: 1 }
     await (bridge as any).runChatSync()
     const home = process.env.HOME || '/'
     expect(herdr.requests.find(r => r.method === 'workspace.create')!.params.cwd).toBe(home)
@@ -489,7 +597,8 @@ describe('herdr bridge', () => {
     sessions.set('a', { id: 'a', agent: 'claude-code', title: 'Chat a', workspace: dir, agent_native_session_id: '' })
     deps.listChatSpaces = async () => [{ id: 'a', title: 'Chat a', folderPath: [], agent: 'claude-code', hostable: true, workspace: dir, lastActive: Date.now() }]
     deps.chatPane = async () => ({ script: join(dir, 'studio-chat.sh'), env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
-    await startBridge(deps, { ...DEFAULT_HERDR_SETTINGS, chatSpaces: true } as any)
+    await startBridge(deps)
+    ;(bridge as any).persisted.elevatedChats = { a: 1 }
     await (bridge as any).runChatSync()
     await bridge!.refresh()
     const stub = bridge!.linkFor('a')

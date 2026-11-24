@@ -6,6 +6,7 @@ let service: RunLimitService | null = null
 export function configureRunLimits(deps: RunLimitDeps): RunLimitService {
   service?.close()
   service = new RunLimitService(deps)
+  service.restoreBlocked()
   service.start()
   return service
 }

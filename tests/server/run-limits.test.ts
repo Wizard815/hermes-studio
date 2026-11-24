@@ -199,6 +199,42 @@ describe('run limit service', () => {
     expect(hits.has('pane')).toBe(false)
   })
 
+  it('keeps a blocked chat blocked after a restart until Continue or Stop', async () => {
+    const first = setup()
+    const call = (id: string) => ({ role: 'assistant', tool_calls: [{ id, function: { name: 'shell', arguments: '{"cmd":"ls"}' } }] })
+    const result = (id: string) => ({ role: 'tool', tool_call_id: id, content: 'same' })
+    const messages: any[] = [{ role: 'user', content: 'go' }]
+    for (let i = 0; i < 5; i++) messages.push(call(`c${i}`), result(`c${i}`))
+    expect(first.service.checkGatewayRequest({ sessionId: 'pane', protocol: 'chat_completions', body: { messages } })).not.toBeNull()
+    await settle()
+    first.service.close()
+
+    // Studio restarts: a new service on the same file.
+    const second = setup()
+    expect(second.service.restoreBlocked()).toBe(1)
+    expect(second.hits.get('pane')).toMatchObject({ kind: 'loop', via: 'gateway' })
+    // The agent retrying the same turn is still refused; nothing new was typed.
+    expect(second.service.checkGatewayRequest({ sessionId: 'pane', protocol: 'chat_completions', body: { messages } })).not.toBeNull()
+    second.service.dismiss('pane')
+    expect(second.hits.has('pane')).toBe(false)
+
+    const third = setup()
+    expect(third.service.restoreBlocked()).toBe(0)
+    expect(JSON.parse(readFileSync(join(dir, 'run-limits.json'), 'utf8')).blocked || {}).toEqual({})
+  })
+
+  it('Continue clears the saved block too', () => {
+    const { service, store } = setup()
+    store.saveDefaults({ costUsd: 1 })
+    const body = { messages: [{ role: 'user', content: 'go' }] }
+    service.checkGatewayRequest({ sessionId: 'chat', protocol: 'chat_completions', body })
+    service.observeGatewayUsage({ sessionId: 'chat', model: 'm', usage: { inputTokens: 800, outputTokens: 400, cacheReadTokens: 0, cacheWriteTokens: 0 } })
+    expect(service.checkGatewayRequest({ sessionId: 'chat', protocol: 'chat_completions', body })).not.toBeNull()
+    expect(Object.keys(store.blocked())).toEqual(['chat'])
+    service.continueWithHigherLimit('chat')
+    expect(store.blocked()).toEqual({})
+  })
+
   it('counts gateway usage for agents outside Studio runs and refuses the next request past the cost limit', () => {
     const { store, service } = setup()
     store.saveDefaults({ costUsd: 1 })

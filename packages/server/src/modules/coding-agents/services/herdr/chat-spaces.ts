@@ -1,10 +1,10 @@
 /**
- * Every Studio chat is a herdr space. A chat whose agent is not running sits
- * in herdr as a space with a small waiting pane (`bin/herdr-plugin/studio-chat.sh`):
- * it shows the chat, reports itself to herdr as the chat's idle agent, and
- * resumes the agent in place when you press Enter. Spaces are named after
- * their chat and kept in Studio's folder order, so herdr's sidebar lists chats
- * the way Studio's folder tree does.
+ * Chats are Studio-only until they are elevated to herdr. An elevated chat
+ * is a herdr space; while its agent is not running there the space shows a
+ * small waiting pane (`bin/herdr-plugin/studio-chat.sh`): it shows the chat,
+ * reports itself to herdr as the chat's idle agent, and resumes the agent in
+ * place when you press Enter. Spaces are named after their chat and kept in
+ * Studio's folder order. Returning a chat to Studio closes its space.
  *
  * This file only plans: given Studio's chats and herdr's spaces, what to
  * create, rename, close and in which order (the bridge applies the plan).
@@ -135,49 +135,49 @@ export function chatAgentLabel(_agent: string): string {
   return 'hermes'
 }
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
 /**
- * Chats awake in herdr: used in the last `awakeDays` days, opened in herdr by
- * hand (they keep their space until it is closed or the chat goes away), or
- * with their agent running. The rest sleep: no space and no process until they
- * are opened.
+ * Chats that are in herdr: elevated by hand (Elevate to herdr, `/herdr`, the
+ * chat menu, herdr's Studio chats picker) or with their agent running in a
+ * herdr pane (started there, or resumed there by hand). Every other chat is a
+ * Studio-only chat with no herdr space and no process.
  */
-export function awakeChats(chats: ChatSpaceChat[], input: { now: number; awakeDays: number; opened: Record<string, number>; live: Map<string, string> }): ChatSpaceChat[] {
-  if (!(input.awakeDays > 0)) return chats
-  const since = input.now - input.awakeDays * DAY_MS
-  return chats.filter(chat => chat.lastActive >= since || input.opened[chat.id] != null || input.live.has(chat.id))
+export function elevatedChatList(chats: ChatSpaceChat[], input: { elevated: Record<string, number>; live: Map<string, string>; returning?: Set<string> }): ChatSpaceChat[] {
+  return chats.filter(chat => input.elevated[chat.id] != null || (input.live.has(chat.id) && !input.returning?.has(chat.id)))
 }
 
-/**
- * Chats opened in herdr by hand stay open: only a chat that is gone (archived
- * or deleted) or whose space the user closed in herdr goes back to sleep.
- */
-export function keptOpenedChats(opened: Record<string, number>, input: { chatIds: Set<string>; closed: Set<string> }): Record<string, number> {
-  return Object.fromEntries(Object.entries(opened).filter(([id]) => input.chatIds.has(id) && !input.closed.has(id)))
-}
-
-/**
- * Chat spaces the user closed in herdr: their space is gone while other chat
- * spaces are still there. When every one is gone, herdr started over (its
- * state was lost), and the chats get their spaces back.
- */
-export function closedChatSpaces(records: Record<string, ChatSpaceRecord>, workspaces: Set<string>, live: Map<string, string>): Set<string> {
-  const entries = Object.entries(records).filter(([id]) => !live.has(id))
-  const gone = entries.filter(([, record]) => !workspaces.has(record.workspaceId)).map(([id]) => id)
-  return gone.length && gone.length < entries.length ? new Set(gone) : new Set()
-}
-
-/**
- * Chats opened by hand, from the saved state. Older Studios saved them as
- * `wokenChats` (dropped after the awake window); those were opened by hand
- * too, so they are kept from now on.
- */
-export function openedChatsFrom(raw: { openedChats?: unknown; wokenChats?: unknown } | null | undefined): Record<string, number> {
+/** Elevated chats from the saved bridge state (older states had none: see `planSeparation`). */
+export function elevatedChatsFrom(raw: { elevatedChats?: unknown } | null | undefined): Record<string, number> {
   const out: Record<string, number> = {}
-  for (const source of [raw?.wokenChats, raw?.openedChats]) {
-    if (!source || typeof source !== 'object') continue
-    for (const [id, at] of Object.entries(source as Record<string, unknown>)) if (typeof at === 'number') out[id] = at
-  }
+  const source = raw?.elevatedChats
+  if (!source || typeof source !== 'object') return out
+  for (const [id, at] of Object.entries(source as Record<string, unknown>)) if (typeof at === 'number') out[id] = at
   return out
 }
+
+/**
+ * The one-time move of an install from "every chat is a herdr space" to
+ * elevated chats: chats whose agent runs in herdr stay there (elevated); a
+ * chat's space that only shows its waiting pane is closed by the next chat
+ * sync. A waiting pane counts as waiting only when herdr says it still runs
+ * the waiting script and nothing it started (`waiting`); anything else in it
+ * is kept, so no running agent is closed by mistake. herdr-only spaces have
+ * no record and are never touched; chat history lives in Studio and is not
+ * changed either.
+ */
+export function planSeparation(input: {
+  records: Record<string, ChatSpaceRecord>
+  live: Map<string, string>
+  workspaces: Set<string>
+  /** Waiting panes that only show their chat's card (no agent started from them). */
+  waiting: Set<string>
+}): { elevate: string[]; close: string[] } {
+  const elevate = new Set(input.live.keys())
+  const close: string[] = []
+  for (const [sessionId, record] of Object.entries(input.records)) {
+    if (elevate.has(sessionId) || !input.workspaces.has(record.workspaceId)) continue
+    if (record.stubPaneId && input.waiting.has(record.stubPaneId)) close.push(sessionId)
+    else elevate.add(sessionId)
+  }
+  return { elevate: [...elevate], close }
+}
+

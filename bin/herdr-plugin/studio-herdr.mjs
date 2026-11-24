@@ -135,7 +135,7 @@ async function chats() {
       const limit = Math.max(5, Math.min(30, (process.stdout.rows || 30) - 7))
       const { chats: list } = await api(config, `/chats?limit=${limit}&offset=${page * limit}&q=${encodeURIComponent(query)}`)
       process.stdout.write('\x1b[2J\x1b[H')
-      process.stdout.write(`Studio chats${query ? ` matching "${query}"` : ''}${page ? `  (page ${page + 1})` : ''}   ◐ working  × blocked  ✓ done  ○ idle  z asleep\n\n`)
+      process.stdout.write(`Studio chats${query ? ` matching "${query}"` : ''}${page ? `  (page ${page + 1})` : ''}   ◐ working  × blocked  ✓ done  ○ idle  z Studio only (opening it elevates it)\n\n`)
       if (!list.length) process.stdout.write(query ? '  No chats match.\n' : '  No chats yet.\n')
       list.forEach((chat, index) => {
         const live = chat.herdrPaneId ? `  [live ${chat.herdrPaneId}]` : ''

@@ -46,6 +46,7 @@ herdrRoutes.post('/api/coding-agents/herdr/tabs/:tabId/focus', requireSuperAdmin
 herdrRoutes.delete('/api/coding-agents/herdr/tabs/:tabId', requireSuperAdmin, ctrl.closeTab)
 herdrRoutes.get('/api/coding-agents/herdr/sessions/:sessionId', requireSuperAdmin, ctrl.sessionLink)
 herdrRoutes.post('/api/coding-agents/herdr/sessions/:sessionId/open', requireSuperAdmin, ctrl.openSession)
+herdrRoutes.post('/api/coding-agents/herdr/sessions/:sessionId/return', requireSuperAdmin, ctrl.returnSession)
 herdrRoutes.post('/api/coding-agents/herdr/sessions/:sessionId/prompt', requireSuperAdmin, ctrl.promptSession)
 herdrRoutes.delete('/api/coding-agents/herdr/sessions/:sessionId/pane', requireSuperAdmin, ctrl.closeSessionPane)
 

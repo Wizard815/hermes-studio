@@ -114,6 +114,27 @@ export class RunLimitService {
   private now() { return this.deps.now?.() ?? Date.now() }
   private fail(what: string, error: unknown) { this.deps.onError?.(what, error) }
 
+  /**
+   * Chats a limit stopped before Studio restarted are blocked again (until
+   * Continue or Stop), with the turn the limit caught.
+   */
+  restoreBlocked(): number {
+    let restored = 0
+    try {
+      for (const [sessionId, entry] of Object.entries(this.deps.store.blocked())) {
+        if (this.deps.getHit(sessionId)) continue
+        if (entry.turn) this.hitTurns.set(sessionId, entry.turn)
+        this.deps.setHit(sessionId, entry.hit)
+        restored += 1
+      }
+    } catch (error) { this.fail('restore blocked chats', error) }
+    return restored
+  }
+
+  private saveBlocked(sessionId: string, hit: RunLimitHit | null) {
+    try { this.deps.store.saveBlocked(sessionId, hit, hit ? this.hitTurns.get(sessionId) : undefined) } catch (error) { this.fail('save blocked chat', error) }
+  }
+
   start() {
     if (this.timer) return
     this.timer = setInterval(() => this.tick(), TICK_MS)
@@ -271,6 +292,7 @@ export class RunLimitService {
     const run = this.tracker.get(sessionId)
     if (run?.turnKey && !this.hitTurns.has(sessionId)) this.hitTurns.set(sessionId, run.turnKey)
     this.deps.setHit(sessionId, hit)
+    this.saveBlocked(sessionId, hit)
     // Out of the event that caught it: stopping emits events of its own.
     setTimeout(() => { void this.stop(sessionId, hit) }, 0)
   }
@@ -289,6 +311,7 @@ export class RunLimitService {
   private clearHit(sessionId: string) {
     this.hitTurns.delete(sessionId)
     this.deps.setHit(sessionId, null)
+    this.saveBlocked(sessionId, null)
   }
 
   /** "Continue with a higher limit": raise the limit that stopped the run for this chat. */
@@ -307,7 +330,7 @@ export class RunLimitService {
 
   /** "Stop": the run already stopped; the chat stops waiting on the limit. */
   dismiss(sessionId: string): void {
-    if (!this.deps.getHit(sessionId)) return
+    if (!this.deps.getHit(sessionId)) { this.saveBlocked(sessionId, null); return }
     const run = this.tracker.get(sessionId)
     if (run?.via === 'gateway') this.tracker.end(sessionId)
     this.clearHit(sessionId)

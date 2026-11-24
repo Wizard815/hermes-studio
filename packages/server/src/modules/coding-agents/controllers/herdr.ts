@@ -140,6 +140,13 @@ export async function openSession(ctx: Context) {
   } catch (error) { fail(ctx, error, 'Failed to open chat in herdr') }
 }
 
+/** Return to Studio: the elevated chat's herdr space closes; the chat and its history stay in Studio. */
+export async function returnSession(ctx: Context) {
+  try {
+    ctx.body = await herdrManager.requireBridge().returnToStudio(String(ctx.params.sessionId || ''))
+  } catch (error) { fail(ctx, error, 'Failed to return the chat to Studio') }
+}
+
 export async function promptSession(ctx: Context) {
   try {
     const body = (ctx.request.body || {}) as { text?: unknown }

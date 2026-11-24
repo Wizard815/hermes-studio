@@ -17,7 +17,7 @@ import { HerdrRequestError, HerdrSocketClient } from './socket-client'
 import { newTranscriptSince, readTranscriptFrom, type TranscriptMessage } from './transcript'
 import { herdrChatProfile, type HerdrSettings } from './runtime'
 
-import { awakeChats, chatAgentLabel, chatSpaceLabel, closedChatSpaces, keptOpenedChats, openedChatsFrom, planChatSpaces, type ChatSpaceChat, type ChatSpaceRecord } from './chat-spaces'
+import { chatAgentLabel, chatSpaceLabel, elevatedChatList, elevatedChatsFrom, planChatSpaces, planSeparation, type ChatSpaceChat, type ChatSpaceRecord } from './chat-spaces'
 
 export interface HerdrSessionRef {
   id: string
@@ -113,7 +113,7 @@ export interface HerdrBridgeDeps {
    * the folder whose start directory or rules match its directory).
    */
   categoryForSpace?: (spaceId: string, cwd: string) => Promise<number | null>
-  /** Every Studio chat (all agents, not archived), so each one is a herdr space. */
+  /** Every Studio chat (all agents, not archived); the elevated ones are herdr spaces. */
   listChatSpaces?: () => Promise<ChatSpaceChat[]>
   /**
    * Talk to a chat whose agent herdr cannot run (Ekko, Hermes without its
@@ -172,8 +172,10 @@ export interface HerdrBridgeState {
   focusedPaneId: string | null
   workspaces: HerdrSnapshot['workspaces']
   panes: HerdrPaneView[]
-  /** Studio chats with a herdr space now (awake); other top-level chats sleep until opened. */
+  /** Studio chats with a herdr space now. */
   chatSpaces: string[]
+  /** Chats elevated to herdr (by hand, or with their agent running there); every other chat is Studio-only. */
+  elevatedChats?: string[]
   /** Waiting panes of chat spaces (the chat's agent is not running): not agents in the Agents list. */
   waitingPanes?: string[]
 }
@@ -186,10 +188,13 @@ interface PersistedState {
   working?: Record<string, HerdrWorkRef>
   /** Each Studio chat's herdr space, by chat id. */
   chatSpaces?: Record<string, ChatSpaceRecord>
-  /** Older Studios' chats woken in herdr (read once into `openedChats`). */
-  wokenChats?: Record<string, number>
-  /** Chats opened in herdr by hand, and when: they keep their space until it is closed there or the chat goes away. */
-  openedChats?: Record<string, number>
+  /** Chats elevated to herdr, and when: they keep their space until they return to Studio, their space is closed in herdr, or the chat goes away. */
+  elevatedChats?: Record<string, number>
+  /**
+   * When this install moved from "every chat is a herdr space" to elevated
+   * chats (`planSeparation`). Unset until it ran once with herdr connected.
+   */
+  separatedAt?: number
   /** "The chat so far" sent to a fresh agent session: kept out of the mirrored chat, with its reply. */
   recaps?: Record<string, { text: string; at: number; replying?: boolean }>
   /**
@@ -387,6 +392,10 @@ export class HerdrBridge {
   private studioClosing = new Map<string, number>()
   /** One "Reopen closed chat" at a time: a second press goes further back. */
   private reopening: Promise<unknown> = Promise.resolve()
+  /** Chats returning to Studio, and since when: their agent may still show live for a moment. */
+  private returning = new Map<string, number>()
+  /** The herdr connection the last chat sync ran on: a space gone on the same one was closed in herdr. */
+  private chatSyncClient: HerdrSocketClient | null = null
 
   constructor(
     private settings: HerdrSettings,
@@ -409,17 +418,37 @@ export class HerdrBridge {
       workspaces: this.snapshot.workspaces,
       panes: this.panes,
       chatSpaces: Object.keys(this.persisted.chatSpaces || {}),
+      elevatedChats: this.elevatedChatIds(),
       // A chat whose agent runs (in its waiting pane after Enter, or elsewhere) has no waiting pane.
       waitingPanes: Object.entries(this.persisted.chatSpaces || {}).filter(([sessionId, record]) => record.stubPaneId && !this.liveChats.has(sessionId)).map(([, record]) => record.stubPaneId),
     }
   }
 
-  /** Each awake chat's herdr space (chat id → workspace id). */
+  /** Chats in herdr: elevated by hand, or with their agent running there (not while returning to Studio). */
+  elevatedChatIds(): string[] {
+    const returning = this.returningChats()
+    const ids = new Set(Object.keys(this.persisted.elevatedChats || {}))
+    for (const sessionId of this.liveChats.keys()) if (!returning.has(sessionId)) ids.add(sessionId)
+    return [...ids]
+  }
+
+  /** Whether the chat is elevated to herdr. */
+  isElevated(sessionId: string): boolean {
+    return this.persisted.elevatedChats?.[sessionId] != null || (this.liveChats.has(sessionId) && !this.returningChats().has(sessionId))
+  }
+
+  private returningChats(): Set<string> {
+    const now = Date.now()
+    for (const [id, at] of this.returning) if (now - at > 30_000) this.returning.delete(id)
+    return new Set(this.returning.keys())
+  }
+
+  /** Each elevated chat's herdr space (chat id → workspace id). */
   chatWorkspaces(): Record<string, string> {
     return Object.fromEntries(Object.entries(this.persisted.chatSpaces || {}).map(([sessionId, record]) => [sessionId, record.workspaceId]))
   }
 
-  /** Whether the chat has its own herdr space (awake). */
+  /** Whether the chat has its own herdr space (it is elevated). */
   hasChatSpace(sessionId: string): boolean {
     return !!this.persisted.chatSpaces?.[sessionId]
   }
@@ -429,9 +458,7 @@ export class HerdrBridge {
   }
 
   updateSettings(settings: HerdrSettings): void {
-    const chatSpacesChanged = settings.chatSpaces !== this.settings.chatSpaces || settings.chatSpacesAwakeDays !== this.settings.chatSpacesAwakeDays
     this.settings = settings
-    if (chatSpacesChanged) this.scheduleChatSync(0)
   }
 
   async start(): Promise<void> {
@@ -698,9 +725,10 @@ export class HerdrBridge {
   }
 
   /**
-   * Every Studio chat is a herdr space: chats without one get a space with a
-   * waiting pane, labels follow titles and folders, spaces of deleted chats
-   * close, and spaces keep Studio's folder order in herdr's sidebar.
+   * Elevated chats are herdr spaces: an elevated chat without one gets a space
+   * with a waiting pane, labels follow titles and folders, spaces of chats
+   * that returned to Studio or are gone close, and spaces keep Studio's folder
+   * order in herdr's sidebar. Studio-only chats get nothing in herdr.
    */
   private async syncChatSpaces(): Promise<void> {
     const client = this.client
@@ -714,29 +742,31 @@ export class HerdrBridge {
     for (const [id, made] of this.recentChatSpaces) if (now - made.at > 30_000) this.recentChatSpaces.delete(id)
     const workspaces = new Set(snapshot.workspaces.map(workspace => workspace.workspace_id))
     for (const id of this.recentChatSpaces.keys()) workspaces.add(id)
-    if (this.settings.chatSpaces === false) {
-      // Turned off: waiting spaces go; spaces with a running agent stay.
-      for (const [sessionId, record] of Object.entries(records)) {
-        if (record.stubPaneId && workspaces.has(record.workspaceId) && !this.liveChats.has(sessionId)) {
-          await this.closeSpaceByStudio(client, record.workspaceId)
-        }
-      }
-      if (Object.keys(records).length) { this.persisted.chatSpaces = {}; await this.savePersisted() }
-      return
-    }
+    let changed = false
+    if (this.persisted.separatedAt == null) changed = await this.separateOnce(client, records, workspaces)
     const pane = await this.deps.chatPane()
-    if (!pane) return
-    // Only awake chats have a space; sleeping ones wake when opened or messaged.
-    const awakeDays = this.settings.chatSpacesAwakeDays ?? 7
+    if (!pane) { if (changed) await this.savePersisted(); return }
     const allChats = await this.deps.listChatSpaces()
-    const before = this.persisted.openedChats || {}
-    const opened = keptOpenedChats(before, {
-      chatIds: new Set(allChats.map(chat => chat.id)),
-      closed: closedChatSpaces(records, workspaces, this.liveChats),
-    })
-    const chats = awakeChats(allChats, { now: Date.now(), awakeDays, opened, live: this.liveChats })
-    let changed = Object.keys(opened).length !== Object.keys(before).length
-    this.persisted.openedChats = opened
+    const elevated = { ...(this.persisted.elevatedChats || {}) }
+    const chatIds = new Set(allChats.map(chat => chat.id))
+    for (const id of Object.keys(elevated)) if (!chatIds.has(id)) { delete elevated[id]; changed = true }
+    // A space gone while herdr kept running (same connection) was closed there:
+    // its chat is back in Studio. A new connection may be a herdr that started
+    // over; its elevated chats get their spaces again.
+    if (this.chatSyncClient === client) {
+      for (const [sessionId, record] of Object.entries(records)) {
+        if (workspaces.has(record.workspaceId) || this.liveChats.has(sessionId) || this.studioClosing.has(record.workspaceId)) continue
+        if (elevated[sessionId] != null) { delete elevated[sessionId]; changed = true }
+      }
+    }
+    this.chatSyncClient = client
+    // A chat whose agent runs in herdr is elevated (started there, or resumed there by hand).
+    const returning = this.returningChats()
+    for (const sessionId of this.liveChats.keys()) {
+      if (chatIds.has(sessionId) && elevated[sessionId] == null && !returning.has(sessionId)) { elevated[sessionId] = now; changed = true }
+    }
+    this.persisted.elevatedChats = elevated
+    const chats = elevatedChatList(allChats, { elevated, live: this.liveChats, returning })
     // A waiting pane that stopped reporting: herdr dropped its report (a busy
     // restart) and Studio reports it again, or it is a plain shell now and its
     // space is made again.
@@ -826,7 +856,74 @@ export class HerdrBridge {
     if (left.length) this.scheduleChatSync(Math.min(...left) + 500)
   }
 
-  /** Studio closes a chat space itself (sleep, a deleted chat, a remade space): not a close by the user. */
+  /**
+   * Once per install, with herdr connected: move from "every chat is a herdr
+   * space" to elevated chats (planSeparation). Chats whose agent runs in
+   * herdr become elevated; the next steps of this sync close the waiting
+   * spaces of the others. Chat history is in Studio and is not touched.
+   * Without herdr this never runs, so it runs the next time herdr is there.
+   */
+  private async separateOnce(client: HerdrSocketClient, records: Record<string, ChatSpaceRecord>, workspaces: Set<string>): Promise<boolean> {
+    const waiting = new Set<string>()
+    for (const [sessionId, record] of Object.entries(records)) {
+      if (!record.stubPaneId || this.liveChats.has(sessionId) || !workspaces.has(record.workspaceId)) continue
+      if (await this.stubRunning(client, record.stubPaneId) && !await this.stubBusy(client, record.stubPaneId)) waiting.add(record.stubPaneId)
+    }
+    if (this.stopped || client !== this.client) return false
+    const plan = planSeparation({ records, live: this.liveChats, workspaces, waiting })
+    const at = Date.now()
+    this.persisted.elevatedChats = { ...Object.fromEntries(plan.elevate.map(id => [id, at])), ...(this.persisted.elevatedChats || {}) }
+    this.persisted.separatedAt = at
+    if (Object.keys(records).length || plan.elevate.length) {
+      this.log('info', '[herdr] chats are Studio-only now; chats with an agent running in herdr stay elevated', {
+        elevated: plan.elevate, closingWaitingSpaces: plan.close.length, spaces: Object.keys(records).length,
+      })
+    }
+    return true
+  }
+
+  /**
+   * Bring an elevated chat back to Studio: its herdr space closes (its agent
+   * stops the way closing a pane stops it), the chat keeps its history and
+   * runs in Studio again. Panes in the space that are not the chat's (a
+   * shell opened there) keep the space open; then only the chat's panes close.
+   */
+  async returnToStudio(sessionId: string): Promise<{ closed: boolean }> {
+    const client = this.requireClient()
+    this.returning.set(sessionId, Date.now())
+    if (this.persisted.elevatedChats) delete this.persisted.elevatedChats[sessionId]
+    const record = this.persisted.chatSpaces?.[sessionId]
+    const link = this.links.get(sessionId)
+    const workspaceId = record?.workspaceId || link?.workspaceId || ''
+    const chatPanes = this.panes.filter(pane => pane.studioSessionId === sessionId).map(pane => pane.pane_id)
+    if (record?.stubPaneId && !chatPanes.includes(record.stubPaneId)) chatPanes.push(record.stubPaneId)
+    if (link && !chatPanes.includes(link.paneId)) chatPanes.push(link.paneId)
+    const closePanes = async () => {
+      for (const paneId of chatPanes) {
+        this.studioClosing.set(paneId, Date.now())
+        await client.request('pane.close', { pane_id: paneId }).catch(() => undefined)
+      }
+      return chatPanes.length > 0
+    }
+    let closed = false
+    if (workspaceId && this.snapshot.workspaces.some(space => space.workspace_id === workspaceId)) {
+      const others = this.snapshot.panes.filter(pane => pane.workspace_id === workspaceId && !chatPanes.includes(pane.pane_id))
+      if (!others.length) {
+        await this.closeSpaceByStudio(client, workspaceId)
+        closed = true
+      } else closed = await closePanes()
+    } else closed = await closePanes()
+    if (this.persisted.chatSpaces?.[sessionId]) delete this.persisted.chatSpaces[sessionId]
+    for (const [paneId, pending] of this.pending) if (pending.sessionId === sessionId) this.pending.delete(paneId)
+    if (this.links.delete(sessionId)) this.deps.setLink(sessionId, null)
+    await this.savePersisted()
+    this.log('info', '[herdr] chat returned to Studio', { sessionId, workspaceId, closed })
+    this.emit()
+    this.scheduleRefresh(0)
+    return { closed }
+  }
+
+  /** Studio closes a chat space itself (a returned or deleted chat, a remade space): not a close by the user. */
   private async closeSpaceByStudio(client: HerdrSocketClient, workspaceId: string): Promise<void> {
     this.studioClosing.set(workspaceId, Date.now())
     await client.request('workspace.close', { workspace_id: workspaceId }).catch(() => undefined)
@@ -835,8 +932,7 @@ export class HerdrBridge {
   /**
    * Chats whose pane went away since the last look (closed in herdr: a pane, a
    * tab or a whole space) go on the closed-chats stack for "Reopen closed chat",
-   * and leave the hand-opened chats (`openedChats`): a closed chat is closed
-   * for both, and reopening it opens it by hand again.
+   * and return to Studio (no longer elevated); reopening one elevates it again.
    */
   private noteClosedChats(before: HerdrPaneView[], after: HerdrPaneView[], snapshot: HerdrSnapshot) {
     const now = Date.now()
@@ -857,7 +953,9 @@ export class HerdrBridge {
     })
     if (!entries.length) return
     this.persisted.closedChats = pushClosedChats(this.persisted.closedChats || [], entries)
-    if (this.persisted.openedChats) for (const entry of entries) for (const chat of entry.chats) delete this.persisted.openedChats[chat.sessionId]
+    // A chat closed in herdr is back in Studio; reopening it elevates it again.
+    if (this.persisted.elevatedChats) for (const entry of entries) for (const chat of entry.chats) delete this.persisted.elevatedChats[chat.sessionId]
+    for (const entry of entries) for (const chat of entry.chats) this.returning.set(chat.sessionId, now)
     this.log('info', '[herdr] chats closed in herdr', { chats: entries.flatMap(entry => entry.chats.map(chat => chat.sessionId)) })
     void this.savePersisted()
   }
@@ -1147,16 +1245,18 @@ export class HerdrBridge {
     return false
   }
 
-  /** A chat opened in herdr by hand keeps its space (until it is closed there or the chat goes away). */
-  private async keepChatOpen(sessionId: string): Promise<void> {
-    if (this.persisted.openedChats?.[sessionId] != null) return
-    this.persisted.openedChats = { ...(this.persisted.openedChats || {}), [sessionId]: Date.now() }
+  /** Elevate a chat: it is in herdr from now on (until it returns to Studio, is closed there or goes away). */
+  private async markElevated(sessionId: string): Promise<void> {
+    this.returning.delete(sessionId)
+    if (this.persisted.elevatedChats?.[sessionId] != null) return
+    this.persisted.elevatedChats = { ...(this.persisted.elevatedChats || {}), [sessionId]: Date.now() }
     await this.savePersisted()
+    this.emit()
   }
 
-  /** Wake a sleeping chat: it gets its herdr space now and keeps it (see `keepChatOpen`). */
-  async wakeChat(sessionId: string): Promise<ChatSpaceRecord | null> {
-    await this.keepChatOpen(sessionId)
+  /** Elevate a chat and make its herdr space now (see markElevated). */
+  async elevateChat(sessionId: string): Promise<ChatSpaceRecord | null> {
+    await this.markElevated(sessionId)
     // Run the sync now (after one already running), not on the usual delay.
     while (this.chatSync) await this.chatSync.catch(() => undefined)
     await this.runChatSync()
@@ -1270,8 +1370,9 @@ export class HerdrBridge {
       if (Array.isArray(raw?.dismissed)) this.persisted.dismissed = raw.dismissed.filter((id: unknown) => typeof id === 'string').slice(-500)
       if (raw?.working && typeof raw.working === 'object') this.persisted.working = raw.working
       if (raw?.chatSpaces && typeof raw.chatSpaces === 'object') this.persisted.chatSpaces = raw.chatSpaces
-      // Older Studios saved hand-opened chats as `wokenChats`: they are kept from now on.
-      this.persisted.openedChats = openedChatsFrom(raw)
+      // Older Studios' hand-opened chats (openedChats) are not elevated by themselves: separateOnce decides.
+      this.persisted.elevatedChats = elevatedChatsFrom(raw)
+      if (typeof raw?.separatedAt === 'number') this.persisted.separatedAt = raw.separatedAt
       if (raw?.recaps && typeof raw.recaps === 'object') this.persisted.recaps = raw.recaps
       if (raw?.hosted && typeof raw.hosted === 'object') this.persisted.hosted = raw.hosted
       this.persisted.closedChats = validClosedEntries(raw?.closedChats)
@@ -1305,7 +1406,7 @@ export class HerdrBridge {
     for (const nativeId of nativeIds) if (!this.persisted.dismissed.includes(nativeId)) this.persisted.dismissed.push(nativeId)
     this.persisted.dismissed = this.persisted.dismissed.slice(-500)
     delete this.persisted.offsets[sessionId]
-    if (this.persisted.openedChats) delete this.persisted.openedChats[sessionId]
+    if (this.persisted.elevatedChats) delete this.persisted.elevatedChats[sessionId]
     for (const [paneId, pending] of this.pending) if (pending.sessionId === sessionId) this.pending.delete(paneId)
     if (this.links.delete(sessionId)) this.deps.setLink(sessionId, null)
     await this.savePersisted()
@@ -1362,9 +1463,9 @@ export class HerdrBridge {
 
   /** Open (or focus) a Studio chat as a live herdr pane. */
   async openSession(sessionId: string): Promise<HerdrLinkInfo> {
-    // Opened by hand: the chat keeps its space after its awake window
-    // (a chat that does not exist is dropped again by the next chat sync).
-    await this.keepChatOpen(sessionId)
+    // Opening a chat in herdr elevates it (a chat that does not exist is
+    // dropped again by the next chat sync).
+    await this.markElevated(sessionId)
     let existing = this.links.get(sessionId)
     // A resume that never got its agent going (it exited at once) leaves the chat's waiting pane
     // marked as resuming; once that pane shows the chat's card again, it is waiting again.
@@ -1385,11 +1486,11 @@ export class HerdrBridge {
     const row = this.deps.getSession(sessionId)
     if (!row) throw Object.assign(new Error('Chat not found'), { status: 404 })
     // The chat waits in its own herdr space: resume it there, as Enter in that pane does.
-    // A sleeping chat wakes into its space first.
+    // A chat just elevated gets its space first.
     let record = this.persisted.chatSpaces?.[sessionId]
     let ready = !!record?.stubPaneId && this.snapshot.panes.some(pane => pane.pane_id === record!.stubPaneId)
-    if (!ready && this.settings.chatSpaces !== false && this.deps.listChatSpaces) {
-      await this.wakeChat(sessionId)
+    if (!ready && this.deps.listChatSpaces) {
+      await this.elevateChat(sessionId)
       record = this.persisted.chatSpaces?.[sessionId]
       ready = !!record?.stubPaneId
     }

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { awakeChats, chatAgentLabel, closedChatSpaces, keptOpenedChats, openedChatsFrom, chatSpaceLabel, chatSpaceOrder, planChatSpaces, type ChatSpaceChat } from '../../packages/server/src/modules/coding-agents/services/herdr/chat-spaces'
+import { chatAgentLabel, elevatedChatList, elevatedChatsFrom, planSeparation, chatSpaceLabel, chatSpaceOrder, planChatSpaces, type ChatSpaceChat } from '../../packages/server/src/modules/coding-agents/services/herdr/chat-spaces'
 
 const chat = (id: string, title: string, folderPath: string[] = [], lastActive = 1, extra: Partial<ChatSpaceChat> = {}): ChatSpaceChat =>
   ({ id, title, folderPath, agent: 'claude-code', hostable: true, workspace: null, lastActive, ...extra })
 
-describe('every Studio chat is a herdr space', () => {
+describe('elevated chats are herdr spaces', () => {
   it('names a space after its chat only', () => {
     expect(chatSpaceLabel(chat('a', 'Build the pricing page', ['Clients', 'site']))).toBe('Build the pricing page')
     expect(chatSpaceLabel(chat('b', '  Loose   idea '))).toBe('Loose idea')
@@ -82,45 +82,38 @@ describe('every Studio chat is a herdr space', () => {
     expect(plan.create.map(item => item.id)).toEqual(['a'])
   })
 
-  it('keeps recent, hand-opened and running chats awake; the rest sleep', () => {
-    const day = 24 * 60 * 60 * 1000
-    const now = 100 * day
-    const chats = [
-      chat('recent', 'Recent', [], now - 2 * day),
-      chat('old', 'Old', [], now - 30 * day),
-      chat('opened', 'Opened by hand long ago', [], now - 30 * day),
-      chat('running', 'Running', [], now - 30 * day),
-    ]
-    // A chat opened by hand weeks ago is still awake: its space does not close after the awake window.
-    const awake = awakeChats(chats, { now, awakeDays: 7, opened: { opened: now - 20 * day }, live: new Map([['running', 'w9']]) })
-    expect(awake.map(item => item.id)).toEqual(['recent', 'opened', 'running'])
-    expect(awakeChats(chats, { now, awakeDays: 0, opened: {}, live: new Map() })).toHaveLength(4)
+  it('only elevated chats and chats with their agent running in herdr are in herdr', () => {
+    const chats = [chat('studio', 'Studio only'), chat('elevated', 'Elevated'), chat('running', 'Started in herdr'), chat('returning', 'Returning')]
+    const live = new Map([['running', 'w9'], ['returning', 'w8']])
+    const listed = elevatedChatList(chats, { elevated: { elevated: 1 }, live, returning: new Set(['returning']) })
+    expect(listed.map(item => item.id)).toEqual(['elevated', 'running'])
+    // No chat is in herdr by itself, however recent.
+    expect(elevatedChatList(chats, { elevated: {}, live: new Map() })).toEqual([])
   })
 
-  it('lets a hand-opened chat sleep again only once it is gone or its space was closed in herdr', () => {
-    const opened = { a: 1, b: 2, c: 3 }
-    expect(keptOpenedChats(opened, { chatIds: new Set(['a', 'b', 'c']), closed: new Set() })).toEqual(opened)
-    // b was archived or deleted; c's space was closed in herdr.
-    expect(keptOpenedChats(opened, { chatIds: new Set(['a', 'c']), closed: new Set(['c']) })).toEqual({ a: 1 })
+  it('reads elevated chats from the saved state; old hand-opened chats are not elevated by themselves', () => {
+    expect(elevatedChatsFrom({ elevatedChats: { a: 5, b: 'x' } })).toEqual({ a: 5 })
+    expect(elevatedChatsFrom({ openedChats: { a: 5 }, wokenChats: { b: 6 } } as any)).toEqual({})
+    expect(elevatedChatsFrom(null)).toEqual({})
   })
 
-  it('tells a space closed in herdr from herdr starting over', () => {
+  it('moves an old install over: live agents stay elevated, waiting spaces close, herdr-only spaces are left alone', () => {
     const records = {
-      a: { workspaceId: 'w1', stubPaneId: 'w1:p1', label: 'A' },
-      b: { workspaceId: 'w2', stubPaneId: 'w2:p1', label: 'B' },
-      c: { workspaceId: 'w3', stubPaneId: '', label: 'C' },
+      live: { workspaceId: 'w1', stubPaneId: 'w1:p1', label: 'Live' },
+      waiting: { workspaceId: 'w2', stubPaneId: 'w2:p1', label: 'Waiting' },
+      elsewhere: { workspaceId: 'w3', stubPaneId: '', label: 'Agent space' },
+      unsure: { workspaceId: 'w4', stubPaneId: 'w4:p1', label: 'Pane runs something else' },
+      gone: { workspaceId: 'w5', stubPaneId: 'w5:p1', label: 'Space gone (asleep)' },
     }
-    expect([...closedChatSpaces(records, new Set(['w1', 'w3']), new Map())]).toEqual(['b'])
-    // Every chat space is gone: herdr lost its state; nothing was closed by hand.
-    expect([...closedChatSpaces(records, new Set(), new Map())]).toEqual([])
-    // A chat whose agent runs elsewhere is not closed.
-    expect([...closedChatSpaces(records, new Set(['w1']), new Map([['c', 'w9']]))]).toEqual(['b'])
-  })
-
-  it('reads hand-opened chats from the old saved state too', () => {
-    expect(openedChatsFrom({ wokenChats: { a: 5 } })).toEqual({ a: 5 })
-    expect(openedChatsFrom({ wokenChats: { a: 5 }, openedChats: { b: 6 } })).toEqual({ a: 5, b: 6 })
-    expect(openedChatsFrom({ openedChats: { a: 'x' } })).toEqual({})
-    expect(openedChatsFrom(null)).toEqual({})
+    const plan = planSeparation({
+      records,
+      live: new Map([['live', 'w1'], ['started-in-herdr', 'w7']]),
+      workspaces: new Set(['w1', 'w2', 'w3', 'w4', 'w6', 'w7']),
+      waiting: new Set(['w2:p1', 'w5:p1']),
+    })
+    expect(plan.elevate.sort()).toEqual(['elsewhere', 'live', 'started-in-herdr', 'unsure'])
+    expect(plan.close).toEqual(['waiting'])
+    // w6 is a space made in herdr (no chat): it is in no list.
+    expect(JSON.stringify(plan)).not.toContain('w6')
   })
 })

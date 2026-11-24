@@ -21,13 +21,6 @@ export interface HerdrSettings {
   autoImport: boolean
   /** Mirror agent transcripts into linked Studio chats. */
   mirrorTranscripts: boolean
-  /** Every Studio chat is a herdr space (a waiting pane for chats whose agent is not running). */
-  chatSpaces: boolean
-  /**
-   * Chats used in the last this many days stay awake in herdr (a space with
-   * a waiting pane); older ones sleep until opened or messaged. 0: all awake.
-   */
-  chatSpacesAwakeDays: number
   /**
    * Studio profile for chats and agents started from herdr. Empty: follow
    * Studio, i.e. the profile last picked in Studio (`studioProfile`).
@@ -46,8 +39,6 @@ export const DEFAULT_HERDR_SETTINGS: HerdrSettings = {
   session: '',
   autoImport: true,
   mirrorTranscripts: true,
-  chatSpaces: true,
-  chatSpacesAwakeDays: 7,
   profile: '',
   studioProfile: '',
 }
@@ -76,8 +67,6 @@ export function sanitizeHerdrSettings(input: Partial<HerdrSettings> | null | und
   if (typeof input.enabled === 'boolean') next.enabled = input.enabled
   if (typeof input.autoImport === 'boolean') next.autoImport = input.autoImport
   if (typeof input.mirrorTranscripts === 'boolean') next.mirrorTranscripts = input.mirrorTranscripts
-  if (typeof input.chatSpaces === 'boolean') next.chatSpaces = input.chatSpaces
-  if (typeof input.chatSpacesAwakeDays === 'number' && Number.isFinite(input.chatSpacesAwakeDays)) next.chatSpacesAwakeDays = Math.min(3650, Math.max(0, Math.round(input.chatSpacesAwakeDays)))
   if (typeof input.autoStart === 'boolean') next.autoStart = input.autoStart
   if (typeof input.setupVersion === 'string') next.setupVersion = input.setupVersion.slice(0, 32)
   if (typeof input.setupRevision === 'number' && Number.isInteger(input.setupRevision) && input.setupRevision >= 0) next.setupRevision = input.setupRevision

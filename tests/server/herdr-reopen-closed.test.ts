@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServer, type Server, type Socket } from 'node:net'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -214,6 +214,20 @@ describe('Reopen closed chat in Studio\'s herdr plugin', () => {
     expect(paths(herdrRoutes)).toContain('POST /api/coding-agents/herdr/closed-chats/reopen')
     expect(paths(herdrRoutes)).toContain('GET /api/coding-agents/herdr/closed-chats')
     expect(paths(herdrPluginRoutes)).toContain('POST /api/coding-agents/herdr/plugin/reopen')
+    // Elevate (open) and Return to Studio.
+    expect(paths(herdrRoutes)).toContain('POST /api/coding-agents/herdr/sessions/:sessionId/open')
+    expect(paths(herdrRoutes)).toContain('POST /api/coding-agents/herdr/sessions/:sessionId/return')
+  })
+
+  it('the return route brings the chat back to Studio through the bridge', async () => {
+    const returnToStudio = vi.fn().mockResolvedValue({ closed: true })
+    const spy = vi.spyOn(herdrManager, 'requireBridge').mockReturnValue({ returnToStudio } as any)
+    try {
+      const ctx: any = { state: {}, params: { sessionId: 's1' }, request: { body: {} } }
+      await ctrl.returnSession(ctx)
+      expect(returnToStudio).toHaveBeenCalledWith('s1')
+      expect(ctx.body).toEqual({ closed: true })
+    } finally { spy.mockRestore() }
   })
 
   it('the route reopens through the bridge and reports when nothing is left', async () => {
@@ -250,7 +264,7 @@ describe('herdr bridge: closed chats and reopening them', () => {
   })
 
   function startBridge(deps: HerdrBridgeDeps) {
-    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true, chatSpaces: false }, deps, join(dir, 'state.json'), async () => herdr.path)
+    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true }, deps, join(dir, 'state.json'), async () => herdr.path)
     return bridge.start()
   }
 
@@ -339,7 +353,8 @@ describe('herdr bridge: closed chats and reopening them', () => {
     const { deps, sessions } = makeDeps()
     sessions.set('chat-x', { id: 'chat-x', agent: 'claude-code', title: 'X', workspace: null, agent_native_session_id: uuid(7) })
     deps.chatPane = async () => ({ script: '/opt/studio-chat.sh', env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
-    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true, chatSpaces: true, chatSpacesAwakeDays: 0 }, deps, join(dir, 'state.json'), async () => herdr.path)
+    await writeFile(join(dir, 'state.json'), JSON.stringify({ offsets: {}, dismissed: [], elevatedChats: { 'chat-x': 1 }, separatedAt: 1 }))
+    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true }, deps, join(dir, 'state.json'), async () => herdr.path)
     await bridge.start()
     await until(() => bridge!.getState().panes.some(pane => pane.studioSessionId === 'chat-x'))
     sessions.delete('chat-x')
@@ -354,7 +369,8 @@ describe('herdr bridge: closed chats and reopening them', () => {
     const { deps, sessions } = makeDeps()
     sessions.set('chat-w', { id: 'chat-w', agent: 'claude-code', title: 'W', workspace: null, agent_native_session_id: uuid(8) })
     deps.chatPane = async () => ({ script: '/opt/studio-chat.sh', env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
-    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true, chatSpaces: true, chatSpacesAwakeDays: 0 }, deps, join(dir, 'state.json'), async () => herdr.path)
+    await writeFile(join(dir, 'state.json'), JSON.stringify({ offsets: {}, dismissed: [], elevatedChats: { 'chat-w': 1 }, separatedAt: 1 }))
+    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true }, deps, join(dir, 'state.json'), async () => herdr.path)
     await bridge.start()
     await until(() => bridge!.getState().panes.some(pane => pane.studioSessionId === 'chat-w'))
     const paneId = bridge.getState().panes.find(pane => pane.studioSessionId === 'chat-w')!.pane_id
@@ -378,19 +394,20 @@ describe('herdr bridge: closed chats and reopening them', () => {
     expect(bridge!.closedChats()).toEqual([])
   })
 
-  it('a closed chat is closed for "hand-opened chats" too; reopening opens it by hand again', async () => {
+  it('a chat closed in herdr returns to Studio; reopening it elevates it again', async () => {
     const { deps, sessions } = makeDeps()
     threeChats(sessions)
     await startBridge(deps)
     await bridge!.openSession('chat-1')
     let state = JSON.parse(await readFile(join(dir, 'state.json'), 'utf8'))
-    expect(state.openedChats['chat-1']).toBeTypeOf('number')
+    expect(state.elevatedChats['chat-1']).toBeTypeOf('number')
     herdr.closeSpace('w1')
     await until(() => bridge!.closedChats().length === 1)
-    await until(async () => !(JSON.parse(await readFile(join(dir, 'state.json'), 'utf8')).openedChats || {})['chat-1'])
+    await until(async () => !(JSON.parse(await readFile(join(dir, 'state.json'), 'utf8')).elevatedChats || {})['chat-1'])
+    expect(bridge!.isElevated('chat-1')).toBe(false)
     await bridge!.reopenClosed()
     state = JSON.parse(await readFile(join(dir, 'state.json'), 'utf8'))
-    expect(state.openedChats['chat-1']).toBeTypeOf('number')
+    expect(state.elevatedChats['chat-1']).toBeTypeOf('number')
   })
 })
 
@@ -413,7 +430,7 @@ describe('herdr bridge: agents herdr cannot detect (CodeBuddy, ZCode)', () => {
   })
 
   function startBridge(deps: HerdrBridgeDeps) {
-    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true, chatSpaces: false }, deps, join(dir, 'state.json'), async () => herdr.path)
+    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true }, deps, join(dir, 'state.json'), async () => herdr.path)
     return bridge.start()
   }
 
@@ -452,7 +469,8 @@ describe('herdr bridge: agents herdr cannot detect (CodeBuddy, ZCode)', () => {
     const { deps, sessions } = makeDeps()
     sessions.set('cb', { id: 'cb', agent: 'codebuddy', title: 'CB', workspace: null, agent_native_session_id: 'native-cb' })
     deps.chatPane = async () => ({ script: '/opt/studio-chat.sh', env: {}, cardsDir: join(dir, 'cards'), studioUrl: 'http://studio' })
-    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true, chatSpaces: true, chatSpacesAwakeDays: 0 }, deps, join(dir, 'state.json'), async () => herdr.path)
+    await writeFile(join(dir, 'state.json'), JSON.stringify({ offsets: {}, dismissed: [], elevatedChats: { cb: 1 }, separatedAt: 1 }))
+    bridge = new HerdrBridge({ ...DEFAULT_HERDR_SETTINGS, enabled: true }, deps, join(dir, 'state.json'), async () => herdr.path)
     await bridge.start()
     await until(() => herdr.requests.some(r => r.method === 'layout.apply'))
     const env = herdr.requests.find(r => r.method === 'layout.apply')!.params.root.env

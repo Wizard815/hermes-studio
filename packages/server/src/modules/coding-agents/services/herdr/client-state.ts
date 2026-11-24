@@ -3,7 +3,7 @@ import type { HerdrBridgeState, HerdrPaneView } from './bridge'
 
 /**
  * herdr's state as Studio's pages get it. With hundreds of chats (every chat
- * is a herdr space) the bridge state is a few hundred kB, and Studio sent all
+ * was a herdr space) the bridge state is a few hundred kB, and Studio sent all
  * of it, uncompressed, on every herdr change and to every new herdr view, on
  * the same socket as the herdr terminal. On a tunnel that held back the
  * terminal's first screen for seconds. Pages get only the fields they read,
@@ -78,6 +78,7 @@ export function clientBridgeState(state: HerdrBridgeState | null, clock?: (panes
     })),
     panes: (clock ? clock(state.panes) : state.panes).map(clientPane),
     chatSpaces: state.chatSpaces,
+    elevatedChats: state.elevatedChats ?? [],
     ...(state.waitingPanes?.length ? { waitingPanes: state.waitingPanes } : {}),
   }
 }
