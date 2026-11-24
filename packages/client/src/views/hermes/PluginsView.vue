@@ -243,10 +243,10 @@ watch(() => profilesStore.activeProfileName || 'default', () => {
                       {{ t('recommendedPlugins.badge') }}
                     </NTag>
                   </div>
-                  <div v-if="plugin.description" class="description">{{ plugin.description }}</div>
                   <div v-if="plugin.missingEnv?.length" class="missing-env">
                     {{ t('recommendedPlugins.missingEnv', { keys: plugin.missingEnv.join(', '), file: envFile }) }}
                   </div>
+                  <div v-if="plugin.description" class="description">{{ plugin.description }}</div>
                   <div v-if="plugin.version || plugin.author" class="meta-line">
                     <span v-if="plugin.version">v{{ plugin.version }}</span>
                     <span v-if="plugin.author">{{ plugin.author }}</span>

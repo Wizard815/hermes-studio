@@ -55,6 +55,11 @@ touched again, so one you disable or uninstall later stays that way. A plugin th
 already installed and disabled before Studio got to it is left disabled. A plugin whose
 catalog `platforms` excludes this machine (bubblewrap off Linux) is skipped for good.
 
+**Disk.** Hermes 0.23 gives plugins with Python dependencies (homeassistant, langfuse)
+their own dependency environment under `<HERMES_HOME>/installs/` plus a uv cache under
+`<HERMES_HOME>/cache/uv`: plan on about 1-1.5 GB free in the Hermes data folder. With the
+disk full, Hermes's own install state can end up half written; `hermes pm repair` fixes it.
+
 **Failures are retried.** If the catalog cannot be reached (offline), a plugin needs a
 newer Hermes than this one (`requires_hermes`), or Hermes refuses the install (print3d
 without Blender), Studio logs one `[recommended-plugins]` warning, shows "not installed yet"
@@ -89,7 +94,9 @@ through the Gadget plugin's WebSocket, protocol `hermes-gadget.v1`, on
 it connects to Studio's Socket.IO namespace `/global-agent` and sends
 `mcu.events.subscribe` (see [MCU webhook events](mcu-webhook-events.md)). The two links
 are separate: Gadget runs inside the Hermes gateway, `/global-agent` inside Studio, so
-turning Gadget on changes nothing on Studio's side.
+turning Gadget on changes nothing on Studio's side. A device connects to `/global-agent`
+with `auth: { token: <Studio login JWT>, profile, role: 'agent' }`; without `role: 'agent'`
+the connection is treated as a browser and `mcu.events.subscribe` gets no answer.
 
 - **Status:** **Connections → MCU devices → Hermes Gadget** shows whether the plugin and
   platform are on, whether the gateway listens (the plugin's `status.json` is fresh), the
