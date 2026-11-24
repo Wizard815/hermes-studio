@@ -115,7 +115,16 @@ import { observePersonPresenceEvent } from '../services/person/presence'
 import { SessionStateSync } from '../services/session-state'
 import { personBackgroundTaskCount } from '../repositories/person-presence-store'
 import { personCollaborationPendingCount } from '../repositories/person-stage-store'
-import { observeChatRunWebhookEvent, type ChatRunWebhookAgent } from '../services/webhooks'
+import { observeChatRunWebhookEvent as publishChatRunWebhookEvent, type ChatRunWebhookAgent } from '../services/webhooks'
+import { getRunLimits, observeRunLimitEvent } from '../services/run-limits'
+import type { RunLimitHit } from '../../../../../shared/run-limits'
+import { persistSessionCommandMessage } from '../services/chat-run/session-command'
+
+/** Every chat run event reaches webhooks here; run limits (docs/agent-limits.md) watch the same stream. */
+function observeChatRunWebhookEvent(input: Parameters<typeof publishChatRunWebhookEvent>[0]): boolean {
+  try { observeRunLimitEvent(input.sessionId, input.event, input.payload) } catch { /* limits never break a run */ }
+  return publishChatRunWebhookEvent(input)
+}
 import { getAgentStatusSnapshot } from '../public/agent-status-registry'
 import {
   normalizeMobileCalendarRequest,
@@ -1123,6 +1132,11 @@ export class ChatRunSocket {
             userId: socketUser.id, profile: runProfile, sessionId: data.session_id,
             workspace: storedSession?.workspace || undefined, surface: 'chat',
           }, state, payload => this.emitToSession(socket, data.session_id!, 'session.command', { ...payload, queue_id: data.queue_id }))) {
+            if (!state.isWorking) this.dequeueNextQueuedRun(socket, data.session_id, runProfile)
+            return
+          }
+          if (!shared && typeof data.input === 'string' && /^\/limits(?:\s|$)/i.test(data.input.trim())) {
+            this.runLimitsCommand(socket, data.session_id, data.input.trim().slice('/limits'.length), data.queue_id)
             if (!state.isWorking) this.dequeueNextQueuedRun(socket, data.session_id, runProfile)
             return
           }
@@ -3310,6 +3324,53 @@ export class ChatRunSocket {
       error: reason,
     })
     await termination
+  }
+
+  /** `/limits` in any chat: show or change its run limits (docs/agent-limits.md). */
+  private runLimitsCommand(socket: Socket, sessionId: string, args: string, queueId?: string) {
+    let result: { ok: boolean; message: string }
+    try { result = getRunLimits().command(sessionId, args) } catch (error) {
+      result = { ok: false, message: error instanceof Error ? error.message : String(error) }
+    }
+    const state = getOrCreateSession(this.sessionMap, sessionId)
+    persistSessionCommandMessage(sessionId, state, `/limits${args.trim() ? ` ${args.trim()}` : ''}`)
+    persistSessionCommandMessage(sessionId, state, result.message)
+    this.emitToSession(socket, sessionId, 'session.command', {
+      event: 'session.command', command: 'limits', action: 'limits', ok: result.ok,
+      terminal: !state.isWorking, message: result.message, queue_id: queueId,
+    })
+  }
+
+  /** A run limit stopped the chat's run: stop it the way Stop does, without a "run failed" error. */
+  async stopRunForLimit(sessionId: string): Promise<boolean> {
+    const sid = String(sessionId || '').trim()
+    if (!sid) return false
+    const running = this.isSessionRunning(sid) || codingAgentRunManager.hasSession(sid)
+    if (!running) return false
+    const fakeSocket = {
+      id: `run-limit-${sid}`,
+      connected: false,
+      data: {},
+      emit: () => {},
+      join: () => {},
+      to: (room: string) => ({ emit: (event: string, payload: any) => this.nsp.to(room).emit(event, payload) }),
+    } as unknown as Socket
+    this.finishTaskPlanRun(sid, 'abort.completed')
+    await handleAbort(this.nsp, fakeSocket, sid, this.sessionMap, this.bridge, this.runQueuedItem.bind(this))
+    const profile = getSession(sid)?.profile || 'default'
+    const state = this.sessionMap.get(sid)
+    this.emitSessionActivity(profile, state?.isWorking ? 'run.started' : 'abort.completed', { session_id: sid })
+    return true
+  }
+
+  /** Persist a Studio notice in the chat (a command result: never sent to the model) and show it. */
+  postRunLimitNotice(sessionId: string, text: string, hit: RunLimitHit) {
+    const state = getOrCreateSession(this.sessionMap, sessionId)
+    persistSessionCommandMessage(sessionId, state, text)
+    this.emitExternalEvent(sessionId, 'session.command', {
+      event: 'session.command', command: 'limits', action: 'run_limit', ok: false,
+      terminal: !state.isWorking, message: text, limit: hit,
+    })
   }
 
   /** Stops a run and forgets its in-memory state; persistence is left to the caller's delete. */

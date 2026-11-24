@@ -70,8 +70,8 @@ describe('/yolo in a coding-agent chat', () => {
     await flushPromises()
     const commands = (wrapper.vm as any).$.setupState.filteredBridgeCommands as { name: string; description: string }[]
     expect(commands.find(command => command.name === 'yolo')?.description).toBe('chat.slashCommands.codingAgentYolo')
-    // Still only the commands coding agents answer.
-    expect(commands.map(command => command.name).sort()).toEqual(['cleanroom', 'compact', 'context', 'status', 'usage', 'yolo'])
+    // Still only the commands coding agents answer (/limits is Studio's own, for every chat).
+    expect(commands.map(command => command.name).sort()).toEqual(['cleanroom', 'compact', 'context', 'limits', 'status', 'usage', 'yolo'])
   })
 
   it('keeps the Hermes description in Hermes chats', async () => {

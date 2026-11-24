@@ -1,4 +1,5 @@
 import type { SessionHerdrLink, SessionListChange } from '../../../../../shared/session-state'
+import type { RunLimitHit } from '../../../../../shared/run-limits'
 
 /**
  * Process-local hub for chat-list liveness.
@@ -55,9 +56,35 @@ export function onSessionListChanged(listener: ListListener): () => void {
   return () => listListeners.delete(listener)
 }
 
+/**
+ * A run limit stopped this chat's run (docs/agent-limits.md). The chat shows
+ * blocked (in Studio and in herdr) until the user continues or stops it.
+ */
+const limitHits = new Map<string, RunLimitHit>()
+const limitListeners = new Set<HerdrListener>()
+
+export function getSessionLimitHit(sessionId: string): RunLimitHit | undefined {
+  return limitHits.get(sessionId)
+}
+
+export function setSessionLimitHit(sessionId: string, hit: RunLimitHit | null): void {
+  if (hit) limitHits.set(sessionId, { ...hit })
+  else if (!limitHits.delete(sessionId)) return
+  for (const listener of limitListeners) {
+    try { listener(sessionId) } catch { /* listeners must not break writers */ }
+  }
+}
+
+export function onSessionLimitHitChanged(listener: HerdrListener): () => void {
+  limitListeners.add(listener)
+  return () => limitListeners.delete(listener)
+}
+
 /** Test helper: drop all links and listeners. */
 export function resetSessionStatusHub(): void {
   herdrLinks.clear()
   herdrListeners.clear()
   listListeners.clear()
+  limitHits.clear()
+  limitListeners.clear()
 }

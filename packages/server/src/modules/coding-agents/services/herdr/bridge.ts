@@ -1650,6 +1650,26 @@ export class HerdrBridge {
     return state
   }
 
+  /**
+   * A run limit stopped the chat's run (docs/agent-limits.md): its pane shows
+   * blocked in herdr until the person continues or stops, then idle again.
+   */
+  async reportChatLimit(sessionId: string, blocked: boolean): Promise<boolean> {
+    const client = this.client
+    const link = this.links.get(sessionId)
+    if (!client || !link) return false
+    const pane = this.snapshot.panes.find(item => item.pane_id === link.paneId)
+    const agent = pane?.agent || 'hermes'
+    try {
+      await client.request('pane.report_agent', { pane_id: link.paneId, source: 'studio:chat', agent, state: blocked ? 'blocked' : 'idle' })
+    } catch (error) {
+      this.log('warn', '[herdr] could not report a run limit to herdr', { paneId: link.paneId, error: String(error) })
+      return false
+    }
+    this.scheduleRefresh(0)
+    return true
+  }
+
   async closeSessionPane(sessionId: string): Promise<boolean> {
     const link = this.links.get(sessionId)
     if (!link) return false

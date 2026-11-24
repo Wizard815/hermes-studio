@@ -96,6 +96,18 @@ describe('agent work: Mattermost posts', () => {
     expect(mm.posts).toHaveLength(0)
   })
 
+  it('a run limit alert is a #agentlimit #blocked post with the mentions, and nothing without a channel', async () => {
+    const { service, mm } = setup()
+    expect(await service.alertBlocked('Fix the flaky login test', 'Run stopped by Studio: loop detected.\n`Read({})`')).toBe(true)
+    expect(mm.posts).toHaveLength(1)
+    expect(mm.posts[0].channelId).toBe('ch-hermes')
+    expect(mm.posts[0].message).toContain('#agentlimit #blocked @wizard **Fix the flaky login test**')
+    expect(mm.posts[0].message).toContain('> `Read({})`')
+    const quiet = setup({ mattermost: { channel: '', mention: ['wizard'] } })
+    expect(await quiet.service.alertBlocked('Quiet chat', 'Run stopped')).toBe(false)
+    expect(quiet.mm.posts).toHaveLength(0)
+  })
+
   it('a changed channel is checked in Mattermost and the next post goes there', async () => {
     const { service, mm } = setup()
     const work = await service.create({ title: 'Move the logs' })

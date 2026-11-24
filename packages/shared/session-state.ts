@@ -3,11 +3,13 @@
  * icon means the same thing in both apps.
  *
  * - working: a run is in progress
- * - blocked: waiting on an approval or a question
+ * - blocked: waiting on an approval or a question, or stopped by a run limit
  * - done: finished and not yet read
  * - idle: ready for input
  * - unknown: an agent is present but its state cannot be classified
  */
+import type { RunLimitHit } from './run-limits'
+
 export type AgentDisplayStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 
 /** Live herdr pane linked to a Studio chat through the agent's native session id. */
@@ -37,6 +39,8 @@ export interface SessionListState {
   unread: boolean
   /** Present while the chat is open in a herdr pane. */
   herdr?: SessionHerdrLink
+  /** A run limit stopped the chat's run; it waits for "Continue with a higher limit" or "Stop". */
+  limit?: RunLimitHit
 }
 
 export interface SessionStateSnapshot { sessions: SessionListState[] }

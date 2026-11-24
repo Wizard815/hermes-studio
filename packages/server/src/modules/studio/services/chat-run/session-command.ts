@@ -1182,6 +1182,11 @@ function buildCommandSessionTitle(command: ParsedSessionCommand): string {
   return args ? `${prefix} ${args}`.slice(0, 120) : prefix
 }
 
+/** A command line or result in the chat; command messages never reach the model. */
+export function persistSessionCommandMessage(sessionId: string, state: SessionState, content: string) {
+  persistCommandMessage(sessionId, state, content)
+}
+
 function persistCommandMessage(sessionId: string, state: SessionState, content: string) {
   const now = Math.floor(Date.now() / 1000)
   const id = addMessage({

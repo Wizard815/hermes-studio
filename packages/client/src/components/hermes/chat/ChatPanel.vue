@@ -83,6 +83,8 @@ import { isHermesSession } from "@/utils/hermes/session-agent";
 import { buildVisibleSessionCategoryGroups, categoryPathLabel, categorySubtreeIds, partitionRecentSessions } from "./session-category-groups";
 import { buildSessionCategoryMenuChildren, resolveRecentSessionCategoryLabel } from "./session-category-menu";
 import { buildActiveSessionMenuOptions, buildSessionContextMenuOptions, withHerdrMenuGroup } from "./session-menu-options";
+import RunLimitBanner from "../run-limits/RunLimitBanner.vue";
+import RunLimitsModal from "../run-limits/RunLimitsModal.vue";
 import PageSidebarNav from "@/components/layout/PageSidebarNav.vue";
 import { getStoredUserId, isStoredSuperAdmin } from "@/api/client";
 import { loadNewChatFormPreferences, saveNewChatFormPreferences } from "@/utils/new-chat-form-preferences";
@@ -1709,6 +1711,7 @@ const activeSessionMenuOptions = computed<DropdownOption[]>(() => withHerdrMenuG
     ? "chat.openSessionInNewWindow"
     : "chat.openSessionInNewTab"),
   copyId: t("chat.copySessionId"),
+  runLimits: t("runLimits.menu"),
 }, {
   canRename: activeSessionSupportsPersistence.value,
   canOpen: activeSessionSupportsPersistence.value,
@@ -1850,6 +1853,9 @@ function openRenameSession(sessionId: string) {
   });
 }
 
+/** Chat menu → Run limits (docs/agent-limits.md). */
+const showRunLimits = ref(false);
+
 function handleActiveSessionMenuSelect(key: string) {
   if (key.startsWith("herdr:")) {
     restoreActiveSessionMenuTriggerFocus = false;
@@ -1869,6 +1875,9 @@ function handleActiveSessionMenuSelect(key: string) {
     openSessionInNewTab(sessionId, chatStore.activeSession?.profile || null);
   } else if (key === "copy-id") {
     void copySessionId(sessionId);
+  } else if (key === "run-limits") {
+    if (!activeSessionSupportsPersistence.value) return;
+    showRunLimits.value = true;
   }
 }
 
@@ -3003,6 +3012,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
       @clickoutside="handleClickOutside"
     />
 
+    <RunLimitsModal v-model:show="showRunLimits" :session-id="chatStore.activeSessionId" />
     <NModal v-model:show="showNewChatSettings">
       <div class="new-chat-settings-panel" role="dialog" aria-modal="true" :aria-label="t('chat.newChatSettings')">
         <header class="new-chat-settings-header">
@@ -3503,6 +3513,11 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :selection-actions-target="messageSelectionActionsTarget"
               :approval-portal-to-body="showRealtimeVoice"
               scroll-scope="chat"
+            />
+            <RunLimitBanner
+              v-if="chatStore.activeSessionId"
+              v-show="!showHerdrCenter"
+              :session-id="chatStore.activeSessionId"
             />
             <ChatInput
               v-show="!showHerdrCenter"

@@ -3859,7 +3859,9 @@ function createChatState(scopedSessionId?: string) {
     // A chat open in a live herdr pane takes input there: one process owns the
     // conversation, and the reply comes back through the transcript mirror.
     // A waiting pane has no agent running: the message goes through Studio as usual.
-    const herdrLink = !attachments?.length && trimmedContent ? useSessionStateStore().herdrLink(sid) : undefined
+    // "/limits" is Studio's own command in every chat type (docs/agent-limits.md), never typed into a pane.
+    const isRunLimitsCommand = !attachments?.length && /^\/limits(?:\s|$)/i.test(trimmedContent)
+    const herdrLink = !attachments?.length && trimmedContent && !isRunLimitsCommand ? useSessionStateStore().herdrLink(sid) : undefined
     if (herdrLink && !herdrLink.waiting) {
       try {
         await promptHerdrSession(sid, trimmedContent)
@@ -3888,7 +3890,7 @@ function createChatState(scopedSessionId?: string) {
     // "/yolo" in a coding-agent chat answers at once, also mid-turn (it can approve what the agent waits on).
     const isCodingAgentYoloCommand = !attachments?.length && isProviderAgent && isExternalCodingAgentSession(activeSession.value)
       && /^\/yolo\s*$/i.test(trimmedContent)
-    const isSessionSlashCommand = isBridgeSlashCommand || isBuiltinSlashCommand || isCodingAgentYoloCommand
+    const isSessionSlashCommand = isBridgeSlashCommand || isBuiltinSlashCommand || isCodingAgentYoloCommand || isRunLimitsCommand
     const isBridgeCompressCommand = isBridgeSlashCommand && /^\/compress(?:\s|$)/i.test(trimmedContent)
     const isBridgePlanCommand = isBridgeSlashCommand && /^\/plan(?:\s|$)/i.test(trimmedContent)
     const isBridgeSkillCommand = isBridgeSlashCommand && /^\/skill(?:\s|$)/i.test(trimmedContent)
@@ -3907,7 +3909,7 @@ function createChatState(scopedSessionId?: string) {
       pendingForkCommands.value = new Set(pendingForkCommands.value).add(sid)
     }
     const shouldQueue = wasLiveBeforeSend && (
-      (!isBridgeSlashCommand && !isBuiltinSlashCommand && !isCodingAgentYoloCommand) ||
+      (!isBridgeSlashCommand && !isBuiltinSlashCommand && !isCodingAgentYoloCommand && !isRunLimitsCommand) ||
       isBridgePlanCommand ||
       isBridgeSkillCommand ||
       isBridgeBundleCommand ||

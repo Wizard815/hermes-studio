@@ -33,6 +33,7 @@ import {
 } from '../../protocol/adapters/responses-stream'
 import { agentRunGateway } from '../../protocol/gateway'
 import { codingAgentRunManager } from '../runtime/run-manager'
+import { reportRunLimitUsage } from '../../protocol/run-limit-usage'
 import { codingAgentOutputLimit } from '../context-policy'
 import { normalizeTokenUsage } from '../../../studio/public/usage'
 import { GenerationClock } from '../../../studio/public/generation-time'
@@ -47,6 +48,7 @@ type CodexProxyTarget = RegisteredAgentTarget<CodexProxyTargetInput>
 function recordTargetUsage(target: CodexProxyTarget, event: CanonicalResponsesEvent, apiDuration?: number, baseUrl?: string) {
   if (target.onUsageEvent) target.onUsageEvent(event, apiDuration, baseUrl)
   else codingAgentRunManager.handleProxyUsageEvent(target.agentSessionId, event, apiDuration, baseUrl)
+  reportRunLimitUsage(target, event)
 }
 
 const targetRegistry = new AgentTargetRegistry<CodexProxyTargetInput>(

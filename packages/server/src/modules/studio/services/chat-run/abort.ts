@@ -18,6 +18,7 @@ import { flushResponseRunToDb } from './response-stream'
 import { replaceState } from './compression'
 import { calcAndUpdateUsage } from './usage'
 import { finalizeAbortedRunUsage } from './terminal-usage'
+import { observeRunLimitEvent } from '../run-limits'
 import type { QueuedRun, SessionState } from './types'
 
 const ABORT_BRIDGE_SYNC_TIMEOUT_MESSAGE = 'Hermes Agent did not confirm stop before timeout. Local run state was released so you can continue.'
@@ -60,6 +61,8 @@ export async function handleAbort(
   bridge: any,
   runQueuedItem: (socket: Socket, sessionId: string, next: QueuedRun, fallbackProfile?: string) => void,
 ) {
+  // Stop ends the run for run limits too (abort.completed below is not on the observed event stream).
+  observeRunLimitEvent(sessionId, 'abort.completed')
   let state = sessionMap.get(sessionId)
   const hasCodingAgentRun = codingAgentRunManager.hasSession(sessionId)
   const hasEkkoBackgroundTasks = hasGlobalEkkoBackgroundTasks(sessionId)

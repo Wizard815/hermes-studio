@@ -31,6 +31,7 @@ import {
 import { agentRunGateway, ProviderApiError } from '../../protocol/gateway'
 import { teeAsyncIterable } from '../../protocol/stream-tee'
 import { codingAgentRunManager } from '../runtime/run-manager'
+import { reportRunLimitUsage } from '../../protocol/run-limit-usage'
 import { logger } from '../../../studio/public/logging'
 import { GenerationClock } from '../../../studio/public/generation-time'
 
@@ -42,6 +43,7 @@ type ClaudeCodeProxyTarget = RegisteredAgentTarget<ClaudeCodeProxyTargetInput>
 function recordTargetUsage(target: ClaudeCodeProxyTarget, event: CanonicalResponsesEvent, apiDuration?: number, baseUrl?: string) {
   if (target.onUsageEvent) target.onUsageEvent(event, apiDuration, baseUrl)
   else codingAgentRunManager.handleProxyUsageEvent(target.agentSessionId, event, apiDuration, baseUrl)
+  reportRunLimitUsage(target, event)
 }
 
 const targetRegistry = new AgentTargetRegistry<ClaudeCodeProxyTargetInput>(

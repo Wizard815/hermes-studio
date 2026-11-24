@@ -9,6 +9,7 @@ import { herdrMessages } from '../herdr-messages'
 import { spaceFoldersMessages } from '../space-folders-messages'
 import { herdrAppMessages } from '../herdr-app-messages'
 import { commandCenterMessages } from '../command-center-messages'
+import { runLimitsMessages } from '../run-limits-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -57,6 +58,7 @@ export default {
   ...spaceFoldersMessages['tr'],
   ...herdrAppMessages['tr'],
   ...commandCenterMessages['tr'],
+  ...runLimitsMessages['tr'],
   ...vscodeMessages['tr'],
   ...screenMessages['tr'],
   ...hermesModelsMessages['tr'],
