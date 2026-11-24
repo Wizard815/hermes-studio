@@ -1,7 +1,8 @@
 import type { OrbWorkRef } from '../studio/orb'
 import { io, type Socket } from 'socket.io-client'
-import { getApiKey, getBaseUrlValue, request } from '../client'
+import { getApiKey, getBaseUrl, getBaseUrlValue, request } from '../client'
 import { socketEndpoint } from '@/utils/deployment-url'
+import type { SpaceFolderViewData, SpaceRepo } from '@/components/coding-agents/herdr/space-folders'
 
 export type HerdrStatusValue = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 
@@ -37,6 +38,8 @@ export interface HerdrPaneView {
   studioAgent: string | null
   studioSessionId: string | null
   nativeSessionId: string | null
+  /** When the agent took its current status (ms, Studio's clock): the Agents list's time in state. */
+  status_since?: number
 }
 
 export interface HerdrWorkspace {
@@ -56,6 +59,8 @@ export interface HerdrBridgeState {
   panes: HerdrPaneView[]
   /** Studio chats with a herdr space now; other top-level chats sleep until opened (older servers leave it out). */
   chatSpaces?: string[]
+  /** Waiting panes of chat spaces (the chat's agent is not running yet): not counted as agents. */
+  waitingPanes?: string[]
 }
 
 export interface HerdrStatus {
@@ -68,6 +73,10 @@ export interface HerdrStatus {
   bridge: HerdrBridgeState | null
   integrations: string[]
   home: string
+  /** The home folder with symlinks resolved, when that differs. */
+  homeReal?: string
+  /** Where the Herdr App layout installer is on Studio's machine ('' if missing). */
+  appLayoutScript?: string
   /** herdr keys (the user's or herdr's defaults) for Studio's herdr buttons. */
   keys?: { prefix: string; search: string; workspaces: string; settings: string; help: string; sidebar?: string; studioChats?: string; newChat?: string; reopen?: string }
   publicUrl?: string
@@ -179,6 +188,41 @@ export function focusHerdrPane(paneId: string) {
   return request<{ ok: boolean }>(`${base}/panes/${encodeURIComponent(paneId)}/focus`, { method: 'POST', body: '{}' })
 }
 
+/** One herdr space as the Herdr App layout draws it: its tabs, and its active tab's panes (rects are fractions). */
+export interface HerdrSpaceView {
+  workspaceId: string
+  tabs: Array<{ tab_id: string; label: string; number: number; focused: boolean; agent_status: string; pane_count: number }>
+  activeTabId: string
+  focusedPaneId: string
+  zoomed: boolean
+  panes: Array<{ pane_id: string; focused: boolean; rect: { x: number; y: number; width: number; height: number }; process: string }>
+}
+
+export const fetchHerdrSpaceView = (workspaceId: string) =>
+  request<HerdrSpaceView>(`${base}/spaces/${encodeURIComponent(workspaceId)}/view`)
+
+export const createHerdrTab = (workspaceId: string) =>
+  request<{ tabId: string; paneId: string }>(`${base}/spaces/${encodeURIComponent(workspaceId)}/tabs`, { method: 'POST', body: '{}' })
+
+export const focusHerdrTab = (tabId: string) =>
+  request<{ ok: boolean }>(`${base}/tabs/${encodeURIComponent(tabId)}/focus`, { method: 'POST', body: '{}' })
+
+export const closeHerdrTab = (tabId: string) =>
+  request<{ ok: boolean }>(`${base}/tabs/${encodeURIComponent(tabId)}`, { method: 'DELETE' })
+
+export interface HerdrPaneChanges {
+  root: string
+  branch: string | null
+  changes: Array<{ path: string; status: string; added: number; removed: number }>
+  notRepo?: boolean
+}
+
+export const fetchHerdrPaneChanges = (paneId: string) =>
+  request<HerdrPaneChanges>(`${base}/panes/${encodeURIComponent(paneId)}/changes`)
+
+export const fetchHerdrPaneDiff = (paneId: string, path: string) =>
+  request<{ root: string; path: string; diff: string; truncated: boolean }>(`${base}/panes/${encodeURIComponent(paneId)}/diff?path=${encodeURIComponent(path)}`)
+
 /** Whether this browser can unzip herdr's gzipped state. */
 export function canGunzip(): boolean {
   return typeof DecompressionStream === 'function' && typeof Response === 'function' && typeof Blob === 'function'
@@ -227,3 +271,40 @@ export const saveSpaceFolders = (state: SpaceFolderState) =>
 
 export const createHerdrWorkspace = (input: { cwd?: string; label?: string }) =>
   request<{ workspaceId: string; paneId: string }>(`${base}/workspaces`, { method: 'POST', body: JSON.stringify(input) })
+
+// ---- Studio's Spaces sidebar (space folders) ----
+
+export const fetchSpaceFolderView = () => request<SpaceFolderViewData>(`${base}/space-folders`)
+
+export const createSpaceFolder = (input: { name: string; parentId?: string; color?: string; start?: string; rules?: string }) =>
+  request<{ id: string }>(`${base}/space-folders/folders`, { method: 'POST', body: JSON.stringify(input) })
+
+export const updateSpaceFolder = (id: string, patch: Partial<Pick<SpaceFolder, 'name' | 'color' | 'folded' | 'start' | 'rules'>>) =>
+  request<{ ok: boolean }>(`${base}/space-folders/folders/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) })
+
+export const deleteSpaceFolder = (id: string) =>
+  request<{ ok: boolean }>(`${base}/space-folders/folders/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
+export const orderSpaceFolders = (ids: string[], move?: { id: string; parentId: string }) =>
+  request<{ ok: boolean }>(`${base}/space-folders/order`, { method: 'PUT', body: JSON.stringify({ ids, move }) })
+
+/** folderId: a folder, '' for out of every folder, null to let the folders' rules decide. */
+export const placeChatInFolder = (sessionId: string, folderId: string | null) =>
+  request<{ ok: boolean }>(`${base}/space-folders/chats/${encodeURIComponent(sessionId)}`, { method: 'PUT', body: JSON.stringify({ folderId }) })
+
+export const placeSpaceInFolder = (workspaceId: string, folderId: string | null) =>
+  request<{ ok: boolean }>(`${base}/space-folders/spaces/${encodeURIComponent(workspaceId)}`, { method: 'PUT', body: JSON.stringify({ folderId }) })
+
+export const newSpaceInFolder = (folderId: string) =>
+  request<{ workspaceId: string; paneId: string }>(`${base}/space-folders/folders/${encodeURIComponent(folderId)}/space`, { method: 'POST', body: '{}' })
+
+export const fetchSpaceRepos = (cwds: string[]) =>
+  request<{ repos: Record<string, SpaceRepo | null> }>(`${base}/space-repos`, { method: 'POST', body: JSON.stringify({ cwds }) })
+
+/** The Herdr App layout installer (a shell script), to save and run on the computer Herdr App is on. */
+export async function downloadHerdrAppLayoutScript(): Promise<Blob> {
+  const key = getApiKey()
+  const res = await fetch(`${getBaseUrl()}${base}/app-layout/script`, { headers: key ? { Authorization: `Bearer ${key}` } : {} })
+  if (!res.ok) throw new Error((await res.text().catch(() => '')) || `HTTP ${res.status}`)
+  return res.blob()
+}

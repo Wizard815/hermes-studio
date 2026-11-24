@@ -226,11 +226,14 @@ stay separate apps; this integration links them.
 ## The herdr page (Mission docked)
 
 herdr has one page: Studio's chat page in herdr mode
-(`components/coding-agents/herdr/HerdrCenter.vue` in `ChatPanel.vue`). On the
-left and center is herdr's own full UI (a `client` terminal stream): herdr's
-spaces sidebar, where every Studio chat is a space named after it in its Studio
-folder order, and the focused pane with herdr's keys, search and settings. On
-the right, Mission's tools are docked (`HerdrMissionDock.vue`): Chats (every
+(`components/coding-agents/herdr/HerdrCenter.vue` in `ChatPanel.vue`). By default
+it shows the Herdr App layout (next section); this section is the other look,
+herdr's own terminal UI (the header's "herdr TUI" switch). On the
+left is Studio's Spaces sidebar (space folders, below; herdr's own sidebar on
+request) and in the center herdr's own full UI (a `client` terminal stream):
+the focused pane with herdr's keys, search and settings. On
+the right, the Tools dock (`HerdrMissionDock.vue`): Command Center's Inbox,
+Agents, Files, Board and Skills with a usage strip (see below), then Mission's tools: Chats (every
 chat, with the "z" asleep marker; Open in herdr wakes it into its space), and
 Pondering Orb's Tasks, Projects, Ideas, Upkeep, plus Control. herdr's bar shares the
 chat page's header row (one row with the chat title and the Chat | herdr | Code
@@ -258,7 +261,72 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   gzipped too. The terminal stream shares that socket, so before this the
   first herdr screen waited behind the full state.
 - **Folders are Studio's chat folders, 1:1** (`mission/useFolders.ts`,
-  `services/herdr/folders.ts`): herdr's spaces follow Studio's folder order.
+  `services/herdr/folders.ts`): herdr's spaces follow Studio's folder order
+  (the order of the Spaces sidebar, `ChatSpaceChat.folderRank`).
+- **Spaces sidebar (space folders).** The left column is Studio's own Spaces
+  sidebar (`HerdrSpaceSidebar.vue`, logic in `space-folders.ts`), rebuilt
+  natively after Herdr App's **Herdr Space Folders** mod
+  (github.com/jankeesvw/herdr-space-folders, MIT) and **Herdr Roundup**'s
+  spaces list (github.com/carstenlucke/herdr-roundup); ideas, not code. Those
+  mods are GPUI JavaScript for herdr's desktop app and cannot run in a browser.
+  Folders are Studio's chat folders: a colored tile, a count, fold/unfold (a
+  folded folder still shows when an agent in it is blocked, done or working),
+  a `+` that opens a herdr space in the folder's start folder, already in the
+  folder (`POST …/space-folders/folders/:id/space`), and a right-click menu
+  (color, New space here, New folder inside, Edit folder…, Delete folder).
+  Edit folder sets the name, the parent, the start folder (Choose… is Studio's
+  server-side folder picker; home is written `~`) and the rules: `wbso-ai`
+  (a folder name anywhere in the path), `~/code/client-*` (a path, `*` one
+  name); the most specific rule wins and what you dragged wins over rules; a
+  folder with no rules collects by its start folder. Drag a chat onto a folder
+  (files it), onto a chat (into that chat's folder), below the list (out of
+  every folder; kept out when a rule would collect it), and drag folders to
+  reorder them (dropped on a folder under another parent, it moves there). Rows
+  show a stable colored avatar, the name, repo / branch and ahead/behind only
+  when unusual (`POST …/space-repos`, `services/herdr/space-git.ts`, cached
+  30 s), and the agent's status; asleep chats are listed with "z" and a click
+  wakes them (`openSessionInHerdr`). Search filters chats and spaces (a match
+  opens its folder). alt+up / alt+down go to the row above/below as the list
+  shows (past folded folders, round the ends) and are taken before the
+  terminal sees them. With saved remote machines a "This computer" header and a
+  group per machine (its agents, click opens that machine's herdr) show. On a
+  phone the sidebar is a drawer (the header's Spaces button).
+- **herdr's own sidebar instead.** The sidebar's ▯ button, the header's ⋯ menu
+  on a phone ("Use herdr's own sidebar") and the Spaces button (back) switch
+  per viewer (`space-sidebar-layout.ts`, `studio_herdr_spaces`). Under Studio's
+  Spaces the embedded herdr client starts with its sidebar collapsed and reads
+  a copy of the user's herdr config with `sidebar_collapsed_mode = "hidden"`
+  (`HERDR_CONFIG_PATH` in `client-view.ts`, so it is gone, not a rail); with
+  herdr's own sidebar it starts shown and reads the user's config. A terminal
+  herdr is never affected. Relative paths in that config resolve next to the
+  copy (Studio's link folder); Studio's client picks up config edits when it
+  reconnects.
+- **One set of folders with Herdr App.** `~/.config/herdr-space-folders.json`
+  in the home of the machine herdr runs on (the Studio server's;
+  `HERMES_HERDR_SPACE_FOLDERS_FILE` overrides it, `off` turns it off) is kept
+  in two-way sync with Studio's folders and each awake chat's folder
+  (`services/herdr/space-folder-sync.ts`, pure merge in
+  `space-folder-file.ts`). The mod's format is `{ list: [{ id, name, color,
+  path, match, folded }], of: { spaceId: folderId | "" }, at }`. Studio writes
+  folder `c<category id>`, colors as the mod's `ansi1…6`, `path` = start
+  folder, `match` = rules (or the start folder while a folder has none, as the
+  mod's dialog mirrors it). Nested Studio folders are written flat, right after
+  their parent, named with their path ("Clients / Acme"); renaming one in the
+  mod renames its last part; a folder made in the mod becomes a top-level
+  Studio folder (its `f…` id is remembered as an alias of the new `c<id>`). A
+  space's `of` is its chat's folder, `""` when taken out by hand, absent when
+  rules decide; placements of spaces that are no chat are kept too. Fields and
+  folders Studio does not use (extra keys, unknown top-level keys) are kept.
+  Merging is three-way against what Studio last wrote (`synced` in Studio's
+  `space-folders.json`): only fields the file changed are applied; when both
+  sides changed the same field the newer side wins (`file.at` against Studio's
+  last change); a copy older than Studio's last write is replaced. The first
+  sync adds the mod's folders and placements and keeps Studio's own. Studio
+  watches the file (and looks every 5 s) and writes it at once after a change
+  in Studio. Limits: Herdr App re-reads the file every 15 s, so changes made
+  in both apps within that window can lose one side; asleep chats have no herdr
+  space, so the file only places awake chats (their folder is kept in Studio);
+  remote machines keep their own files, which Studio does not sync.
 - **Start from a card.** Each task, project or idea card has a button per
   installed agent. Studio opens a herdr space for it and types the card as the
   agent's first prompt once herdr reports the agent idle
@@ -313,8 +381,8 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   client connects through Studio's own links to herdr's sockets
   (`services/herdr/client-view.ts`, `HERDR_SOCKET_PATH`), and herdr keeps
   client preferences per socket path, so hiding herdr's sidebar in Studio does
-  not hide it in a terminal herdr. Studio seeds that file with the sidebar
-  shown (and undoes, once, the hidden-sidebar file older versions wrote).
+  not hide it in a terminal herdr. Studio sets that file's `sidebar_collapsed`
+  at each launch from the sidebar picked (see "Spaces sidebar").
   Windows (named pipes) keeps the shared preferences.
 - **Chats made in herdr are Studio chats.** herdr's Studio chats picker and
   "New Studio chat" are bound to free herdr keys at setup (`STUDIO_CHATS_BINDING`,
@@ -365,6 +433,163 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   closes. Startup repairs older herdr chats stored `scoped` without a model
   (`repairHerdrChatModes`).
 
+## The Herdr App layout (default look of the herdr page)
+
+The herdr page looks and works like the **Herdr desktop app (Herdr App)
+running herdr-space-folders' `main-folders` layout**: Studio draws herdr's
+chrome itself and each pane is its own terminal, instead of showing herdr's
+terminal UI in the middle. `HerdrAppView.vue` (logic in `herdr-app-layout.ts`)
+follows `layouts/main-folders.json`:
+
+- **Sidebar, 268 px** (`hap-side`): brand row (46 px: herdr's logo, Search,
+  hide sidebar), then **Spaces** (`HerdrSpaceSidebar.vue` with
+  `variant="app"`: the space folders, + and count always shown, search behind
+  the brand row's search button) and **Agents** (`HerdrAgentsList.vue`), each
+  half of the column (at least 90 px), then the footer (69 px: Settings, Add
+  machine; both open herdr's settings page). Agents lists every pane running an
+  agent in Working / Blocked / Done / Idle sections with a count (the clock
+  button switches to grouping by space; `studio_herdr_agents_sort`), each row
+  the agent's icon, its chat's title, the time in its state (Studio notes when
+  it first sees a status: `status_since` from `createStatusClock` in
+  `client-state.ts`) and a status ring (a spinner while working, "Needs you"
+  when blocked, a dot when done, a hollow ring when idle). A chat's waiting
+  pane (its space before Enter starts the agent; the bridge's `waitingPanes`)
+  is not an agent; once the chat's agent runs there it is one.
+- **Tab bar, 42 px**: the space's herdr tabs (`tab.list`; a click is
+  `tab.focus`, × is `tab.close`), + (`tab.create`), and Files / Changes /
+  Issues. Files opens Studio's Tools on Files, Issues on the Inbox, Changes
+  opens `HerdrChangesPanel.vue` (the focused pane's repo: `git status` and a
+  file's diff against HEAD, read-only, only in a folder a herdr pane works in:
+  `GET …/panes/:paneId/changes|diff`, `services/herdr/space-changes.ts`). The
+  panel is 368 px beside the panes and hidden at first, as in the layout.
+- **Panes** (`padding 8, gap 8`): the active tab's panes where herdr has them
+  (`pane.layout` rects as fractions of the tab, `GET …/spaces/:id/view`,
+  `services/herdr/space-view.ts`; a zoomed tab shows its one pane). Each is a
+  card (radius 10, 1 px border, the accent border when herdr has it focused)
+  with a 30 px header: a shell shows its program and folder ("bash ~/proj/a",
+  `pane.process_info`), an agent its name, chat and folder. Clicking a pane
+  focuses it in herdr (`pane.focus`), so the chat follows as before.
+- **Status bar, 28 px**: "This computer", the number of agents, and
+  "Ctrl Shift P commands" (opens the palette).
+- **Keys**: Ctrl+Shift+P (Cmd+Shift+P) is the command palette
+  (`HerdrCommandPalette.vue`: spaces, chats, and actions such as New chat,
+  Reopen closed chat, Open in Studio, New tab, Next/Previous space, Files,
+  Changes, Issues, Tools, hide the sidebar, herdr's own UI, herdr settings);
+  alt+up / alt+down go through the Spaces list as it shows. Both are taken
+  before the pane's terminal sees them. In this layout New chat starts a
+  Studio chat (it opens in herdr by itself: every chat is a herdr space);
+  herdr's prefix keys reach the pane's program, not herdr.
+- **Phone** (≤ 640 px): the sidebar is a drawer (the tab bar's sidebar
+  button; it closes after a pick), the header stays one row (the chat's
+  title gives way to herdr's bar; the tab and pane name the space), one pane shows
+  at a time (the focused one; ‹ n of N › in the tab bar steps through the
+  tab's panes) and Studio's tools are a drawer.
+- **herdr's own UI is one switch away**: the header's "herdr TUI" button (on
+  a phone the ⋯ menu, or the palette) shows the previous page, herdr's
+  terminal UI with Studio's Spaces sidebar, per viewer
+  (`studio_herdr_view`: `app` or `tui`). A saved remote machine still shows
+  that machine's full herdr.
+
+**How each pane is its own terminal.** herdr has an API for apps that draw
+panes themselves, which Herdr App uses: `herdr terminal session control
+<pane> --cols N --rows N [--takeover]` (`src/client/terminal_sessions.rs` in
+herdr). It connects to herdr's client socket, asks for that one terminal
+(`ControlTerminal`), and prints the pane's screen as NDJSON
+`{"type":"terminal.frame","bytes":<base64 ANSI>,"width","height","full"}`;
+on stdin it takes `terminal.input` (text or base64 bytes), `terminal.resize`,
+`terminal.scroll`, `terminal.mouse` and `terminal.release`. A controller sizes
+the pane's PTY to itself (herdr locks that pane's size against its own layout)
+and there is one controller per pane (`--takeover` replaces the other, which is
+told "terminal attach taken over"; the pane then offers Reconnect). Studio
+already had this as the `/herdr` socket's `control` stream; it now lives in
+`services/herdr/pane-stream.ts` and adds `terminal.scroll`, and a socket may
+hold 16 streams (one per pane shown). `HerdrTerminal.vue` with `bare` draws a
+pane: no frame of its own, the pane's background (`[data-herdr-pane]`), no
+xterm scrollback (the wheel asks herdr to scroll the pane's history). Panes of
+other tabs and spaces are not streamed; a pane's stream closes when it leaves
+the screen and herdr keeps running it. The TUI view's `client` stream (herdr's
+whole UI) is the fallback and is not started in this layout.
+
+**Same layout in the desktop app.** `scripts/install-herdr-app-layout.sh`
+(shipped as `dist/server/assets/herdr/`, shown with a copy button and a
+download in herdr's settings, `HerdrAppInstall.vue`,
+`GET /api/coding-agents/herdr/app-layout/script`) installs it into Herdr App on
+the computer it runs on: it clones github.com/jankeesvw/herdr-space-folders to
+`~/.local/share/herdr-space-folders` (or uses `--from <checkout>`), links its
+`space-folders` mod into `~/.config/herdr-app/mods/`, copies
+`layouts/main-folders.json` into `~/.config/herdr-app/layouts/`, merges the
+`layout:main-folders` section of its `keys.json` into
+`~/.config/herdr-app/keys.json` (keys the user set win; the old file is kept as
+`keys.json.bak`) and with `--switch` runs `herdr-app do layout.switch --name
+main-folders`. It is idempotent (`--dry-run` shows what it would do;
+`HERDR_APP_CONFIG`, `HERDR_SPACE_FOLDERS_DIR`, `HERDR_SPACE_FOLDERS_REPO`
+override paths). Herdr App then reads and writes
+`~/.config/herdr-space-folders.json`, the file Studio's Spaces sidebar already
+syncs both ways, so the desktop app and the web page show the same folders.
+
+**Credits.** The layout, its sizes and the behaviour of the Spaces, Agents,
+tabs and pane-header blocks follow Herdr App's built-in `main` layout and mods
+(workspace-chrome, agents, tabs, pane, by the Herdr authors, herdr.dev,
+Apache-2.0), **Herdr Space Folders** by Jan-Kees van Woezik
+(github.com/jankeesvw/herdr-space-folders, MIT: the `main-folders` layout, the
+space-folders mod, its keys) and **Herdr Roundup** by Carsten Lucke
+(github.com/carstenlucke/herdr-roundup: roundup-agents, roundup-tabs,
+roundup-pane, roundup-workspace-chrome, used to read how those blocks look).
+Studio's version is a rebuild in Vue from screenshots and those files; no mod
+code is copied. herdr's logo (`public/coding-agents/herdr-logo.svg`) is
+herdr's `assets/logo.svg` (Apache-2.0).
+
+## Command Center (the Tools dock's first row)
+
+The dock's first row is Command Center (`mission/command-center/`), the
+behaviour of Herdr App add-ons rebuilt natively for the browser. They are GPUI
+JavaScript mods for herdr's desktop app and cannot run in a page; Studio took
+the ideas, not the code. Credit: [Command Center](https://github.com/digitaltracer/herdr-plugins)
+by digitaltracer (inbox, board, status, usage bars), [Herdr Roundup](https://github.com/carstenlucke/herdr-roundup)
+by Carsten Lucke (agent cards with context meter, file list, floating preview)
+and the [skillshare](https://github.com/runkids/skillshare) herdr panel by runkids.
+
+- **Inbox.** What needs you now (`model.ts` `buildInbox`): Agent work awaiting
+  approval (Approve / Reject inline), blocked agents (herdr panes and Studio
+  chats), failed Hermes jobs, failed CI on your open pull requests and review
+  requests (from the server's `gh`, only when it is signed in; settings: on/off
+  and watched repositories, whose failing workflow runs are added), and agents
+  done since you last looked. A click shows the pane or opens the chat. Seen
+  marks and when each agent entered its state are per viewer in browser
+  storage (`studio_herdr_inbox_seen_v1`, `studio_herdr_agent_since_v1`); a
+  later event is new again. The unseen count badges the Inbox tab and Tools.
+- **Agents.** A card per herdr agent and per working/blocked/done Studio chat:
+  state and time in it, agent, model, folder and git branch, context meter
+  (latest usage row against the model's context window, the same estimate as
+  `/context`), token totals, Codex plan bars on Codex cards; Show pane, Open in
+  Studio, Approve pending Agent work, Stop (closes the pane, after a confirm).
+- **Files.** The focused pane's chat folder through the chat workspace file
+  API, starting at the pane's own folder when it is inside. Double-click or
+  Enter opens a floating, draggable, resizable preview with Studio's
+  `FilePreview` (Markdown, images, PDF, CSV/xlsx, code, JSON); TSV is shown as
+  a table. The preview carries `floating: true` in the files store so the
+  chat page's Files panel does not open for it.
+- **Board.** Agent work, Pondering Orb's open tasks and live agents as lanes
+  (queued, working, blocked, awaiting approval, done); a work item an agent is
+  doing shows that agent's state instead of a second card.
+- **Skills.** With `skillshare` on the server's PATH: Overview (targets waiting,
+  per-kind counts, needs sync and updates) and Library, with Sync, Update and
+  Install from a repo behind a confirmation (the routes refuse writes without
+  `confirm: true`; skillshare audits installs and updates itself). Global scope
+  only. Without it: how to install it. Studio's Hermes skills are counted.
+- **Usage strip.** Today's tokens per agent and cost from Studio's usage stats,
+  and Codex's 5-hour and weekly plan windows from the newest Codex rollout's
+  `rate_limits` (`codex-limits.ts`). Claude Code keeps no plan limits locally.
+- **Not built.** Command Center's Linear and Slack panels need connectors
+  Studio does not have; its standup/handoff ideas are left for later.
+- **Server.** `/api/studio/command-center/*` (super admin): `github`,
+  `settings`, `agents` (contexts and branches), `plan-limits`, `skillshare`
+  (+ `check`, `sync`, `update`, `install`). Programs run with argument arrays
+  (`services/command-center/cli.ts`). Settings live in
+  `HERMES_WEB_UI_HOME/command-center/settings.json`.
+- Tests: `tests/server/command-center.test.ts`,
+  `tests/client/command-center-model.test.ts`, `tests/client/command-center-tabs.test.ts`.
+
 ## Pondering Orb
 
 Studio connects to a Pondering Orb (`services/orb/client.ts`) with its URL and
@@ -401,6 +626,7 @@ an API token from Orb's `ORB_API_TOKENS`, set in Mission → Control or with
 | UI | `views/hermes/HerdrView.vue`, `components/coding-agents/herdr/*` |
 | herdr page (Mission docked) | `components/coding-agents/herdr/HerdrCenter.vue`, `HerdrMissionDock.vue`, `herdr-layout.ts`, `packages/client/src/mission/sources/*`; old `/mission/` redirect: `packages/client/mission.html`, `src/mission/main.ts`, `bootstrap/http.ts` |
 | Space folders | `services/herdr/folders.ts` |
+| Herdr App layout | `components/coding-agents/herdr/HerdrAppView.vue`, `herdr-app-layout.ts`, `HerdrAgentsList.vue`, `HerdrChangesPanel.vue`, `HerdrCommandPalette.vue`, `HerdrAppInstall.vue`; server `services/herdr/space-view.ts`, `space-changes.ts`, `pane-stream.ts`; `scripts/install-herdr-app-layout.sh` |
 | Chat spaces, waiting pane | `services/herdr/chat-spaces.ts`, `bin/herdr-plugin/studio-chat.sh` |
 | Pondering Orb | `modules/studio/services/orb/client.ts`, `studio/routes/orb.ts`, `studio/controllers/orb.ts` |
 
@@ -429,6 +655,10 @@ Rules that keep it safe:
 - Unit: `tests/server/herdr-client-view.test.ts` (Studio's own herdr client preferences),
   `tests/client/mission-folders.test.ts` (tree and space placement),
   `tests/client/herdr-keys.test.ts` (key buttons).
+- Unit: `tests/server/herdr-app-layout.test.ts` (space view from herdr's
+  answers, Changes on a real git repo, a pane stream against a stand-in herdr),
+  `tests/server/herdr-app-install.test.ts` (the installer with a throwaway
+  HOME), `tests/client/herdr-app-view.test.ts`, `tests/client/herdr-center-app.test.ts`.
 - Browser: `tests/e2e/herdr-center.spec.ts`, `tests/e2e/herdr-settings.spec.ts`,
   `tests/e2e/mission.spec.ts` (mocked API).
 - Live: build herdr (`cargo build --release`, needs Zig 0.16), run Studio with an

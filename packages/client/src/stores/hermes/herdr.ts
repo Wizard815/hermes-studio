@@ -19,6 +19,8 @@ export const useHerdrStore = defineStore('herdr', () => {
   const bridge = ref<HerdrBridgeState | null>(null)
   const loading = ref(false)
   const error = ref('')
+  /** Bumped when space folders change (on Studio's herdr page or in Herdr App's file). */
+  const foldersVersion = ref(0)
   let socket: Socket | null = null
   let users = 0
 
@@ -55,6 +57,7 @@ export const useHerdrStore = defineStore('herdr', () => {
     }
     owner.on('herdr.state', (state: HerdrBridgeState | null) => apply(() => state))
     owner.on('herdr.state.gz', (payload: ArrayBuffer) => apply(() => gunzipState(payload)))
+    owner.on('herdr.folders', () => { foldersVersion.value += 1 })
     return owner
   }
 
@@ -83,5 +86,5 @@ export const useHerdrStore = defineStore('herdr', () => {
     bridge.value = status.value.bridge
   }
 
-  return { status, bridge, loading, error, enabled, connected, refresh, acquire, release, updateSettings, startServer }
+  return { status, bridge, loading, error, foldersVersion, enabled, connected, refresh, acquire, release, updateSettings, startServer }
 })

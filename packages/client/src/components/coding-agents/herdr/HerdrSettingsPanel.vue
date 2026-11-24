@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import HerdrMachinesSettings from './HerdrMachinesSettings.vue'
+import HerdrAppInstall from './HerdrAppInstall.vue'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NInput, NInputNumber, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -228,6 +229,7 @@ async function startServer() {
     </div>
     <p class="herdr-settings-hint">{{ t('herdr.settings.pluginHint') }}</p>
     <HerdrMachinesSettings v-if="herdr.status?.installed" />
+    <HerdrAppInstall v-if="herdr.status?.installed" />
     <!-- Orb is a Studio connection (Connections → Pondering Orb); herdr reads it from Studio. -->
     <p class="herdr-settings-hint" data-testid="herdr-orb-link">
       {{ t('herdr.settings.orbInConnections') }}

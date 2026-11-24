@@ -6,6 +6,9 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { spaceFoldersMessages } from '../space-folders-messages'
+import { herdrAppMessages } from '../herdr-app-messages'
+import { commandCenterMessages } from '../command-center-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -23,6 +26,9 @@ export default {
   dshVersions: {"compatibility": "ACP アダプター {revision} · テスト済み: 0.2.1-rc.5 / 0.2.2-rc.1", "verified": "検証済み: {version}", "pinned": "固定バージョン: {version}", "version": "正確な npm バージョン（例: 0.2.2-rc.1）", "pin": "インストールして固定", "latest": "最新版を検証して使用", "restore": "{version} に戻す", "manage": "バージョン管理", "current": "現在のバージョン：{version}", "notPinned": "固定なし", "fixed": "固定済み", "verifiedSummary": "検証済み", "unverified": "未検証", "more": "その他", "latestHint": "最新版をインストールして検証し、成功後にバージョン固定を解除します。通常の更新確認では実行されません。", "noPrevious": "復元できる以前のバージョンはありません。", "restoring": "バージョンを復元中…", "saving": "自動更新設定を保存中…", "updating": "自動更新中…", "waiting": "Agent が待機状態になるのを待っています"},
   person: personMessages['ja'],
   ...herdrMessages['ja'],
+  ...spaceFoldersMessages['ja'],
+  ...herdrAppMessages['ja'],
+  ...commandCenterMessages['ja'],
   ...vscodeMessages['ja'],
   ...screenMessages['ja'],
   ...hermesModelsMessages['ja'],

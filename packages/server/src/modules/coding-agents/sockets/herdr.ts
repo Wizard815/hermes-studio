@@ -1,12 +1,11 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import type { Server, Socket } from 'socket.io'
 import { authenticateUserToken } from '../../studio/public/auth'
 import { killOwnedProcessTree } from '../../studio/public/process-tree'
 import { logger } from '../../studio/public/logging'
 import { herdrManager } from '../services/herdr/manager'
 import { herdrArgs, readHerdrServerStatus } from '../services/herdr/runtime'
-import { studioClientView, type ClientViewLaunch } from '../services/herdr/client-view'
-import { NdjsonReader } from '../services/herdr/socket-client'
+import { studioClientView, type ClientSidebar, type ClientViewLaunch } from '../services/herdr/client-view'
+import { paneStream } from '../services/herdr/pane-stream'
 import { createStateFeed, type EncodedState } from '../services/herdr/client-state'
 
 /**
@@ -22,11 +21,14 @@ interface Stream {
   mode: Mode
   write(data: string): void
   resize(cols: number, rows: number): void
+  /** Pane streams: herdr scrolls the pane's history (its frames are the screen, not a scrollback). */
+  scroll?(direction: 'up' | 'down', lines: number): void
   close(): void
 }
 
 const TARGET = /^[A-Za-z0-9:_-]{1,64}$/
-const MAX_STREAMS_PER_SOCKET = 6
+/** herdr's full UI, plus one stream per pane of the space shown (Studio's Herdr App layout draws each pane). */
+const MAX_STREAMS_PER_SOCKET = 16
 
 let pty: any = null
 try {
@@ -41,53 +43,12 @@ function clampSize(value: unknown, fallback: number, max: number): number {
   return Number.isFinite(number) && number > 0 ? Math.min(number, max) : fallback
 }
 
-function paneStream(binary: string, mode: 'observe' | 'control', target: string, cols: number, rows: number, takeover: boolean,
-  onData: (bytes: string) => void, onClose: (reason: string) => void): Stream {
-  const settings = herdrManager.getSettings()
-  const args = herdrArgs(settings, ['terminal', 'session', mode, target, '--cols', String(cols), '--rows', String(rows), ...(mode === 'control' && takeover ? ['--takeover'] : [])])
-  const child: ChildProcessWithoutNullStreams = spawn(binary, args, { stdio: ['pipe', 'pipe', 'pipe'], env: process.env })
-  const reader = new NdjsonReader()
-  let closed = false
-  let stderr = ''
-  child.stdout.setEncoding('utf8')
-  child.stdout.on('data', (chunk: string) => {
-    for (const record of reader.push(chunk) as any[]) {
-      if (record?.type === 'terminal.frame' && typeof record.bytes === 'string') onData(record.bytes)
-      else if (record?.type === 'terminal.closed') finish(String(record.reason || 'closed'))
-    }
-  })
-  child.stderr.setEncoding('utf8')
-  child.stderr.on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-2000) })
-  child.on('error', error => finish(error.message))
-  child.on('exit', () => finish(stderr.trim() || 'closed'))
-  const send = (command: Record<string, unknown>) => {
-    if (mode !== 'control' || closed || !child.stdin.writable) return
-    child.stdin.write(`${JSON.stringify(command)}\n`)
-  }
-  function finish(reason: string) {
-    if (closed) return
-    closed = true
-    try { child.stdin.end() } catch { /* ignore */ }
-    if (child.exitCode === null) child.kill()
-    onClose(reason)
-  }
-  return {
-    mode,
-    write: data => send({ type: 'terminal.input', text: data }),
-    resize: (c, r) => send({ type: 'terminal.resize', cols: c, rows: r }),
-    close: () => {
-      send({ type: 'terminal.release' })
-      finish('closed_by_client')
-    },
-  }
-}
-
 /** The embedded herdr UI with its own client preferences (herdr's sidebar hidden), else herdr as usual. */
-async function clientLaunch(binary: string): Promise<ClientViewLaunch> {
+async function clientLaunch(binary: string, sidebar: ClientSidebar = 'studio'): Promise<ClientViewLaunch> {
   const settings = herdrManager.getSettings()
   try {
     const status = await readHerdrServerStatus(binary, settings)
-    const view = status.running && status.socket ? studioClientView(status.socket) : null
+    const view = status.running && status.socket ? studioClientView(status.socket, { sidebar }) : null
     if (view) return view
   } catch (error) {
     logger.warn({ error: String(error) }, '[herdr] embedded view uses shared client preferences')
@@ -143,6 +104,8 @@ export function setupHerdrSocket(io: Server) {
     sendState(nsp.to(PLAIN), false, encoded)
   })
   const stopState = herdrManager.onState(() => feed.changed())
+  // Space folders changed (here or in Herdr App's file): pages reload them.
+  const stopFolders = herdrManager.onFoldersChanged(() => { nsp.emit('herdr.folders') })
 
   nsp.on('connection', (socket: Socket) => {
     const streams = new Map<string, Stream>()
@@ -165,7 +128,7 @@ export function setupHerdrSocket(io: Server) {
         const machine = mode === 'client' && typeof data?.target === 'string' && data.target.startsWith('machine:') ? data.target.slice('machine:'.length) : ''
         const launch = mode !== 'client' ? null
           : machine ? { args: await herdrManager.remoteAttachArgs(machine), env: {} }
-            : await clientLaunch(binary)
+            : await clientLaunch(binary, data?.sidebar === 'herdr' ? 'herdr' : 'studio')
         streams.get(streamId)?.close()
         const onData = (bytes: string) => socket.emit('terminal.data', { streamId, bytes })
         const onClose = (reason: string) => {
@@ -179,7 +142,7 @@ export function setupHerdrSocket(io: Server) {
         } else {
           const target = String(data?.target || '')
           if (!TARGET.test(target)) throw new Error('Invalid pane target')
-          stream = paneStream(binary, mode, target, cols, rows, data?.takeover === true, onData, onClose)
+          stream = paneStream(binary, herdrManager.getSettings(), mode, target, cols, rows, data?.takeover === true, onData, onClose)
         }
         streams.set(streamId, stream)
         reply({ ok: true, streamId })
@@ -196,6 +159,11 @@ export function setupHerdrSocket(io: Server) {
       const stream = streams.get(String(data?.streamId || ''))
       if (stream) stream.resize(clampSize(data?.cols, 100, 500), clampSize(data?.rows, 30, 200))
     })
+    socket.on('terminal.scroll', (data: any) => {
+      const stream = streams.get(String(data?.streamId || ''))
+      const direction = data?.direction === 'down' ? 'down' : data?.direction === 'up' ? 'up' : ''
+      if (stream?.scroll && direction) stream.scroll(direction, clampSize(data?.lines, 3, 200))
+    })
     socket.on('terminal.close', (data: any) => {
       const stream = streams.get(String(data?.streamId || ''))
       stream?.close()
@@ -211,6 +179,7 @@ export function setupHerdrSocket(io: Server) {
   return {
     close: () => {
       stopState()
+      stopFolders()
       feed.stop()
       nsp.disconnectSockets(true)
     },

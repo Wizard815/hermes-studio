@@ -714,7 +714,8 @@ watch(
 watch(
   () => filesStore.previewFile,
   (previewFile) => {
-    if (previewFile) {
+    // The herdr page's Files tab previews in its own floating window.
+    if (previewFile && !previewFile.floating) {
       selectedSubagent.value = null;
       activeToolPanel.value = "files";
       showToolPanel.value = true;
@@ -3257,7 +3258,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
       />
       <template v-else>
       <PageHeader>
-      <header v-if="!standalone" class="chat-header">
+      <header v-if="!standalone" class="chat-header" :class="{ 'is-herdr': showHerdrCenter }">
         <div class="header-left">
           <HeaderSidebarToggle
             v-if="currentMode === 'chat' && !herdrOwnsSidebar"
@@ -4154,6 +4155,12 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
 
   .header-session-title {
     font-size: calc(var(--font-size-base, 14px) * 14 / 14);
+  }
+
+  // herdr mode on a phone: the space's name is on its tab and pane; herdr's bar
+  // gets the row (one row, no squeezed title).
+  .chat-header.is-herdr .header-session-title {
+    display: none;
   }
 
 }

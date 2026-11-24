@@ -40,6 +40,8 @@ vi.mock('@/api/coding-agents/herdr', () => ({
 vi.mock('@/components/coding-agents/herdr/HerdrTerminal.vue', () => ({
   default: defineComponent({ name: 'HerdrTerminal', setup: (_, { expose }) => { expose({ send: () => true, focus: () => undefined }); return () => h('div', { class: 'fake-terminal' }) } }),
 }))
+// Studio's Spaces sidebar has its own tests (herdr-space-folders, e2e herdr-center).
+vi.mock('@/components/coding-agents/herdr/HerdrSpaceSidebar.vue', () => ({ default: defineComponent({ name: 'HerdrSpaceSidebar', setup: (_, { expose }) => { expose({ step: () => true }); return () => h('aside', { class: 'fake-spaces' }) } }) }))
 // The dock's tools have their own tests; here they are placeholders that pick a pane.
 vi.mock('@/mission/sources/SourceChats.vue', () => ({ default: defineComponent({ emits: ['select-pane'], setup: (_, { emit }) => () => h('button', { class: 'fake-chats', onClick: () => emit('select-pane', 'w1:p2') }) }) }))
 vi.mock('@/mission/sources/SourceTasks.vue', () => ({ default: { render: () => null } }))
@@ -49,6 +51,15 @@ vi.mock('@/mission/sources/SourceUpkeep.vue', () => ({ default: { render: () => 
 vi.mock('@/mission/sources/ControlPanel.vue', () => ({ default: { render: () => null } }))
 vi.mock('@/mission/sources/OrbNotConnected.vue', () => ({ default: { render: () => null } }))
 vi.mock('@/mission/useMission', () => ({ useOrbConnection: () => ({ state: { checked: true, configured: false } }) }))
+// Command Center (the dock's first row) has its own tests; here: its shared state and placeholders.
+const commandCenter = vi.hoisted(() => ({ acquire: vi.fn(), release: vi.fn(), unseen: { value: 0 } }))
+vi.mock('@/mission/command-center/useCommandCenter', () => ({ useCommandCenter: () => commandCenter }))
+vi.mock('@/mission/command-center/CommandInbox.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/mission/command-center/CommandAgents.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/mission/command-center/CommandFiles.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/mission/command-center/CommandBoard.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/mission/command-center/CommandSkills.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/mission/command-center/CommandUsage.vue', () => ({ default: { render: () => null } }))
 
 import HerdrCenter from '@/components/coding-agents/herdr/HerdrCenter.vue'
 
@@ -56,7 +67,8 @@ function setWidth(width: number) {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
 }
 
-beforeEach(() => { localStorage.clear(); api.focusHerdrPane.mockClear() })
+// These are herdr's own terminal UI (the Herdr App layout has its own tests: herdr-app-view).
+beforeEach(() => { localStorage.clear(); localStorage.setItem('studio_herdr_view', 'tui'); api.focusHerdrPane.mockClear() })
 afterEach(() => setWidth(1024))
 
 describe('the herdr page: herdr with Mission docked', () => {
@@ -68,13 +80,31 @@ describe('the herdr page: herdr with Mission docked', () => {
     const dock = wrapper.find('[data-testid="herdr-dock"]')
     expect(dock.exists()).toBe(true)
     expect(dock.classes()).not.toContain('is-drawer')
-    expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toEqual(
-      ['mission.sources.chats', 'mission.sources.tasks', 'mission.sources.projects', 'mission.sources.ideas', 'mission.sources.upkeep', 'mission.sources.control'])
+    expect(wrapper.findAll('[role="tab"]').map(tab => tab.text())).toEqual([
+      'commandCenter.tabs.inbox', 'commandCenter.tabs.agents', 'commandCenter.tabs.files', 'commandCenter.tabs.board', 'commandCenter.tabs.skills',
+      'mission.sources.chats', 'mission.sources.tasks', 'mission.sources.projects', 'mission.sources.ideas', 'mission.sources.upkeep', 'mission.sources.control'])
+    expect(commandCenter.acquire).toHaveBeenCalled()
+    // Arrow keys move along the tabs (Chats → its left neighbour, Skills).
+    await wrapper.find('[data-testid="herdr-dock-tab-chats"]').trigger('keydown', { key: 'ArrowLeft' })
+    expect(wrapper.find('[data-testid="herdr-dock-tab-skills"]').attributes('aria-selected')).toBe('true')
+    expect(wrapper.find('[data-testid="herdr-dock-tab-skills"]').attributes('tabindex')).toBe('0')
     await wrapper.find('[data-testid="herdr-dock-tab-control"]').trigger('click')
     expect(JSON.parse(localStorage.getItem('studio_herdr_dock')!)).toEqual({ open: true, tab: 'control' })
     await wrapper.find('[data-testid="herdr-center-dock-toggle"]').trigger('click')
     expect(wrapper.find('[data-testid="herdr-dock"]').exists()).toBe(false)
     expect(JSON.parse(localStorage.getItem('studio_herdr_dock')!).open).toBe(false)
+  })
+
+  it('badges the Tools button and the Inbox tab with what is new', async () => {
+    setWidth(1440)
+    commandCenter.unseen.value = 3
+    const wrapper = mount(HerdrCenter, { props: { sessionId: 'chat-2', active: true } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="herdr-center-inbox-badge"]').text()).toBe('3')
+    expect(wrapper.find('[data-testid="herdr-dock-inbox-badge"]').text()).toBe('3')
+    wrapper.unmount()
+    expect(commandCenter.release).toHaveBeenCalled()
+    commandCenter.unseen.value = 0
   })
 
   it('has Open in Studio for the pane herdr shows, New chat and Reopen (no second Back to chat)', async () => {
@@ -138,7 +168,7 @@ describe('the herdr page on a phone, with the chat header\'s own menu', () => {
     expect(bar.querySelector('[data-testid="herdr-center-reopen"]')).toBeNull()
     expect(bar.querySelector('[data-testid="herdr-center-dock-toggle"]')).not.toBeNull()
     const vm = wrapper.vm as any
-    expect(vm.menuItems.map((item: any) => item.key).slice(0, 3)).toEqual(['open-studio', 'new-chat', 'reopen'])
+    expect(vm.menuItems.map((item: any) => item.key).slice(0, 4)).toEqual(['view-mode', 'sidebar-mode', 'open-studio', 'new-chat'])
     expect(vm.menuItems.map((item: any) => item.key)).toContain('key:search')
     vm.runMenuItem('open-studio')
     expect(wrapper.emitted('open-studio-chat')?.[0]).toEqual(['chat-2'])

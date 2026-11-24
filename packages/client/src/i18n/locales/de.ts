@@ -6,6 +6,9 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { spaceFoldersMessages } from '../space-folders-messages'
+import { herdrAppMessages } from '../herdr-app-messages'
+import { commandCenterMessages } from '../command-center-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -23,6 +26,9 @@ export default {
   dshVersions: {"compatibility": "ACP-Adapter {revision} · getestet: 0.2.1-rc.5 / 0.2.2-rc.1", "verified": "Geprüfte Installation: {version}", "pinned": "Fixierte Version: {version}", "version": "Exakte npm-Version (z. B. 0.2.2-rc.1)", "pin": "Installieren und fixieren", "latest": "Neueste prüfen und verwenden", "restore": "{version} wiederherstellen", "manage": "Versionsverwaltung", "current": "Aktuelle Version: {version}", "notPinned": "Nicht fixiert", "fixed": "Fixiert", "verifiedSummary": "Geprüft", "unverified": "Noch nicht geprüft", "more": "Mehr", "latestHint": "Installiert und prüft die neueste Version und hebt nach Erfolg die Fixierung auf. Eine normale Update-Prüfung führt dies nicht aus.", "noPrevious": "Keine vorherige Version zum Wiederherstellen vorhanden.", "restoring": "Version wird wiederhergestellt…", "saving": "Automatische Updates werden gespeichert…", "updating": "Automatisches Update läuft…", "waiting": "Warten, bis der Agent inaktiv ist"},
   person: personMessages['de'],
   ...herdrMessages['de'],
+  ...spaceFoldersMessages['de'],
+  ...herdrAppMessages['de'],
+  ...commandCenterMessages['de'],
   ...vscodeMessages['de'],
   ...screenMessages['de'],
   ...hermesModelsMessages['de'],

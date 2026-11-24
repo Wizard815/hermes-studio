@@ -6,6 +6,9 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { spaceFoldersMessages } from '../space-folders-messages'
+import { herdrAppMessages } from '../herdr-app-messages'
+import { commandCenterMessages } from '../command-center-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -23,6 +26,9 @@ export default {
   dshVersions: {"compatibility": "ACP 适配器 {revision} · 已测试：0.2.1-rc.5 / 0.2.2-rc.1", "verified": "已验证安装：{version}", "pinned": "固定版本：{version}", "version": "精确 npm 版本（如 0.2.2-rc.1）", "pin": "安装并固定", "latest": "检查并使用最新版", "restore": "恢复 {version}", "manage": "版本管理", "current": "当前版本：{version}", "notPinned": "未固定", "fixed": "已固定", "verifiedSummary": "已验证", "unverified": "待验证", "more": "更多", "latestHint": "将安装并验证最新版，成功后解除版本固定；普通“检查更新”不会执行此操作。", "noPrevious": "没有可恢复的版本。", "restoring": "正在恢复版本…", "saving": "正在保存自动更新设置…", "updating": "正在自动更新…", "waiting": "等待 Agent 空闲后更新"},
   person: personMessages['zh'],
   ...herdrMessages['zh'],
+  ...spaceFoldersMessages['zh'],
+  ...herdrAppMessages['zh'],
+  ...commandCenterMessages['zh'],
   ...vscodeMessages['zh'],
   ...screenMessages['zh'],
   ...hermesModelsMessages['zh'],

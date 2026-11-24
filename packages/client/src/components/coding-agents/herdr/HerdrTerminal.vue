@@ -18,9 +18,17 @@ const props = withDefaults(defineProps<{
   mode: 'client' | 'observe' | 'control'
   target?: string
   takeover?: boolean
-}>(), { target: '', takeover: false })
+  /** client mode: which sidebar Studio's page shows (herdr's own is hidden under Studio's Spaces). */
+  sidebar?: 'studio' | 'herdr'
+  /**
+   * A pane inside Studio's Herdr App layout: no frame of its own (the pane
+   * draws it), and the wheel scrolls herdr's history of the pane (its frames
+   * are the screen; herdr keeps the scrollback).
+   */
+  bare?: boolean
+}>(), { target: '', takeover: false, sidebar: undefined, bare: false })
 
-const emit = defineEmits<{ closed: [reason: string]; error: [message: string] }>()
+const emit = defineEmits<{ closed: [reason: string]; error: [message: string]; focused: [] }>()
 
 const { t } = useI18n()
 const herdr = useHerdrStore()
@@ -36,6 +44,18 @@ let fit: FitAddon | null = null
 let observer: ResizeObserver | null = null
 let socket: ReturnType<typeof herdr.acquire> | null = null
 let lastSize = ''
+
+/**
+ * Studio's terminal colors; a bare pane takes its pane's background (the
+ * nearest `[data-herdr-pane]`), so the terminal and its padding are one color.
+ */
+function themeNow() {
+  const theme = terminalTheme(customization.value, isDark.value)
+  if (!props.bare) return theme
+  const pane = host.value?.closest('[data-herdr-pane]') as HTMLElement | null
+  const fill = pane ? getComputedStyle(pane).backgroundColor : ''
+  return fill && !/^rgba\(.*,\s*0\)$/.test(fill) && fill !== 'transparent' ? { ...theme, background: fill } : theme
+}
 
 function decode(base64: string): Uint8Array {
   const binary = atob(base64)
@@ -74,6 +94,7 @@ function open() {
     mode: props.mode,
     target: props.target,
     takeover: props.takeover,
+    ...(props.sidebar ? { sidebar: props.sidebar } : {}),
     cols: term.cols,
     rows: term.rows,
   }, (result: { ok: boolean; error?: string }) => {
@@ -99,8 +120,8 @@ onMounted(() => {
     fontSize: customization.value.fontSize,
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
     allowTransparency: true,
-    theme: terminalTheme(customization.value, isDark.value),
-    scrollback: props.mode === 'client' ? 0 : 2000,
+    theme: themeNow(),
+    scrollback: props.mode === 'client' || props.bare ? 0 : 2000,
     convertEol: false,
   })
   fit = new FitAddon()
@@ -111,6 +132,20 @@ onMounted(() => {
   term.onData(data => {
     if (!readOnly.value && state.value === 'open') socket?.emit('terminal.input', { streamId, data })
   })
+  term.textarea?.addEventListener('focus', () => emit('focused'))
+  if (props.bare) {
+    // herdr scrolls the pane itself (a copy of its history); xterm keeps none here.
+    let carry = 0
+    term.attachCustomWheelEventHandler(event => {
+      if (state.value !== 'open' || props.mode === 'client') return true
+      carry += event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY
+      const lines = Math.trunc(carry / 16)
+      if (!lines) return false
+      carry -= lines * 16
+      socket?.emit('terminal.scroll', { streamId, direction: lines < 0 ? 'up' : 'down', lines: Math.min(Math.abs(lines), 50) })
+      return false
+    })
+  }
   socket = herdr.acquire()
   socket.on('terminal.data', onData)
   socket.on('terminal.closed', onClosed)
@@ -124,12 +159,14 @@ onMounted(() => {
 
 watch([customization, isDark], () => {
   if (!term) return
-  term.options.theme = terminalTheme(customization.value, isDark.value)
+  // The pane's colors follow the theme a moment later (CSS variables).
+  if (props.bare) window.setTimeout(() => { if (term) term.options.theme = themeNow() }, 50)
+  term.options.theme = themeNow()
   term.options.fontSize = customization.value.fontSize
   sizeNow()
 })
 
-watch(() => [props.mode, props.target, props.takeover], () => {
+watch(() => [props.mode, props.target, props.takeover, props.sidebar], () => {
   if (!socket || !term) return
   socket.emit('terminal.close', { streamId })
   if (term) term.options.disableStdin = readOnly.value
@@ -158,11 +195,11 @@ function send(data: string): boolean {
   return sent
 }
 
-defineExpose({ reopen: open, focus: () => term?.focus(), send })
+defineExpose({ reopen: open, focus: () => term?.focus(), send, state })
 </script>
 
 <template>
-  <div class="herdr-terminal" data-theme-surface="card">
+  <div class="herdr-terminal" :class="{ 'is-bare': bare }" data-theme-surface="card">
     <div ref="host" class="herdr-terminal-host" :data-mode="mode" />
     <div v-if="state !== 'open'" class="herdr-terminal-overlay">
       <span v-if="state === 'connecting'">{{ t('herdr.terminal.connecting') }}</span>
@@ -193,6 +230,26 @@ defineExpose({ reopen: open, focus: () => term?.focus(), send })
   min-width: 0;
   min-height: 0;
   padding: 6px;
+}
+
+// A pane of the Herdr App layout: the pane is the frame; terminal padding 14 x 12 (main-folders.json).
+.herdr-terminal.is-bare {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+
+  // The padding sits on the frame, not the host: FitAddon sizes the terminal
+  // to the host's box, and padding there (border-box) cut off the last row.
+  padding: 10px 12px 8px 14px;
+
+  .herdr-terminal-host {
+    padding: 0;
+  }
+
+  // No xterm scrollback here (herdr scrolls the pane): no scrollbar to eat a column.
+  :deep(.xterm-viewport) {
+    overflow-y: hidden;
+  }
 }
 
 .herdr-terminal-overlay {

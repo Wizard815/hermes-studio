@@ -1,12 +1,15 @@
 import type { Context } from 'koa'
 import { gzipSync } from 'node:zlib'
 import { upstreamWorkRef } from '../../studio/services/upstream/client'
-import { herdrManager, HERDR_INTEGRATIONS } from '../services/herdr/manager'
+import { herdrAppLayoutScript, herdrManager, HERDR_INTEGRATIONS } from '../services/herdr/manager'
+import { readFile } from 'node:fs/promises'
 import { herdrKindForStudioAgent } from '../services/herdr/protocol'
 import { herdrChatProfile } from '../services/herdr/runtime'
 import { HERDR_PLUGIN_TOKEN_HEADER } from '../services/herdr/plugin'
 import type { HerdrWorkRef } from '../services/herdr/bridge'
-import { clientBridgeState } from '../services/herdr/client-state'
+import { clientBridgeState, studioStatusClock } from '../services/herdr/client-state'
+import { readSpaceView } from '../services/herdr/space-view'
+import { readSpaceChanges, readSpaceDiff } from '../services/herdr/space-changes'
 
 function fail(ctx: Context, error: unknown, fallback: string) {
   const err = error as { status?: number; message?: string; code?: string }
@@ -51,7 +54,7 @@ export async function status(ctx: Context) {
     herdrManager.noteUser(ctx.state.user)
     await herdrManager.noteStudioProfile(ctx.state.profile?.name)
     const current = await herdrManager.status()
-    sendJson(ctx, { ...current, bridge: clientBridgeState(current.bridge), integrations: HERDR_INTEGRATIONS })
+    sendJson(ctx, { ...current, bridge: clientBridgeState(current.bridge, studioStatusClock), integrations: HERDR_INTEGRATIONS })
   } catch (error) { fail(ctx, error, 'Failed to read herdr status') }
 }
 
@@ -390,4 +393,81 @@ export async function createWorkspace(ctx: Context) {
     if (cwd && !cwd.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(cwd)) throw Object.assign(new Error('Folder must be an absolute path'), { status: 400 })
     ctx.body = await herdrManager.requireBridge().createWorkspace({ cwd: cwd || undefined, label: typeof body.label === 'string' ? body.label.trim() : undefined })
   } catch (error) { fail(ctx, error, 'Failed to create space') }
+}
+
+// ---- Herdr App layout: one space's tabs and panes, and its git changes ----
+
+const ID = /^[A-Za-z0-9:_-]{1,64}$/
+
+function idParam(ctx: Context, name: string): string {
+  const value = String(ctx.params[name] || '')
+  if (!ID.test(value)) throw Object.assign(new Error(`Invalid ${name}`), { status: 400 })
+  return value
+}
+
+/** The space's tabs and its active tab's panes, laid out as herdr has them. */
+export async function spaceView(ctx: Context) {
+  try {
+    const bridge = herdrManager.requireBridge()
+    const workspaceId = idParam(ctx, 'workspaceId')
+    const panes = bridge.getState().panes
+    ctx.body = await readSpaceView((method, params) => bridge.call(method, params), workspaceId, tabId => {
+      const inTab = panes.filter(pane => pane.workspace_id === workspaceId && pane.tab_id === tabId)
+      return (inTab.find(pane => pane.focused) ?? inTab[0])?.pane_id || ''
+    })
+  } catch (error) { fail(ctx, error, 'Failed to read the herdr space') }
+}
+
+export async function createTab(ctx: Context) {
+  try {
+    const workspaceId = idParam(ctx, 'workspaceId')
+    const result = await herdrManager.requireBridge().call<any>('tab.create', { workspace_id: workspaceId, focus: true }, { refresh: true })
+    ctx.body = { tabId: String(result?.tab?.tab_id || ''), paneId: String(result?.root_pane?.pane_id || '') }
+  } catch (error) { fail(ctx, error, 'Failed to open a herdr tab') }
+}
+
+export async function focusTab(ctx: Context) {
+  try {
+    await herdrManager.requireBridge().call('tab.focus', { tab_id: idParam(ctx, 'tabId') }, { refresh: true })
+    ctx.body = { ok: true }
+  } catch (error) { fail(ctx, error, 'Failed to show the herdr tab') }
+}
+
+export async function closeTab(ctx: Context) {
+  try {
+    await herdrManager.requireBridge().call('tab.close', { tab_id: idParam(ctx, 'tabId') }, { refresh: true })
+    ctx.body = { ok: true }
+  } catch (error) { fail(ctx, error, 'Failed to close the herdr tab') }
+}
+
+/** A folder a herdr pane works in: the Changes panel reads git only there. */
+function paneFolder(paneId: string): string {
+  const pane = herdrManager.requireBridge().getState().panes.find(entry => entry.pane_id === paneId)
+  const cwd = pane?.foreground_cwd || pane?.cwd || ''
+  if (!cwd) throw Object.assign(new Error('That pane has no folder'), { status: 404 })
+  return cwd
+}
+
+export async function paneChanges(ctx: Context) {
+  try {
+    const changes = await readSpaceChanges(paneFolder(idParam(ctx, 'paneId')))
+    ctx.body = changes ?? { root: '', branch: null, changes: [], notRepo: true }
+  } catch (error) { fail(ctx, error, 'Failed to read the changes') }
+}
+
+export async function paneDiff(ctx: Context) {
+  try {
+    const diff = await readSpaceDiff(paneFolder(idParam(ctx, 'paneId')), String(ctx.query.path || ''))
+    if (!diff) throw Object.assign(new Error('No such change'), { status: 404 })
+    ctx.body = diff
+  } catch (error) { fail(ctx, error, 'Failed to read the diff') }
+}
+
+/** The Herdr App layout installer, to run on the computer Herdr App is on. */
+export async function appLayoutScript(ctx: Context) {
+  const path = herdrAppLayoutScript()
+  if (!path) { ctx.status = 404; ctx.body = { error: 'The Herdr App layout installer is not part of this install' }; return }
+  ctx.type = 'text/x-shellscript'
+  ctx.set('Content-Disposition', 'attachment; filename="install-herdr-app-layout.sh"')
+  ctx.body = await readFile(path, 'utf8')
 }

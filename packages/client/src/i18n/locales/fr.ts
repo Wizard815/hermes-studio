@@ -6,6 +6,9 @@ import { hermesChannelsMessages } from '../hermes-agent-channels-messages'
 import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
+import { spaceFoldersMessages } from '../space-folders-messages'
+import { herdrAppMessages } from '../herdr-app-messages'
+import { commandCenterMessages } from '../command-center-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -23,6 +26,9 @@ export default {
   dshVersions: {"compatibility": "Adaptateur ACP {revision} · testé : 0.2.1-rc.5 / 0.2.2-rc.1", "verified": "Installation vérifiée : {version}", "pinned": "Version épinglée : {version}", "version": "Version npm exacte (ex. 0.2.2-rc.1)", "pin": "Installer et épingler", "latest": "Vérifier et utiliser la dernière", "restore": "Restaurer {version}", "manage": "Gestion des versions", "current": "Version actuelle : {version}", "notPinned": "Non épinglée", "fixed": "Épinglée", "verifiedSummary": "Vérifiée", "unverified": "À vérifier", "more": "Plus", "latestHint": "Installe et vérifie la dernière version, puis retire l’épinglage en cas de succès. Une simple recherche de mises à jour ne le fait pas.", "noPrevious": "Aucune version précédente à restaurer.", "restoring": "Restauration de la version…", "saving": "Enregistrement des mises à jour automatiques…", "updating": "Mise à jour automatique en cours…", "waiting": "En attente de l’inactivité de l’Agent"},
   person: personMessages['fr'],
   ...herdrMessages['fr'],
+  ...spaceFoldersMessages['fr'],
+  ...herdrAppMessages['fr'],
+  ...commandCenterMessages['fr'],
   ...vscodeMessages['fr'],
   ...screenMessages['fr'],
   ...hermesModelsMessages['fr'],
