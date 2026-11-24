@@ -26,7 +26,7 @@ vi.mock('../../packages/server/src/modules/studio/public/app-config', async (ori
 }))
 
 import {
-  MCP_SERVE_SERVER_NAME, RECOMMENDED_HERMES_PLUGINS, addMcpServerToConfig, applyRecommendedPlugins, mcpServeServerConfig,
+  MCP_SERVE_SERVER_NAME, RECOMMENDED_HERMES_PLUGINS, addMcpServerToConfig, explainRefusal, mcpServeCommand, applyRecommendedPlugins, mcpServeServerConfig,
   platformAllowed, readRecommendedState, recommendedAutoInstallSetting, satisfiesHermes, type HermesCall, type RecommendedDeps,
 } from '../../packages/server/src/modules/hermes/services/plugins/recommended'
 import { missingEnvFor, requiredEnvNames } from '../../packages/server/src/modules/hermes/services/plugins/plugin-env'
@@ -165,7 +165,10 @@ describe('recommended Hermes plugins', () => {
       install: name => name === 'print3d' ? { status: 400, body: { detail: 'Blender 4.2+ not found. Install Blender first.' } } : undefined as any,
     })
     const result = await applyRecommendedPlugins('default', hermes.deps)
-    expect(result.failed).toEqual({ print3d: 'Blender 4.2+ not found. Install Blender first.' })
+    expect(result.failed).toEqual({ print3d: 'needs Blender 4.2+ on the Hermes host (Hermes said: Blender 4.2+ not found. Install Blender first.)' })
+    expect(explainRefusal('print3d', "Can't install plugin 'print3d': print3d is not installed. Install print3d 4.2 or newer, then try again."))
+      .toMatch(/^needs Blender 4\.2\+ on the Hermes host/)
+    expect(explainRefusal('rea', 'x is not installed')).toBe('x is not installed')
     expect(result.done).toHaveLength(7)
     hermes.calls.length = 0
     await applyRecommendedPlugins('default', hermes.deps)
@@ -234,6 +237,9 @@ describe('mcp-serve MCP server', () => {
     expect(cfg.mcp_servers['hermes-chats'].tools.include).toContain('messages_read')
     expect(await addMcpServerToConfig('default', 'Hermes-Chats', server)).toBe(false)
     expect(mcpServeServerConfig('work', 'hermes', base).args).toEqual(['-p', 'work', 'mcp-serve'])
+    expect(mcpServeCommand('/opt/hermes/bin/hermes', p => p === '/opt/hermes/.venv/bin/hermes')).toBe('/opt/hermes/.venv/bin/hermes')
+    expect(mcpServeCommand('/opt/hermes/bin/hermes', () => false)).toBe('/opt/hermes/bin/hermes')
+    expect(mcpServeCommand('/opt/hermes/.venv/bin/hermes', () => true)).toBe('/opt/hermes/.venv/bin/hermes')
   })
 
   it('is not added again after the user removes it', async () => {

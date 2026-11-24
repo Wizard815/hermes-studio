@@ -252,7 +252,12 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
   font-size: calc(var(--font-size-base, 14px) * 12 / 14);
 }
 
-.gadget-switch { min-width: auto; }
+.gadget-switch {
+  min-width: auto;
+  align-items: flex-start;
+  align-self: stretch;
+  justify-content: space-between;
+}
 .gadget-port { min-width: 96px; width: 96px; }
 
 .gadget-hint {

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { config } from '../../../studio/public/config'
 import { logger } from '../../../studio/public/logging'
@@ -109,11 +110,22 @@ function defaultDeps(): RecommendedDeps {
     hermesVersion: () => hermesApi.status().version,
     addMcpServer: addMcpServerToConfig,
     enableGadgetPlatform: profile => enableGadgetPlatformOnce(profile),
-    hermesCommand: () => findHermesCli() || 'hermes',
+    hermesCommand: () => mcpServeCommand(findHermesCli() || 'hermes'),
     stateFile: stateFilePath(),
     platform: process.platform,
     homeOf: profile => resolve(getProfileDir(profile)),
   }
+}
+
+/**
+ * The Docker image's `/opt/hermes/bin/hermes` launcher runs install recovery and, as
+ * root, can end up unable to read the profile's plugins, so `mcp-serve` is "not a
+ * command" there. Its `.venv/bin/hermes` (what docker-compose sets as HERMES_BIN) works.
+ */
+export function mcpServeCommand(cli: string, exists: (path: string) => boolean = existsSync): string {
+  const match = cli.match(/^(.*)\/bin\/hermes$/)
+  const venv = match && !match[1].endsWith('/.venv') ? `${match[1]}/.venv/bin/hermes` : ''
+  return venv && exists(venv) ? venv : cli
 }
 
 function emptyState(): RecommendedPluginsState {
@@ -203,6 +215,17 @@ function errorText(call: HermesCall): string {
   return String(typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : `HTTP ${call.status}`).replace(/\s+/g, ' ').slice(0, 300)
 }
 
+/**
+ * print3d's install check needs Blender on the host, but Hermes 0.23 words the refusal
+ * as "print3d is not installed. Install print3d 4.2 or newer": say what is missing.
+ */
+export function explainRefusal(name: string, error: string): string {
+  if (name === 'print3d' && /blender|is not installed/i.test(error) && !/^needs Blender/.test(error)) {
+    return `needs Blender 4.2+ on the Hermes host (Hermes said: ${error})`.slice(0, 300)
+  }
+  return error
+}
+
 /** The stdio server for `hermes mcp-serve` (read-only tools) for this profile. */
 export function mcpServeServerConfig(profile: string, command: string, hermesBase: string): Record<string, unknown> {
   return {
@@ -286,7 +309,7 @@ export async function applyRecommendedPlugins(profile: string, deps: Recommended
       const body = answer.body && typeof answer.body === 'object' ? answer.body : {}
       if (answer.status >= 400 || body.ok === false || body.consent_required || body.scan_blocked) {
         result.failed[name] = body.consent_required ? 'Hermes asks for consent; install it from the Plugins page'
-          : body.scan_blocked ? 'blocked by Hermes security scan' : errorText(answer)
+          : body.scan_blocked ? 'blocked by Hermes security scan' : explainRefusal(name, errorText(answer))
         continue
       }
       const missingEnv = Array.isArray(body.missing_env) ? body.missing_env.map(String) : []
