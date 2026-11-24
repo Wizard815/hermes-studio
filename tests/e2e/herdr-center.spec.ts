@@ -26,12 +26,15 @@ const SPACE_VIEW = {
   ],
 }
 
-async function openCenter(page: Page, session: string, options: { machines?: boolean; view?: 'app' | 'tui' } = {}) {
+async function openCenter(page: Page, session: string, options: { machines?: boolean; view?: 'app' | 'tui'; nothing?: boolean; query?: string } = {}) {
   const posts: string[] = []
   const bodies: Array<{ path: string; body: any }> = []
   const spaceView = structuredClone(SPACE_VIEW)
   const errors: string[] = []
-  let panes = [...PANES]
+  let panes = options.nothing ? [] : [...PANES]
+  // Elevated chats: the two running in herdr and one waiting for its agent. chat-new is Studio-only.
+  let elevated = options.nothing ? [] : ['herdr-aaa', 'herdr-ccc', 'chat-sleepy']
+  const workspaces = options.nothing ? [] : [{ workspace_id: 'w1', label: 'api' }, { workspace_id: 'w2', label: 'site' }, { workspace_id: 'w3', label: 'new' }]
   page.on('pageerror', error => errors.push(error.message))
   // Most tests here are herdr's own terminal UI; the Herdr App layout tests ask for 'app'.
   await page.addInitScript(view => { localStorage.setItem('hermes_locale', 'en'); localStorage.setItem('studio_herdr_view', view); (window as any).__APP_VERSION__ = 'test' }, options.view || 'tui')
@@ -51,7 +54,7 @@ async function openCenter(page: Page, session: string, options: { machines?: boo
         installed: true, binary: '/usr/local/bin/herdr', version: '0.9.5', error: '', home: '/home/me', publicUrl: '',
         keys: { prefix: 'ctrl+a', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'cmd+?' },
         server: { version: '0.9.5', running: true, socket: '/tmp/herdr.sock', session: 'default', compatible: true },
-        bridge: { connected: true, error: '', version: '0.9.5', focusedPaneId: 'w1:p1', workspaces: [{ workspace_id: 'w1', label: 'api' }, { workspace_id: 'w2', label: 'site' }, { workspace_id: 'w3', label: 'new' }], panes, chatSpaces: ['herdr-aaa', 'herdr-ccc'] },
+        bridge: { connected: true, error: '', version: '0.9.5', focusedPaneId: options.nothing ? null : 'w1:p1', workspaces, panes, chatSpaces: ['herdr-aaa', 'herdr-ccc'], elevatedChats: elevated },
         integrations: ['claude', 'codex'],
       } })
     }
@@ -86,6 +89,7 @@ async function openCenter(page: Page, session: string, options: { machines?: boo
       return route.fulfill({ json: { root: '/home/me/code/api', branch: 'auth', changes: [{ path: 'src/a.ts', status: 'M', added: 3, removed: 1 }] } })
     }
     if (path.endsWith('/open')) {
+      elevated = [...elevated, 'chat-new']
       panes = [...panes, { pane_id: 'w3:p1', workspace_id: 'w3', agent: 'claude', agent_status: 'idle', label: 'fresh', studioAgent: 'claude-code', studioSessionId: 'chat-new' }]
       return route.fulfill({ json: { link: { paneId: 'w3:p1', workspaceId: 'w3', status: 'idle' } } })
     }
@@ -93,7 +97,7 @@ async function openCenter(page: Page, session: string, options: { machines?: boo
   })
   const entry = '/@fs/' + resolve('tests/e2e/fixtures/herdr-center.ts').replaceAll('\\', '/').replace(/^\//, '')
   await page.route('**/__herdr_center__*', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="app"></div><script type="module" src="${entry}"></script></body></html>` }))
-  await page.goto(`/__herdr_center__?session=${session}`)
+  await page.goto(`/__herdr_center__?session=${session}${options.query || ''}`)
   return { posts, errors, bodies }
 }
 
@@ -116,9 +120,13 @@ test('herdr\'s own UI opens on the chat\'s agent, with one-tap herdr keys', asyn
   expect(errors).toEqual([])
 })
 
-test('in herdr mode a chat not running in herdr opens there by itself, once', async ({ page }) => {
+test('herdr mode never elevates a Studio-only chat by itself; Elevate this chat does', async ({ page }) => {
   const { posts, errors } = await openCenter(page, 'chat-new')
   await expect(page.locator('.herdr-terminal')).toBeVisible()
+  await page.waitForTimeout(800)
+  expect(posts.filter(path => path.endsWith('/open'))).toEqual([])
+  await expect(page.getByTestId('herdr-center-open')).toHaveText('Elevate this chat')
+  await page.getByTestId('herdr-center-open').click()
   await expect.poll(() => posts).toContain('/api/coding-agents/herdr/sessions/chat-new/open')
   await expect(page.getByTestId('herdr-center-agent')).toContainText('fresh')
   await expect.poll(() => posts).toContain('/api/coding-agents/herdr/panes/w3%3Ap1/focus')
@@ -250,8 +258,8 @@ test('Studio\'s Spaces sidebar: every chat in its colored folder, fold, color, e
   await expect(sidebar.getByTestId('space-folder-c1')).toContainText('Work')
   await expect(sidebar.getByTestId('space-folder-c3')).toContainText('Acme')
   await expect(sidebar.getByTestId('space-chat-chat-sleepy')).toBeVisible()
-  // Asleep chats are listed with "z"; the open chat is marked; repo and ahead/behind only when unusual (the branch is in the name).
-  await expect(sidebar.getByTestId('space-chat-chat-sleepy').getByTestId('space-chat-asleep')).toHaveText('z')
+  // Only chats in herdr are listed (chat-new is Studio-only); the open chat is marked; repo and ahead/behind only when unusual.
+  await expect(sidebar.getByTestId('space-chat-chat-new')).toHaveCount(0)
   await expect(sidebar.getByTestId('space-chat-herdr-aaa')).toHaveAttribute('aria-current', 'true')
   await expect(sidebar.getByTestId('space-chat-herdr-aaa')).toContainText('api ↑2')
   // A folded folder hides its chats but still shows that an agent in it is done.
@@ -277,9 +285,9 @@ test('Studio\'s Spaces sidebar: every chat in its colored folder, fold, color, e
   await page.keyboard.press('Alt+ArrowDown')
   await expect.poll(() => posts).toContain('/api/coding-agents/herdr/panes/w2%3Ap1/focus')
   await expect.poll(() => page.evaluate(() => (window as any).herdrCenterFixture.opened)).toContain('herdr-ccc')
-  // Clicking an asleep chat wakes it in herdr.
-  await sidebar.getByTestId('space-chat-chat-new').click()
-  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/sessions/chat-new/open')
+  // Clicking an elevated chat whose agent is not running opens it in herdr.
+  await sidebar.getByTestId('space-chat-chat-sleepy').click()
+  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/sessions/chat-sleepy/open')
   expect(errors).toEqual([])
 })
 
@@ -381,5 +389,44 @@ test('the Herdr App layout on a phone: one-row header, sidebar drawer, one pane 
   await expect(page.getByTestId('herdr-app-sidebar')).toBeHidden()
   const scroll = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(scroll).toBeLessThanOrEqual(0)
+  expect(errors).toEqual([])
+})
+
+test('nothing in herdr: the page explains how chats get there and elevates this chat', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { posts, errors } = await openCenter(page, 'chat-new', { nothing: true, view: 'app' })
+  const nothing = page.getByTestId('herdr-center-nothing')
+  await expect(nothing).toBeVisible()
+  await expect(nothing).toContainText('Nothing in herdr yet')
+  await expect(page.getByTestId('herdr-app')).toHaveCount(0)
+  await page.getByTestId('herdr-center-elevate').click()
+  await expect.poll(() => posts).toContain('/api/coding-agents/herdr/sessions/chat-new/open')
+  expect(errors).toEqual([])
+})
+
+test('nothing in herdr and no chat at all (a fresh install): the page still opens', async ({ page }) => {
+  const { errors } = await openCenter(page, 'none', { nothing: true, view: 'app' })
+  await expect(page.getByTestId('herdr-center-nothing')).toBeVisible()
+  await expect(page.getByTestId('herdr-center-elevate')).toHaveCount(0)
+  await page.getByTestId('herdr-center-back').click()
+  await expect.poll(() => page.evaluate(() => (window as any).herdrCenterFixture.backs)).toBe(1)
+  expect(errors).toEqual([])
+})
+
+test('Studio\'s top bar hidden: the Herdr App tab bar has Chat and Show top bar; Esc outside a pane shows it', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const { errors } = await openCenter(page, 'herdr-aaa', { view: 'app', query: '&topbar=hidden&header=1' })
+  await expect(page.getByTestId('herdr-app')).toBeVisible()
+  const tabs = page.getByTestId('herdr-app-tabs')
+  await expect(tabs.getByTestId('herdr-center-show-topbar')).toHaveAttribute('aria-label', "Show Studio's top bar")
+  await expect(tabs.getByTestId('herdr-center-back-chat')).toHaveText('Chat')
+  await page.getByTestId('herdr-app-sidebar').click({ position: { x: 5, y: 5 } })
+  await page.keyboard.press('Escape')
+  await expect.poll(() => page.evaluate(() => (window as any).herdrCenterFixture.topbar)).toEqual([true])
+  await expect(tabs.getByTestId('herdr-center-show-topbar')).toHaveCount(0)
+  // The bar is shown again: its own button hides it.
+  await page.getByTestId('herdr-center-hide-topbar').click()
+  await expect.poll(() => page.evaluate(() => (window as any).herdrCenterFixture.topbar)).toEqual([true, false])
+  await expect(tabs.getByTestId('herdr-center-show-topbar')).toBeVisible()
   expect(errors).toEqual([])
 })

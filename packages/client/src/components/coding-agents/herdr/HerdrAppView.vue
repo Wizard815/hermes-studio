@@ -298,6 +298,8 @@ defineExpose({
             <span>{{ t('herdrApp.issues') }}</span>
           </button>
         </template>
+        <!-- The page's own controls while Studio's top bar is hidden (back to Chat, show the bar). -->
+        <slot name="tabs-end" />
       </div>
 
       <div class="hap-body">

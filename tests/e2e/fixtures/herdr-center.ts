@@ -17,9 +17,11 @@ const headerSlot = ref<HTMLElement | null>(null)
 // ?hostmenu=1: the page has its own "more" menu (as Studio's chat header does) that lists herdr's actions.
 const hostMenu = new URLSearchParams(location.search).get('hostmenu') === '1'
 const center = ref<any>(null)
+// ?topbar=hidden: Studio's top bar is hidden (the herdr page's default on desktop).
+const topbarHidden = ref(new URLSearchParams(location.search).get('topbar') === 'hidden')
 const hostOpen = ref(false)
 const opened: string[] = []
-const fixture: any = { setActive: (value: boolean) => { active.value = value }, opened, newChats: 0 }
+const fixture: any = { setActive: (value: boolean) => { active.value = value }, opened, newChats: 0, backs: 0, topbar: [] as boolean[] }
 ;(window as any).herdrCenterFixture = fixture
 const app = createApp({
   render: () => h(NConfigProvider, {}, { default: () => h(NMessageProvider, {}, {
@@ -36,7 +38,7 @@ const app = createApp({
         ]) : null,
       ]) : null,
       h('main', { style: { display: 'flex', flex: '1 1 auto', minHeight: 0 } }, [
-        h(HerdrCenter, { ref: center, sessionId, active: active.value, headerTarget: headerSlot.value, hostMenu, onOpenChat: (id: string) => opened.push(id), onNewChat: () => { fixture.newChats += 1 } }),
+        h(HerdrCenter, { ref: center, sessionId, active: active.value, headerTarget: headerSlot.value, hostMenu, topbarHidden: topbarHidden.value, onOpenChat: (id: string) => opened.push(id), onNewChat: () => { fixture.newChats += 1 }, onBack: () => { fixture.backs += 1 }, onTopbar: (shown: boolean) => { fixture.topbar.push(shown); topbarHidden.value = !shown } }),
       ]),
     ]),
   }) }),

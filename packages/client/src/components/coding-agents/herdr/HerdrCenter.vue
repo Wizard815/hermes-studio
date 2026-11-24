@@ -47,8 +47,15 @@ const props = withDefaults(defineProps<{
    * (one menu in the row): it reads `menuItems` and calls `runMenuItem`.
    */
   hostMenu?: boolean
-}>(), { headerTarget: null, hostMenu: false })
-const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': []; back: [] }>()
+  /**
+   * Studio's top bar (the chat page's header row) is hidden on this page, so
+   * it looks like the Herdr App window: the page shows its own small "Chat"
+   * and "Show Studio's top bar" buttons, and Esc (outside a terminal) or the
+   * palette shows the bar again.
+   */
+  topbarHidden?: boolean
+}>(), { headerTarget: null, hostMenu: false, topbarHidden: false })
+const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': []; back: []; topbar: [shown: boolean] }>()
 /** Below this header width the less-used herdr keys fold into the "more" menu. */
 const HEADER_ROOM = 1560
 /** The phone header's "more" menu: a pick closes it. */
@@ -166,6 +173,14 @@ function focusFromSidebar(paneId: string) {
 /** alt+up / alt+down go to the space above or below in the Spaces list, as it shows (folders and all). */
 function onListKeys(event: KeyboardEvent) {
   if (!props.active) return
+  // Esc brings Studio's top bar back, unless it is for a terminal (agents use Esc) or a dialog.
+  if (event.key === 'Escape' && props.topbarHidden && !palette.value && !event.ctrlKey && !event.altKey && !event.metaKey) {
+    const target = event.target instanceof Element ? event.target : null
+    if (!target?.closest('.xterm, .hap-pane, .herdr-center-terminal, .n-modal-container, input, textarea, [role="dialog"]')) {
+      emit('topbar', true)
+      return
+    }
+  }
   // Ctrl+Shift+P: the Herdr App layout's command palette.
   if (appMode.value && isPaletteKey(event)) {
     event.preventDefault()
@@ -200,6 +215,8 @@ const paletteItems = computed<PaletteItem[]>(() => {
     { id: 'action:sidebar', kind: 'action', label: t('herdrApp.actions.toggleSidebar') },
     { id: 'action:tui', kind: 'action', label: t('herdrApp.actions.tui'), keywords: 'tui terminal herdr' },
     { id: 'action:settings', kind: 'action', label: t('herdrApp.actions.settings') },
+    { id: 'action:topbar', kind: 'action', label: props.topbarHidden ? t('herdr.showTopBar') : t('herdr.hideTopBar') },
+    { id: 'action:back', kind: 'action', label: t('herdr.backToChat') },
   ]
   const chatSpaces = new Set<string>()
   for (const pane of panes.value) if (pane.studioSessionId) chatSpaces.add(pane.workspace_id)
@@ -234,6 +251,8 @@ function runPalette(item: PaletteItem) {
   else if (id === 'sidebar') appView.value?.toggleSidebar()
   else if (id === 'tui') herdrView.set('tui')
   else if (id === 'settings') window.location.hash = SETTINGS_HREF.slice(1)
+  else if (id === 'topbar') emit('topbar', !!props.topbarHidden)
+  else if (id === 'back') { emit('back'); return }
   if (id !== 'settings' && id !== 'open-studio') focusTerminal()
 }
 
@@ -567,6 +586,16 @@ onBeforeUnmount(() => {
               {{ button.combo.replace(/^prefix\+/i, `${keys.prefix} then `) }}
             </NTooltip>
           </HeaderActionOverflow>
+          <!-- Hide Studio's top bar again (desktop): the page then looks like the Herdr App window. -->
+          <button
+            v-if="headerTarget && !dock.phone.value"
+            type="button"
+            class="herdr-center-key herdr-center-hide-topbar"
+            :title="t('herdr.hideTopBar')"
+            :aria-label="t('herdr.hideTopBar')"
+            data-testid="herdr-center-hide-topbar"
+            @click="emit('topbar', false)"
+          ><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 5h16M7 16l5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></button>
           <!-- The page's look: the Herdr App layout, or herdr's own terminal UI. -->
           <button
             v-if="!machine && !dock.phone.value"
@@ -611,6 +640,13 @@ onBeforeUnmount(() => {
           >{{ commandCenter.unseen.value > 99 ? '99+' : commandCenter.unseen.value }}</span></button>
         </div>
       </Teleport>
+      <!-- Studio's top bar is hidden: outside the Herdr App layout's tab bar, these float at the top right. -->
+      <div v-if="topbarHidden && !(appMode && started && !nothingInHerdr)" class="herdr-topbar-peek" data-testid="herdr-topbar-peek">
+        <button type="button" class="herdr-center-key herdr-peek-chat" data-testid="herdr-center-back-chat" @click="emit('back')">{{ t('herdr.centerChat') }}</button>
+            <button type="button" class="herdr-center-key herdr-peek-show" :title="t('herdr.showTopBar')" :aria-label="t('herdr.showTopBar')" data-testid="herdr-center-show-topbar" @click="emit('topbar', true)">
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 5h16M7 11l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+      </div>
       <!-- Nothing in herdr yet: how chats get here, and the way to elevate this one. -->
       <div v-if="nothingInHerdr" class="herdr-center-body herdr-center-nothing" role="status" data-testid="herdr-center-nothing">
         <div class="herdr-nothing-card" data-theme-surface="card">
@@ -647,6 +683,12 @@ onBeforeUnmount(() => {
           @panel="onAppPanel"
           @palette="palette = true"
         >
+          <template v-if="topbarHidden" #tabs-end>
+            <button type="button" class="herdr-center-key herdr-peek-chat" data-testid="herdr-center-back-chat" @click="emit('back')">{{ t('herdr.centerChat') }}</button>
+            <button type="button" class="herdr-center-key herdr-peek-show" :title="t('herdr.showTopBar')" :aria-label="t('herdr.showTopBar')" data-testid="herdr-center-show-topbar" @click="emit('topbar', true)">
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 5h16M7 11l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+          </template>
           <template #panel>
             <HerdrChangesPanel v-if="appPanel === 'changes'" :pane-id="appView?.focusedPaneId || herdr.bridge?.focusedPaneId || ''" @close="appPanel = ''" />
             <HerdrMissionDock
@@ -733,9 +775,26 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 @use '@/styles/variables' as *;
 
+.herdr-topbar-peek {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+}
+
+.herdr-peek-show {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .herdr-center-nothing {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
   padding: 24px 16px;
   overflow: auto;
 }
@@ -774,6 +833,7 @@ onBeforeUnmount(() => {
 }
 
 .herdr-center {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;

@@ -230,6 +230,17 @@ function selectCenter(mode: ChatCenter) {
   if (mode === 'herdr' && showNewChatPage.value) closeNewChatPage()
 }
 const showHerdrCenter = computed(() => centerMode.value === 'herdr' && herdrCenterAvailable.value && !showNewChatPage.value)
+/**
+ * Studio's top bar (this page's header row) is hidden on the herdr page on
+ * desktop, so the page looks like the Herdr App window. Its own small buttons,
+ * Esc and the palette bring it back; kept per viewer. Phones keep the header.
+ */
+const herdrTopBarShown = ref((() => { try { return localStorage.getItem('studio_herdr_topbar') === 'shown' } catch { return false } })())
+const herdrTopBarHidden = computed(() => showHerdrCenter.value && !isMobile.value && !herdrTopBarShown.value)
+function setHerdrTopBar(shown: boolean) {
+  herdrTopBarShown.value = shown
+  try { localStorage.setItem('studio_herdr_topbar', shown ? 'shown' : 'hidden') } catch { /* private mode */ }
+}
 watch(showHerdrCenter, value => { if (value) herdrCenterMounted.value = true })
 // Code: VS Code on the chat's folder with the chat beside it (super admins, not on phones).
 const codeCenterAvailable = computed(() => !props.standalone && isSuperAdmin.value && !isMobile.value)
@@ -3293,7 +3304,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
       />
       <template v-else>
       <PageHeader>
-      <header v-if="!standalone" class="chat-header" :class="{ 'is-herdr': showHerdrCenter }">
+      <header v-if="!standalone" v-show="!herdrTopBarHidden" class="chat-header" :class="{ 'is-herdr': showHerdrCenter }" data-testid="chat-header">
         <div class="header-left">
           <HeaderSidebarToggle
             v-if="currentMode === 'chat' && !herdrOwnsSidebar"
@@ -3518,6 +3529,8 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               @open-chat="sessionId => handleSessionClick(sessionId)"
               @open-studio-chat="sessionId => { centerMode = 'chat'; void handleSessionClick(sessionId) }"
               @back="centerMode = 'chat'"
+              :topbar-hidden="herdrTopBarHidden"
+              @topbar="setHerdrTopBar"
               @new-chat="openNewChatPage()"
             />
             <VsCodeCenter

@@ -54,7 +54,7 @@ vi.mock('@/components/coding-agents/herdr/HerdrAppView.vue', () => ({
     emits: ['panel', 'new-chat', 'palette', 'open-chat', 'focus-pane', 'open-machine'],
     setup(props, { expose, slots }) {
       expose({ ...app, chatList: () => [{ id: 'chat-1', title: 'One', folder: 'Work' }], focusTerminal: () => undefined, focusedPaneId: 'w1:p2' })
-      return () => h('div', { class: 'fake-app', 'data-panel': props.panel }, slots.panel?.())
+      return () => h('div', { class: 'fake-app', 'data-panel': props.panel }, [slots['tabs-end']?.(), slots.panel?.()])
     },
   }),
 }))
@@ -194,5 +194,37 @@ describe('the herdr page in the Herdr App layout', () => {
       expect(empty.find('[data-testid="herdr-center-elevate"]').exists()).toBe(false)
       empty.unmount()
     } finally { herdr.bridge = saved.bridge; herdr.elevatedChats = saved.elevated }
+  })
+
+  it('with Studio\'s top bar hidden: Chat and Show top bar in the tab bar, Esc outside a terminal, and the palette', async () => {
+    const wrapper = mount(HerdrCenter, { props: { sessionId: 'chat-1', active: true, topbarHidden: true }, attachTo: document.body })
+    await flushPromises()
+    await wrapper.find('[data-testid="herdr-center-show-topbar"]').trigger('click')
+    expect(wrapper.emitted('topbar')).toEqual([[true]])
+    await wrapper.find('[data-testid="herdr-center-back-chat"]').trigger('click')
+    expect(wrapper.emitted('back')).toHaveLength(1)
+    key({ key: 'Escape' })
+    expect(wrapper.emitted('topbar')).toEqual([[true], [true]])
+    // Esc typed into a terminal is the agent's, not Studio's.
+    const pane = document.createElement('div')
+    pane.className = 'xterm'
+    document.body.appendChild(pane)
+    pane.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(wrapper.emitted('topbar')).toHaveLength(2)
+    pane.remove()
+    key({ key: 'P', ctrlKey: true, shiftKey: true })
+    await flushPromises()
+    await wrapper.find('[data-testid="herdr-app-palette-item-action:topbar"]').trigger('click')
+    expect(wrapper.emitted('topbar')).toEqual([[true], [true], [true]])
+    wrapper.unmount()
+    // With the bar shown, it has a button to hide it again.
+    const header = document.createElement('div')
+    document.body.appendChild(header)
+    const shown = mount(HerdrCenter, { props: { sessionId: 'chat-1', active: true, headerTarget: header }, attachTo: document.body })
+    await flushPromises()
+    ;(header.querySelector('[data-testid="herdr-center-hide-topbar"]') as HTMLButtonElement).click()
+    expect(shown.emitted('topbar')).toEqual([[false]])
+    shown.unmount()
+    header.remove()
   })
 })
