@@ -1119,6 +1119,7 @@ export default {
         'proxy-blocks': 'Хост, который должен быть заблокирован',
         'proxy-allows': 'Хост, который должен быть разрешён',
         'studio-api': 'API Studio',
+        'web-tools': 'Веб-инструменты агента',
       },
       kinds: {
         'env': 'файл окружения',

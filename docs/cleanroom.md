@@ -15,17 +15,19 @@ clean rooms yet.
 | | |
 | --- | --- |
 | The chat's folder | read-write, at the same path |
-| The agent program | read-only (its install folder) |
-| The agent's Studio config folder | read-write (`coding-agent/model/<profile>/<provider>/<agent>`) |
+| The agent program | read-only (its install folder; a link into another tree mounts that tree) |
+| The agent's own config home (`CODEX_HOME`, …) | read-write (`coding-agent/model/<profile>/<provider>/<agent>`) |
+| Studio's prompt and MCP files for the agent | read-only |
 | The room's own home folder | read-write at `/root` (`coding-agent/cleanroom/homes/<hash>`) |
+| The container's own files | read-only; `/tmp` (1 GB), `/var/tmp` and `/run` are small tmpfs folders |
 | Studio | only its model proxies (`/api/codex-proxy/…`, `/api/claude-code-proxy/…`), through a tunnel |
 | Internet | none directly (`--network none`); HTTPS through an allowlist proxy (`HTTPS_PROXY`) |
 | Environment | only what Studio sets for the agent, never Studio's own (no host tokens) |
 
 Not given: the host's home folder, other folders, the Docker socket, Studio's
 API and tools (MCP), SSH keys, host credentials. It runs with
-`no-new-privileges`, a few capabilities dropped, and CPU, memory and process
-limits.
+`no-new-privileges`, no Linux capabilities (`--cap-drop ALL`), as a non-root
+user, and with CPU, memory and process limits.
 
 Network settings (`coding-agent/cleanroom/settings.json`,
 `GET/PUT /api/coding-agents/cleanroom/settings`):
@@ -35,9 +37,90 @@ Network settings (`coding-agent/cleanroom/settings.json`,
 - `internet`: any host through the proxy.
 
 `image` (default `node:24-bookworm-slim`, needs node for the tunnel), `cpus`,
-`memory`, `pids` are there too. Agents on Studio's providers (scoped mode) reach
+`memory`, `pids` are there too.
+
+The walls and checks are settings too. Each default is the safe one:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `readOnlyRoot` | `true` | `--read-only`, with tmpfs `/tmp`, `/var/tmp`, `/run`. Off: the agent can change the image's files (only in its own container). |
+| `dropAllCaps` | `true` | `--cap-drop ALL`. Off: Docker's default set minus `NET_RAW`, `SYS_CHROOT`, `MKNOD`, `AUDIT_WRITE`. |
+| `capAdd` | `[]` | Capabilities given back (only `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `KILL`, `SETGID`, `SETUID`, `NET_BIND_SERVICE`, `SYS_CHROOT`, `AUDIT_WRITE`, `SETFCAP`, `MKNOD`, `NET_RAW`). No supported agent needs one. |
+| `user` | `auto` | Who the agent runs as. `auto`: Studio's own user, or, when Studio runs as root, the owner of the chat's folder. `room`: a user id of the room's own (20000–59999; the chat's folder must be writable for it). `root`: root, still without capabilities. |
+| `selfCheck` | `true` | Run the self-check when a room starts. |
+| `leakCheck` | `true` | Look for secret-looking files in the chat's folder before mounting it. |
+| `egressLog` | `true` | Log every outside connection attempt. |
+| `auditChain` | `true` | Link each egress line to the one before by hash. |
+| `allowWebTools` | `false` | Let agents use their own web search and fetch. Off: Claude Code's `WebSearch` and `WebFetch` are denied, Codex's `web_search` is disabled. |
+
+Changing a wall (image, network, user, capabilities, read-only root, web
+tools, limits) makes the room again on its next turn. The chat's folder and
+the room's home folder stay.
+
+If an agent does not start with the walls on, check its error first: it most
+often wants to write somewhere outside `/root`, `/tmp` or the chat's folder.
+Turn `readOnlyRoot` off for that room only as a last resort. Agents on Studio's providers (scoped mode) reach
 their model through Studio; agents on their own logins need their API host in
 `allowHosts` and their login inside the container.
+
+## Self-check
+
+When a room starts, Studio runs a small probe inside it (`services/cleanroom/probe.ts`,
+plain node). It reports, and Studio judges against the settings:
+
+- mounts, and which ones the agent can write to (the program and Studio's
+  prompt files must be read-only, the chat's folder writable);
+- the user it runs as (root is a warning);
+- `no-new-privileges` and the capabilities left (any is a failure with
+  `dropAllCaps`);
+- the names of its environment variables, never their values;
+- the network: a direct connection out must fail, `example.com` through the
+  proxy must be refused, an allowed host (`registry.npmjs.org`) should answer,
+  Studio's API must be refused;
+- no Docker socket;
+- the web-tool policy files, when web tools are off.
+
+The chat shows a short line above the messages ("Self-check passed", or what
+failed); click it to see each item. The result is kept per room
+(`coding-agent/cleanroom/checks/<hash>.json`). A failed self-check does not
+stop the agent: it says which wall is missing. An allowed host that does not
+answer is a warning: the network outside the room is the problem, not the room.
+
+- `GET /api/coding-agents/cleanroom/sessions/:id/check`: the last self-check and leak check.
+- `POST /api/coding-agents/cleanroom/sessions/:id/check`: run the self-check again (super admin).
+
+## Leak check
+
+Before a new room mounts the chat's folder, Studio looks through it (four
+levels deep, at most 20,000 entries, skipping `node_modules`, `.git`, build
+folders) for files that usually hold secrets: `.env` files (not
+`.env.example`), SSH keys (`id_rsa`, …), `*.pem`, `*.key`, keystores,
+`credentials.json`, `.aws/credentials`, `.netrc`, and `.npmrc`, `.pypirc` or
+`.docker/config.json` with a token line. Only file names are kept and shown,
+never contents. It warns and still mounts the folder: move the files out if
+the agent must not read them.
+
+## Egress log
+
+The allowlist proxy writes one JSON line per outside connection attempt to
+`coding-agent/cleanroom/logs/<hash>.jsonl`:
+
+```json
+{"time":"2026-11-24T10:00:00.000Z","host":"example.com","port":443,"allowed":false,"reason":"not allowed (allowlist)","prev":"…","hash":"…"}
+```
+
+`allowed: true` with a `reason` means the host was allowed but could not be
+reached. With `auditChain` on, each line holds the sha256 of the line before
+(`prev`) and of itself (`hash`), so an edited or removed line shows: the panel
+says "Log chain broken at line N". Anyone who can write the file can still
+rewrite the whole chain; it shows mistakes and simple edits, it is not a
+signature. A log moves to `<file>.1` at 2 MB (one old file is kept).
+
+- `GET /api/coding-agents/cleanroom/sessions/:id/egress?limit=200`: the newest
+  lines (newest last) and whether the chain holds.
+
+Connections to Studio's model proxies go through the tunnel, not the proxy,
+and are not logged here. Direct connections are impossible (`--network none`).
 
 ## How it works
 

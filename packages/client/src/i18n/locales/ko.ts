@@ -1192,6 +1192,7 @@ export default {
         'proxy-blocks': '차단되어야 하는 호스트',
         'proxy-allows': '허용되어야 하는 호스트',
         'studio-api': 'Studio API',
+        'web-tools': '에이전트 웹 도구',
       },
       kinds: {
         'env': '환경 파일',

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  DEFAULT_CLEANROOM_SETTINGS, hardeningArgs, managedClaudeSettings, resolveRoomUser, roomUid, sanitizeCleanRoomSettings, studioConfigMounts,
+  DEFAULT_CLEANROOM_SETTINGS, hardeningArgs, managedClaudeSettings, resolveRoomUser, webToolPolicyFiles, roomUid, sanitizeCleanRoomSettings, studioConfigMounts,
 } from '../../packages/server/src/modules/coding-agents/services/cleanroom'
 import { appendEgress, readEgress, verifyEgressChain } from '../../packages/server/src/modules/coding-agents/services/cleanroom/egress-log'
 import { scanForLeaks } from '../../packages/server/src/modules/coding-agents/services/cleanroom/leaks'
@@ -49,6 +49,11 @@ describe('clean room walls', () => {
   it('denies Claude Code\'s web tools unless the setting allows them', () => {
     expect(managedClaudeSettings(false)).toEqual({ permissions: { deny: ['WebSearch', 'WebFetch'] } })
     expect(managedClaudeSettings(true)).toEqual({})
+    const files = webToolPolicyFiles(false)
+    expect(files.map(file => file.inside)).toEqual(['/etc/claude-code/managed-settings.json', '/etc/codex/managed_config.toml'])
+    expect(JSON.parse(files[0].content)).toEqual({ permissions: { deny: ['WebSearch', 'WebFetch'] } })
+    expect(files[1].content).toMatch(/^web_search = "disabled"$/m)
+    expect(webToolPolicyFiles(true)).toEqual([])
   })
 
   it('mounts Studio\'s prompt files read-only and the agent\'s own home writable', () => {
@@ -155,6 +160,7 @@ describe('clean room self-check', () => {
       { path: '/tmp', readOnly: false, writable: true, type: 'tmpfs' },
     ],
     envNames: ['ANTHROPIC_API_KEY', 'HOME'], dockerSocket: [],
+    webPolicy: ['/etc/claude-code/managed-settings.json', '/etc/codex/managed_config.toml'],
     network: [
       { target: '1.1.1.1:443', via: 'direct', reached: false, error: 'ENETUNREACH' },
       { target: 'example.com:443', via: 'direct', reached: false, error: 'EAI_AGAIN' },
@@ -177,9 +183,11 @@ describe('clean room self-check', () => {
       capBnd: ['SYS_ADMIN'],
       mounts: good.mounts.map(mount => mount.path === '/opt/agent' ? { ...mount, readOnly: false, writable: true } : mount),
       network: good.network.map(entry => entry.via === 'direct' ? { ...entry, reached: true } : entry),
+      webPolicy: [],
     }
     const failed = judgeProbe(bad, expectations).filter(check => check.state === 'fail').map(check => check.id)
-    expect(failed).toEqual(expect.arrayContaining(['docker-socket', 'capabilities', 'read-only-mount', 'direct-internet']))
+    expect(failed).toEqual(expect.arrayContaining(['docker-socket', 'capabilities', 'read-only-mount', 'direct-internet', 'web-tools']))
+    expect(judgeProbe({ ...good, webPolicy: [] }, { ...expectations, allowWebTools: true }).find(check => check.id === 'web-tools')?.state).toBe('info')
   })
 
   it('warns when the agent runs as root and when an allowed host does not answer', () => {

@@ -3975,12 +3975,13 @@ async function startCodingAgentRunInternal(
     : String(resolvedInput.provider || launch.provider || '').trim() || launch.provider
   // A clean-room chat runs its agent inside its own container (see cleanroom/).
   // The container runs the program by its full path (the same path is shared with it).
-  const roomCommand = isCleanRoom(sessionId) ? await resolveInteractiveCommand(runtimeCommand) : runtimeCommand
-  const cleanRoom = isCleanRoom(sessionId)
+  const roomProgram = isCleanRoom(sessionId) ? cleanRoomProgram(await resolveInteractiveCommand(runtimeCommand)) : null
+  const roomCommand = roomProgram?.command || runtimeCommand
+  const cleanRoom = roomProgram
     ? await ensureCleanRoom(sessionId, {
         workspace: launch.workspaceDir,
         ...studioConfigMounts([...launch.args, ...(launch.rootDir ? [launch.rootDir] : [])], launch.env),
-        program: cleanRoomProgramDir(roomCommand),
+        program: roomProgram.dir,
       }, { env: launch.env })
     : ''
   const started = codingAgentRunManager.start({
@@ -4222,6 +4223,20 @@ export function cleanRoomProgramDir(command: string): string | undefined {
   return root && root !== '/' && root.split('/').length > 2 ? root : undefined
 }
 
+/**
+ * The command a clean room runs and the install folder it mounts read-only.
+ * A link into another tree (/usr/bin/claude -> /opt/claude-code/bin/claude)
+ * runs by its real path, with that tree mounted instead.
+ */
+export function cleanRoomProgram(command: string): { command: string; dir?: string } {
+  const dir = cleanRoomProgramDir(command)
+  if (dir || !command.startsWith('/')) return { command, dir }
+  let real = command
+  try { real = realpathSync(command) } catch {}
+  const root = dirname(dirname(real))
+  return real !== command && root.split('/').length > 2 ? { command: real, dir: root } : { command, dir }
+}
+
 /** Interactive launch for an existing Studio chat, reusing its stored provider and model. */
 export async function prepareCodingAgentSessionLaunch(sessionId: string, profile?: string): Promise<CodingAgentInteractiveLaunch> {
   const session = getSession(sessionId)
@@ -4246,12 +4261,13 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
   })
   if (!cleanRoom) return launch
   // A clean-room chat in a terminal (herdr): the agent runs in the chat's container.
+  const program = cleanRoomProgram(launch.command)
   const container = await ensureCleanRoom(sessionId, {
     workspace: launch.workspaceDir,
     ...studioConfigMounts(launch.args, launch.env),
-    program: cleanRoomProgramDir(launch.command),
+    program: program.dir,
   }, { env: launch.env })
-  const exec = cleanRoomExec(container, launch.command, launch.args, launch.workspaceDir, launch.env, { tty: true })
+  const exec = cleanRoomExec(container, program.command, launch.args, launch.workspaceDir, launch.env, { tty: true })
   // The docker client under the agent's name, so herdr sees which agent runs in the pane.
   const agentName = herdrKindForStudioAgent(launch.agentId)
   const command = agentName ? cleanRoomTerminalDocker(agentName, String((await commandEnv()).PATH || process.env.PATH || '')) : exec.command

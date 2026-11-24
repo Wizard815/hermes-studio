@@ -20,7 +20,12 @@ export interface ProbeOutput {
   envNames: string[]
   dockerSocket: string[]
   network: ProbeNet[]
+  /** The agents' managed-settings files that turn their web tools off (present in the room). */
+  webPolicy: string[]
 }
+
+/** Where the web-tool policy files go (see webToolPolicyFiles in index.ts). */
+export const WEB_POLICY_FILES = ['/etc/claude-code/managed-settings.json', '/etc/codex/managed_config.toml']
 
 export type CheckState = 'pass' | 'warn' | 'fail' | 'info'
 
@@ -93,12 +98,13 @@ if (cfg.studioPort) {
   const r = await tcp('127.0.0.1', cfg.studioPort, 'GET /api/auth/status HTTP/1.1\\r\\nHost: studio\\r\\nConnection: close\\r\\n\\r\\n')
   network.push({ target: 'studio:/api/auth/status', via: 'studio', ...r, reached: r.status > 0 && r.status !== 403 })
 }
+const webPolicy = ['/etc/claude-code/managed-settings.json', '/etc/codex/managed_config.toml'].filter(p => existsSync(p))
 const dockerSocket = ['/var/run/docker.sock', '/run/docker.sock', '/var/run/docker', '/run/containerd/containerd.sock'].filter(p => existsSync(p))
 console.log(JSON.stringify({
   uid, gid, user,
   noNewPrivs: String(status.NoNewPrivs || '').trim() === '1',
   capEff: caps(status.CapEff), capBnd: caps(status.CapBnd),
-  mounts, envNames: Object.keys(process.env).sort(), dockerSocket, network,
+  mounts, envNames: Object.keys(process.env).sort(), dockerSocket, network, webPolicy,
 }))
 `
 
@@ -114,6 +120,8 @@ export interface SelfCheckExpectations {
   readOnlyPaths: string[]
   allowedHost?: string
   blockedHost: string
+  /** Web tools allowed (no policy files expected). */
+  allowWebTools?: boolean
 }
 
 /** Raw probe output (capability numbers) to names. */
@@ -127,6 +135,7 @@ export function normalizeProbe(raw: any): ProbeOutput {
     envNames: Array.isArray(raw?.envNames) ? raw.envNames.map(String) : [],
     dockerSocket: Array.isArray(raw?.dockerSocket) ? raw.dockerSocket.map(String) : [],
     network: Array.isArray(raw?.network) ? raw.network : [],
+    webPolicy: Array.isArray(raw?.webPolicy) ? raw.webPolicy.map(String) : [],
   }
 }
 
@@ -153,6 +162,11 @@ export function judgeProbe(probe: ProbeOutput, expect: SelfCheckExpectations): C
   }
   add('mounts', 'info', probe.mounts.map(entry => `${entry.path} ${entry.writable ? 'rw' : 'ro'}`).join(', '))
   add('environment', 'info', probe.envNames.join(', '))
+  if (expect.allowWebTools) add('web-tools', 'info', 'allowed')
+  else {
+    const missing = WEB_POLICY_FILES.filter(path => !probe.webPolicy.includes(path))
+    add('web-tools', missing.length ? 'fail' : 'pass', missing.length ? `policy missing: ${missing.join(', ')}` : 'off (Claude Code, Codex)')
+  }
 
   const net = (via: ProbeNet['via'], target?: string) => probe.network.find(entry => entry.via === via && (!target || entry.target.startsWith(target)))
   const directHit = probe.network.filter(entry => entry.via === 'direct' && entry.reached)

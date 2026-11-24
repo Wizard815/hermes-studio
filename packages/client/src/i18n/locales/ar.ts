@@ -1206,6 +1206,7 @@ export default {
         'proxy-blocks': 'مضيف يجب حظره',
         'proxy-allows': 'مضيف يجب السماح به',
         'studio-api': 'واجهة Studio',
+        'web-tools': 'أدوات الويب للوكيل',
       },
       kinds: {
         'env': 'ملف بيئة',

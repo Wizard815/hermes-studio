@@ -1206,6 +1206,7 @@ export default {
         'proxy-blocks': '應被封鎖的主機',
         'proxy-allows': '應被允許的主機',
         'studio-api': 'Studio API',
+        'web-tools': '代理的網頁工具',
       },
       kinds: {
         'env': '環境檔',

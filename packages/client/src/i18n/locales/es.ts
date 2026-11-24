@@ -1192,6 +1192,7 @@ export default {
         'proxy-blocks': 'Host que debe estar bloqueado',
         'proxy-allows': 'Host que debe estar permitido',
         'studio-api': 'API de Studio',
+        'web-tools': 'Herramientas web del agente',
       },
       kinds: {
         'env': 'archivo de entorno',

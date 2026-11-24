@@ -1213,6 +1213,7 @@ export default {
         'proxy-blocks': '应被拦截的主机',
         'proxy-allows': '应被允许的主机',
         'studio-api': 'Studio API',
+        'web-tools': '代理的网页工具',
       },
       kinds: {
         'env': '环境文件',

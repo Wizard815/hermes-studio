@@ -456,6 +456,20 @@ export function managedClaudeSettings(allowWebTools: boolean): Record<string, un
   return allowWebTools ? {} : { permissions: { deny: ['WebSearch', 'WebFetch'] } }
 }
 
+/**
+ * Files that turn the agents' own web tools off, mounted read-only at the
+ * agents' managed-settings paths (they win over the agent's own settings):
+ * Claude Code's managed settings and Codex's managed config. None when the
+ * room allows web tools.
+ */
+export function webToolPolicyFiles(allowWebTools: boolean): Array<{ name: string; inside: string; content: string }> {
+  if (allowWebTools) return []
+  return [
+    { name: 'claude-managed-settings.json', inside: '/etc/claude-code/managed-settings.json', content: `${JSON.stringify(managedClaudeSettings(false), null, 2)}\n` },
+    { name: 'codex-managed-config.toml', inside: '/etc/codex/managed_config.toml', content: '# Studio clean room: web search off (cleanroom settings: allowWebTools)\nweb_search = "disabled"\n' },
+  ]
+}
+
 /** Give a folder Studio made to the room's user (Studio runs as root; links are not followed). */
 function chownTree(path: string, uid: number, gid: number, budget = { left: 200000 }): void {
   let stat
@@ -555,9 +569,9 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
     writeFileSync(join(dir, 'group'), account.group)
     files.push('-v', `${await hostPath(join(dir, 'passwd'))}:/etc/passwd:ro`, '-v', `${await hostPath(join(dir, 'group'))}:/etc/group:ro`)
   }
-  if (!settings.allowWebTools) {
-    writeFileSync(join(dir, 'managed-settings.json'), `${JSON.stringify(managedClaudeSettings(false), null, 2)}\n`)
-    files.push('-v', `${await hostPath(join(dir, 'managed-settings.json'))}:/etc/claude-code/managed-settings.json:ro`)
+  for (const policy of webToolPolicyFiles(settings.allowWebTools)) {
+    writeFileSync(join(dir, policy.name), policy.content)
+    files.push('-v', `${await hostPath(join(dir, policy.name))}:${policy.inside}:ro`)
   }
   const volume = (path: string, mode: 'rw' | 'ro') => ['-v', `${path}:${mode}`]
   const args = [
@@ -596,6 +610,7 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
     workspace: mounts.workspace,
     readOnlyPaths: [mounts.program, ...readOnlyConfigs].filter((path): path is string => !!path),
     blockedHost: 'example.com',
+    allowWebTools: settings.allowWebTools,
     allowedHost: settings.network === 'studio' ? undefined : settings.allowHosts.includes('registry.npmjs.org') ? 'registry.npmjs.org' : settings.allowHosts[0],
   }
   const envNames = Object.keys(cleanRoomEnv(options.env || {}))

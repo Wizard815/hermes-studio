@@ -659,6 +659,7 @@ export default {
         'proxy-blocks': 'Engellenmesi gereken sunucu',
         'proxy-allows': 'İzin verilmesi gereken sunucu',
         'studio-api': 'Studio API',
+        'web-tools': 'Ajanın web araçları',
       },
       kinds: {
         'env': 'ortam dosyası',
