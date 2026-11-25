@@ -37,6 +37,19 @@ with tempfile.TemporaryDirectory() as tmp:
     out["recall"] = {"sam": sam.prefetch(question, session_id="s1"), "wizard": wizard.prefetch(question, session_id="w1"), "house": house.prefetch(question, session_id="h1")}
     out["second_recall_has_context"] = "# Context for" in sam.prefetch(question, session_id="s1")
     out["trivial"] = sam.prefetch("ok", session_id="s1")
+    # A Studio chat's message carries Studio's context blocks after the user's words.
+    studio_blocks = (
+        "\n\n<studio_task_plan_context>\nCurrent turn context_id=\"7339408e-a476-47e9-9fad-b438ce6e599d\". "
+        "Use mcp__ekko_studio_interaction__ekko_studio_update_plan.\n</studio_task_plan_context>\n"
+        "<studio_session_tasks_context>\nekko_studio_list_session_tasks ekko_studio_update_session_tasks\n</studio_session_tasks_context>"
+    )
+    searched = []
+    real_call = sam._client.call
+    sam._client.call = lambda tool, args=None: (searched.append(args.get("query")) if tool == "notes_search" else None, real_call(tool, args))[1]
+    out["studio_recall"] = sam.prefetch("When is the wedding quilt due?" + studio_blocks, session_id="s9")
+    sam._client.call = real_call
+    out["studio_searches"] = searched
+    out["studio_blocks_only"] = sam.prefetch("ok" + studio_blocks, session_id="s1")
     out["house_read_private"] = json.loads(house.handle_tool_call("llm_wiki_read", {"path": "people/wizard/wiki/1-projects/Surprise trip.md"}))
     out["house_read_private_virtual"] = json.loads(house.handle_tool_call("llm_wiki_read", {"path": "wiki/1-projects/Surprise trip.md"}))
     out["house_search_private"] = json.loads(house.handle_tool_call("llm_wiki_search", {"query": "Lisbon"}))

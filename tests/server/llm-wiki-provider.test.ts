@@ -45,6 +45,13 @@ describe('LLM wiki memory provider', () => {
     expect(wiki.calls.some((call: any) => call.name === 'query_wiki')).toBe(true)
   })
 
+  it("recalls from the user's words, not Studio's context blocks after them", () => {
+    expect(out.studio_recall).toContain('wiki/2-areas/Quilting.md')
+    expect(out.studio_searches.length).toBeGreaterThan(0)
+    expect(out.studio_searches.join(' ')).not.toMatch(/ekko_studio|7339408e|context_id/)
+    expect(out.studio_blocks_only).toBe('')
+  })
+
   it("never shows a person's private note to the household token or to another member", () => {
     expect(out.recall.house).toContain('RaidLab')
     expect(out.recall.house).not.toContain('Lisbon')
