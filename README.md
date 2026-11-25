@@ -260,6 +260,10 @@ your own services:
 - [ ] herdr: elevate a Hermes chat (`/herdr`), send a message, restart the container, and check the pane is still linked
 - [ ] herdr: `/studio` on that chat closes its herdr space and the chat keeps its messages
 - [ ] Watcher: a denied approval shows in the bell; Trust this lets the next run through without asking ([docs/watcher.md](docs/watcher.md))
+- [ ] Home Assistant: "turn on the kitchen light" in a Hermes chat asks first; Trust this with `light.*` lets the next one run ([docs](docs/hermes-integrations.md#home-assistant-actions-ask-first))
+- [ ] A new Hermes chat answers within about 10 s with the recommended plugins (rea) installed
+- [ ] Gadget: from a Studio Hermes chat, "show 'hello' on my gadget" shows a card on the device
+- [ ] herdr: on a new install, elevating a Claude Code chat opens the chat, not Claude Code's theme or API key questions
 
 Known issues on this branch:
 
