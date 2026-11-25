@@ -643,6 +643,17 @@ export default {
     howTo: 'Запустите его (scripts/install.sh или docker compose up -d в UpstreamManager) или укажите Studio адрес через UPSTREAM_UPKEEP_TARGET. Когда он ответит, эта вкладка свяжет их: Upstream будет запускать агентов herdr как чаты Studio.',
     retry: 'Повторить',
     openTasks: 'Открытых задач: {count}',
+    board: 'Доска',
+    overseer: 'Надзиратель',
+    next: 'Далее: {title}',
+    nothingOpen: 'Открытых задач нет',
+    waitingForYou: '{count} ждут вас',
+    unread: '{count} непрочитанных',
+    working: '{count} в работе',
+    giveTools: 'Дать Hermes инструменты доски',
+    toolsHint: 'Добавляет инструменты Upstream Manager в активный профиль Hermes: его чаты и агенты hermes в herdr смогут брать работу у надзирателя, комментировать задачи и писать друг другу.',
+    toolsAdded: 'У Hermes есть инструменты доски',
+    toolsAddedNow: 'Добавлено в профиль {profile}. Новые чаты и агенты Hermes их получат.',
   },
 
   sidebar: {

@@ -588,6 +588,17 @@ export default {
     howTo: 'Başlatın (UpstreamManager içinde scripts/install.sh veya docker compose up -d) ya da UPSTREAM_UPKEEP_TARGET ile Studio\'ya adresini verin. Yanıt verince bu sekmeyi açmak ikisini bağlar: Upstream herdr ajanlarını Studio sohbetleri olarak başlatır.',
     retry: 'Tekrar dene',
     openTasks: '{count} açık görev',
+    board: 'Pano',
+    overseer: 'Gözetmen',
+    next: 'Sıradaki: {title}',
+    nothingOpen: 'Açık iş yok',
+    waitingForYou: '{count} seni bekliyor',
+    unread: '{count} okunmamış',
+    working: '{count} üzerinde çalışılıyor',
+    giveTools: 'Hermes\'e pano araçlarını ver',
+    toolsHint: 'Upstream Manager araçlarını etkin Hermes profiline ekler; sohbetleri ve herdr\'ın hermes ajanları gözetmenden iş alabilir, görevlere yorum yazabilir ve birbirine mesaj atabilir.',
+    toolsAdded: 'Hermes\'in pano araçları var',
+    toolsAddedNow: '{profile} profiline eklendi. Yeni Hermes sohbetleri ve ajanlarında var.',
   },
 
   sidebar: {

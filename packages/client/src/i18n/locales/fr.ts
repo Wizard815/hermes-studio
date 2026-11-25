@@ -729,6 +729,17 @@ export default {
     howTo: 'Démarrez-le (scripts/install.sh ou docker compose up -d dans UpstreamManager), ou indiquez son adresse à Studio avec UPSTREAM_UPKEEP_TARGET. Dès qu\'il répond, ouvrir cet onglet les relie : Upstream lance alors les agents herdr comme des discussions Studio.',
     retry: 'Réessayer',
     openTasks: '{count} tâches ouvertes',
+    board: 'Tableau',
+    overseer: 'Superviseur',
+    next: 'Ensuite : {title}',
+    nothingOpen: 'Rien en cours',
+    waitingForYou: '{count} vous attendent',
+    unread: '{count} non lues',
+    working: '{count} en cours',
+    giveTools: 'Donner à Hermes les outils du tableau',
+    toolsHint: 'Ajoute les outils d\'Upstream Manager au profil Hermes actif : ses discussions et les agents hermes de herdr peuvent prendre du travail auprès du superviseur, commenter les tâches et s\'écrire.',
+    toolsAdded: 'Hermes a les outils du tableau',
+    toolsAddedNow: 'Ajoutés au profil {profile}. Les nouvelles discussions et les nouveaux agents Hermes les ont.',
   },
 
   sidebar: {

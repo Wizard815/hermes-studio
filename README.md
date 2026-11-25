@@ -216,6 +216,13 @@ Known issues on this branch:
 - A full disk shows only "Internal Server Error" (files are not damaged).
 - With gateway autostart off, Hermes can still start its own gateway for chats.
 
+**The Overseer and the board.** The top of the Upstream tab shows what Upstream's Overseer
+(plain rules that rank repos and tasks) says is next, how much waits for you and unread alerts,
+with **Board** and **Overseer** buttons that open those pages in the tab. **Give Hermes the board
+tools** adds Upstream's MCP server (`upstream-manager`) to the active Hermes profile, so Hermes chats
+here, and the `hermes` agents herdr starts with that profile, can take work with `next_task`, talk on
+tasks and message other agents. A herdr agent Studio starts for an Upstream task shows on the board
+as holding it while Studio reports it working, and lets go when its pane closes.
 
 ## Screenshots
 

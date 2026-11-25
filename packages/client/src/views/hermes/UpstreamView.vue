@@ -78,6 +78,52 @@ onMounted(() => {
 })
 onUnmounted(() => window.removeEventListener('message', onMessage))
 
+// The Overseer's picture (what's next, what waits for you), and Hermes's board tools.
+interface Overview {
+  reachable: boolean
+  next: Array<{ id: string; title: string; repo: string; priority?: string }>
+  working: Array<{ id: string; title: string; repo: string; agent?: string | null }>
+  waitingForYou: number
+  unread: number
+  hermesTools?: boolean
+}
+const overview = ref<Overview | null>(null)
+const toolsBusy = ref(false)
+const toolsNote = ref('')
+let overviewTimer: ReturnType<typeof setInterval> | null = null
+
+async function loadOverview() {
+  try {
+    overview.value = await request<Overview>('/api/studio/upstream/overview')
+  } catch {
+    overview.value = null
+  }
+}
+
+/** Show a page of Upstream in the tab (the same as a deep link). */
+function openPage(path: string) {
+  void router.replace({ query: { ...route.query, path } })
+}
+
+async function giveHermesTools() {
+  toolsBusy.value = true
+  try {
+    const r = await request<{ ok: boolean; added: boolean; profile: string; error?: string }>('/api/studio/upstream/hermes-tools', { method: 'POST', body: JSON.stringify({}) })
+    toolsNote.value = r.ok ? t('upstreamView.toolsAddedNow', { profile: r.profile }) : (r.error || '')
+    await loadOverview()
+  } catch (e: any) {
+    toolsNote.value = String(e?.message || e)
+  } finally {
+    toolsBusy.value = false
+  }
+}
+
+onMounted(() => {
+  void loadOverview()
+  overviewTimer = setInterval(() => { if (!document.hidden) void loadOverview() }, 60000)
+})
+onUnmounted(() => { if (overviewTimer) clearInterval(overviewTimer) })
+
 function retry() {
   frameError.value = false
   loaded.value = false
@@ -94,6 +140,24 @@ function retry() {
         <span v-if="status?.reachable && status.openTasks" class="upstream-count" :title="t('upstreamView.openTasks', { count: status.openTasks })">{{ status.openTasks }}</span>
       </header>
     </PageHeader>
+
+    <div v-if="overview?.reachable && !unreachable" class="upstream-overview" data-testid="upstream-overview">
+      <span v-if="overview.next.length" class="ov-next" :title="overview.next.map(n => `${n.priority || 'normal'} · ${n.repo}: ${n.title}`).join('\n')">
+        <span v-if="overview.next[0].priority === 'urgent' || overview.next[0].priority === 'high'" class="ov-prio" :class="overview.next[0].priority">{{ overview.next[0].priority }}</span>
+        {{ t('upstreamView.next', { title: overview.next[0].title }) }}
+        <span v-if="overview.next.length > 1" class="muted">+{{ overview.next.length - 1 }}</span>
+      </span>
+      <span v-else class="muted">{{ t('upstreamView.nothingOpen') }}</span>
+      <span v-if="overview.working.length" class="ov-chip">{{ t('upstreamView.working', { count: overview.working.length }) }}</span>
+      <button v-if="overview.waitingForYou" type="button" class="ov-chip warn" @click="openPage('/requests')">{{ t('upstreamView.waitingForYou', { count: overview.waitingForYou }) }}</button>
+      <span v-if="overview.unread" class="ov-chip">🔔 {{ t('upstreamView.unread', { count: overview.unread }) }}</span>
+      <span class="ov-spacer" />
+      <button type="button" class="ov-btn" data-testid="upstream-open-board" @click="openPage('/work?view=board')">{{ t('upstreamView.board') }}</button>
+      <button type="button" class="ov-btn" data-testid="upstream-open-overseer" @click="openPage('/overseer')">{{ t('upstreamView.overseer') }}</button>
+      <span v-if="overview.hermesTools" class="ov-chip ok" :title="t('upstreamView.toolsHint')">✓ {{ t('upstreamView.toolsAdded') }}</span>
+      <button v-else type="button" class="ov-btn" :disabled="toolsBusy" :title="t('upstreamView.toolsHint')" data-testid="upstream-give-tools" @click="giveHermesTools">{{ t('upstreamView.giveTools') }}</button>
+      <span v-if="toolsNote" class="muted ov-note">{{ toolsNote }}</span>
+    </div>
 
     <div class="upstream-frame-wrap">
       <iframe
@@ -143,6 +207,37 @@ function retry() {
   text-align: center;
   border: var(--border-width, 1px) solid currentColor;
   opacity: 0.8;
+}
+
+.upstream-overview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-bottom: var(--border-width, 1px) solid rgba(127, 127, 127, 0.2);
+  color: $text-secondary;
+
+  .muted { opacity: 0.7; }
+  .ov-next { max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ov-prio { text-transform: uppercase; font-size: 10px; font-weight: 600; margin-right: 4px; }
+  .ov-prio.urgent { color: #e5484d; }
+  .ov-prio.high { color: #f5a524; }
+  .ov-spacer { flex: 1 1 auto; }
+  .ov-chip, .ov-btn {
+    border-radius: 999px;
+    padding: 2px 10px;
+    border: var(--border-width, 1px) solid rgba(127, 127, 127, 0.35);
+    background: transparent;
+    color: inherit;
+    font-size: 12px;
+  }
+  .ov-chip.warn { border-color: #f5a524; cursor: pointer; }
+  .ov-chip.ok { border-color: #30a46c; }
+  .ov-btn { cursor: pointer; }
+  .ov-btn:disabled { opacity: 0.5; cursor: default; }
+  .ov-note { flex-basis: 100%; }
 }
 
 .upstream-frame-wrap {

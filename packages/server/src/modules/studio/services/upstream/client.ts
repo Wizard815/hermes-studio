@@ -98,3 +98,94 @@ export async function upstreamStatus(fetchImpl: typeof fetch = fetch): Promise<U
     return { target, reachable: false, error: /abort/i.test(text) ? 'timed out' : /ECONNREFUSED|fetch failed/i.test(text) ? 'nothing is listening there (is Upstream running?)' : text.slice(0, 200) }
   }
 }
+
+// ---------------------------------------------------------------- the Overseer and its board, from Studio
+
+export interface UpstreamOverview {
+  reachable: boolean
+  error?: string
+  /** When the Overseer last looked. */
+  at?: string
+  /** The open tasks in the order agents get them. */
+  next: Array<{ id: string; title: string; repo: string; priority?: string }>
+  working: Array<{ id: string; title: string; repo: string; agent?: string | null }>
+  waitingForYou: number
+  unread: number
+  agents: number
+}
+
+/** What Upstream's Overseer sees now, for the summary at the top of Studio's Upstream tab. */
+export async function upstreamOverview(fetchImpl: typeof fetch = fetch): Promise<UpstreamOverview> {
+  const empty: UpstreamOverview = { reachable: false, next: [], working: [], waitingForYou: 0, unread: 0, agents: 0 }
+  try {
+    const [o, n] = await Promise.all([
+      call('/api/overseer', { method: 'GET', timeoutMs: 3000 }, fetchImpl),
+      call('/api/notifications?limit=1', { method: 'GET', timeoutMs: 3000 }, fetchImpl),
+    ])
+    if (!o.ok) return { ...empty, error: `Upstream answered ${o.status}` }
+    const rep = ((await o.json().catch(() => ({}))) as { report?: any }).report || {}
+    const notes = n.ok ? await n.json().catch(() => ({})) as { unread?: number } : {}
+    const list = (v: unknown) => (Array.isArray(v) ? v : [])
+    return {
+      reachable: true,
+      ...(rep.at ? { at: String(rep.at) } : {}),
+      next: list(rep.next).slice(0, 5).map((t: any) => ({ id: String(t.id), title: String(t.title || ''), repo: String(t.repo || ''), priority: t.priority })),
+      working: list(rep.working).slice(0, 10).map((t: any) => ({ id: String(t.id), title: String(t.title || ''), repo: String(t.repo || ''), agent: t.agent ?? null })),
+      waitingForYou: list(rep.waiting_for_you).length,
+      unread: Number(notes.unread) || 0,
+      agents: list(rep.agents).length,
+    }
+  } catch (err) {
+    const text = String((err as Error)?.message || err)
+    return { ...empty, error: /abort/i.test(text) ? 'timed out' : 'Upstream is not reachable' }
+  }
+}
+
+/** The name Upstream's tools get in a Hermes profile's mcp_servers. */
+export const UPSTREAM_MCP_NAME = 'upstream-manager'
+
+export interface UpstreamMcpServer { command: string; args: string[]; env: Record<string, string> }
+
+/** How a client on this machine starts Upstream's MCP server, as Upstream says (`GET /api/mcp`). */
+export async function upstreamMcpServer(fetchImpl: typeof fetch = fetch): Promise<UpstreamMcpServer | null> {
+  try {
+    const res = await call('/api/mcp', { method: 'GET', timeoutMs: 3000 }, fetchImpl)
+    if (!res.ok) return null
+    const m = await res.json().catch(() => ({})) as { stdio_command?: unknown; stdio_env?: unknown }
+    const cmd = Array.isArray(m.stdio_command) ? m.stdio_command.map(String) : []
+    if (!cmd.length || !cmd[0]) return null
+    const env = m.stdio_env && typeof m.stdio_env === 'object' ? Object.fromEntries(Object.entries(m.stdio_env as Record<string, unknown>).map(([k, v]) => [k, String(v)])) : {}
+    return { command: cmd[0], args: cmd.slice(1), env }
+  } catch {
+    return null
+  }
+}
+
+export interface ProfileConfigAccess {
+  read: (profile: string) => Promise<Record<string, any>>
+  update: <T>(profile: string, fn: (current: Record<string, any>) => { data: Record<string, any>; result: T; write?: boolean }) => Promise<T>
+}
+
+/** Whether a Hermes profile already has Upstream's tools. */
+export async function hermesHasUpstreamTools(profile: string, cfg: ProfileConfigAccess): Promise<boolean> {
+  const current = await cfg.read(profile).catch(() => ({} as Record<string, any>))
+  const servers = current?.mcp_servers && typeof current.mcp_servers === 'object' ? current.mcp_servers : {}
+  return Object.keys(servers).some(key => key.toLowerCase() === UPSTREAM_MCP_NAME || key.toLowerCase() === 'upstream')
+}
+
+/**
+ * Give a Hermes profile Upstream's tools (the board, the Overseer, repos, tasks): its chats in Studio and the
+ * `hermes` agents herdr starts with that profile can then take work with next_task, talk on tasks, and so on.
+ * An entry the user already has is left as it is. Returns whether one was added.
+ */
+export async function giveHermesUpstreamTools(profile: string, server: UpstreamMcpServer, cfg: ProfileConfigAccess): Promise<boolean> {
+  return (await cfg.update<boolean>(profile, (current) => {
+    const data = current && typeof current === 'object' ? current : {}
+    const servers = data.mcp_servers && typeof data.mcp_servers === 'object' && !Array.isArray(data.mcp_servers) ? data.mcp_servers : {}
+    if (Object.keys(servers).some(key => key.toLowerCase() === UPSTREAM_MCP_NAME || key.toLowerCase() === 'upstream')) {
+      return { data, result: false, write: false }
+    }
+    data.mcp_servers = { ...servers, [UPSTREAM_MCP_NAME]: { command: server.command, args: server.args, env: server.env } }
+    return { data, result: true }
+  })) === true
+}

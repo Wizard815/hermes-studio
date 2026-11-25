@@ -717,6 +717,17 @@ export default {
     howTo: 'شغّله (scripts/install.sh أو docker compose up -d في UpstreamManager)، أو أخبر Studio بعنوانه عبر UPSTREAM_UPKEEP_TARGET. عندما يستجيب، يكفي فتح هذا التبويب لربطهما: يبدأ Upstream وكلاء herdr كمحادثات في Studio.',
     retry: 'إعادة المحاولة',
     openTasks: '{count} مهام مفتوحة',
+    board: 'اللوحة',
+    overseer: 'المشرف',
+    next: 'التالي: {title}',
+    nothingOpen: 'لا شيء مفتوح',
+    waitingForYou: '{count} بانتظارك',
+    unread: '{count} غير مقروءة',
+    working: '{count} قيد العمل',
+    giveTools: 'امنح Hermes أدوات اللوحة',
+    toolsHint: 'يضيف أدوات Upstream Manager إلى ملف Hermes النشط، لتتمكن محادثاته ووكلاء hermes في herdr من أخذ العمل من المشرف والتعليق على المهام ومراسلة بعضهم.',
+    toolsAdded: 'لدى Hermes أدوات اللوحة',
+    toolsAddedNow: 'أُضيفت إلى الملف {profile}. محادثات Hermes ووكلاؤه الجدد لديهم هذه الأدوات.',
   },
 
   sidebar: {

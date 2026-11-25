@@ -720,6 +720,17 @@ export default {
     howTo: 'Start it (scripts/install.sh or docker compose up -d in UpstreamManager), or point Studio at it with UPSTREAM_UPKEEP_TARGET. Once it answers, opening this tab connects the two: Upstream can then start herdr agents as Studio chats.',
     retry: 'Try again',
     openTasks: '{count} open tasks',
+    board: 'Board',
+    overseer: 'Overseer',
+    next: 'Next: {title}',
+    nothingOpen: 'Nothing open',
+    waitingForYou: '{count} waiting for you',
+    unread: '{count} unread',
+    working: '{count} being worked on',
+    giveTools: 'Give Hermes the board tools',
+    toolsHint: 'Adds Upstream Manager\'s tools to the active Hermes profile, so its chats and herdr\'s hermes agents can take work from the Overseer, talk on tasks and message each other.',
+    toolsAdded: 'Hermes has the board tools',
+    toolsAddedNow: 'Added to profile {profile}. New Hermes chats and agents have them.',
   },
 
   sidebar: {

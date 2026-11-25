@@ -717,6 +717,17 @@ export default {
     howTo: '请启动它（在 UpstreamManager 中运行 scripts/install.sh 或 docker compose up -d），或用 UPSTREAM_UPKEEP_TARGET 告诉 Studio 它的地址。它响应后，打开此标签页即可把两者连接起来：Upstream 会把 herdr 智能体作为 Studio 对话启动。',
     retry: '重试',
     openTasks: '{count} 个未完成任务',
+    board: '看板',
+    overseer: '监督者',
+    next: '下一个：{title}',
+    nothingOpen: '没有待办',
+    waitingForYou: '{count} 项等你处理',
+    unread: '{count} 条未读',
+    working: '{count} 项进行中',
+    giveTools: '给 Hermes 看板工具',
+    toolsHint: '把 Upstream Manager 的工具加到当前 Hermes 配置中，这样它的对话和 herdr 的 hermes 代理可以从监督者领取任务、在任务上留言并互相发消息。',
+    toolsAdded: 'Hermes 已有看板工具',
+    toolsAddedNow: '已加入配置 {profile}。新的 Hermes 对话和代理可以使用。',
   },
 
   sidebar: {

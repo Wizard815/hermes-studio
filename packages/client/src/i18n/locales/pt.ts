@@ -729,6 +729,17 @@ export default {
     howTo: 'Inicie-o (scripts/install.sh ou docker compose up -d no UpstreamManager) ou indique o endereço ao Studio com UPSTREAM_UPKEEP_TARGET. Quando responder, abrir esta aba liga os dois: o Upstream passa a iniciar agentes do herdr como chats do Studio.',
     retry: 'Tentar de novo',
     openTasks: '{count} tarefas abertas',
+    board: 'Quadro',
+    overseer: 'Supervisor',
+    next: 'A seguir: {title}',
+    nothingOpen: 'Nada aberto',
+    waitingForYou: '{count} esperando por você',
+    unread: '{count} não lidas',
+    working: '{count} em andamento',
+    giveTools: 'Dar ao Hermes as ferramentas do quadro',
+    toolsHint: 'Adiciona as ferramentas do Upstream Manager ao perfil ativo do Hermes, para que seus chats e os agentes hermes do herdr peguem trabalho do supervisor, comentem nas tarefas e troquem mensagens.',
+    toolsAdded: 'O Hermes tem as ferramentas do quadro',
+    toolsAddedNow: 'Adicionadas ao perfil {profile}. Novos chats e agentes do Hermes as têm.',
   },
 
   sidebar: {

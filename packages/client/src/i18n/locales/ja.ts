@@ -729,6 +729,17 @@ export default {
     howTo: '起動してください（UpstreamManager で scripts/install.sh または docker compose up -d）。または UPSTREAM_UPKEEP_TARGET で Studio に場所を指定します。応答すると、このタブを開くだけで両者が接続され、Upstream は herdr エージェントを Studio のチャットとして起動します。',
     retry: '再試行',
     openTasks: '未完了のタスク {count} 件',
+    board: 'ボード',
+    overseer: 'オーバーシーア',
+    next: '次: {title}',
+    nothingOpen: '未着手なし',
+    waitingForYou: 'あなた待ち {count} 件',
+    unread: '未読 {count} 件',
+    working: '作業中 {count} 件',
+    giveTools: 'Hermes にボードのツールを渡す',
+    toolsHint: '有効な Hermes プロファイルに Upstream Manager のツールを追加します。チャットや herdr の hermes エージェントがオーバーシーアから作業を受け取り、タスクにコメントし、互いにメッセージを送れるようになります。',
+    toolsAdded: 'Hermes はボードのツールを使えます',
+    toolsAddedNow: 'プロファイル {profile} に追加しました。新しい Hermes のチャットとエージェントで使えます。',
   },
 
   sidebar: {

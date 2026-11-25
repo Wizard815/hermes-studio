@@ -2,7 +2,15 @@ import type { Context, Next } from 'koa'
 import { logger } from '../public/logging'
 import { authenticateUserToken, getUserJwtExpiresSeconds, issueUserJwt, type AuthenticatedUser } from './auth'
 import { config } from '../public/config'
-import { upstreamStatus } from '../services/upstream/client'
+import {
+  giveHermesUpstreamTools, hermesHasUpstreamTools, upstreamMcpServer, upstreamOverview, upstreamStatus, type ProfileConfigAccess,
+} from '../services/upstream/client'
+import { getActiveProfileName, readConfigYamlForProfile, updateConfigYamlForProfile } from '../public/profile-config'
+
+const profileConfigAccess: ProfileConfigAccess = {
+  read: readConfigYamlForProfile,
+  update: (profile, fn) => updateConfigYamlForProfile(profile, fn as any) as any,
+}
 
 /**
  * Reverse proxy for the Upstream Management Flask app (Upstream-Upkeep).
@@ -170,6 +178,27 @@ export function upstreamUpkeepProxy(): (ctx: Context, next: Next) => Promise<voi
     if (path === '/api/studio/upstream/status' && method === 'GET') {
       if (!(await authorize(ctx))) return
       ctx.body = await upstreamStatus()
+      return
+    }
+    // The Overseer's picture, for the summary above the Upstream tab.
+    if (path === '/api/studio/upstream/overview' && method === 'GET') {
+      if (!(await authorize(ctx))) return
+      ctx.body = { ...(await upstreamOverview()), hermesTools: await hermesHasUpstreamTools(getActiveProfileName(), profileConfigAccess) }
+      return
+    }
+    // Give the active Hermes profile Upstream's tools (the board, the Overseer): one click in the Upstream tab.
+    if (path === '/api/studio/upstream/hermes-tools' && method === 'POST') {
+      if (!(await authorize(ctx))) return
+      const server = await upstreamMcpServer()
+      if (!server) {
+        ctx.status = 502
+        ctx.body = { ok: false, error: 'Upstream did not say how to start its tools (is it running, and new enough?)' }
+        return
+      }
+      const profile = getActiveProfileName()
+      const added = await giveHermesUpstreamTools(profile, server, profileConfigAccess)
+      logger.info({ profile, added }, '[upstream-upkeep] Upstream tools for Hermes')
+      ctx.body = { ok: true, added, profile }
       return
     }
     if (!(path === prefixPath || path.startsWith(`${prefixPath}/`))) {
