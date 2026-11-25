@@ -41,6 +41,7 @@ const en = {
   moveTitle: 'Move to project',
   moved: 'Moved to {name}',
   pick: 'Project',
+  pane: { openChat: 'Open full chat', close: 'Close thread', send: 'Send', placeholder: 'Message this thread…', blocked: 'Waiting on you. Answer it in the full chat.', starting: 'Starting in herdr. Messages show up once the agent reports its chat.', empty: 'No messages yet.', you: 'You', label: 'Thread' },
 }
 
 type Messages = typeof en
@@ -56,6 +57,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: '标记为已解决', reopen: '重新打开', edit: '编辑项目', remove: '停止项目', removeConfirm: '不再把“{name}”作为项目？它的聊天和文件夹会保留。',
     form: { name: '名称', folder: '文件夹', folderHint: '线程在 Studio 电脑上的这个文件夹中启动。', instructions: '说明', instructionsHint: '协调者和每个线程都会收到这些说明，例如“提交到 dev 分支”。', defaultAgent: '新线程使用的智能体', threadTitle: '标题', brief: '它要做什么？', briefHint: '线程看不到协调聊天，请写清它需要的信息。', agent: '智能体' },
     create: '创建', start: '启动线程', save: '保存', cancel: '取消', failed: '操作失败：{error}', moveToProject: '移到项目…', moveTitle: '移到项目', moved: '已移到 {name}', pick: '项目',
+    pane: { openChat: '打开完整聊天', close: '关闭线程', send: '发送', placeholder: '给这个线程发消息…', blocked: '正在等你。请在完整聊天中回答。', starting: '正在 herdr 中启动。智能体报告聊天后会显示消息。', empty: '还没有消息。', you: '你', label: '线程' },
   } },
   'zh-TW': { projects: {
     nav: '專案', title: '專案', back: '聊天', newProject: '新增專案', newThread: '新增執行緒', coordinator: '協調者',
@@ -66,6 +68,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: '標記為已解決', reopen: '重新開啟', edit: '編輯專案', remove: '停止專案', removeConfirm: '不再把「{name}」當作專案？它的聊天和資料夾會保留。',
     form: { name: '名稱', folder: '資料夾', folderHint: '執行緒在 Studio 電腦上的這個資料夾中啟動。', instructions: '說明', instructionsHint: '協調者和每個執行緒都會收到這些說明，例如「提交到 dev 分支」。', defaultAgent: '新執行緒使用的代理', threadTitle: '標題', brief: '它要做什麼？', briefHint: '執行緒看不到協調聊天，請寫清楚它需要的資訊。', agent: '代理' },
     create: '建立', start: '啟動執行緒', save: '儲存', cancel: '取消', failed: '操作失敗：{error}', moveToProject: '移到專案…', moveTitle: '移到專案', moved: '已移到 {name}', pick: '專案',
+    pane: { openChat: '開啟完整聊天', close: '關閉執行緒', send: '傳送', placeholder: '傳訊息給這個執行緒…', blocked: '正在等你。請在完整聊天中回答。', starting: '正在 herdr 中啟動。智能體回報聊天後會顯示訊息。', empty: '還沒有訊息。', you: '你', label: '執行緒' },
   } },
   ja: { projects: {
     nav: 'プロジェクト', title: 'プロジェクト', back: 'チャット', newProject: '新規プロジェクト', newThread: '新規スレッド', coordinator: 'コーディネーター',
@@ -76,6 +79,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: '解決済みにする', reopen: '再開', edit: 'プロジェクトを編集', remove: 'プロジェクトをやめる', removeConfirm: '「{name}」をプロジェクトとして使うのをやめますか？チャットとフォルダーは残ります。',
     form: { name: '名前', folder: 'フォルダー', folderHint: 'スレッドは Studio のコンピューター上のこのフォルダーで始まります。', instructions: '指示', instructionsHint: 'コーディネーターと各スレッドが受け取ります（例：dev ブランチに出す）。', defaultAgent: '新しいスレッドのエージェント', threadTitle: 'タイトル', brief: '何をしますか？', briefHint: 'スレッドは調整チャットを見られないので、必要な情報を書いてください。', agent: 'エージェント' },
     create: '作成', start: 'スレッドを開始', save: '保存', cancel: 'キャンセル', failed: 'うまくいきませんでした：{error}', moveToProject: 'プロジェクトへ移動…', moveTitle: 'プロジェクトへ移動', moved: '{name} に移動しました', pick: 'プロジェクト',
+    pane: { openChat: 'チャット全体を開く', close: 'スレッドを閉じる', send: '送信', placeholder: 'このスレッドにメッセージ…', blocked: 'あなたを待っています。チャット全体で答えてください。', starting: 'herdr で起動中です。エージェントがチャットを報告するとメッセージが表示されます。', empty: 'まだメッセージはありません。', you: 'あなた', label: 'スレッド' },
   } },
   ko: { projects: {
     nav: '프로젝트', title: '프로젝트', back: '채팅', newProject: '새 프로젝트', newThread: '새 스레드', coordinator: '코디네이터',
@@ -86,6 +90,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: '해결됨으로 표시', reopen: '다시 열기', edit: '프로젝트 편집', remove: '프로젝트 중지', removeConfirm: '“{name}”을(를) 더 이상 프로젝트로 쓰지 않을까요? 채팅과 폴더는 그대로 남습니다.',
     form: { name: '이름', folder: '폴더', folderHint: '스레드는 Studio 컴퓨터의 이 폴더에서 시작합니다.', instructions: '지침', instructionsHint: '코디네이터와 모든 스레드가 받습니다. 예: dev 브랜치를 대상으로.', defaultAgent: '새 스레드의 에이전트', threadTitle: '제목', brief: '무엇을 해야 하나요?', briefHint: '스레드는 조정 채팅을 보지 못하니 필요한 내용을 적어 주세요.', agent: '에이전트' },
     create: '만들기', start: '스레드 시작', save: '저장', cancel: '취소', failed: '실패했습니다: {error}', moveToProject: '프로젝트로 이동…', moveTitle: '프로젝트로 이동', moved: '{name}(으)로 이동했습니다', pick: '프로젝트',
+    pane: { openChat: '전체 채팅 열기', close: '스레드 닫기', send: '보내기', placeholder: '이 스레드에 메시지…', blocked: '당신을 기다리고 있습니다. 전체 채팅에서 답하세요.', starting: 'herdr에서 시작하는 중입니다. 에이전트가 채팅을 알리면 메시지가 표시됩니다.', empty: '아직 메시지가 없습니다.', you: '나', label: '스레드' },
   } },
   de: { projects: {
     nav: 'Projekte', title: 'Projekte', back: 'Chats', newProject: 'Neues Projekt', newThread: 'Neuer Thread', coordinator: 'Koordinator',
@@ -96,6 +101,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: 'Als erledigt markieren', reopen: 'Wieder öffnen', edit: 'Projekt bearbeiten', remove: 'Projekt beenden', removeConfirm: '„{name}“ nicht mehr als Projekt nutzen? Chats und Ordner bleiben.',
     form: { name: 'Name', folder: 'Ordner', folderHint: 'Threads starten in diesem Ordner auf dem Studio-Rechner.', instructions: 'Anweisungen', instructionsHint: 'Der Koordinator und jeder Thread bekommen sie, z. B. „auf den dev-Branch“.', defaultAgent: 'Agent für neue Threads', threadTitle: 'Titel', brief: 'Was soll er tun?', briefHint: 'Der Thread sieht den Koordinator-Chat nicht, also schreib hinein, was er braucht.', agent: 'Agent' },
     create: 'Erstellen', start: 'Thread starten', save: 'Speichern', cancel: 'Abbrechen', failed: 'Das hat nicht geklappt: {error}', moveToProject: 'In Projekt verschieben…', moveTitle: 'In Projekt verschieben', moved: 'Nach {name} verschoben', pick: 'Projekt',
+    pane: { openChat: 'Ganzen Chat öffnen', close: 'Thread schließen', send: 'Senden', placeholder: 'Nachricht an diesen Thread…', blocked: 'Wartet auf dich. Antworte im ganzen Chat.', starting: 'Startet in herdr. Nachrichten erscheinen, sobald der Agent seinen Chat meldet.', empty: 'Noch keine Nachrichten.', you: 'Du', label: 'Thread' },
   } },
   es: { projects: {
     nav: 'Proyectos', title: 'Proyectos', back: 'Chats', newProject: 'Nuevo proyecto', newThread: 'Nuevo hilo', coordinator: 'Coordinador',
@@ -106,6 +112,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: 'Marcar como resuelto', reopen: 'Reabrir', edit: 'Editar proyecto', remove: 'Dejar el proyecto', removeConfirm: '¿Dejar de usar «{name}» como proyecto? Sus chats y carpeta se quedan.',
     form: { name: 'Nombre', folder: 'Carpeta', folderHint: 'Los hilos empiezan en esta carpeta del equipo de Studio.', instructions: 'Instrucciones', instructionsHint: 'El coordinador y cada hilo las reciben, como «apunta a la rama dev».', defaultAgent: 'Agente para hilos nuevos', threadTitle: 'Título', brief: '¿Qué debe hacer?', briefHint: 'El hilo no ve el chat coordinador, así que incluye lo que necesita.', agent: 'Agente' },
     create: 'Crear', start: 'Iniciar hilo', save: 'Guardar', cancel: 'Cancelar', failed: 'No funcionó: {error}', moveToProject: 'Mover a proyecto…', moveTitle: 'Mover a proyecto', moved: 'Movido a {name}', pick: 'Proyecto',
+    pane: { openChat: 'Abrir chat completo', close: 'Cerrar hilo', send: 'Enviar', placeholder: 'Mensaje para este hilo…', blocked: 'Te está esperando. Responde en el chat completo.', starting: 'Iniciando en herdr. Los mensajes aparecen cuando el agente informa su chat.', empty: 'Aún no hay mensajes.', you: 'Tú', label: 'Hilo' },
   } },
   fr: { projects: {
     nav: 'Projets', title: 'Projets', back: 'Discussions', newProject: 'Nouveau projet', newThread: 'Nouveau fil', coordinator: 'Coordinateur',
@@ -116,6 +123,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: 'Marquer comme résolu', reopen: 'Rouvrir', edit: 'Modifier le projet', remove: 'Arrêter le projet', removeConfirm: 'Ne plus utiliser « {name} » comme projet ? Ses discussions et son dossier restent.',
     form: { name: 'Nom', folder: 'Dossier', folderHint: 'Les fils démarrent dans ce dossier sur l’ordinateur de Studio.', instructions: 'Instructions', instructionsHint: 'Le coordinateur et chaque fil les reçoivent, par exemple « vise la branche dev ».', defaultAgent: 'Agent des nouveaux fils', threadTitle: 'Titre', brief: 'Que doit-il faire ?', briefHint: 'Le fil ne voit pas la discussion coordinatrice : incluez ce dont il a besoin.', agent: 'Agent' },
     create: 'Créer', start: 'Lancer le fil', save: 'Enregistrer', cancel: 'Annuler', failed: 'Cela n’a pas marché : {error}', moveToProject: 'Déplacer vers un projet…', moveTitle: 'Déplacer vers un projet', moved: 'Déplacé vers {name}', pick: 'Projet',
+    pane: { openChat: 'Ouvrir le chat complet', close: 'Fermer le fil', send: 'Envoyer', placeholder: 'Message pour ce fil…', blocked: 'Il vous attend. Répondez dans le chat complet.', starting: 'Démarrage dans herdr. Les messages s’affichent quand l’agent signale son chat.', empty: 'Pas encore de messages.', you: 'Vous', label: 'Fil' },
   } },
   pt: { projects: {
     nav: 'Projetos', title: 'Projetos', back: 'Conversas', newProject: 'Novo projeto', newThread: 'Nova thread', coordinator: 'Coordenador',
@@ -126,6 +134,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: 'Marcar como resolvida', reopen: 'Reabrir', edit: 'Editar projeto', remove: 'Encerrar projeto', removeConfirm: 'Deixar de usar “{name}” como projeto? As conversas e a pasta continuam.',
     form: { name: 'Nome', folder: 'Pasta', folderHint: 'As threads começam nesta pasta no computador do Studio.', instructions: 'Instruções', instructionsHint: 'O coordenador e cada thread recebem, como “use a branch dev”.', defaultAgent: 'Agente das novas threads', threadTitle: 'Título', brief: 'O que ela deve fazer?', briefHint: 'A thread não vê a conversa coordenadora, então inclua o que ela precisa.', agent: 'Agente' },
     create: 'Criar', start: 'Iniciar thread', save: 'Salvar', cancel: 'Cancelar', failed: 'Não deu certo: {error}', moveToProject: 'Mover para projeto…', moveTitle: 'Mover para projeto', moved: 'Movida para {name}', pick: 'Projeto',
+    pane: { openChat: 'Abrir chat completo', close: 'Fechar thread', send: 'Enviar', placeholder: 'Mensagem para esta thread…', blocked: 'Esperando por você. Responda no chat completo.', starting: 'Iniciando no herdr. As mensagens aparecem quando o agente informar o chat.', empty: 'Ainda sem mensagens.', you: 'Você', label: 'Thread' },
   } },
   ru: { projects: {
     nav: 'Проекты', title: 'Проекты', back: 'Чаты', newProject: 'Новый проект', newThread: 'Новая ветка', coordinator: 'Координатор',
@@ -136,6 +145,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: 'Отметить закрытой', reopen: 'Открыть снова', edit: 'Изменить проект', remove: 'Прекратить проект', removeConfirm: 'Больше не использовать «{name}» как проект? Чаты и папка останутся.',
     form: { name: 'Название', folder: 'Папка', folderHint: 'Ветки запускаются в этой папке на компьютере Studio.', instructions: 'Инструкции', instructionsHint: 'Их получают координатор и каждая ветка, например «работай в ветке dev».', defaultAgent: 'Агент для новых веток', threadTitle: 'Название', brief: 'Что нужно сделать?', briefHint: 'Ветка не видит чат-координатор, поэтому укажите всё нужное.', agent: 'Агент' },
     create: 'Создать', start: 'Запустить ветку', save: 'Сохранить', cancel: 'Отмена', failed: 'Не получилось: {error}', moveToProject: 'Перенести в проект…', moveTitle: 'Перенести в проект', moved: 'Перенесено в {name}', pick: 'Проект',
+    pane: { openChat: 'Открыть весь чат', close: 'Закрыть ветку', send: 'Отправить', placeholder: 'Сообщение для этой ветки…', blocked: 'Ждёт вас. Ответьте во всём чате.', starting: 'Запускается в herdr. Сообщения появятся, когда агент сообщит свой чат.', empty: 'Пока нет сообщений.', you: 'Вы', label: 'Ветка' },
   } },
   tr: { projects: {
     nav: 'Projeler', title: 'Projeler', back: 'Sohbetler', newProject: 'Yeni proje', newThread: 'Yeni iş parçacığı', coordinator: 'Koordinatör',
@@ -146,6 +156,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: 'Çözüldü olarak işaretle', reopen: 'Yeniden aç', edit: 'Projeyi düzenle', remove: 'Projeyi bitir', removeConfirm: '“{name}” artık proje olarak kullanılmasın mı? Sohbetleri ve klasörü kalır.',
     form: { name: 'Ad', folder: 'Klasör', folderHint: 'İş parçacıkları Studio bilgisayarında bu klasörde başlar.', instructions: 'Talimatlar', instructionsHint: 'Koordinatör ve her iş parçacığı bunları alır, örneğin “dev dalını hedefle”.', defaultAgent: 'Yeni iş parçacıklarının ajanı', threadTitle: 'Başlık', brief: 'Ne yapmalı?', briefHint: 'İş parçacığı koordinatör sohbetini görmez; ihtiyacı olanı yaz.', agent: 'Ajan' },
     create: 'Oluştur', start: 'Başlat', save: 'Kaydet', cancel: 'İptal', failed: 'Olmadı: {error}', moveToProject: 'Projeye taşı…', moveTitle: 'Projeye taşı', moved: '{name} projesine taşındı', pick: 'Proje',
+    pane: { openChat: 'Tüm sohbeti aç', close: 'İş parçacığını kapat', send: 'Gönder', placeholder: 'Bu iş parçacığına mesaj…', blocked: 'Sizi bekliyor. Tüm sohbette yanıtlayın.', starting: 'herdr içinde başlıyor. Ajan sohbetini bildirince mesajlar görünür.', empty: 'Henüz mesaj yok.', you: 'Siz', label: 'İş parçacığı' },
   } },
   ar: { projects: {
     nav: 'المشاريع', title: 'المشاريع', back: 'المحادثات', newProject: 'مشروع جديد', newThread: 'سلسلة جديدة', coordinator: 'المنسّق',
@@ -156,5 +167,6 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     resolve: 'وضع علامة محلولة', reopen: 'إعادة الفتح', edit: 'تعديل المشروع', remove: 'إيقاف المشروع', removeConfirm: 'التوقف عن استخدام «{name}» كمشروع؟ تبقى محادثاته ومجلده.',
     form: { name: 'الاسم', folder: 'المجلد', folderHint: 'تبدأ السلاسل في هذا المجلد على جهاز Studio.', instructions: 'التعليمات', instructionsHint: 'يتلقاها المنسّق وكل سلسلة، مثل «استهدف فرع dev».', defaultAgent: 'وكيل السلاسل الجديدة', threadTitle: 'العنوان', brief: 'ماذا يجب أن تفعل؟', briefHint: 'لا ترى السلسلة محادثة المنسّق، فاكتب ما تحتاجه.', agent: 'الوكيل' },
     create: 'إنشاء', start: 'بدء السلسلة', save: 'حفظ', cancel: 'إلغاء', failed: 'لم ينجح ذلك: {error}', moveToProject: 'نقل إلى مشروع…', moveTitle: 'نقل إلى مشروع', moved: 'نُقلت إلى {name}', pick: 'المشروع',
+    pane: { openChat: 'فتح المحادثة كاملة', close: 'إغلاق السلسلة', send: 'إرسال', placeholder: 'رسالة إلى هذه السلسلة…', blocked: 'ينتظرك. أجب في المحادثة الكاملة.', starting: 'يبدأ في herdr. تظهر الرسائل عندما يبلغ الوكيل عن محادثته.', empty: 'لا توجد رسائل بعد.', you: 'أنت', label: 'السلسلة' },
   } },
 }

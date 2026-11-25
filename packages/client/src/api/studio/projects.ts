@@ -66,3 +66,11 @@ export const setThreadResolved = async (id: string, threadId: string, resolved: 
 
 export const removeThreadFromProject = (id: string, threadId: string) =>
   request<{ ok: true }>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}`, { method: 'DELETE' })
+
+export interface ThreadMessage { role: string; text: string }
+
+export const readProjectThread = (id: string, threadId: string, limit = 20) =>
+  request<{ thread: ProjectThread; messages: ThreadMessage[] }>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}?limit=${limit}`)
+
+export const messageProjectThread = (id: string, threadId: string, text: string) =>
+  request<unknown>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}/message`, json('POST', { text }))

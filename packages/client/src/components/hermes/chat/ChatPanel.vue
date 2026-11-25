@@ -71,7 +71,8 @@ import ConversationMonitorPane from "./ConversationMonitorPane.vue";
 import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import ProjectsList from "./ProjectsList.vue";
-import { addChatToProject, listProjects, type Project } from "@/api/studio/projects";
+import ThreadPane from "./ThreadPane.vue";
+import { addChatToProject, listProjects, type Project, type ProjectThread } from "@/api/studio/projects";
 import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
 import VsCodeCenter from "./VsCodeCenter.vue";
@@ -168,6 +169,19 @@ function setProjectsView(on: boolean) {
 watch(() => route.query.view, view => { if (view === "projects") setProjectsView(true) }, { immediate: true });
 const projectsListRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const knownProjects = ref<Project[]>([]);
+// On wide screens a thread opens in a pane beside its project's coordinator chat.
+const paneThread = ref<{ project: Project; thread: ProjectThread } | null>(null);
+const threadsInPane = computed(() => projectsShown.value && !isMobile.value);
+const threadPaneShown = computed(() => threadsInPane.value && !!paneThread.value
+  && chatStore.activeSessionId === paneThread.value.project.coordinatorSessionId);
+async function openProjectThread(project: Project, thread: ProjectThread) {
+  paneThread.value = { project, thread };
+  if (chatStore.activeSessionId !== project.coordinatorSessionId) await handleSessionClick(project.coordinatorSessionId);
+}
+function openFromProjects(sessionId: string) {
+  if (paneThread.value?.project.coordinatorSessionId !== sessionId) paneThread.value = null;
+  void handleSessionClick(sessionId);
+}
 const moveToProjectSessionId = ref("");
 const moveToProjectId = ref<string | null>(null);
 const showMoveToProject = ref(false);
@@ -2889,7 +2903,10 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           v-if="projectsShown"
           ref="projectsListRef"
           :active-session-id="chatStore.activeSessionId"
-          @open="handleSessionClick"
+          :threads-in-pane="threadsInPane"
+          :pane-thread-id="threadPaneShown ? paneThread?.thread.id : null"
+          @open="openFromProjects"
+          @thread="openProjectThread"
           @back="setProjectsView(false)"
         />
         <template v-else>
@@ -3676,6 +3693,13 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             v-if="showOutline"
             :messages="chatStore.messages"
             @navigate="handleOutlineNavigate"
+          />
+          <ThreadPane
+            v-if="threadPaneShown && paneThread"
+            :project-id="paneThread.project.id"
+            :thread="paneThread.thread"
+            @open="openFromProjects"
+            @close="paneThread = null"
           />
           <Transition
             name="tool-panel"

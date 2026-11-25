@@ -11,8 +11,13 @@ change: Projects is a second view of the same chat list.
   swaps back. The choice is kept per browser (`studio_chat_list_view`), and
   `/hermes/chat?view=projects` opens it. From another page the button opens
   the chat page on Projects.
-- Picking the coordinator or a thread opens its chat in the normal chat view,
-  with the usual Chat | herdr switch. Super admins only, like herdr.
+- Picking the coordinator opens its chat in the normal chat view, with the
+  usual Chat | herdr switch. Super admins only, like herdr.
+- On a wide screen, picking a thread keeps the coordinator open and shows the
+  thread in a pane beside it (`ThreadPane.vue`): its latest messages, refreshed
+  every 3 seconds, and a box that sends through `message_thread`. **Open full
+  chat** swaps the thread into the main chat. On a phone a thread opens as the
+  main chat. A thread waiting on you is answered in its full chat.
 - A project row shows what needs you first ("1 need you", "2 working").
   Expanded, it lists the coordinator, then threads grouped as Needs you,
   Working, Done and Resolved, with herdr's status glyphs.
@@ -105,9 +110,9 @@ All routes need a super admin.
   through the herdr bridge.
 - `modules/studio/routes/projects.ts`, `controllers/projects.ts`.
 - `bin/ekko-studio-mcp.mjs`: `ekko_studio_use_project`.
-- Client: `components/hermes/chat/ProjectsList.vue`, `project-groups.ts`,
+- Client: `components/hermes/chat/ProjectsList.vue`, `ThreadPane.vue`, `project-groups.ts`,
   `api/studio/projects.ts`; Projects button in `PageSidebarNav.vue`.
 
 Tests: `tests/server/projects.test.ts`, `tests/client/project-groups.test.ts`,
 the project case in `tests/server/studio-mcp-arguments.test.ts`, and
-`tests/e2e/projects-list.spec.ts`.
+`tests/e2e/projects-list.spec.ts`, `tests/e2e/projects-thread-pane.spec.ts`.

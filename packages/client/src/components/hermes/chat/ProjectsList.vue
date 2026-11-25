@@ -18,15 +18,21 @@ import { THREAD_AGENTS, THREAD_GROUPS, groupThreads, projectSummary, threadDispl
 /**
  * Projects in the chat list (the chat menu's Projects view): each project is a
  * coordinator chat plus threads whose agents run in herdr. Opening one opens
- * its chat in the normal chat view. See docs/projects.md.
+ * its chat in the normal chat view. With threadsInPane, a thread opens in the
+ * pane beside its coordinator instead. See docs/projects.md.
  */
 const props = defineProps<{
   /** The chat open in the chat view, to mark its row. */
   activeSessionId: string | null
+  /** Threads open beside the coordinator (wide screens) instead of replacing it. */
+  threadsInPane?: boolean
+  /** The thread shown in that pane, to mark its row. */
+  paneThreadId?: string | null
 }>()
 
 const emit = defineEmits<{
   open: [sessionId: string]
+  thread: [project: Project, thread: ProjectThread]
   back: []
 }>()
 
@@ -71,8 +77,14 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 const sorted = computed(() => [...projects.value].sort((a, b) => b.updatedAt - a.updatedAt))
 const agentOptions = computed(() => THREAD_AGENTS.map(value => ({ label: value, value })))
 
-function openThread(thread: ProjectThread) {
-  if (thread.sessionId) emit('open', thread.sessionId)
+function openThread(project: Project, thread: ProjectThread) {
+  if (props.threadsInPane) emit('thread', project, thread)
+  else if (thread.sessionId) emit('open', thread.sessionId)
+}
+
+function threadActive(thread: ProjectThread): boolean {
+  if (props.threadsInPane && props.paneThreadId === thread.id) return true
+  return !!thread.sessionId && props.activeSessionId === thread.sessionId
 }
 
 // --- New / edit project ---
@@ -218,16 +230,16 @@ defineExpose({ refresh })
               v-for="thread in groupThreads(project.threads)[group]"
               :key="thread.id"
               class="project-item project-thread"
-              :class="{ active: !!thread.sessionId && props.activeSessionId === thread.sessionId }"
+              :class="{ active: threadActive(thread) }"
               :data-testid="`project-thread-${thread.id}`"
             >
               <button
                 type="button"
                 class="project-thread-open"
-                :disabled="!thread.sessionId"
-                :title="thread.sessionId ? thread.title : t('projects.threadNoChat')"
-                :aria-current="!!thread.sessionId && props.activeSessionId === thread.sessionId ? 'page' : undefined"
-                @click="openThread(thread)"
+                :disabled="!thread.sessionId && !props.threadsInPane"
+                :title="thread.sessionId || props.threadsInPane ? thread.title : t('projects.threadNoChat')"
+                :aria-current="threadActive(thread) ? 'page' : undefined"
+                @click="openThread(project, thread)"
               >
                 <AgentStatusIcon :status="threadDisplayStatus(thread.liveStatus)" :live="thread.liveStatus !== 'idle' && thread.liveStatus !== 'gone'" />
                 <span class="project-thread-text">
