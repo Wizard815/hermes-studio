@@ -149,7 +149,7 @@ export interface HerdrBridgeDeps {
    * add after the typed text when the pane cannot read it otherwise. `isCurrent` says
    * whether the pane turn still runs; `end` is called once when it is over.
    */
-  paneTurn?: (sessionId: string, paneId: string, isCurrent: () => boolean) => Promise<HerdrPaneTurn | null>
+  paneTurn?: (sessionId: string, paneId: string, isCurrent: () => boolean, text: string) => Promise<HerdrPaneTurn | null>
 }
 
 /** Studio's context for one pane turn typed from Studio's chat box. */
@@ -1694,7 +1694,9 @@ export class HerdrBridge {
     let turn: HerdrPaneTurn | null = null
     let current = true
     try {
-      turn = await this.deps.paneTurn?.(sessionId, paneId, () => current) ?? null
+      // Studio's chat client (Ekko, Hermes without its CLI) runs each line as a Studio run,
+      // which carries Studio's context itself: nothing to add.
+      if (!await this.paneRunsStudioClient(paneId)) turn = await this.deps.paneTurn?.(sessionId, paneId, () => current, body) ?? null
     } catch (error) {
       this.log('warn', '[herdr] could not prepare Studio\'s context for the pane turn', { sessionId, error: String(error) })
     }
@@ -1713,6 +1715,17 @@ export class HerdrBridge {
       entry.timer.unref?.()
     }
     return { paneId }
+  }
+
+  /** Whether the pane runs Studio's chat client (`studio-herdr.mjs chat`), whose lines are Studio runs. */
+  private async paneRunsStudioClient(paneId: string): Promise<boolean> {
+    const info = await this.requireClient().request<any>('pane.process_info', { pane_id: paneId }).catch(() => null)
+    const processes: Array<{ argv?: string[] }> = info?.process_info?.foreground_processes || []
+    return processes.some(item => {
+      const argv = item.argv || []
+      const script = argv.findIndex(arg => arg.endsWith('studio-herdr.mjs'))
+      return script >= 0 && argv[script + 1] === 'chat'
+    })
   }
 
   /** The pane's agent status for a turn Studio typed: working starts it, idle or done after that ends it. */

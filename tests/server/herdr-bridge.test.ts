@@ -343,6 +343,23 @@ describe('herdr bridge', () => {
     expect(ended).toBe('')
   })
 
+  it("hands the typed text to the pane turn, and leaves Studio's chat client (its lines are Studio runs) alone", async () => {
+    const nativeId = '59595959-2222-3333-4444-555555555555'
+    const { deps, sessions } = makeDeps(dir)
+    sessions.set('chat-h', { id: 'chat-h', agent: 'hermes', title: 'H', workspace: null, agent_native_session_id: nativeId })
+    herdr.panes = [{ pane_id: 'w1:p5', workspace_id: 'w1', agent: 'hermes', agent_status: 'idle', agent_session: { kind: 'id', value: nativeId } }]
+    const typed: string[] = []
+    deps.paneTurn = async (_sessionId, _paneId, _isCurrent, text) => { typed.push(text); return { end: () => {} } }
+    await startBridge(deps)
+    await bridge!.promptSession('chat-h', 'plan the release')
+    expect(typed).toEqual(['plan the release'])
+    // The same pane now runs Studio's chat client (Ekko, or Hermes without its CLI).
+    herdr.processes['w1:p5'] = [{ argv: ['node', '/opt/studio/bin/herdr-plugin/studio-herdr.mjs', 'chat', 'chat-h'] }]
+    await bridge!.promptSession('chat-h', 'and the notes')
+    expect(typed).toEqual(['plan the release'])
+    expect(herdr.requests.filter(r => r.method === 'agent.prompt').at(-1)?.params).toEqual({ target: 'w1:p5', text: 'and the notes' })
+  })
+
   it('opens a Studio chat as a herdr pane with the routed launch command and env', async () => {
     const nativeId = '78787878-2222-3333-4444-555555555555'
     const { deps, sessions, links } = makeDeps(dir)

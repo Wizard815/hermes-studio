@@ -782,11 +782,35 @@ to sit at the end of the user's message, so a herdr pane's resumed history
   turns): Studio fills it before typing and empties it when the turn ends,
   so turns typed in the pane by hand get nothing. Other agents, and a Claude
   Code pane Studio did not launch (started by hand), get the blocks after
-  the typed text. Only coding-agent chats with Studio's interaction tools get
-  them; Hermes and Ekko panes do not.
+  the typed text. Only chats with Studio's interaction tools get them.
+- **Hermes panes** (`hermes chat`): Hermes's own hidden channel is a plugin
+  `pre_llm_call` hook. Its `{"context": ...}` goes to the model with the
+  user's message; the stored message stays what was typed. Before Studio
+  opens a Hermes pane it puts its plugin in the chat's profile
+  (`plugins/studio-turn-context`, added to `plugins.enabled` in the
+  profile's `config.yaml`; `modules/hermes/services/herdr-turn-context.ts`).
+  For a message from Studio's chat box, Studio writes the turn's context and
+  the typed text to `HERMES_WEB_UI_HOME/herdr/turn-context/hermes-<chat>.json`
+  and removes it when the turn ends. The hook gives the context only to a
+  turn whose message is that text, in that chat's Hermes session, so turns
+  typed in the pane by hand get nothing.
+  What goes wrong: a profile with the plugin in `plugins.disabled` (Studio
+  leaves it off), or a pane started before Studio installed the plugin, gets
+  the blocks after the typed text instead, and they stay in Hermes's own
+  history. A Hermes that runs its sessions in a gateway started before the
+  plugin was installed loads it only after that gateway restarts; until
+  then the context is lost (the message itself still goes through).
+- **Ekko, and Hermes without its CLI**: their pane is Studio's chat client
+  (`studio-herdr.mjs chat`). A message typed into it is sent as an ordinary
+  Studio run of the chat, which gives the agent Studio's context the same way
+  as a message sent in Studio (Ekko's run context; Hermes's bridge
+  instructions and turn blocks). The bridge sees the client in the pane
+  (`pane.process_info`) and adds nothing of its own.
 
 Tests: `tests/server/claude-turn-context.test.ts`,
-`tests/server/herdr-pane-turn-context.test.ts` and the bridge's pane-turn
-tests in `tests/server/herdr-bridge.test.ts`. Live check: a Studio
+`tests/server/herdr-pane-turn-context.test.ts`,
+`tests/server/herdr-hermes-turn-context.test.ts` (runs the Hermes plugin's
+hook with `python3`) and the bridge's pane-turn tests in
+`tests/server/herdr-bridge.test.ts`. Live check: a Studio
 Claude Code chat with the real CLI and a stub model, then `claude --resume`
 of its session shows only the typed message.

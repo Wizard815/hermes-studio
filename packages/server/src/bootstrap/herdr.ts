@@ -42,6 +42,8 @@ import { listProfileModelChoices, listProfileModelGroups } from '../modules/herm
 import { getProfileDir, listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
 import { hermesCliAvailable, hermesInteractiveLaunch, hermesNewChatLaunch, hermesSessionIdFor } from '../modules/hermes/services/herdr-launch'
 import { answerHermesFirstRun } from '../modules/hermes/services/herdr-first-run'
+import { hermesPaneTurnFile, hermesTurnContextReady, installHermesTurnContextPlugin, setHermesPaneTurn } from '../modules/hermes/services/herdr-turn-context'
+import { hermesStudioMcpCapabilities } from '../modules/studio/services/chat-run/studio-mcp'
 import { HerdrHermesLaunchStore, herdrModelChange, logicalHermesRoute, readHermesSessionRoute, type ModelRoute } from '../modules/hermes/services/herdr-model-sync'
 import { importAccountProviders, withProviderAccount } from '../modules/studio/public/provider-account'
 import { hermesGatewaySelection, synchronizeHermesProvider } from '../modules/studio/public/provider-projection'
@@ -178,6 +180,23 @@ async function answerHermesFirstRunQuietly(profile: string) {
   }
 }
 
+/** Where Studio puts a pane turn's context for the pane's agent to read (Claude Code's hook, Hermes's plugin). */
+function paneTurnContextDir(): string {
+  return join(getWebUiHome(), 'herdr', 'turn-context')
+}
+
+/**
+ * A Hermes pane Studio opens loads Studio's turn-context plugin (herdr-turn-context.ts), so messages
+ * Studio's chat box types into it get Studio's context without it showing as part of the message.
+ */
+async function installHermesTurnContextQuietly(profile: string) {
+  try {
+    if (!await installHermesTurnContextPlugin(profile, paneTurnContextDir())) logger.info({ profile }, '[herdr] Studio\'s turn-context plugin is disabled in this Hermes profile; Studio\'s context goes after typed messages')
+  } catch (error) {
+    logger.warn({ profile, error: String(error) }, '[herdr] could not install Studio\'s turn-context plugin for Hermes')
+  }
+}
+
 /** Open a Hermes chat in herdr in its profile, on its model, remembering both for `syncHermesModelFromHerdr`. */
 async function hermesChatLaunch(sessionId: string) {
   const first = getSession(sessionId)
@@ -188,6 +207,7 @@ async function hermesChatLaunch(sessionId: string) {
     const hermes = await hermesSessionModel(profile, row) ?? { model: '', provider: '' }
     const profileDefault = await profileDefaultModel(profile)
     await answerHermesFirstRunQuietly(profile)
+    await installHermesTurnContextQuietly(profile)
     hermesLaunches().set(sessionId, {
       studio: { model: row.model || '', provider: row.provider || '' },
       hermes,
@@ -269,6 +289,7 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     prepareAgentLaunch: async (agentId, input) => agentId === 'hermes'
       ? inHerdrAccount(input.profile, async () => {
           await answerHermesFirstRunQuietly(input.profile || 'default')
+          await installHermesTurnContextQuietly(input.profile || 'default')
           return hermesNewChatLaunch(input.workspace, {
             profile: input.profile, provider: input.provider, model: input.model, profileHome: getProfileDir,
             route: await hermesPaneRoute(input.profile || 'default', input.provider, input.model),
@@ -306,7 +327,7 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     chatPane: () => herdrManager.chatPaneSetup(),
     // Agents in herdr act for the Studio admin using herdr (herdr routes are
     // super-admin only), or the first active super admin after a restart.
-    paneTurn: async (sessionId, _paneId, isCurrent) => beginHerdrPaneTurn(sessionId, isCurrent),
+    paneTurn: async (sessionId, _paneId, isCurrent, text) => beginHerdrPaneTurn(sessionId, isCurrent, paneTurnDeps, text),
     grantAgentAccess: async profile => {
       const user = herdrManager.actingUser() ?? listUsers().find(item => item.role === 'super_admin' && item.status === 'active') ?? null
       if (user) await writeModelRunProfileToken({ id: user.id, username: user.username, role: user.role as AuthenticatedUser['role'] }, profile)
@@ -315,11 +336,17 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
 }
 
 export interface HerdrPaneTurnDeps {
-  getSession: (id: string) => Pick<HermesSessionRow, 'agent' | 'profile'> | null
+  getSession: (id: string) => Pick<HermesSessionRow, 'agent' | 'profile'> & Partial<Pick<HermesSessionRow, 'id' | 'source' | 'agent_native_session_id'>> | null
   /** The chat's agent has Studio's task-card tools (the interaction MCP server). */
   hasInteraction: (agentId: string, profile: string) => boolean
   beginPlan: (sessionId: string, profile: string, isCurrent: () => boolean) => { contextId: string; finish: HerdrPaneTurn['end'] } | null
   contextFile: (sessionId: string) => string
+  /** The Hermes profile has Studio's task-card tools (the interaction MCP server). */
+  hermesInteraction?: (profile: string) => Promise<boolean>
+  /** The Hermes profile loads Studio's turn-context plugin. */
+  hermesPluginReady?: (profile: string) => Promise<boolean>
+  /** Where a Hermes chat's pending pane turn goes (the plugin reads it). */
+  hermesTurnFile?: (sessionId: string) => string
 }
 
 const paneTurnDeps: HerdrPaneTurnDeps = {
@@ -327,6 +354,9 @@ const paneTurnDeps: HerdrPaneTurnDeps = {
   hasInteraction: (agentId, profile) => studioMcpCapabilities(getChatCodingAgentMcpServers(agentId, profile)).interaction,
   beginPlan: (sessionId, profile, isCurrent) => getChatRunServer()?.beginPaneTurnTaskPlan?.(sessionId, profile, isCurrent) ?? null,
   contextFile: chatPaneTurnContextFile,
+  hermesInteraction: async profile => (await hermesStudioMcpCapabilities(profile)).interaction,
+  hermesPluginReady: async profile => hermesTurnContextReady(profile, await readConfigYamlForProfile(profile)),
+  hermesTurnFile: sessionId => hermesPaneTurnFile(paneTurnContextDir(), sessionId),
 }
 
 /**
@@ -338,8 +368,9 @@ const paneTurnDeps: HerdrPaneTurnDeps = {
  * a Claude Code pane Studio did not launch, get the blocks after the typed text (the
  * transcript mirror strips them from Studio's chat).
  */
-export async function beginHerdrPaneTurn(sessionId: string, isCurrent: () => boolean, deps: HerdrPaneTurnDeps = paneTurnDeps): Promise<HerdrPaneTurn | null> {
+export async function beginHerdrPaneTurn(sessionId: string, isCurrent: () => boolean, deps: HerdrPaneTurnDeps = paneTurnDeps, typed = ''): Promise<HerdrPaneTurn | null> {
   const row = deps.getSession(sessionId)
+  if (row && herdrStoredAgent(row.agent, row.source) === 'hermes') return beginHermesPaneTurn(sessionId, row, isCurrent, typed, deps)
   const agentId = row ? codingAgentIdForStoredAgent(row.agent) : null
   if (!row || !agentId) return null
   const profile = row.profile || 'default'
@@ -356,6 +387,46 @@ export async function beginHerdrPaneTurn(sessionId: string, isCurrent: () => boo
     ...(viaHook ? {} : { append: text }),
     end: state => {
       if (viaHook) { try { setPaneTurnContext(file, '') } catch { /* the next turn overwrites it */ } }
+      plan.finish(state)
+    },
+  }
+}
+
+/**
+ * The same for a Hermes chat's `hermes chat` pane: Hermes's own hidden channel is a
+ * plugin `pre_llm_call` hook, whose context goes to the model with the user's message
+ * while the stored message stays what was typed. Studio's plugin
+ * (modules/hermes/services/herdr-turn-context.ts) gives the context only to the turn
+ * whose message is the text Studio typed, while Studio's file for it exists; Studio
+ * removes the file when the turn ends. A profile without the plugin (disabled there, or
+ * a pane started before Studio installed it) gets the blocks after the typed text.
+ */
+async function beginHermesPaneTurn(
+  sessionId: string,
+  row: NonNullable<ReturnType<HerdrPaneTurnDeps['getSession']>>,
+  isCurrent: () => boolean,
+  typed: string,
+  deps: HerdrPaneTurnDeps,
+): Promise<HerdrPaneTurn | null> {
+  const profile = row.profile || 'default'
+  if (!deps.hermesInteraction || !await deps.hermesInteraction(profile).catch(() => false)) return null
+  const plan = deps.beginPlan(sessionId, profile, isCurrent)
+  if (!plan) return null
+  const text = taskPlanTurnInstruction(plan.contextId, true)
+  const file = deps.hermesTurnFile?.(sessionId) || ''
+  let viaPlugin = false
+  try {
+    if (file && typed.trim() && deps.hermesPluginReady && await deps.hermesPluginReady(profile)) {
+      setHermesPaneTurn(file, { sessionIds: [hermesSessionIdFor({ id: sessionId, agent_native_session_id: row.agent_native_session_id }), sessionId], text: typed, context: text })
+      viaPlugin = true
+    }
+  } catch (error) {
+    logger.warn({ sessionId, error: String(error) }, '[herdr] could not write the Hermes pane turn context; typing it after the message')
+  }
+  return {
+    ...(viaPlugin ? {} : { append: text }),
+    end: state => {
+      if (viaPlugin) { try { setHermesPaneTurn(file, null) } catch { /* the next turn overwrites it */ } }
       plan.finish(state)
     },
   }
