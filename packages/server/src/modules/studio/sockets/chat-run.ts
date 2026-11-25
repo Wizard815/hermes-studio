@@ -117,12 +117,15 @@ import { personBackgroundTaskCount } from '../repositories/person-presence-store
 import { personCollaborationPendingCount } from '../repositories/person-stage-store'
 import { observeChatRunWebhookEvent as publishChatRunWebhookEvent, type ChatRunWebhookAgent } from '../services/webhooks'
 import { getRunLimits, observeRunLimitEvent } from '../services/run-limits'
+import { observeWatcherChatEvent } from '../services/watcher'
 import type { RunLimitHit } from '../../../../../shared/run-limits'
 import { persistSessionCommandMessage } from '../services/chat-run/session-command'
 
-/** Every chat run event reaches webhooks here; run limits (docs/agent-limits.md) watch the same stream. */
+/** Every chat run event reaches webhooks here; run limits (docs/agent-limits.md) and the watcher watch the same stream. */
 function observeChatRunWebhookEvent(input: Parameters<typeof publishChatRunWebhookEvent>[0]): boolean {
   try { observeRunLimitEvent(input.sessionId, input.event, input.payload) } catch { /* limits never break a run */ }
+  // The watcher (docs/watcher.md) notes approvals asked, approved and denied in every chat type.
+  observeWatcherChatEvent(input.sessionId, input.event, input.payload as Record<string, any> | undefined, input.agent)
   return publishChatRunWebhookEvent(input)
 }
 import { getAgentStatusSnapshot } from '../public/agent-status-registry'
@@ -949,6 +952,8 @@ export class ChatRunSocket {
     const mobileTarget = socket.data.mobileDeviceTarget as MobileDeviceTarget | undefined
     if (mobileTarget) socket.join(mobileDeviceRoom(mobileTarget))
     if (!shared) { socket.join('studio-account'); socket.join(`pending-interactions:${currentProfile()}`) }
+    // The watcher's bell (docs/watcher.md) is for super admins (everyone when login is off).
+    if (!shared && (!socketUser || socketUser.role === 'super_admin')) socket.join('watcher')
     socket.emit('session.activity.snapshot', {
       event: 'session.activity.snapshot',
       profile: currentProfile(),
@@ -3361,6 +3366,11 @@ export class ChatRunSocket {
     const state = this.sessionMap.get(sid)
     this.emitSessionActivity(profile, state?.isWorking ? 'run.started' : 'abort.completed', { session_id: sid })
     return true
+  }
+
+  /** The watcher's live updates (docs/watcher.md) to the people who see the bell. */
+  emitWatcher(event: string, payload: Record<string, unknown>) {
+    this.nsp.to('watcher').emit(event, payload)
   }
 
   /** Persist a Studio notice in the chat (a command result: never sent to the model) and show it. */

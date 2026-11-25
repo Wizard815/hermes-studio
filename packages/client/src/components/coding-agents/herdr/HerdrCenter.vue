@@ -18,6 +18,7 @@ import { useCommandCenter } from '@/mission/command-center/useCommandCenter'
 import { useHerdrStore } from '@/stores/hermes/herdr'
 import { fetchHerdrMachines, focusHerdrMachineAgent, focusHerdrPane, openSessionInHerdr, reopenClosedHerdrChat, studioFocusRequest, type HerdrMachine, type HerdrPaneView } from '@/api/coding-agents/herdr'
 import { herdrKeyBytes } from '@/utils/herdr-keys'
+import WatcherBell from '@/components/watcher/WatcherBell.vue'
 
 /**
  * The herdr page (Studio's chat page in herdr mode). By default it is the
@@ -547,6 +548,7 @@ onBeforeUnmount(() => {
               </NButton>
             </template>
             <div class="herdr-center-menu">
+              <WatcherBell variant="menu" @opened="phoneMenu = false" />
               <div v-if="machines.length" class="herdr-center-machines" role="radiogroup" :aria-label="t('herdr.machineSwitch')">
                 <button type="button" role="radio" :aria-checked="!machine" :class="{ active: !machine }" @click="fromMenu(() => { machine = '' })">{{ t('herdr.machineLocal') }}</button>
                 <button
@@ -643,6 +645,7 @@ onBeforeUnmount(() => {
       <!-- Studio's top bar is hidden: outside the Herdr App layout's tab bar, these float at the top right. -->
       <div v-if="topbarHidden && !(appMode && started && !nothingInHerdr)" class="herdr-topbar-peek" data-testid="herdr-topbar-peek">
         <button type="button" class="herdr-center-key herdr-peek-chat" data-testid="herdr-center-back-chat" @click="emit('back')">{{ t('herdr.centerChat') }}</button>
+            <WatcherBell />
             <button type="button" class="herdr-center-key herdr-peek-show" :title="t('herdr.showTopBar')" :aria-label="t('herdr.showTopBar')" data-testid="herdr-center-show-topbar" @click="emit('topbar', true)">
               <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 5h16M7 11l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </button>
@@ -685,6 +688,7 @@ onBeforeUnmount(() => {
         >
           <template v-if="topbarHidden" #tabs-end>
             <button type="button" class="herdr-center-key herdr-peek-chat" data-testid="herdr-center-back-chat" @click="emit('back')">{{ t('herdr.centerChat') }}</button>
+            <WatcherBell />
             <button type="button" class="herdr-center-key herdr-peek-show" :title="t('herdr.showTopBar')" :aria-label="t('herdr.showTopBar')" data-testid="herdr-center-show-topbar" @click="emit('topbar', true)">
               <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 5h16M7 11l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </button>

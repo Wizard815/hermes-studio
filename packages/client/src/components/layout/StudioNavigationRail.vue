@@ -12,6 +12,10 @@ import { pluginPages, pluginNavigation, usePluginCatalog } from '@/composables/u
 import { navigationCatalog, selectedNavigationEntries, type NavigationEntry } from '@/utils/navigation-entries'
 import { useNavigationStore } from '@/stores/navigation'
 import { useAgentWorkBadge } from '@/composables/useAgentWorkBadge'
+import WatcherBell from '@/components/watcher/WatcherBell.vue'
+
+/** `mobile`: the rail in the phone's menu drawer, which also holds the watcher's bell (docs/watcher.md). */
+defineProps<{ mobile?: boolean }>()
 
 const route = useRoute(), { t } = useI18n()
 const { snapshot } = usePluginCatalog()
@@ -58,6 +62,7 @@ function handleNavigate(entry: NavigationEntry) {
       </NTooltip>
     </nav>
     <div class="studio-navigation-rail__bottom">
+      <div v-if="mobile" class="studio-navigation-rail__watcher"><WatcherBell dialog /></div>
       <NTooltip placement="right" trigger="hover">
         <template #trigger>
           <RouteLinkItem class="studio-navigation-rail__item" :to="{ name: 'hermes.settings' }" :active="activeKey === 'settings'" :aria-label="t('sidebar.settings')">
@@ -114,6 +119,7 @@ function handleNavigate(entry: NavigationEntry) {
   overflow-y: auto;
   scrollbar-width: none;
 }
+.studio-navigation-rail__watcher { display: grid; place-items: center; width: 44px; height: 44px; }
 .studio-navigation-rail__bottom { display: flex; flex-direction: column; gap: calc(8px * var(--spacing-scale, 1)); padding-top: 12px; }
 .studio-navigation-rail__item {
   position: relative;

@@ -36,6 +36,8 @@ export interface AgentWorkDeps {
   allglance: AllGlancePort
   wiki: WikiPort
   onError?: (what: string, error: unknown) => void
+  /** Every change, for the watcher's feed (docs/watcher.md). */
+  observe?: (work: AgentWork, change: 'created' | 'status' | 'decided') => void
   now?: () => number
 }
 
@@ -62,6 +64,7 @@ export class AgentWorkService {
 
   private now(): number { return this.deps.now?.() ?? Date.now() }
   private fail(what: string, error: unknown) { this.deps.onError?.(what, error) }
+  private observe(work: AgentWork, change: 'created' | 'status' | 'decided') { try { this.deps.observe?.(work, change) } catch { /* the feed never breaks work */ } }
 
   get store(): AgentWorkStore { return this.deps.store }
 
@@ -95,6 +98,7 @@ export class AgentWorkService {
     }, this.now())
     const entry = this.deps.store.log(work.id, { kind: 'created', status, actor, message: work.summary || title }, this.now())
     await this.fanOut(work, entry, { posted: status, approvalChanged: status === 'awaiting_approval' })
+    this.observe(work, 'created')
     return work
   }
 
@@ -115,6 +119,7 @@ export class AgentWorkService {
       posted: statusChanged ? status : null,
       approvalChanged: statusChanged && (status === 'awaiting_approval' || before.status === 'awaiting_approval'),
     })
+    if (statusChanged) this.observe(work, 'status')
     return work
   }
 
@@ -135,6 +140,7 @@ export class AgentWorkService {
     const entry = this.deps.store.log(id, { kind: verdict, status: work.status, actor: by, via, message: `${verdict} in ${VIA_WORDS[via]}` }, this.now())
     await this.fanOut(work, entry, { posted: null, approvalChanged: true })
     if (verdict === 'approved' && work.vikunjaTaskId) await this.completeVikunja(work)
+    this.observe(this.deps.store.get(id)!, 'decided')
     return { work: this.deps.store.get(id)!, changed: true, message: `${verdict[0].toUpperCase()}${verdict.slice(1)}.` }
   }
 
@@ -236,6 +242,23 @@ export class AgentWorkService {
     const mention = mentionsFor('blocked', mm)
     const quoted = text.trim().replace(/\n+/g, '\n> ')
     await this.deps.mattermost.createPost(channelId, `#agentlimit #blocked${mention ? ` ${mention}` : ''} **${title}** was stopped by a run limit and needs you\n> ${quoted}`)
+    return true
+  }
+
+  /**
+   * A watcher alert (docs/watcher.md) in Agent work's Mattermost channel, with
+   * the @mentions it uses for blocked work. False when no channel is set.
+   */
+  async postAlert(tags: string[], title: string, text: string, mention = false): Promise<boolean> {
+    const settings = await this.deps.settings.load()
+    const mm = settings.mattermost
+    if (!mm.channel) return false
+    const channelId = mm.channelId || (await this.deps.mattermost.findChannel(mm.channel, mm.teamId || this.deps.setupRecord()?.teamId))?.id
+    if (!channelId) throw new Error(`Mattermost has no channel ~${mm.channel}`)
+    const mentions = mention ? mentionsFor('blocked', mm) : ''
+    const hashtags = tags.map(tag => `#${tag.replace(/[^a-z0-9_]/gi, '')}`).filter(tag => tag.length > 1).join(' ')
+    const quoted = text.trim().replace(/\n+/g, '\n> ')
+    await this.deps.mattermost.createPost(channelId, `${hashtags}${mentions ? ` ${mentions}` : ''}${title ? ` **${title}**` : ''}\n> ${quoted}`)
     return true
   }
 

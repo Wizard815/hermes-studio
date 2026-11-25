@@ -165,15 +165,18 @@ Next:
   edit boards, turn cards into Orb tasks. Repos: pondering-orb, milaclone-mcp.
 - **Phone tools for agents**: phone-harness ideas on top of Studio's Android
   page (screenshot, UI tree, tap by element, approvals per action).
-- **Watcher** (a Settings section, not a page): combine Hermes's built-in
-  approvals with InnerWarden, pipelock (secret and prompt-injection scanning)
-  and langfuse traces, plus an approvals/denials audit log and Mattermost
-  alerts. A bell in Studio's top bar, like Unraid's notifications, lists recent
-  alerts (blocked actions, limits hit, leaks found) with read/clear.
+- **Watcher** (branch `watcher`, see `docs/watcher.md`): one feed of
+  approvals, limits, clean-room blocks and leaks, Agent work and plugin
+  failures; a bell in the top bar (and herdr's bar, and the phone menus) with
+  read/clear and "Trust this" rules that feed the existing approval paths;
+  Settings → Watcher and Settings → Clean rooms; per-task approval mode.
+  Extras off by default: pipelock (clean-room upstream), InnerWarden (hook
+  status), Langfuse (trace links). Left: real pipelock and InnerWarden not
+  tried here; Hermes cron has no per-job approval mode.
 - **Import chats**: learn from agent-importers how to bring Hermes chats from
   other installs (and other agents' sessions) in as Studio/herdr chats.
 
-Order: watcher next; the herdr-app-ui, plugins (with Gadget), limits and
+Order: watcher done (branch `watcher`); the herdr-app-ui, plugins (with Gadget), limits and
 clean-room branches are merged into `studio-herder`.
 
 Not adding: sem-weave (the watcher covers it), hermes-speech, Apollo Watcher,

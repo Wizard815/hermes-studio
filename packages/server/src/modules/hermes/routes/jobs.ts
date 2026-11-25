@@ -1,10 +1,13 @@
 import Router from '@koa/router'
+import { requireSuperAdmin } from '../../studio/public/auth'
 import * as ctrl from '../controllers/jobs'
 
 export const jobRoutes = new Router()
 
 jobRoutes.get('/api/hermes/jobs', ctrl.list)
 jobRoutes.get('/api/hermes/jobs/delivery-targets', ctrl.deliveryTargets)
+jobRoutes.get('/api/hermes/jobs/approval-mode', ctrl.approvalMode)
+jobRoutes.put('/api/hermes/jobs/approval-mode', requireSuperAdmin, ctrl.setApprovalMode)
 jobRoutes.get('/api/hermes/jobs/:id', ctrl.get)
 jobRoutes.post('/api/hermes/jobs', ctrl.create)
 jobRoutes.patch('/api/hermes/jobs/:id', ctrl.update)
