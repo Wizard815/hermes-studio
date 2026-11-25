@@ -287,8 +287,22 @@ class AgentPool:
             callback = self._home_assistant_pre_tool_call
             if callback not in callbacks:
                 callbacks.append(callback)
+            # Gadget tools reach devices through the gateway (bridge_gadget).
+            results = hooks.setdefault("transform_tool_result", [])
+            if self._gadget_tool_result not in results:
+                results.append(self._gadget_tool_result)
         except Exception as exc:
-            print(f"[hermes_bridge] failed to install the Home Assistant approval hook: {exc}", file=sys.stderr, flush=True)
+            print(f"[hermes_bridge] failed to install the Home Assistant and Gadget hooks: {exc}", file=sys.stderr, flush=True)
+
+    def _gadget_tool_result(self, tool_name: str = "", args: Any = None, result: Any = None, **_: Any) -> str | None:
+        from bridge_gadget import needs_desk, studio_gadget_result
+
+        if not needs_desk(tool_name, result):
+            return None
+        try:
+            return studio_gadget_result(tool_name, args)
+        except Exception as exc:
+            return json.dumps({"success": False, "error": f"could not reach the gadget through the Hermes gateway: {exc}"})
 
     def _home_assistant_pre_tool_call(self, tool_name: str = "", args: Any = None, session_id: str = "", **_: Any) -> dict[str, Any] | None:
         from bridge_home_assistant import home_assistant_action, home_assistant_servers

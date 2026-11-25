@@ -137,6 +137,15 @@ the connection is treated as a browser and `mcu.events.subscribe` gets no answer
   `extra`; new devices need a pairing code. Never set `GADGET_ALLOW_ALL_USERS` outside
   development. A paired device can answer command approvals (allow once / deny) for its
   own chat.
+- **Gadget tools in Studio's Hermes chats:** the `gadget_*` tools need the gadget hub,
+  which lives in the gateway process; Studio's chats run Hermes in the bridge. There,
+  `gadget_display` (title and text), `gadget_action` and `gadget_devices` go through the
+  plugin's own handoff folder (`plugin-data/gadget/desk/`, the one its Desktop page uses):
+  the bridge writes the request and the running gateway carries it to the device.
+  A list, progress bar or QR code in `gadget_display` is shown as text lines. `gadget_ask`,
+  `gadget_speak`, `gadget_play`, `gadget_widget` and `gadget_interpret` need the gateway's
+  own chat (the gadget itself, Telegram, the Hermes API server); in a Studio chat they say
+  so. With the gateway stopped, every gadget tool says to restart it.
 
 ## Your home: Home Assistant and Unraid
 
