@@ -63,7 +63,12 @@ export function phoneActionNeedsApproval(level: PhoneActionLevel, mode: Approval
   return mode === 'ask'
 }
 
-/** What a watcher trust rule matches: `android:<serial>:<app>:<action>` (rules can use * for any part). */
-export function phoneTrustValue(serial: string, pkg: string, action: PhoneAction): string {
-  return `android:${serial}:${pkg || 'unknown'}:${action}`
+/**
+ * What a watcher trust rule matches: `android:<serial>:<app>:<action>`, and
+ * `...:<action>:danger` for a dangerous one (rules can use * for any part). So a
+ * rule made from an ordinary tap does not also let a "Send" or "Pay" tap through;
+ * `android:<serial>:*` and a rule made from a dangerous question still do.
+ */
+export function phoneTrustValue(serial: string, pkg: string, action: PhoneAction, level: PhoneActionLevel = 'act'): string {
+  return `android:${serial}:${pkg || 'unknown'}:${action}${level === 'danger' ? ':danger' : ''}`
 }
