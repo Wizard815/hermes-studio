@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { NButton, NCheckbox, NInput, NProgress, NRadioButton, NRadioGroup, NSelect } from 'naive-ui'
+import { NButton, NCheckbox, NInput, NRadioButton, NRadioGroup, NSelect } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import {
   discardChatImportScan,
@@ -43,7 +43,7 @@ const folderOptions = computed(() => [
   { label: t('chatImport.noFolder'), value: 0 },
   ...folders.value.map(item => ({ label: item.name, value: item.id })),
 ])
-const progress = computed(() => job.value && job.value.total ? Math.round((job.value.done / job.value.total) * 100) : 0)
+const progress = computed(() => !job.value ? 0 : job.value.status !== 'running' || !job.value.total ? 100 : Math.round((job.value.done / job.value.total) * 100))
 const running = computed(() => job.value?.status === 'running')
 
 function plain(err: unknown): string {
@@ -233,7 +233,7 @@ onBeforeUnmount(() => {
 
     <p v-if="error" class="import-error" role="alert" data-testid="chat-import-error">{{ error }}</p>
     <p class="import-sr" role="status" aria-live="polite">
-      {{ busy && !scan ? t('chatImport.scanning') : scan && !job ? t('chatImport.found', { count: scan.candidates.length }) : '' }}
+      {{ busy && !scan ? t('chatImport.scanning') : scan && !job ? t('chatImport.found', { count: scan.candidates.length }, scan.candidates.length) : '' }}
     </p>
 
     <section v-if="scan && !job && scan.candidates.length" class="import-card" data-theme-surface="card" data-testid="chat-import-preview">
@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
       </div>
       <ul class="import-counts">
         <li v-for="kind in KINDS" :key="kind" :data-testid="`chat-import-count-${kind}`">
-          <span class="import-badge">{{ kindLabel(kind) }}</span> {{ t('chatImport.chats', { count: scan.counts[kind] }) }}
+          <span class="import-badge">{{ kindLabel(kind) }}</span> {{ t('chatImport.chats', { count: scan.counts[kind] }, scan.counts[kind]) }}
         </li>
       </ul>
       <p class="import-muted">
@@ -270,7 +270,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="import-muted import-item-meta">
               <span>{{ date(candidate.lastActive || candidate.startedAt) }}</span>
-              <span>{{ t('chatImport.messages', { count: candidate.messageCount }) }}</span>
+              <span>{{ t('chatImport.messages', { count: candidate.messageCount }, candidate.messageCount) }}</span>
               <span v-if="candidate.sourceProfile">{{ t('chatImport.fromProfile', { name: candidate.sourceProfile }) }}</span>
               <span v-if="candidate.cwd" class="import-path">{{ candidate.cwd }}{{ candidate.cwdExists ? '' : ` (${t('chatImport.folderMissing')})` }}</span>
             </div>
@@ -300,7 +300,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="import-row">
         <NButton type="primary" :disabled="!selected.size || busy" :loading="busy" data-testid="chat-import-start" @click="runImport">
-          {{ t('chatImport.import', { count: selected.size }) }}
+          {{ t('chatImport.import', { count: selected.size }, selected.size) }}
         </NButton>
         <NButton secondary :disabled="busy" @click="again">{{ t('chatImport.cancel') }}</NButton>
       </div>
@@ -308,7 +308,12 @@ onBeforeUnmount(() => {
 
     <section v-if="job" class="import-card" data-theme-surface="card" data-testid="chat-import-result">
       <h3>{{ running ? t('chatImport.importing') : t('chatImport.done') }}</h3>
-      <NProgress type="line" :percentage="progress" :show-indicator="false" :aria-label="t('chatImport.progress')" />
+      <div class="import-meter" role="progressbar" :aria-label="t('chatImport.progress')" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progress">
+        <svg viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
+          <rect class="import-meter-track" width="100" height="6" rx="3" />
+          <rect class="import-meter-fill" :width="progress" height="6" rx="3" />
+        </svg>
+      </div>
       <p role="status" aria-live="polite" data-testid="chat-import-progress">
         {{ t('chatImport.progressText', { done: job.done, total: job.total }) }}
       </p>
@@ -474,7 +479,9 @@ onBeforeUnmount(() => {
 
 .import-badge {
   display: inline-block;
+  flex-shrink: 0;
   padding: 1px 8px;
+  white-space: nowrap;
   color: $text-primary;
   font-size: 12px;
   border: var(--border-width, 1px) solid $border-light;
@@ -550,9 +557,21 @@ onBeforeUnmount(() => {
   align-items: center;
   min-height: 32px;
   color: $accent-primary;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 
   &:focus-visible { outline: 2px solid $accent-primary; outline-offset: 2px; }
 }
+
+.import-meter {
+  width: 100%;
+  height: 6px;
+
+  svg { display: block; width: 100%; height: 6px; }
+}
+
+.import-meter-track { fill: $border-light; }
+.import-meter-fill { fill: $accent-primary; }
 
 .import-results {
   display: flex;

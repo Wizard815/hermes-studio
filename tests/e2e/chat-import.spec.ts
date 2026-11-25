@@ -52,7 +52,7 @@ test('Import chats: preview, choose, import with progress, open the new chat', a
   await page.getByTestId('chat-import-scan').click()
   const preview = page.getByTestId('chat-import-preview')
   await expect(preview).toContainText('2 ready to import, 1 already imported, 1 skipped.')
-  await expect(page.getByTestId('chat-import-count-claude-code')).toContainText('1 chats')
+  await expect(page.getByTestId('chat-import-count-claude-code')).toContainText('1 chat')
   await expect(page.getByTestId('chat-import-item-claude-code')).toContainText('Can continue in its agent (same session)')
   await expect(preview).toContainText('Already imported')
   await expect(preview).toContainText('Skipped: no messages')
