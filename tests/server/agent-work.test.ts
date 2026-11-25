@@ -316,6 +316,33 @@ describe('agent work: ALLGlance', () => {
   })
 })
 
+describe('agent work: the REST create, linking and delete', () => {
+  it('takes vikunja_task_id and session_id as agents send them', async () => {
+    const { service } = setup({ mattermost: { channel: '' } })
+    const work = await service.create({ title: 'Fix the gate', vikunja_task_id: '77', session_id: 'chat-9', agent: 'hermes' }, 'hermes')
+    expect(work).toMatchObject({ vikunjaTaskId: '77', sessionId: 'chat-9', agent: 'hermes' })
+    await expect(service.create({ title: 'x', vikunja_task_id: 'not a task!' })).rejects.toThrow('Vikunja task id')
+  })
+
+  it('links the chat an agent\'s run credential names when the agent gives none', async () => {
+    const { service } = setup({ mattermost: { channel: '' } })
+    const work = await service.create({ title: 'Water the plants', vikunjaTaskId: '5' }, 'robin', { sessionId: 'ekko-chat-1', agentId: 'ekko-agent' })
+    expect(work).toMatchObject({ sessionId: 'ekko-chat-1', agent: 'ekko' })
+    // What the agent says wins.
+    const named = await service.create({ title: 'B', sessionId: 'other', agent: 'codex' }, 'robin', { sessionId: 'ekko-chat-1', agentId: 'ekko-agent' })
+    expect(named).toMatchObject({ sessionId: 'other', agent: 'codex' })
+  })
+
+  it('deletes work and its activity; deleting again is a 404', async () => {
+    const { service, store } = setup({ mattermost: { channel: '' } })
+    const work = await service.create({ title: 'Made twice' })
+    expect(service.remove(work.id)).toEqual({ removed: true, id: work.id })
+    expect(store.get(work.id)).toBeNull()
+    expect(store.activity({ workId: work.id })).toEqual([])
+    expect(() => service.remove(work.id)).toThrow('No such agent work')
+  })
+})
+
 describe('agent work: pure helpers', () => {
   it('reaction decisions and message text', () => {
     expect(decisionFromReactions([{ user_id: 'u1', emoji_name: 'x' }], 'bot', null)).toEqual({ decision: 'reject', userId: 'u1' })

@@ -83,23 +83,40 @@ export class AgentWorkService {
     return { counts, awaitingApproval: counts.awaiting_approval, blocked: counts.blocked }
   }
 
-  async create(input: { title?: unknown; vikunjaTaskId?: unknown; agent?: unknown; sessionId?: unknown; status?: unknown; summary?: unknown }, actor = ''): Promise<AgentWork> {
+  /**
+   * New work. Takes camelCase or the snake_case agents send (`vikunja_task_id`,
+   * `session_id`). Work an agent reports from its chat (a run credential names
+   * the chat) is linked to that chat when it names none.
+   */
+  async create(input: { title?: unknown; vikunjaTaskId?: unknown; vikunja_task_id?: unknown; agent?: unknown; sessionId?: unknown; session_id?: unknown; status?: unknown; summary?: unknown }, actor = '', from: { sessionId?: string; agentId?: string } = {}): Promise<AgentWork> {
     const title = String(input.title ?? '').trim().slice(0, 300)
     if (!title) throw new AgentWorkError('Give the work a title')
-    const vikunjaTaskId = String(input.vikunjaTaskId ?? '').trim()
+    const vikunjaTaskId = String(input.vikunjaTaskId ?? input.vikunja_task_id ?? '').trim()
+    const sessionId = String(input.sessionId ?? input.session_id ?? '').trim() || String(from.sessionId || '').trim()
+    const agent = String(input.agent ?? '').trim() || (from.agentId === 'ekko-agent' ? 'ekko' : String(from.agentId || '').trim())
     if (vikunjaTaskId && !/^[A-Za-z0-9_-]{1,64}$/.test(vikunjaTaskId)) throw new AgentWorkError('vikunjaTaskId must be the Vikunja task id')
     const status = input.status === undefined ? 'queued' : String(input.status)
     if (!isStatus(status) || status === 'done' || status === 'rejected') throw new AgentWorkError('New work starts queued, working, blocked or awaiting_approval')
     const work = this.deps.store.create({
       title, vikunjaTaskId, status,
-      agent: String(input.agent ?? '').trim().slice(0, 80),
-      sessionId: String(input.sessionId ?? '').trim().slice(0, 200),
+      agent: agent.slice(0, 80),
+      sessionId: sessionId.slice(0, 200),
       summary: String(input.summary ?? '').trim().slice(0, 4000),
     }, this.now())
     const entry = this.deps.store.log(work.id, { kind: 'created', status, actor, message: work.summary || title }, this.now())
     await this.fanOut(work, entry, { posted: status, approvalChanged: status === 'awaiting_approval' })
     this.observe(work, 'created')
     return work
+  }
+
+  /**
+   * Remove work and its activity (a test record, a task created twice). The
+   * Vikunja task is not touched; an approval button left in Mattermost then
+   * answers that the work no longer exists.
+   */
+  remove(id: string): { removed: true; id: string } {
+    if (!this.deps.store.delete(id)) throw new AgentWorkError('No such agent work', 404)
+    return { removed: true, id }
   }
 
   async setStatus(id: string, input: { status?: unknown; summary?: unknown }, actor = ''): Promise<AgentWork> {

@@ -18,6 +18,7 @@ agentWorkRoutes.put('/api/studio/agent-work/settings', requireSuperAdmin, ctrl.s
 agentWorkRoutes.get('/api/studio/agent-work/digest', requireAdmin, ctrl.digest)
 agentWorkRoutes.post('/api/studio/agent-work/digest', requireAdmin, ctrl.writeDigest)
 agentWorkRoutes.get('/api/studio/agent-work/:id', requireAdmin, ctrl.get)
+agentWorkRoutes.delete('/api/studio/agent-work/:id', requireAdmin, ctrl.remove)
 agentWorkRoutes.post('/api/studio/agent-work/:id/status', requireAdmin, ctrl.setStatus)
 agentWorkRoutes.post('/api/studio/agent-work/:id/approve', requireAdmin, ctrl.approve)
 agentWorkRoutes.post('/api/studio/agent-work/:id/reject', requireAdmin, ctrl.reject)

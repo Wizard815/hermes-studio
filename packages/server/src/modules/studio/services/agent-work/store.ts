@@ -116,6 +116,13 @@ export class AgentWorkStore {
     return this.get(id)!
   }
 
+  /** Remove the work and its activity. False when there was none. */
+  delete(id: string): boolean {
+    const result = this.db.prepare('DELETE FROM agent_work WHERE id=?').run(id)
+    this.db.prepare('DELETE FROM agent_activity WHERE work_id=?').run(id)
+    return Number(result.changes) === 1
+  }
+
   list(filter: { status?: AgentWorkStatus[]; limit?: number } = {}): AgentWork[] {
     const limit = Math.max(1, Math.min(500, Number(filter.limit) || 200))
     const statuses = filter.status?.filter(s => (AGENT_WORK_STATUSES as readonly string[]).includes(s)) || []

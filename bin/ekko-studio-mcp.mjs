@@ -1512,11 +1512,11 @@ const tools = [
   {
     name: 'ekko_studio_use_agent_work',
     toolset: 'use',
-    description: 'Report and follow agent work on a Vikunja task (the task itself lives in Vikunja through ALLGlance; this records the agent side). list (optional status filter), create (title, vikunja_task_id, agent, session_id, status, summary), set_status (id, status: queued, working, blocked, awaiting_approval or done; summary says what happened or what you need), approve or reject (id, only when the user tells you to). Use blocked when you need the user, awaiting_approval when the work is finished and needs their sign-off: they are alerted in Mattermost, Studio and (when shared) Pondering Orb, and approving marks the Vikunja task done.',
+    description: 'Report and follow agent work on a Vikunja task (the task itself lives in Vikunja through ALLGlance; this records the agent side). list (optional status filter), create (title, vikunja_task_id, agent, session_id, status, summary; session_id defaults to this chat when Studio knows it), set_status (id, status: queued, working, blocked, awaiting_approval or done; summary says what happened or what you need), approve or reject (id, only when the user tells you to), delete (id, only when the user asks: a record made by mistake; the Vikunja task stays). Use blocked when you need the user, awaiting_approval when the work is finished and needs their sign-off: they are alerted in Mattermost, Studio and (when shared) Pondering Orb, and approving marks the Vikunja task done.',
     inputSchema: inputSchema({
         action: {
           type: 'string',
-          enum: ['list', 'create', 'set_status', 'approve', 'reject'],
+          enum: ['list', 'create', 'set_status', 'approve', 'reject', 'delete'],
           description: 'What to do.',
         },
         id: {
@@ -2466,15 +2466,19 @@ async function callToolInner(name, args = {}, signal) {
     case 'ekko_studio_use_agent_work': {
       const action = String(args.action || '')
       const id = encodeURIComponent(String(args.id || ''))
-      if (['set_status', 'approve', 'reject'].includes(action) && !args.id) throw new Error(`${action} needs the agent work id`)
+      if (['set_status', 'approve', 'reject', 'delete'].includes(action) && !args.id) throw new Error(`${action} needs the agent work id`)
       if (action === 'list') {
         return jsonText(await request('/api/studio/agent-work', withAuthArgs(args, { query: pickDefined(args, ['status']) })))
       }
       if (action === 'create') {
         return jsonText(await request('/api/studio/agent-work', withAuthArgs(args, {
           method: 'POST',
-          body: { title: args.title, vikunjaTaskId: args.vikunja_task_id, agent: args.agent, sessionId: args.session_id, status: args.status, summary: args.summary },
+          // A coding agent's MCP process knows its chat; Studio also links the chat a run credential names.
+          body: { title: args.title, vikunjaTaskId: args.vikunja_task_id, agent: args.agent, sessionId: args.session_id || process.env.HERMES_STUDIO_SESSION_ID || undefined, status: args.status, summary: args.summary },
         })))
+      }
+      if (action === 'delete') {
+        return jsonText(await request(`/api/studio/agent-work/${id}`, withAuthArgs(args, { method: 'DELETE' })))
       }
       if (action === 'set_status') {
         return jsonText(await request(`/api/studio/agent-work/${id}/status`, withAuthArgs(args, { method: 'POST', body: pickDefined(args, ['status', 'summary']) })))

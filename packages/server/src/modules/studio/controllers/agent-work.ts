@@ -32,7 +32,12 @@ export async function activity(ctx: Context) {
 }
 
 export async function create(ctx: Context) {
-  try { ctx.status = 201; ctx.body = { work: await getAgentWork().create(body(ctx), actor(ctx)) } } catch (error) { fail(ctx, error) }
+  // An agent's run credential names its chat: work it reports is linked to that chat.
+  try { ctx.status = 201; ctx.body = { work: await getAgentWork().create(body(ctx), actor(ctx), ctx.state.runBinding || {}) } } catch (error) { fail(ctx, error) }
+}
+
+export async function remove(ctx: Context) {
+  try { ctx.body = getAgentWork().remove(String(ctx.params.id)) } catch (error) { fail(ctx, error) }
 }
 
 export async function setStatus(ctx: Context) {

@@ -184,6 +184,12 @@ Posts are tagged `#agentwork` plus `#working`, `#blocked`, `#approval`,
 `#done`, `#approved` or `#rejected`. Once something is decided anywhere, its
 Mattermost post loses its buttons, Orb's alert clears and Studio's badge goes.
 
+API (admins): `POST /api/studio/agent-work` takes `vikunjaTaskId` or
+`vikunja_task_id`, `sessionId` or `session_id`. Work an Ekko or coding-agent
+chat reports without a chat id is linked to that chat. `DELETE
+/api/studio/agent-work/<id>` removes a record and its activity (the Vikunja
+task stays); agents have it as `ekko_studio_use_agent_work` action `delete`.
+
 ### Upstream Manager: repos, tasks and herdr agents, in tandem with Studio
 
 [Upstream Manager](https://github.com/Wizard815/UpstreamManager) (it keeps your repos in step with
