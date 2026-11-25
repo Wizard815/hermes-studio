@@ -1,0 +1,54 @@
+// Scratch render (not committed): the Approvals page with Studio approval cards, to a PNG.
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:omi/backend/schema/connections.dart';
+import 'package:omi/l10n/app_localizations.dart';
+import 'package:omi/pages/approvals/approvals_page.dart';
+
+import '../pages/approvals/fake_approvals.dart';
+import '../pages/connections/fake_connections.dart';
+
+Future<void> _font(String family, List<String> files) async {
+  final loader = FontLoader(family);
+  for (final f in files) {
+    loader.addFont(Future.value(ByteData.sublistView(File(f).readAsBytesSync())));
+  }
+  await loader.load();
+}
+
+void main() {
+  testWidgets('render Approvals with Studio cards', (tester) async {
+    await tester.runAsync(() async {
+      const m = '/opt/flutter/bin/cache/artifacts/material_fonts';
+      for (final fam in ['Roboto', 'SF Pro Display', 'Inter', 'Manrope']) {
+        await _font(fam, ['$m/Roboto-Regular.ttf', '$m/Roboto-Medium.ttf', '$m/Roboto-Bold.ttf']);
+      }
+      await _font('MaterialIcons', ['$m/MaterialIcons-Regular.otf']);
+    });
+    tester.view.physicalSize = const Size(390 * 2, 844 * 2);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final connections = FakeConnections(studioApprovals: const [
+      StudioApproval(id: 'aw-1', title: 'Merge shelves', agent: 'claude-code', summary: 'Tests pass; ready to merge.'),
+      StudioApproval(id: 'aw-2', title: 'Delete old branch'),
+    ]);
+    connections.studioAnsweredElsewhere['aw-2'] = 'Already approved in Studio by Robin.';
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(fontFamily: 'Roboto'),
+      debugShowCheckedModeBanner: false,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: ApprovalsPage(api: FakeApprovals(), connections: connections, answeredBy: 'Sam'),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Merge shelves'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('out/omi-approvals-studio.png'));
+    await tester.tap(find.byKey(const Key('studio_approval_reject_aw-2')));
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('out/omi-approvals-studio-answered-elsewhere.png'));
+  });
+}

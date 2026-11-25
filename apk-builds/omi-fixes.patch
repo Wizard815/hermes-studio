@@ -1,0 +1,154 @@
+From 412de30cfa696e2ca40273280fa9166317f1f493 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 25 Nov 2026 18:20:53 +0000
+Subject: [PATCH] App: keep a Studio approval card full width once someone else
+ answered it
+
+On the Approvals page the cards sit in a start-aligned column, so when the
+Approve / Decline buttons gave way to who answered, the card shrank to its
+text. Give the card the full width; widget test covers it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01QtAegQeJfjcVt7NtMf7qnx
+---
+ .../pages/connections/agent_jobs_page.dart    | 92 ++++++++++---------
+ .../pages/connections/connections_test.dart   | 19 ++++
+ 2 files changed, 67 insertions(+), 44 deletions(-)
+
+diff --git a/app/lib/pages/connections/agent_jobs_page.dart b/app/lib/pages/connections/agent_jobs_page.dart
+index 37d94d7541..0687f5bb82 100644
+--- a/app/lib/pages/connections/agent_jobs_page.dart
++++ b/app/lib/pages/connections/agent_jobs_page.dart
+@@ -256,51 +256,55 @@ class _StudioApprovalCardState extends State<StudioApprovalCard> {
+     return Padding(
+       key: Key('studio_approval_${approval.id}'),
+       padding: const EdgeInsets.only(bottom: OmiSpacing.sm),
+-      child: Material(
+-        color: OmiColors.surface1,
+-        borderRadius: OmiRadius.lgAll,
+-        clipBehavior: Clip.antiAlias,
+-        child: Padding(
+-          padding: const EdgeInsets.all(OmiSpacing.sm),
+-          child: Column(
+-            crossAxisAlignment: CrossAxisAlignment.start,
+-            children: [
+-              Wrap(spacing: OmiSpacing.xs, children: [
+-                Text(studio, style: OmiType.caption.copyWith(color: OmiColors.textSecondary)),
+-                if (approval.agent.isNotEmpty)
+-                  Text(approval.agent, style: OmiType.caption.copyWith(color: OmiColors.textTertiary)),
+-                if (approval.jobTitle.isNotEmpty)
+-                  Text(approval.jobTitle, style: OmiType.caption.copyWith(color: OmiColors.textTertiary)),
+-              ]),
+-              const SizedBox(height: OmiSpacing.xxs),
+-              Text(approval.title.isEmpty ? l10n.agentJobsUntitled : approval.title,
+-                  style: OmiType.headline.copyWith(color: OmiColors.textPrimary)),
+-              const SizedBox(height: OmiSpacing.xs),
+-              Text(l10n.agentJobsAsks(studio), style: OmiType.subhead.copyWith(color: OmiColors.warning)),
+-              if (approval.summary.isNotEmpty)
+-                Text(approval.summary, style: OmiType.footnote.copyWith(color: OmiColors.textPrimary)),
+-              const SizedBox(height: OmiSpacing.xs),
+-              if (answered != null)
+-                Semantics(
+-                  liveRegion: true,
+-                  child: Text(answered,
+-                      key: Key('studio_approval_answered_${approval.id}'),
+-                      style: OmiType.footnote.copyWith(color: OmiColors.textSecondary)),
+-                )
+-              else
+-                OmiButtonPair(
+-                  first: OmiButton(
+-                    key: Key('studio_approval_approve_${approval.id}'),
+-                    label: l10n.approvalApprove,
+-                    onPressed: _busy ? null : () => _answer('approve'),
+-                  ),
+-                  second: OmiButton.secondary(
+-                    key: Key('studio_approval_reject_${approval.id}'),
+-                    label: l10n.approvalDecline,
+-                    onPressed: _busy ? null : () => _answer('reject'),
++      // Full width even when the buttons give way to who answered (the page's column is start-aligned).
++      child: SizedBox(
++        width: double.infinity,
++        child: Material(
++          color: OmiColors.surface1,
++          borderRadius: OmiRadius.lgAll,
++          clipBehavior: Clip.antiAlias,
++          child: Padding(
++            padding: const EdgeInsets.all(OmiSpacing.sm),
++            child: Column(
++              crossAxisAlignment: CrossAxisAlignment.start,
++              children: [
++                Wrap(spacing: OmiSpacing.xs, children: [
++                  Text(studio, style: OmiType.caption.copyWith(color: OmiColors.textSecondary)),
++                  if (approval.agent.isNotEmpty)
++                    Text(approval.agent, style: OmiType.caption.copyWith(color: OmiColors.textTertiary)),
++                  if (approval.jobTitle.isNotEmpty)
++                    Text(approval.jobTitle, style: OmiType.caption.copyWith(color: OmiColors.textTertiary)),
++                ]),
++                const SizedBox(height: OmiSpacing.xxs),
++                Text(approval.title.isEmpty ? l10n.agentJobsUntitled : approval.title,
++                    style: OmiType.headline.copyWith(color: OmiColors.textPrimary)),
++                const SizedBox(height: OmiSpacing.xs),
++                Text(l10n.agentJobsAsks(studio), style: OmiType.subhead.copyWith(color: OmiColors.warning)),
++                if (approval.summary.isNotEmpty)
++                  Text(approval.summary, style: OmiType.footnote.copyWith(color: OmiColors.textPrimary)),
++                const SizedBox(height: OmiSpacing.xs),
++                if (answered != null)
++                  Semantics(
++                    liveRegion: true,
++                    child: Text(answered,
++                        key: Key('studio_approval_answered_${approval.id}'),
++                        style: OmiType.footnote.copyWith(color: OmiColors.textSecondary)),
++                  )
++                else
++                  OmiButtonPair(
++                    first: OmiButton(
++                      key: Key('studio_approval_approve_${approval.id}'),
++                      label: l10n.approvalApprove,
++                      onPressed: _busy ? null : () => _answer('approve'),
++                    ),
++                    second: OmiButton.secondary(
++                      key: Key('studio_approval_reject_${approval.id}'),
++                      label: l10n.approvalDecline,
++                      onPressed: _busy ? null : () => _answer('reject'),
++                    ),
+                   ),
+-                ),
+-            ],
++              ],
++            ),
+           ),
+         ),
+       ),
+diff --git a/app/test/pages/connections/connections_test.dart b/app/test/pages/connections/connections_test.dart
+index 016644cf9e..3904379f77 100644
+--- a/app/test/pages/connections/connections_test.dart
++++ b/app/test/pages/connections/connections_test.dart
+@@ -235,6 +235,25 @@ void main() {
+     expect(reloads, 1);
+   });
+ 
++  testWidgets('a Studio approval card stays full width once someone else answered it', (tester) async {
++    final api = FakeConnections(studioApprovals: const [StudioApproval(id: 'aw-3', title: 'Tag release')]);
++    api.studioAnsweredElsewhere['aw-3'] = 'Done by Robin.';
++    // The Approvals page lays its cards out in a start-aligned column, not a stretching list.
++    await _pump(
++      tester,
++      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
++        StudioApprovalCard(approval: api.studioApprovals.single, api: api, by: 'Sam', onChanged: () async {}),
++      ]),
++    );
++    // A wide screen, so the card's own text (test font: every glyph a square) is narrower than it.
++    tester.view.physicalSize = const Size(1200 * 3, 1400 * 3);
++    await tester.pumpAndSettle();
++    await tester.tap(find.byKey(const Key('studio_approval_reject_aw-3')));
++    await tester.pumpAndSettle();
++    expect(find.text('Done by Robin.'), findsOneWidget);
++    expect(tester.getSize(find.byKey(const Key('studio_approval_aw-3'))).width, 1200);
++  });
++
+   testWidgets('Send to Coinpile: a transaction needs an account and sends exactly the fields', (tester) async {
+     final api = FakeConnections();
+     await _pump(tester, SendToCoinpileSheet(conversationId: 'c1', api: api));
+-- 
+2.43.0
+
