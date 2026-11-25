@@ -1,10 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
+import { WATCHER_KINDS } from '../../packages/shared/watcher'
 import { resolve } from 'node:path'
 
 /** A JWT-shaped token whose payload says super_admin (the client only reads the role). */
 const SUPER_ADMIN_TOKEN = `x.${Buffer.from(JSON.stringify({ role: 'super_admin' })).toString('base64url')}.y`
 
-const KINDS = ['approval_asked', 'approval_denied', 'approval_approved', 'approval_trusted', 'run_limit', 'loop', 'cleanroom_leak', 'cleanroom_blocked', 'work_approval', 'work_blocked', 'work_decided', 'plugin_failed', 'connection', 'pipelock_blocked']
+const KINDS = [...WATCHER_KINDS]
 
 async function openFixture(page: Page) {
   const requests: Array<{ method: string; path: string; body: any }> = []

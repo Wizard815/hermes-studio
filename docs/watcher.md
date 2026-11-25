@@ -37,6 +37,7 @@ approval system, and it never stops a run by itself.
 | Plugin install failed | recommended Hermes plugins | warn | on | off |
 | Connection problem | herdr not starting, pipelock not answering, InnerWarden hook missing | warn | on | off |
 | pipelock blocked | pipelock refusing a clean-room connection | block | on | off |
+| Many tools in a chat | a Hermes chat starting with more tools than the threshold ([hermes-tool-load.md](hermes-tool-load.md)) | info | on | off |
 
 The same alert (kind, chat, text) again within a minute is dropped, so a
 retrying agent does not fill the bell. Mattermost posts go to the channel set

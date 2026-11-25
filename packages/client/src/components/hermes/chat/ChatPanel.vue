@@ -85,6 +85,7 @@ import { buildVisibleSessionCategoryGroups, categoryPathLabel, categorySubtreeId
 import { buildSessionCategoryMenuChildren, resolveRecentSessionCategoryLabel } from "./session-category-menu";
 import { buildActiveSessionMenuOptions, buildSessionContextMenuOptions, withHerdrMenuGroup } from "./session-menu-options";
 import RunLimitBanner from "../run-limits/RunLimitBanner.vue";
+import ToolLoadBanner from "../tool-load/ToolLoadBanner.vue";
 import RunLimitsModal from "../run-limits/RunLimitsModal.vue";
 import PageSidebarNav from "@/components/layout/PageSidebarNav.vue";
 import { getStoredUserId, isStoredSuperAdmin } from "@/api/client";
@@ -3564,6 +3565,11 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               scroll-scope="chat"
             />
             <RunLimitBanner
+              v-if="chatStore.activeSessionId"
+              v-show="!showHerdrCenter"
+              :session-id="chatStore.activeSessionId"
+            />
+            <ToolLoadBanner
               v-if="chatStore.activeSessionId"
               v-show="!showHerdrCenter"
               :session-id="chatStore.activeSessionId"

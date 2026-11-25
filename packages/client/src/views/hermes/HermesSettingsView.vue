@@ -15,6 +15,7 @@ import CleanRoomSettings from '@/components/hermes/settings/CleanRoomSettings.vu
 import MemorySettings from '@/components/hermes/settings/MemorySettings.vue'
 import SessionSettings from '@/components/hermes/settings/SessionSettings.vue'
 import HermesToolsetsSettings from '@/components/hermes/settings/HermesToolsetsSettings.vue'
+import HermesToolSearchSettings from '@/components/hermes/settings/HermesToolSearchSettings.vue'
 import HermesTerminalSettings from '@/components/hermes/settings/HermesTerminalSettings.vue'
 import HermesSubagentSettings from '@/components/hermes/settings/HermesSubagentSettings.vue'
 import HermesMaintenanceSettings from '@/components/hermes/settings/HermesMaintenanceSettings.vue'
@@ -100,6 +101,7 @@ onMounted(() => {
               <CleanRoomSettings />
             </NTabPane>
             <NTabPane name="tools" :tab="t('hermesTools.tabs.tools')" display-directive="show:lazy">
+              <HermesToolSearchSettings />
               <HermesToolsetsSettings />
             </NTabPane>
             <NTabPane name="terminal" :tab="t('hermesTools.tabs.terminal')" display-directive="show:lazy">

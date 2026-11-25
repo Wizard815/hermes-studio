@@ -42,7 +42,9 @@ from bridge_runtime import (
     _resolve_runtime,
     _suppress_bridge_platform_hint,
     _title_user_message,
+    _tool_load_info,
     _tool_names_from_definitions,
+    _tool_search_setting,
 )
 
 CLARIFY_TIMEOUT_SECONDS = 300
@@ -238,6 +240,26 @@ class AgentPool:
             self._pending_mcp_refresh = None
             self._mcp_generation += 1
             return True
+
+    def _tool_search_changed(self, session: AgentSession) -> bool:
+        """Studio's tool search switch changed config.yaml: rebuild this idle chat's tools."""
+        try:
+            with _profile_env(session.config.get("profile")):
+                current = _tool_search_setting(_load_cfg())
+        except Exception:
+            return False
+        return session.config.get("tool_search", current) != current
+
+    def _repin_session_tools(self, agent: Any) -> None:
+        """Hermes pins a conversation's tools (and keeps a pinned tool_search bridge) for the
+        prompt cache. After the tool search switch the user wants the new set in this chat, so
+        pin the rebuilt agent's tools through Hermes's own helper."""
+        try:
+            from tools.mcp_tool_agent import persist_agent_tool_names
+
+            persist_agent_tool_names(agent)
+        except Exception as exc:
+            print(f"[hermes_bridge] tool pin refresh skipped: {exc}", file=sys.stderr, flush=True)
 
     def _filter_retired_mcp_tools(self, agent: Any) -> None:
         if not self._retired_mcp_tools or not isinstance(getattr(agent, "tools", None), list):
@@ -552,8 +574,10 @@ class AgentPool:
                     self._destroy_session(session_id)
                     existing = None
             refresh_session = None
+            tool_search_changed = existing is not None and not existing.running and self._tool_search_changed(existing)
             if (existing is not None and not existing.running
-                    and existing.config.get("mcp_generation", 0) != self._mcp_generation
+                    and (existing.config.get("mcp_generation", 0) != self._mcp_generation
+                         or tool_search_changed)
                     and not self.has_active_background_for_session(session_id)
                     and (not profile or existing.config.get("profile") == profile)):
                 # Reuse the session and history; only rebuild the idle AIAgent's tool snapshot.
@@ -707,6 +731,7 @@ class AgentPool:
                         "mcp_tool_count": len(discovered_mcp_tools),
                         "active_mcp_tool_count": len(mcp_tool_names),
                         "mcp_generation": self._mcp_generation,
+                        "tool_search": _tool_search_setting(cfg),
                         "db_error": self._db.error,
                         # This is an Agent-session policy, not a per-turn flag.
                         # Callers select it when the cached AIAgent is created.
@@ -722,12 +747,15 @@ class AgentPool:
                         "base_url": session.config["base_url"],
                         "api_mode": session.config["api_mode"],
                         "mcp_generation": self._mcp_generation,
+                        "tool_search": session.config["tool_search"],
                         "mcp_tool_count": len(discovered_mcp_tools),
                         "active_mcp_tool_count": len(mcp_tool_names),
                         "mcp_restore_history": True,
                     })
                     refresh_session.last_used_at = time.time()
                     session = refresh_session
+                    if tool_search_changed:
+                        self._repin_session_tools(agent)
                 self._install_boundary_interrupt(session)
                 session.config["boundary_interrupt_supported"] = session.boundary_supported
                 if session.boundary_error:
@@ -1143,6 +1171,12 @@ class AgentPool:
 
     def _bridge_context_ready_event(self, session: AgentSession, instructions: str | None, profile: str | None) -> dict[str, Any]:
         info = self._estimate_context_info(session.agent, [], instructions)
+        try:
+            with _profile_env(profile or session.config.get("profile")):
+                cfg = _load_cfg()
+            info.update(_tool_load_info(getattr(session.agent, "tools", None) or [], cfg))
+        except Exception:
+            pass
         event = {
             "event": "bridge.context.ready",
             "session_id": session.session_id,

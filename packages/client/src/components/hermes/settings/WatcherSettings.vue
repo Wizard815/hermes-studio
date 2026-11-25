@@ -116,8 +116,8 @@ function expires(rule: TrustRule): string {
       </div>
       <div v-for="kind in WATCHER_KINDS" :key="kind" class="watcher-kinds__row" role="row" :data-testid="`watcher-kind-${kind}`">
         <span role="cell" class="watcher-kinds__label">{{ t(`watcher.kind.${kind}`) }}<small>{{ t(`watcher.kindHint.${kind}`) }}</small></span>
-        <span role="cell"><NSwitch :value="settings.kinds[kind].alert" :disabled="!loaded" :aria-label="`${t(`watcher.kind.${kind}`)}: ${t('watcher.settings.bellColumn')}`" :data-testid="`watcher-kind-${kind}-alert`" @update:value="(value: boolean) => setKind(kind, 'alert', value)" /></span>
-        <span role="cell"><NSwitch :value="settings.kinds[kind].mattermost" :disabled="!loaded" :aria-label="`${t(`watcher.kind.${kind}`)}: ${t('watcher.settings.mattermostColumn')}`" :data-testid="`watcher-kind-${kind}-mattermost`" @update:value="(value: boolean) => setKind(kind, 'mattermost', value)" /></span>
+        <span role="cell"><NSwitch :value="!!settings.kinds[kind]?.alert" :disabled="!loaded" :aria-label="`${t(`watcher.kind.${kind}`)}: ${t('watcher.settings.bellColumn')}`" :data-testid="`watcher-kind-${kind}-alert`" @update:value="(value: boolean) => setKind(kind, 'alert', value)" /></span>
+        <span role="cell"><NSwitch :value="!!settings.kinds[kind]?.mattermost" :disabled="!loaded" :aria-label="`${t(`watcher.kind.${kind}`)}: ${t('watcher.settings.mattermostColumn')}`" :data-testid="`watcher-kind-${kind}-mattermost`" @update:value="(value: boolean) => setKind(kind, 'mattermost', value)" /></span>
       </div>
     </div>
 

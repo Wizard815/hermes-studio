@@ -16,7 +16,9 @@ import { getFirstSessionMessageByRole, getSession, getSessionMessageCountByRole,
 import { logger, bridgeLogger } from '../../public/logging'
 import { scheduleSessionTitle } from './session-title'
 import { recordBridgeModelUsage } from '../usage/bridge-model-usage'
-import { chatAutoApproves, givenTrustAction as bridgeTrustAction, watcherTrusts } from '../watcher'
+import { chatAutoApproves, givenTrustAction as bridgeTrustAction, recordWatcherEvent, watcherTrusts } from '../watcher'
+import { getToolLoad, toolLoadNoticeText } from '../tool-load'
+import { persistSessionCommandMessage } from './session-command'
 import type {
   PrimaryAgentBridgeClient as AgentBridgeClient,
   PrimaryAgentBridgeContextEstimate as AgentBridgeContextEstimate,
@@ -389,6 +391,23 @@ function cacheBridgeContext(state: SessionState, data: Record<string, unknown> |
     model: typeof data.model === 'string' ? data.model : state.bridgeContext?.model,
     provider: typeof data.provider === 'string' ? data.provider : state.bridgeContext?.provider,
     ...(resolvedWorkspace ? { workspace: resolvedWorkspace } : {}),
+  }
+}
+
+/**
+ * Too many tools for a small model (docs/hermes-tool-load.md): once per chat, a
+ * notice in the chat (never sent to the model) and an info event in the watcher.
+ */
+function noticeHermesToolLoad(sessionId: string, state: SessionState, ev: Record<string, unknown>, profile: string | undefined, emit: (event: string, payload: any) => void) {
+  try {
+    const notice = getToolLoad().observe({ ...ev, sessionId, profile: typeof ev.profile === 'string' ? ev.profile : profile })
+    if (!notice) return
+    const text = toolLoadNoticeText(notice)
+    persistSessionCommandMessage(sessionId, state, text)
+    emit('session.command', { event: 'session.command', command: 'tools', action: 'tool_load', ok: true, terminal: false, message: text, toolLoad: notice })
+    recordWatcherEvent({ kind: 'tool_load', severity: 'info', sessionId, agent: 'hermes', text: `${notice.total} tools in a Hermes chat (profile ${notice.profile}${notice.toolSearchActive ? `, ${notice.deferred} behind tool search` : ''}).` })
+  } catch (err) {
+    logger.warn(err, '[chat-run-socket] tool-load notice failed for %s', sessionId)
   }
 }
 
@@ -1347,6 +1366,7 @@ async function applyBridgeChunkAsync(
       syncBridgeGeneratedTitle(sessionId, (ev as any).title, emit)
     } else if (evType === 'bridge.context.ready') {
       cacheBridgeContext(state, ev, workspace)
+      noticeHermesToolLoad(sessionId, state, ev, profile, emit)
       const usage = await calcAndUpdateUsage(sessionId, state, emit)
       const snapshotAware = await estimateSnapshotAwareMessageTokens({
         sessionId,

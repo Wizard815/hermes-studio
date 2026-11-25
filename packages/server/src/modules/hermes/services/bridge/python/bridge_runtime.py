@@ -403,6 +403,46 @@ def _tool_names_from_definitions(tools: Any) -> list[str]:
     return names
 
 
+_TOOL_SEARCH_BRIDGE_NAMES = frozenset({"tool_search", "tool_describe", "tool_call"})
+_DEFERRED_COUNT_RE = re.compile(r"Search (\d+) additional tools")
+
+
+def _tool_search_setting(cfg: Any) -> str:
+    """config.yaml `tools.tool_search.enabled` as auto / on / off (Hermes's own reading of it)."""
+    tools_cfg = cfg.get("tools") if isinstance(cfg, dict) else None
+    raw = tools_cfg.get("tool_search") if isinstance(tools_cfg, dict) else None
+    if raw is False:
+        return "off"
+    value = raw.get("enabled", "auto") if isinstance(raw, dict) else "auto"
+    text = str(value).strip().lower()
+    text = {"true": "on", "1": "on", "yes": "on", "false": "off", "0": "off", "no": "off"}.get(text, text)
+    return text if text in ("auto", "on", "off") else "auto"
+
+
+def _tool_load_info(tools: Any, cfg: Any) -> dict[str, Any]:
+    """How many tools a chat really has: visible ones plus the ones tool search hides.
+
+    With tool search on, Hermes replaces deferred tools by tool_search / tool_describe /
+    tool_call and says how many it hid in tool_search's description. Small models often
+    cannot use that bridge, so Studio warns when the total is high (docs/hermes-tool-load.md)."""
+    names = _tool_names_from_definitions(tools)
+    active = any(name in _TOOL_SEARCH_BRIDGE_NAMES for name in names)
+    deferred = 0
+    if active and isinstance(tools, list):
+        for tool in tools:
+            function = tool.get("function") if isinstance(tool, dict) else None
+            if isinstance(function, dict) and function.get("name") == "tool_search":
+                match = _DEFERRED_COUNT_RE.search(str(function.get("description") or ""))
+                deferred = int(match.group(1)) if match else 0
+    visible = len([name for name in names if name not in _TOOL_SEARCH_BRIDGE_NAMES])
+    return {
+        "tool_search": _tool_search_setting(cfg),
+        "tool_search_active": active,
+        "deferred_tool_count": deferred,
+        "total_tool_count": visible + deferred,
+    }
+
+
 def _mcp_tool_names_from_names(tool_names: Any) -> list[str]:
     if not isinstance(tool_names, list):
         return []

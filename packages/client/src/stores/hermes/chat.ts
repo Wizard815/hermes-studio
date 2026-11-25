@@ -27,6 +27,7 @@ import { useSessionStateStore } from './session-state'
 import { promptHerdrSession } from '@/api/coding-agents/herdr'
 import { detectThinkingBoundary } from '@/utils/thinking-parser'
 import { isKnownBridgeSessionCommand } from '@/utils/hermes/bridge-session-commands'
+import { useToolLoadStore } from './tool-load'
 import { responseErrorMessage } from '@/utils/http-error'
 import {
   isPendingInteractionExpiredError,
@@ -3075,6 +3076,9 @@ function createChatState(scopedSessionId?: string) {
     if ((evt as any).action === 'messages_deleted') {
       applyMessageDeletion(sid, evt as unknown as MessageDeletionResult)
       return
+    }
+    if ((evt as any).action === 'tool_load' && (evt as any).toolLoad) {
+      useToolLoadStore().set(sid, (evt as any).toolLoad)
     }
     const target = sessions.value.find(s => s.id === sid)
     const action = (evt as any).action as string | undefined

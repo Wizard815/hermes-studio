@@ -41,6 +41,7 @@ import { orbRoutes } from '../modules/studio/routes/orb'
 import { agentWorkPublicRoutes, agentWorkRoutes } from '../modules/studio/routes/agent-work'
 import { commandCenterRoutes } from '../modules/studio/routes/command-center'
 import { runLimitRoutes } from '../modules/studio/routes/run-limits'
+import { toolLoadRoutes } from '../modules/studio/routes/tool-load'
 import { uiSkillsRoutes } from '../modules/studio/routes/ui-skills'
 import { watcherRoutes } from '../modules/studio/routes/watcher'
 import { vscodeRoutes } from '../modules/studio/routes/vscode'
@@ -155,6 +156,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(agentWorkRoutes.routes())
   app.use(commandCenterRoutes.routes())
   app.use(runLimitRoutes.routes())
+  app.use(toolLoadRoutes.routes())
   app.use(uiSkillsRoutes.routes())
   app.use(watcherRoutes.routes())
   app.use(vscodeRoutes.routes())

@@ -20,6 +20,7 @@ export const WATCHER_KINDS = [
   'plugin_failed',
   'connection',
   'pipelock_blocked',
+  'tool_load',
 ] as const
 export type WatcherKind = typeof WATCHER_KINDS[number]
 
@@ -95,6 +96,8 @@ export const DEFAULT_WATCHER_KINDS: Record<WatcherKind, WatcherKindSetting> = {
   plugin_failed: { alert: true, mattermost: false },
   connection: { alert: true, mattermost: false },
   pipelock_blocked: { alert: true, mattermost: false },
+  // Info: a Hermes chat started with more tools than a small model handles (docs/hermes-tool-load.md).
+  tool_load: { alert: true, mattermost: false },
 }
 
 export const DEFAULT_WATCHER_SETTINGS: WatcherSettings = {

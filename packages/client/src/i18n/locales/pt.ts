@@ -17,6 +17,7 @@ import { systemMessages } from '../system-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
 import { gadgetMessages } from '../gadget-messages'
+import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
 import { personMessages } from '../person-messages'
 import { remoteDeviceMessages } from '../remote-device-messages'
@@ -49,6 +50,7 @@ export default {
   ...recommendedPluginsMessages['pt'],
   ...uiSkillsMessages['pt'],
   ...gadgetMessages['pt'],
+  ...toolLoadMessages['pt'],
   sessionTasks: {
       "title": "Tarefas",
       "task": "Tarefa",
