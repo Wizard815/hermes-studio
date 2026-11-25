@@ -44,7 +44,7 @@ import { listProfileModelChoices, listProfileModelGroups } from '../modules/herm
 import { getProfileDir, listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
 import { hermesCliAvailable, hermesInteractiveLaunch, hermesNewChatLaunch, hermesSessionIdFor } from '../modules/hermes/services/herdr-launch'
 import { answerHermesFirstRun } from '../modules/hermes/services/herdr-first-run'
-import { hermesPaneTurnFile, hermesTurnContextReady, installHermesTurnContextPlugin, setHermesPaneTurn } from '../modules/hermes/services/herdr-turn-context'
+import { hermesPaneTurnFile, hermesTurnContextReadyForProfile, installHermesTurnContextPlugin, setHermesPaneTurn } from '../modules/hermes/services/herdr-turn-context'
 import { hermesStudioMcpCapabilities } from '../modules/studio/services/chat-run/studio-mcp'
 import { HerdrHermesLaunchStore, herdrModelChange, logicalHermesRoute, readHermesSessionRoute, type ModelRoute } from '../modules/hermes/services/herdr-model-sync'
 import { importAccountProviders, withProviderAccount } from '../modules/studio/public/provider-account'
@@ -360,7 +360,7 @@ const paneTurnDeps: HerdrPaneTurnDeps = {
   beginPlan: (sessionId, profile, isCurrent) => getChatRunServer()?.beginPaneTurnTaskPlan?.(sessionId, profile, isCurrent) ?? null,
   contextFile: chatPaneTurnContextFile,
   hermesInteraction: async profile => (await hermesStudioMcpCapabilities(profile)).interaction,
-  hermesPluginReady: async profile => hermesTurnContextReady(profile, await readConfigYamlForProfile(profile)),
+  hermesPluginReady: profile => hermesTurnContextReadyForProfile(profile),
   hermesTurnFile: sessionId => hermesPaneTurnFile(paneTurnContextDir(), sessionId),
 }
 

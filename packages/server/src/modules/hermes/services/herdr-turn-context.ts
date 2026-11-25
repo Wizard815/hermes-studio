@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { updateConfigYamlForProfile } from './profiles/config'
+import { readConfigYamlForProfile, updateConfigYamlForProfile } from './profiles/config'
 import { getProfileDir } from './profiles/profile'
 
 /**
@@ -101,9 +101,11 @@ export function withTurnContextPluginEnabled(config: Record<string, any>): { con
 export interface HermesTurnContextDeps {
   profileHome: (profile: string) => string
   updateConfig: typeof updateConfigYamlForProfile
+  /** The profile's own Hermes `config.yaml` (the file `updateConfig` writes), not Studio's provider config. */
+  readConfig: (profile: string) => Promise<Record<string, any> | null | undefined>
 }
 
-const defaultDeps: HermesTurnContextDeps = { profileHome: getProfileDir, updateConfig: updateConfigYamlForProfile }
+const defaultDeps: HermesTurnContextDeps = { profileHome: getProfileDir, updateConfig: updateConfigYamlForProfile, readConfig: readConfigYamlForProfile }
 
 /**
  * Put the plugin in the profile (before Studio starts a Hermes pane there, so the
@@ -131,6 +133,16 @@ export function hermesTurnContextReady(profile: string, config: Record<string, a
   if (!existsSync(join(pluginDir(deps.profileHome(profile || 'default')), '__init__.py'))) return false
   const plugins = config?.plugins
   return namesOf(plugins?.enabled).includes(HERMES_TURN_CONTEXT_PLUGIN) && !namesOf(plugins?.disabled).includes(HERMES_TURN_CONTEXT_PLUGIN)
+}
+
+/**
+ * `hermesTurnContextReady` for the profile's own Hermes `config.yaml`, where
+ * `installHermesTurnContextPlugin` enables the plugin. Studio's provider config
+ * (`studio/public/provider-config`) has no `plugins` section, so reading that one
+ * always said "not ready" and every message went with the blocks after the text.
+ */
+export async function hermesTurnContextReadyForProfile(profile: string, deps: Pick<HermesTurnContextDeps, 'profileHome' | 'readConfig'> = defaultDeps): Promise<boolean> {
+  return hermesTurnContextReady(profile, await deps.readConfig(profile || 'default'), deps)
 }
 
 /** A chat's pending Hermes pane turn. */

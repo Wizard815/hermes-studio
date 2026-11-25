@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  HERMES_TURN_CONTEXT_PLUGIN, hermesPaneTurnFile, hermesTurnContextPluginFiles, hermesTurnContextReady, installHermesTurnContextPlugin,
+  HERMES_TURN_CONTEXT_PLUGIN, hermesPaneTurnFile, hermesTurnContextPluginFiles, hermesTurnContextReady, hermesTurnContextReadyForProfile, installHermesTurnContextPlugin,
   setHermesPaneTurn, withTurnContextPluginEnabled,
 } from '../../packages/server/src/modules/hermes/services/herdr-turn-context'
 import { beginHerdrPaneTurn, chatRunFields, type HerdrPaneTurnDeps } from '../../packages/server/src/bootstrap/herdr'
@@ -55,6 +55,26 @@ describe("Studio's turn-context plugin for Hermes", () => {
     expect(hermesTurnContextReady('work', config, deps)).toBe(true)
     expect(hermesTurnContextReady('work', { plugins: { enabled: [] } }, deps)).toBe(false)
     expect(hermesTurnContextReady('work', config, { profileHome: () => dir() })).toBe(false)
+  })
+
+  it("is ready when the profile's own Hermes config enables it, the file the installer writes", async () => {
+    const home = dir()
+    let config: Record<string, any> = {}
+    const read: string[] = []
+    const deps = {
+      profileHome: () => home,
+      updateConfig: (async (_profile: string, updater: any) => {
+        const out = await updater(config)
+        if (out.write !== false) config = out.data
+        return out.result
+      }) as any,
+      readConfig: async (profile: string) => { read.push(profile); return config },
+    }
+    expect(await hermesTurnContextReadyForProfile('work', deps)).toBe(false)
+    await installHermesTurnContextPlugin('work', join(dir(), 'turn-context'), deps)
+    expect(await hermesTurnContextReadyForProfile('work', deps)).toBe(true)
+    expect(await hermesTurnContextReadyForProfile('', deps)).toBe(true)
+    expect(read).toEqual(['work', 'work', 'default'])
   })
 
   it.runIf(python)("gives the context only to the turn Studio typed, in that chat's session, while the file exists", () => {
