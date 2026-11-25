@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { dismissChatToolLoad, fetchChatToolLoad } from '@/api/studio/tool-load'
+import { dismissChatToolLoad, fetchChatToolLoad, fetchHermesToolSearch } from '@/api/studio/tool-load'
 import type { ToolLoadNotice } from '../../../../shared/tool-load'
 
 /**
@@ -25,6 +25,21 @@ export const useToolLoadStore = defineStore('toolLoad', () => {
     } catch { /* no notice: nothing to show */ }
   }
 
+  /**
+   * The saved notice keeps the tool search value from when it was made. When the notice
+   * is shown, read the profile's current value, so a chat whose profile already turned
+   * tool search off does not offer to turn it off again.
+   */
+  async function refreshToolSearch(sessionId: string) {
+    const notice = notices.value.get(sessionId)
+    if (!notice || notice.dismissed) return
+    try {
+      const toolSearch = await fetchHermesToolSearch(notice.profile)
+      const current = notices.value.get(sessionId)
+      if (current && current.toolSearch !== toolSearch) set(sessionId, { ...current, toolSearch })
+    } catch { /* keep the saved value */ }
+  }
+
   function active(sessionId: string): ToolLoadNotice | null {
     const notice = notices.value.get(sessionId)
     return notice && !notice.dismissed ? notice : null
@@ -36,5 +51,5 @@ export const useToolLoadStore = defineStore('toolLoad', () => {
     await dismissChatToolLoad(sessionId)
   }
 
-  return { notices, set, load, active, dismiss }
+  return { notices, set, load, refreshToolSearch, active, dismiss }
 })

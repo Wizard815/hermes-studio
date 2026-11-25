@@ -18,7 +18,7 @@ const router = useRouter()
 const store = useToolLoadStore()
 const busy = ref<'' | 'search' | 'dismiss'>('')
 
-watch(() => props.sessionId, id => { if (id) void store.load(id) }, { immediate: true })
+watch(() => props.sessionId, id => { if (id) void store.load(id).then(() => store.refreshToolSearch(id)) }, { immediate: true })
 
 const notice = computed(() => store.active(props.sessionId))
 const canTurnOff = computed(() => !!notice.value && notice.value.toolSearch !== 'off')
@@ -58,7 +58,7 @@ const openSettings = () => router.push({ name: 'hermes.configSettings', query: {
         <span>{{ t('toolLoad.title') }}</span>
       </div>
       <p class="tool-load-banner__sentence">{{ t('toolLoad.sentence', { count: notice.total }) }}</p>
-      <p v-if="notice.toolSearchActive" class="tool-load-banner__note">{{ t('toolLoad.deferred', { count: notice.deferred }) }}</p>
+      <p v-if="notice.toolSearchActive && canTurnOff" class="tool-load-banner__note">{{ t('toolLoad.deferred', { count: notice.deferred }) }}</p>
       <p class="tool-load-banner__note">{{ t('toolLoad.advice', { profile: notice.profile }) }}</p>
       <p v-if="!canTurnOff" class="tool-load-banner__note">{{ t('toolLoad.searchIsOff') }}</p>
     </div>

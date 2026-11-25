@@ -21,7 +21,10 @@ all, and with it off they get lost in the list.
   - **Tools settings**: opens Settings → Tools.
   - **Dismiss**: hides it for good in that chat.
   The same text is saved in the chat as a Studio notice (never sent to the
-  model), so it is still there after a reload.
+  model), so it is still there after a reload. When the notice is shown it
+  reads the profile's current tool search setting: if it is already off, the
+  notice says "Tool search is already off for this profile." and has no
+  button to turn it off.
 - **The watcher** notes it as an Info alert, "Many tools in a chat" (kind
   `tool_load`, in the bell by default, not posted to Mattermost).
 - **Settings → Tools** (super admins):

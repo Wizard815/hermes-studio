@@ -4,11 +4,11 @@ import { resolve } from 'node:path'
 /** A JWT-shaped token whose payload says super_admin (the client only reads the role). */
 const SUPER_ADMIN_TOKEN = `x.${Buffer.from(JSON.stringify({ role: 'super_admin' })).toString('base64url')}.y`
 
-async function openFixture(page: Page) {
+async function openFixture(page: Page, options: { toolSearch?: string } = {}) {
   const requests: Array<{ method: string; path: string; body: any; profile: string | null }> = []
   const errors: string[] = []
   let notice = { sessionId: 'chat-1', profile: 'rea', total: 252, deferred: 247, toolSearchActive: true, toolSearch: 'auto', threshold: 80, at: Date.now(), dismissed: false }
-  let toolSearch: unknown = { enabled: 'auto' }
+  let toolSearch: unknown = { enabled: options.toolSearch || 'auto' }
   let threshold = 80
   page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(token => { localStorage.setItem('hermes_locale', 'en'); localStorage.setItem('hermes_api_key', token); localStorage.setItem('hermes_active_profile_name', 'rea'); (window as any).__APP_VERSION__ = 'test' }, SUPER_ADMIN_TOKEN)
@@ -75,5 +75,17 @@ test('Settings → Tools switches tool search for the active profile and changes
   await input.fill('120')
   await input.blur()
   await expect.poll(() => requests.find(r => r.path === '/api/studio/tool-load')?.body).toEqual({ settings: { threshold: 120 } })
+  expect(errors).toEqual([])
+})
+
+test('after a reload the notice reads the profile\'s current tool search: off already, so no button to turn it off', async ({ page }) => {
+  // The saved notice still says toolSearch: auto (from when it was made); the profile has it off now.
+  const { errors } = await openFixture(page, { toolSearch: 'off' })
+  await page.goto('/__tool_load__')
+  const banner = page.getByTestId('tool-load-banner')
+  await expect(banner).toContainText('This chat has 252 tools.')
+  await expect(banner).toContainText('Tool search is already off for this profile.')
+  await expect(page.getByTestId('tool-load-search-off')).toHaveCount(0)
+  await expect(banner).not.toContainText('Tool search hides 247')
   expect(errors).toEqual([])
 })
