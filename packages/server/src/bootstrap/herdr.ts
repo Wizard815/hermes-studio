@@ -36,6 +36,7 @@ import { herdrManager, type HerdrPluginDeps } from '../modules/coding-agents/ser
 import { listProfileModelChoices, listProfileModelGroups } from '../modules/hermes/controllers/models'
 import { getProfileDir, listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
 import { hermesCliAvailable, hermesInteractiveLaunch, hermesNewChatLaunch, hermesSessionIdFor } from '../modules/hermes/services/herdr-launch'
+import { answerHermesFirstRun } from '../modules/hermes/services/herdr-first-run'
 import { HerdrHermesLaunchStore, herdrModelChange, logicalHermesRoute, readHermesSessionRoute, type ModelRoute } from '../modules/hermes/services/herdr-model-sync'
 import { importAccountProviders, withProviderAccount } from '../modules/studio/public/provider-account'
 import { hermesGatewaySelection, synchronizeHermesProvider } from '../modules/studio/public/provider-projection'
@@ -163,6 +164,15 @@ async function syncHermesModelFromHerdrInAccount(sessionId: string, options: { f
   return change ? getSession(sessionId) : row
 }
 
+/** A pane Studio opens must not stop at Hermes's first-run metrics question (herdr-first-run.ts). */
+async function answerHermesFirstRunQuietly(profile: string) {
+  try {
+    if (await answerHermesFirstRun(profile)) logger.info({ profile }, '[herdr] answered Hermes\'s first-run metrics question: No thanks')
+  } catch (error) {
+    logger.warn({ profile, error: String(error) }, '[herdr] could not answer Hermes\'s first-run metrics question')
+  }
+}
+
 /** Open a Hermes chat in herdr in its profile, on its model, remembering both for `syncHermesModelFromHerdr`. */
 async function hermesChatLaunch(sessionId: string) {
   const first = getSession(sessionId)
@@ -172,6 +182,7 @@ async function hermesChatLaunch(sessionId: string) {
     const route = await hermesPaneRoute(profile, row.provider, row.model)
     const hermes = await hermesSessionModel(profile, row) ?? { model: '', provider: '' }
     const profileDefault = await profileDefaultModel(profile)
+    await answerHermesFirstRunQuietly(profile)
     hermesLaunches().set(sessionId, {
       studio: { model: row.model || '', provider: row.provider || '' },
       hermes,
@@ -251,10 +262,13 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     // A new Hermes chat runs in herdr's profile (Studio's, unless pinned) on its default model, or the model picked,
     // through Studio's model gateway like every other Hermes run.
     prepareAgentLaunch: async (agentId, input) => agentId === 'hermes'
-      ? inHerdrAccount(input.profile, async () => hermesNewChatLaunch(input.workspace, {
-          profile: input.profile, provider: input.provider, model: input.model, profileHome: getProfileDir,
-          route: await hermesPaneRoute(input.profile || 'default', input.provider, input.model),
-        }))
+      ? inHerdrAccount(input.profile, async () => {
+          await answerHermesFirstRunQuietly(input.profile || 'default')
+          return hermesNewChatLaunch(input.workspace, {
+            profile: input.profile, provider: input.provider, model: input.model, profileHome: getProfileDir,
+            route: await hermesPaneRoute(input.profile || 'default', input.provider, input.model),
+          })
+        })
       : inHerdrAccount(input.profile, () => prepareCodingAgentInteractiveLaunch(agentId, {
           profile: input.profile,
           provider: input.provider,

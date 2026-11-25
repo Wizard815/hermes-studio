@@ -35,6 +35,7 @@ import { getWebUiHome } from '../../studio/public/config'
 import { agentAsksBeforeActing, withApprovals, withApprovalsEnv } from './approvals'
 import { cleanRoomCommand, cleanRoomExec, cleanRoomHome, cleanRoomTerminalDocker, ensureCleanRoom, isCleanRoom, studioConfigMounts } from './cleanroom'
 import { herdrKindForStudioAgent } from './herdr/protocol'
+import { answerClaudeFirstRun } from './herdr/first-run'
 export { withApprovals, withApprovalsEnv } from './approvals'
 import { getProfileDir, PROVIDER_ENV_MAP, readConfigYamlForProfile, safeReadFile } from '../../studio/public/provider-config'
 import { getCompatibleCustomProviders, resolveCustomProviderApiKey } from '../../studio/contracts/provider-compat'
@@ -4192,6 +4193,19 @@ export async function prepareCodingAgentInteractiveLaunch(
   const resume = nativeResumeArgs(launch.agentId, resumeNativeSessionId || '')
   const asks = !yolo && agentAsksBeforeActing(launch.agentId)
   const native = [...nativeInteractiveApprovalArgs(launch.agentId, asks), ...await nativeInteractiveMcpArgs(launch.agentId, launch)]
+  if (launch.agentId === 'claude-code') {
+    // A new install must not land on Claude Code's own first-run questions in the pane.
+    try {
+      answerClaudeFirstRun({
+        configDir: launch.env.CLAUDE_CONFIG_DIR || process.env.CLAUDE_CONFIG_DIR,
+        workspace: launch.workspaceDir,
+        apiKey: launch.env.ANTHROPIC_API_KEY,
+        skipPermissions: [...launch.args, ...native].includes('--dangerously-skip-permissions'),
+      })
+    } catch (error) {
+      logger.warn({ err: error }, '[herdr] could not pre-answer Claude Code first-run questions')
+    }
+  }
   return {
     agentId: launch.agentId,
     // herdr starts panes through a login shell with its own PATH; give it the
@@ -4267,6 +4281,14 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
     ...studioConfigMounts(launch.args, launch.env),
     program: program.dir,
   }, { env: launch.env })
+  if (launch.agentId === 'claude-code') {
+    // The clean room's own home (`/root` inside) needs the same first-run answers.
+    try {
+      answerClaudeFirstRun({ home: cleanRoomHome(sessionId), workspace: launch.workspaceDir, apiKey: launch.env.ANTHROPIC_API_KEY, skipPermissions: true })
+    } catch (error) {
+      logger.warn({ err: error, sessionId }, '[herdr] could not pre-answer Claude Code first-run questions in the clean room')
+    }
+  }
   const exec = cleanRoomExec(container, program.command, launch.args, launch.workspaceDir, launch.env, { tty: true })
   // The docker client under the agent's name, so herdr sees which agent runs in the pane.
   const agentName = herdrKindForStudioAgent(launch.agentId)

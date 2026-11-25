@@ -212,6 +212,26 @@ Studio and elevate a chat when you want its agent in a terminal.
   `hermes/controllers/models.ts`); Hermes chats run it through Hermes. Coding
   agents cannot reach Hermes's local server through Studio's routing yet.
 
+### First run of an agent in a new install
+
+On a new install an agent's own first-run questions used to stand between the
+pane and the chat. Pressing Enter in Claude Code's "use this API key?" picks
+"No", and every request then fails with 401. Studio now answers them before it
+starts the pane:
+
+- **Claude Code** (`coding-agents/services/herdr/first-run.ts`, in
+  `~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json`; a clean room's own
+  home): the chat's folder is trusted. When Studio gives Claude Code its key
+  (Studio's model gateway), onboarding is marked done (theme kept, dark when
+  none was picked) and that key is approved (Claude Code keeps its last 20
+  characters), also when someone answered "No" to it before. Clean rooms also
+  accept bypass-permissions mode. A Claude Code on its own sign-in still shows
+  its login. Nothing else in the file changes.
+- **Hermes** (`hermes/services/herdr-first-run.ts`): a profile that never
+  answered "Help improve Hermes?" gets Hermes's default answer, "No thanks"
+  (`telemetry.shared_metrics.enabled/send: false`, `offer_version: 2`), so
+  nothing is collected or sent. `hermes setup telemetry` changes it.
+
 ## Install, start and setup
 
 - **Install.** Agents → herdr → Settings → "Install herdr" downloads the release named in
