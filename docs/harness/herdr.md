@@ -165,6 +165,10 @@ Studio and elevate a chat when you want its agent in a terminal.
   (including custom OpenAI-compatible providers such as llama-swap), MCP
   servers and rules prompt as Studio runs.
 
+- **Projects.** A project's threads are agents launched through
+  `launchAgent` with a `project` work ref, filed in the project's chat folder
+  (see `docs/projects.md`).
+
 ## Profiles and models
 
 - **Starting point: the profile and its default model.** A chat keeps the

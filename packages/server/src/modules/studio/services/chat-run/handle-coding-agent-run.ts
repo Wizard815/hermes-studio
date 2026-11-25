@@ -6,6 +6,7 @@ import { codingAgentId } from './types'
 import { studioMcpCapabilities, type StudioMcpCapabilities } from '../../public/runs/mcp-capabilities'
 import { clarificationTurnInstruction } from '../clarification-runs'
 import { taskPlanTurnInstruction } from '../task-plan-runs'
+import { projectService } from '../projects/service'
 import type { Server, Socket } from 'socket.io'
 import { chatCodingAgentRunManager as codingAgentRunManager } from '../../public/chat-agent-runtime'
 import {
@@ -216,6 +217,7 @@ async function handleCodingAgentRunImpl(
     const turnContext = [
       taskPlanContext ? taskPlanTurnInstruction(taskPlanContext, !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || '')) : '',
       interactionContext ? clarificationTurnInstruction(interactionContext) : '',
+      await projectService().contextFor(sessionId),
     ].filter(Boolean).join('\n\n')
     const sent = await (Array.isArray(data.input) || turnContext
       ? sendCodingAgentRunInput(

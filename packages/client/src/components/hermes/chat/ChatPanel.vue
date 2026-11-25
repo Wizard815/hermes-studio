@@ -70,6 +70,8 @@ import RealtimeVoiceStage from "./RealtimeVoiceStage.vue";
 import ConversationMonitorPane from "./ConversationMonitorPane.vue";
 import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
+import ProjectsList from "./ProjectsList.vue";
+import { addChatToProject, listProjects, type Project } from "@/api/studio/projects";
 import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
 import VsCodeCenter from "./VsCodeCenter.vue";
@@ -154,6 +156,50 @@ function updateSessionTasksVisibility(show: boolean) {
 const message = useMessage();
 const { t } = useI18n();
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
+
+// The chat menu's Projects view: the chat list shows projects (a coordinator chat and
+// threads that run in herdr) instead of the chats; picking one opens it here (docs/projects.md).
+const projectsView = ref((() => { try { return localStorage.getItem("studio_chat_list_view") === "projects" } catch { return false } })());
+const projectsShown = computed(() => projectsView.value && isSuperAdmin.value && props.contentMode === "chat");
+function setProjectsView(on: boolean) {
+  projectsView.value = on;
+  try { localStorage.setItem("studio_chat_list_view", on ? "projects" : "chats") } catch { /* private mode */ }
+}
+watch(() => route.query.view, view => { if (view === "projects") setProjectsView(true) }, { immediate: true });
+const projectsListRef = ref<{ refresh: () => Promise<void> } | null>(null);
+const knownProjects = ref<Project[]>([]);
+const moveToProjectSessionId = ref("");
+const moveToProjectId = ref<string | null>(null);
+const showMoveToProject = ref(false);
+const movingToProject = ref(false);
+async function openMoveToProject(sessionId: string) {
+  moveToProjectSessionId.value = sessionId;
+  moveToProjectId.value = null;
+  try {
+    knownProjects.value = await listProjects();
+  } catch (error: any) {
+    message.error(t("projects.failed", { error: error?.message || String(error) }));
+    return;
+  }
+  showMoveToProject.value = true;
+}
+async function confirmMoveToProject() {
+  const project = knownProjects.value.find(item => item.id === moveToProjectId.value);
+  if (!project || !moveToProjectSessionId.value) return;
+  movingToProject.value = true;
+  try {
+    await addChatToProject(project.id, moveToProjectSessionId.value);
+    const session = chatStore.sessions.find(item => item.id === moveToProjectSessionId.value);
+    if (session && project.categoryId != null) session.categoryId = project.categoryId;
+    showMoveToProject.value = false;
+    message.success(t("projects.moved", { name: project.name }));
+    void projectsListRef.value?.refresh();
+  } catch (error: any) {
+    message.error(t("projects.failed", { error: error?.message || String(error) }));
+  } finally {
+    movingToProject.value = false;
+  }
+}
 // By id and the chat list too: while Studio switches chats the loaded chat lags
 // behind, and herdr mode must not flicker off (it would reconnect herdr).
 // 'unknown' while the chat is not loaded yet; 'other' for chats with no herdr space
@@ -2212,6 +2258,7 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
   // Same rule as the header's "Elevate to herdr" button, with herdr on.
   includeHerdr: isSuperAdmin.value && herdrStore.enabled && herdrCanOpenChat(contextSession.value),
   elevated: isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(contextSession.value?.id),
+  includeProject: isSuperAdmin.value && !!contextSession.value && !contextSession.value.isLocalOnly,
   categoryChildren: buildSessionCategoryMenuChildren({
     categories: [...sessionCategories.value].sort((a, b) =>
       categoryPathLabel(sessionCategories.value, a.id).localeCompare(categoryPathLabel(sessionCategories.value, b.id))),
@@ -2237,6 +2284,7 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
     open: t(desktopChatWindowAvailable
       ? "chat.openSessionInNewWindow"
       : "chat.openSessionInNewTab"),
+    moveToProject: t("projects.moveToProject"),
     copyLink: t("chat.copySessionLink"),
     copyId: t("chat.copySessionId"),
     openInHerdr: herdrStore.isElevated(contextSession.value?.id) ? t("herdr.openLive") : t("herdr.elevate"),
@@ -2279,6 +2327,10 @@ function parseExportKey(key: string): { mode: 'full' | 'compressed'; ext: 'json'
 async function handleContextMenuSelect(key: string) {
   showContextMenu.value = false;
   if (!contextSessionId.value) return;
+  if (key === "project") {
+    void openMoveToProject(contextSessionId.value);
+    return;
+  }
   if (key === "category:retry") {
     await retrySessionCategories();
     return;
@@ -2793,7 +2845,9 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
         <PageSidebarNav
           :active="contentMode === 'connections' ? 'connections' : contentMode === 'agents' ? 'agents' : contentMode === 'models' ? 'models' : chatStore.runtimeMode === 'global_agent' ? 'global' : 'chat'"
           :primary-label="t('chat.newChat')"
+          :projects-active="projectsShown"
           @primary="openNewChatPage"
+          @projects="setProjectsView(!projectsShown)"
         >
           <template #actions>
             <ListActionsMenu
@@ -2831,6 +2885,14 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
         />
       </template>
       <template #default>
+        <ProjectsList
+          v-if="projectsShown"
+          ref="projectsListRef"
+          :active-session-id="chatStore.activeSessionId"
+          @open="handleSessionClick"
+          @back="setProjectsView(false)"
+        />
+        <template v-else>
         <div
           v-if="chatStore.isLoadingSessions && chatStore.sessions.length === 0"
           class="session-loading"
@@ -3035,8 +3097,25 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             />
           </div>
         </template>
+        </template>
       </template>
     </SessionListSidebar>
+
+    <NModal v-model:show="showMoveToProject" preset="card" :title="t('projects.moveTitle')" style="max-width: 420px">
+      <NSelect
+        v-model:value="moveToProjectId"
+        :options="knownProjects.map(project => ({ label: project.name, value: project.id }))"
+        :placeholder="t('projects.pick')"
+        :aria-label="t('projects.pick')"
+        data-testid="move-to-project-select"
+      />
+      <template #footer>
+        <div class="move-to-project-actions">
+          <NButton @click="showMoveToProject = false">{{ t('projects.cancel') }}</NButton>
+          <NButton type="primary" :disabled="!moveToProjectId" :loading="movingToProject" data-testid="move-to-project-confirm" @click="confirmMoveToProject">{{ t('projects.save') }}</NButton>
+        </div>
+      </template>
+    </NModal>
 
     <NDropdown
       :key="contextMenuCategoriesKey"
@@ -3746,6 +3825,12 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
     background: rgba(var(--accent-primary-rgb), 0.06);
     color: $text-primary;
   }
+}
+
+.move-to-project-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .session-list-title {

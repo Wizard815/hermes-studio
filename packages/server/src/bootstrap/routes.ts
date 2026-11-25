@@ -42,6 +42,7 @@ import { omiRoutes } from '../modules/studio/routes/omi'
 import { androidAppLinkRoutes } from '../modules/studio/routes/android-app-links'
 import { agentWorkPublicRoutes, agentWorkRoutes } from '../modules/studio/routes/agent-work'
 import { commandCenterRoutes } from '../modules/studio/routes/command-center'
+import { projectRoutes } from '../modules/studio/routes/projects'
 import { runLimitRoutes } from '../modules/studio/routes/run-limits'
 import { toolLoadRoutes } from '../modules/studio/routes/tool-load'
 import { uiSkillsRoutes } from '../modules/studio/routes/ui-skills'
@@ -162,6 +163,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(omiRoutes.routes())
   app.use(agentWorkRoutes.routes())
   app.use(commandCenterRoutes.routes())
+  app.use(projectRoutes.routes())
   app.use(runLimitRoutes.routes())
   app.use(toolLoadRoutes.routes())
   app.use(uiSkillsRoutes.routes())

@@ -1,0 +1,24 @@
+import Router from '@koa/router'
+import { requireSuperAdmin } from '../middleware/auth'
+import * as ctrl from '../controllers/projects'
+
+/**
+ * Projects: a coordinator chat and the threads it starts in herdr (see
+ * docs/projects.md). Threads run agents on the Studio host through herdr,
+ * so projects are super-admin only, like herdr itself.
+ */
+export const projectRoutes = new Router()
+
+projectRoutes.get('/api/studio/projects', requireSuperAdmin, ctrl.list)
+projectRoutes.post('/api/studio/projects', requireSuperAdmin, ctrl.create)
+projectRoutes.get('/api/studio/projects/for-session/:sessionId', requireSuperAdmin, ctrl.forSession)
+projectRoutes.post('/api/studio/projects/tool/:action', requireSuperAdmin, ctrl.tool)
+projectRoutes.get('/api/studio/projects/:id', requireSuperAdmin, ctrl.get)
+projectRoutes.put('/api/studio/projects/:id', requireSuperAdmin, ctrl.update)
+projectRoutes.delete('/api/studio/projects/:id', requireSuperAdmin, ctrl.remove)
+projectRoutes.post('/api/studio/projects/:id/threads', requireSuperAdmin, ctrl.startThread)
+projectRoutes.post('/api/studio/projects/:id/chats', requireSuperAdmin, ctrl.adoptChat)
+projectRoutes.get('/api/studio/projects/:id/threads/:threadId', requireSuperAdmin, ctrl.readThread)
+projectRoutes.post('/api/studio/projects/:id/threads/:threadId/message', requireSuperAdmin, ctrl.messageThread)
+projectRoutes.put('/api/studio/projects/:id/threads/:threadId/resolved', requireSuperAdmin, ctrl.resolveThread)
+projectRoutes.delete('/api/studio/projects/:id/threads/:threadId', requireSuperAdmin, ctrl.releaseThread)

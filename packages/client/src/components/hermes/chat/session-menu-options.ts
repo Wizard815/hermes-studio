@@ -51,6 +51,8 @@ interface SessionContextMenuLabels {
   openInHerdr?: string
   /** "Return to Studio"; needed when `elevated` is set. */
   returnToStudio?: string
+  /** "Move to project…" (docs/projects.md); needed when `includeProject` is set. */
+  moveToProject?: string
 }
 
 interface BuildSessionContextMenuOptions {
@@ -61,6 +63,8 @@ interface BuildSessionContextMenuOptions {
   includeHerdr?: boolean
   /** The chat is elevated to herdr: "Return to Studio" is offered too. */
   elevated?: boolean
+  /** "Move to project…" (super admins, a chat that is in no project yet). */
+  includeProject?: boolean
   categoryChildren: DropdownOption[]
   labels: SessionContextMenuLabels
 }
@@ -217,6 +221,7 @@ export function buildSessionContextMenuOptions({
   includeModel,
   includeHerdr = false,
   elevated = false,
+  includeProject = false,
   categoryChildren,
   labels,
 }: BuildSessionContextMenuOptions): DropdownOption[] {
@@ -238,6 +243,9 @@ export function buildSessionContextMenuOptions({
   options.push(actionOption(labels.category, 'category', 'category', {
     children: categoryChildren,
   }))
+  if (includeProject && labels.moveToProject) {
+    options.push(actionOption(labels.moveToProject, 'project', 'category'))
+  }
   options.push(actionOption(labels.export, 'export', 'export', {
     children: [
       {

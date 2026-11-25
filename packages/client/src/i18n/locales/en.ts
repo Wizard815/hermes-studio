@@ -7,6 +7,7 @@ import { screenMessages } from '../screen-messages'
 import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
 import { spaceFoldersMessages } from '../space-folders-messages'
+import { projectsMessages } from '../projects-messages'
 import { herdrAppMessages } from '../herdr-app-messages'
 import { commandCenterMessages } from '../command-center-messages'
 import { runLimitsMessages } from '../run-limits-messages'
@@ -36,6 +37,7 @@ export default {
   person: personMessages['en'],
   ...herdrMessages['en'],
   ...spaceFoldersMessages['en'],
+  ...projectsMessages['en'],
   ...herdrAppMessages['en'],
   ...commandCenterMessages['en'],
   ...runLimitsMessages['en'],

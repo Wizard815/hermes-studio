@@ -5,6 +5,7 @@ import { requirePersonWorkspace } from '../person/workspace'
 import { completeRunUsage } from '../../repositories/run-usage-store'
 import { hermesStudioMcpCapabilities } from './studio-mcp'
 import { withTaskPlanTurnContext } from '../task-plan-runs'
+import { projectService } from '../projects/service'
 /**
  * CLI Bridge run handler — handles runs that use the agent bridge
  * to communicate with Hermes CLI agent.
@@ -790,7 +791,11 @@ async function handleBridgeRunImpl(
     const originalBridgeInput = isContentBlockArray(input)
       ? await convertContentBlocksForAgent(input)
       : input
-    const bridgeInput = withTaskPlanTurnContext(originalBridgeInput, data.task_plan_context_id, !data.background_delegation_id && !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || ''))
+    const taskInput = withTaskPlanTurnContext(originalBridgeInput, data.task_plan_context_id, !data.background_delegation_id && !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || ''))
+    // A project's coordinator (or a thread run through Studio) gets the project's rules and threads.
+    const projectContext = data.background_delegation_id ? '' : await projectService().contextFor(session_id)
+    const bridgeInput = !projectContext ? taskInput
+      : typeof taskInput === 'string' ? `${taskInput}\n\n${projectContext}` : [...taskInput, { type: 'text' as const, text: projectContext }]
     const runMetadata: BridgeRunMetadata = {
       autonomous: data.autonomous === true,
       delegationId: data.background_delegation_id,
