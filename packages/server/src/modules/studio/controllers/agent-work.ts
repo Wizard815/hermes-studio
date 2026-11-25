@@ -1,5 +1,6 @@
 import type { Context } from 'koa'
 import { getAgentWork } from '../services/agent-work'
+import { getOmi } from '../services/omi'
 import { logger } from '../public/logging'
 
 function fail(ctx: Context, error: unknown) {
@@ -46,13 +47,15 @@ export async function setStatus(ctx: Context) {
 
 /**
  * Approve or reject from Studio, or from Pondering Orb (Orb signs in to Studio
- * and says via: "orb"). Deciding twice is not an error: the answer says it was
+ * and says via: "orb"), or from Omi with its key. Deciding twice is not an error: the answer says it was
  * already decided and where.
  */
 function decide(decision: 'approve' | 'reject') {
   return async (ctx: Context) => {
     try {
       const b = body(ctx)
+      // Omi's key answers only work in the chats Omi started (docs/omi.md).
+      if (ctx.state.omiKey) { ctx.body = await getOmi().decide(String(ctx.params.id), decision, ctx.state.omiKey, b.by); return }
       const via = b.via === 'orb' ? 'orb' : 'studio'
       const by = String(b.by || actor(ctx)).slice(0, 80)
       ctx.body = await getAgentWork().decide(String(ctx.params.id), decision, via, by)

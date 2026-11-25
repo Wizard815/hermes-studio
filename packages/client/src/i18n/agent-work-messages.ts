@@ -23,7 +23,7 @@ export const agentWorkMessages = {
         done: 'Done',
         rejected: 'Rejected',
       },
-      via: { studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb' },
+      via: { studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb', omi: 'Omi' },
       settingsTitle: 'Where agent work goes',
       mattermostTitle: 'Mattermost',
       channel: 'Channel',

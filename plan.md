@@ -60,6 +60,47 @@ Open:
 - Next: LLM wiki memory provider (Wizard815/LLM-will-remember-this on Unraid),
   once its container is ready.
 
+## Omi (omi-local)
+
+Researched 2026-11-25 (omi-local `main` at `5271e150`). Studio side: see
+`docs/omi.md`. Steps in the research's order; "Omi side" steps are for
+omi-local and are not done from here.
+
+Studio and Hermes:
+
+1. Add Omi's `/v1/mcp` and the Omi skill to your personal Hermes profile
+   (Hermes config). Done in Studio: MCP page → Your home → Omi, and "Add Omi
+   skill to Hermes" (step 5 below). Still yours to do on your setup.
+2. Fix the `:8080` port in omi-local's integrations README (Omi side), then
+   register Omi's results webhook in Studio. Done in Studio: Connections → Omi
+   → Register the webhook (only Omi's chats are sent).
+3. A Hermes morning job that reads the approved day (Hermes config). Not done.
+4. A scoped Studio key for Omi instead of an admin login. Done: Connections →
+   Omi → Make a key. Omi side: paste it as the Studio token (no env var for it
+   in omi-local yet).
+5. An Omi card on the MCP page that also installs the Omi skill. Done.
+6. An Omi tab under Connections. Done (address, test, Open Omi, key, webhook,
+   Omi's chats). Not done: yesterday's recap and Omi's waiting count (needs an
+   `omi_dev_` key).
+7. Answer Studio Agent work approvals from Omi. Done in Studio
+   (`GET /api/studio/omi/approvals`, approve/reject with the key, logged in the
+   watcher as "in Omi"). Omi side: list them in Omi's Approvals page.
+8. Answer per-chat command approvals from outside the browser. Not done.
+
+Android:
+
+1. Studio Own share target. Done in code (text, links, images → new chat or
+   the open one). APK not built here (no Android SDK).
+2. Studio Own opens links to its server, and `studio-own://`. Done in code.
+3. "Open in Studio" and a "Send to agent" quick action in Omi (Omi side). Not done.
+4. Studio Own notifications with Approve / Reject. Not done (needs a phone
+   key and a poller).
+5. to 8. Widgets and folding the apps together. Not done.
+
+Local AI for Omi (all Omi side, `.env` and omi-local code): point omi-proxy at
+Argos, plan the GPUs for omi-audio, fix the stale docs, per-upstream keys,
+signed `/_local/storage` URLs, drop Firebase from the app. Not done from here.
+
 ## Later (parked until the UI goal is finished)
 
 - **Folder suggestions.** Studio or herdr suggests a folder (or subfolder) for

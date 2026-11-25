@@ -9,11 +9,12 @@ import McuDevicesPanel from '@/components/hermes/connections/McuDevicesPanel.vue
 import GadgetStatusPanel from '@/components/hermes/connections/GadgetStatusPanel.vue'
 import RemoteDevicesPanel from '@/components/hermes/connections/RemoteDevicesPanel.vue'
 import OrbConnectionPanel from '@/components/hermes/connections/OrbConnectionPanel.vue'
+import OmiConnectionPanel from '@/components/hermes/connections/OmiConnectionPanel.vue'
 import AgentWorkPanel from '@/components/hermes/connections/AgentWorkPanel.vue'
 import { useAgentWorkBadge } from '@/composables/useAgentWorkBadge'
 import { desktopBridge } from '@/utils/desktop-bridge'
 
-type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb' | 'agent-work'
+type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb' | 'omi' | 'agent-work'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,7 +23,7 @@ const hasRemoteDevices = desktopBridge()?.isDesktop === true && !!desktopBridge(
 
 function normalizeTab(value: unknown): ConnectionTab {
   if (value === 'remote' && hasRemoteDevices) return value
-  if (value === 'mcu' || value === 'orb' || value === 'agent-work') return value
+  if (value === 'mcu' || value === 'orb' || value === 'omi' || value === 'agent-work') return value
   return 'app'
 }
 
@@ -77,6 +78,9 @@ function updateTab(value: string | number) {
       </NTabPane>
       <NTabPane name="orb" :tab="t('orb.tab')" display-directive="if">
         <OrbConnectionPanel />
+      </NTabPane>
+      <NTabPane name="omi" :tab="t('omi.tab')" display-directive="if">
+        <OmiConnectionPanel />
       </NTabPane>
       <NTabPane name="agent-work" display-directive="if">
         <template #tab>

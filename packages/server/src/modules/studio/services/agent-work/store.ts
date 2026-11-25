@@ -9,8 +9,8 @@ import type { DatabaseSync } from 'node:sqlite'
 
 export const AGENT_WORK_STATUSES = ['queued', 'working', 'blocked', 'awaiting_approval', 'done', 'rejected'] as const
 export type AgentWorkStatus = typeof AGENT_WORK_STATUSES[number]
-export type DecisionVia = 'studio' | 'mattermost' | 'orb'
-export const DECISION_VIAS: DecisionVia[] = ['studio', 'mattermost', 'orb']
+export type DecisionVia = 'studio' | 'mattermost' | 'orb' | 'omi'
+export const DECISION_VIAS: DecisionVia[] = ['studio', 'mattermost', 'orb', 'omi']
 
 export interface MattermostPostRef { id: string; channelId: string; kind: string; resolved?: boolean }
 

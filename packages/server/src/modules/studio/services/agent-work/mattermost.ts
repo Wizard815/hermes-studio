@@ -39,7 +39,7 @@ const STATUS_TEXT: Record<AgentWorkStatus, string> = {
   rejected: 'was rejected',
 }
 
-const VIA_TEXT: Record<string, string> = { studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb' }
+const VIA_TEXT: Record<string, string> = { studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb', omi: 'Omi' }
 
 export function mentionsFor(status: AgentWorkStatus, settings: AgentWorkSettings['mattermost']): string {
   const wants = status === 'blocked' || (status === 'awaiting_approval' && settings.mentionOnApproval)

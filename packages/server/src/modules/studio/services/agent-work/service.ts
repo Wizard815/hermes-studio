@@ -11,7 +11,7 @@ import { buildDigest, dayBounds, localDay, type WikiPort } from './wiki'
  * append-only activity log, and its approval. Every change fans out to the
  * Mattermost channel set in Connections → Agent work, to Pondering Orb (only
  * when sharing is on) and to the wiki's daily digest. A decision made in any
- * one place (Studio, Mattermost or Orb) is final: the first one wins, the
+ * one place (Studio, Mattermost, Orb or Omi) is final: the first one wins, the
  * others become no-ops, every place stops alerting, and an approved item that
  * links a Vikunja task marks that task done through ALLGlance.
  */
@@ -46,7 +46,7 @@ export interface DecisionResult { work: AgentWork; changed: boolean; message: st
 const STATUS_WORDS: Record<AgentWorkStatus, string> = {
   queued: 'queued', working: 'working', blocked: 'blocked', awaiting_approval: 'awaiting approval', done: 'done', rejected: 'rejected',
 }
-const VIA_WORDS: Record<string, string> = { studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb' }
+const VIA_WORDS: Record<string, string> = { studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb', omi: 'Omi' }
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)

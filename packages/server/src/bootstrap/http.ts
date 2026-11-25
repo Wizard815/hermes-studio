@@ -8,6 +8,7 @@ import { setupMobileTerminal } from '../modules/hermes/sockets/mobile-terminal'
 import { startHerdrIntegration } from './herdr'
 import { startAndroidDevices } from './android'
 import { startOrbIntegration } from './orb'
+import { startOmiIntegration } from './omi'
 import { startAgentWork } from './agent-work'
 import { startRunLimits } from './run-limits'
 import { startWatcher } from './watcher'
@@ -688,6 +689,8 @@ export async function bootstrap() {
   additionalShutdownSteps.push({ name: 'Watcher', close: () => watcher.close() })
   const agentWork = startAgentWork()
   additionalShutdownSteps.push({ name: 'Agent work', close: () => agentWork.close() })
+  const omiIntegration = startOmiIntegration()
+  additionalShutdownSteps.push({ name: 'Omi', close: () => omiIntegration.close() })
   const runLimits = startRunLimits()
   additionalShutdownSteps.push({ name: 'Run limits', close: () => runLimits.close() })
   const herdrIntegration = startHerdrIntegration(activeGroupChatServer.getIO(), loopbackBaseUrl)

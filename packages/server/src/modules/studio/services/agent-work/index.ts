@@ -17,7 +17,7 @@ import type { AgentWork } from './store'
 export function watchAgentWork(work: AgentWork, change: 'created' | 'status' | 'decided'): void {
   const base = { taskId: work.id, sessionId: work.sessionId || undefined, agent: work.agent || undefined, link: '/hermes/connections?tab=agent-work' }
   if (change === 'decided' && work.decision) {
-    const via = ({ studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb' } as Record<string, string>)[work.decidedVia] || work.decidedVia
+    const via = ({ studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb', omi: 'Omi' } as Record<string, string>)[work.decidedVia] || work.decidedVia
     recordWatcherEvent({ ...base, kind: 'work_decided', severity: 'info', text: `${work.decision === 'approved' ? 'Approved' : 'Rejected'} in ${via}${work.decidedBy ? ` by ${work.decidedBy}` : ''}: ${work.title}` })
   } else if (work.status === 'awaiting_approval') {
     recordWatcherEvent({ ...base, kind: 'work_approval', severity: 'warn', text: `Waiting for your approval: ${work.title}` })

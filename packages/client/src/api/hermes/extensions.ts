@@ -141,7 +141,13 @@ export function paperServersAdded(servers: Array<{ name: string; url: string }>)
  */
 export interface McpServerDraft {
   name: string
-  config: { url?: string; headers?: Record<string, string>; tools?: { include?: string[] } }
+  config: {
+    url?: string
+    headers?: Record<string, string>
+    timeout?: number
+    connect_timeout?: number
+    tools?: { include?: string[]; exclude?: string[]; resources?: boolean; prompts?: boolean }
+  }
   secrets: Record<string, string>
 }
 
@@ -309,6 +315,41 @@ export function buildUnraidServer(form: UnraidForm): McpServerDraft {
   if (!token) throw new HomeServerFormError('token')
   const key = mcpSecretKey(name)
   return { name, config: { url, headers: { Authorization: `Bearer ${envRef(key)}` } }, secrets: { [key]: token } }
+}
+
+export interface OmiForm { name?: string; address: string; key: string }
+
+/** omi-local's backend port (omi-host/docker-compose.yml, BACKEND_PORT). */
+export const OMI_DEFAULT_PORT = 8000
+/** Omi tools that delete things; Omi's own Hermes recipe leaves them out (omi-host/examples/hermes). */
+export const OMI_EXCLUDED_TOOLS = ['delete_action_item', 'delete_memory', 'dismiss_person'] as const
+
+/**
+ * Omi (omi-local) serves Streamable HTTP MCP at <omi>/v1/mcp with an
+ * `omi_mcp_` key as a Bearer header. Same settings as Omi's Hermes recipe:
+ * a long timeout for slow local models, no delete tools, no resources or prompts.
+ */
+export function buildOmiServer(form: OmiForm): McpServerDraft {
+  const name = normalizeServerName(form.name || 'omi')
+  if (!name) throw new HomeServerFormError('name')
+  const typed = (form.address || '').trim()
+  const bare = !!typed && !/^https?:\/\//i.test(typed) && !/:\d+(\/|$)/.test(typed)
+  const base = normalizeAddress(bare ? `${typed.replace(/\/.*$/, '')}:${OMI_DEFAULT_PORT}` : typed).replace(/\/v1\/mcp(?:\/sse)?$/i, '')
+  if (!base) throw new HomeServerFormError('address')
+  const token = stripBearer(form.key || '')
+  if (!/^omi_mcp_\S+$/.test(token)) throw new HomeServerFormError('token')
+  const key = mcpSecretKey(name)
+  return {
+    name,
+    config: {
+      url: `${base}/v1/mcp`,
+      headers: { Authorization: `Bearer ${envRef(key)}` },
+      timeout: 120,
+      connect_timeout: 30,
+      tools: { exclude: [...OMI_EXCLUDED_TOOLS], resources: false, prompts: false },
+    },
+    secrets: { [key]: token },
+  }
 }
 
 // ---- Plugins hub ----------------------------------------------------------

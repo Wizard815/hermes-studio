@@ -12,7 +12,7 @@ export interface AgentWork {
   status: AgentWorkStatus
   summary: string
   decision: '' | 'approved' | 'rejected'
-  decidedVia: '' | 'studio' | 'mattermost' | 'orb'
+  decidedVia: '' | 'studio' | 'mattermost' | 'orb' | 'omi'
   decidedBy: string
   decidedAt: number
   vikunjaDoneAt: number

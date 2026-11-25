@@ -38,6 +38,8 @@ import { mcuDevicePublicRoutes, mcuDeviceRoutes } from '../modules/studio/routes
 
 import { sessionRoutes } from '../modules/studio/routes/sessions'
 import { orbRoutes } from '../modules/studio/routes/orb'
+import { omiRoutes } from '../modules/studio/routes/omi'
+import { androidAppLinkRoutes } from '../modules/studio/routes/android-app-links'
 import { agentWorkPublicRoutes, agentWorkRoutes } from '../modules/studio/routes/agent-work'
 import { commandCenterRoutes } from '../modules/studio/routes/command-center'
 import { runLimitRoutes } from '../modules/studio/routes/run-limits'
@@ -111,6 +113,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   // --- Public routes (no auth required) ---
   app.use(modelGatewayMiddleware)
   app.use(healthRoutes.routes())
+  app.use(androidAppLinkRoutes.routes())
   app.use(authPublicRoutes.routes())
   app.use(mcuDevicePublicRoutes.routes())
   app.use(ttsRoutes.routes())
@@ -153,6 +156,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(socialMessageRoutes.routes())
   app.use(sessionRoutes.routes())
   app.use(orbRoutes.routes())
+  app.use(omiRoutes.routes())
   app.use(agentWorkRoutes.routes())
   app.use(commandCenterRoutes.routes())
   app.use(runLimitRoutes.routes())

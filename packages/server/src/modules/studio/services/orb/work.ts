@@ -32,6 +32,8 @@ export interface OrbWork {
   startedAt: number
   updatedAt: number
   error?: string
+  /** Who sent the work: Omi with its Studio key (docs/omi.md). Unset: Orb, or a Studio login. */
+  source?: 'omi'
 }
 
 /** Agents Orb can send work to. `ekko-agent` and `hermes` are Studio's own. */
@@ -119,11 +121,17 @@ export class OrbWorkTracker {
     return this.work.map(item => ({ ...item, title: getSession(item.sessionId)?.title || item.title }))
   }
 
+  /** Whether a chat was started by this sender (once list() or start() has read the file). */
+  hasSession(sessionId: unknown, source: OrbWork['source']): boolean {
+    if (typeof sessionId !== 'string' || !sessionId) return false
+    return this.work.some(item => item.sessionId === sessionId && item.source === source)
+  }
+
   /** Start a new Studio chat for the work; resolves once the run is under way. */
-  async start(input: { token: string; profile?: string; agentId: unknown; title?: unknown; prompt: unknown; workspace?: unknown; orb?: unknown }): Promise<OrbWork> {
+  async start(input: { token: string; profile?: string; agentId: unknown; title?: unknown; prompt: unknown; workspace?: unknown; orb?: unknown; source?: OrbWork['source'] }): Promise<OrbWork> {
     await this.load()
     const agentId = String(input.agentId || 'ekko-agent') as OrbWorkAgent
-    if (!(ORB_WORK_AGENTS as readonly string[]).includes(agentId)) throw invalid('Studio cannot run that agent for Orb')
+    if (!(ORB_WORK_AGENTS as readonly string[]).includes(agentId)) throw invalid(`Studio cannot run that agent for ${input.source === 'omi' ? 'Omi' : 'Orb'}`)
     const prompt = String(input.prompt ?? '').trim().slice(0, 20000)
     if (!prompt) throw invalid('Give the work a first message')
     if (!input.token) throw Object.assign(new Error('Sign in to Studio first'), { status: 401 })
@@ -134,7 +142,7 @@ export class OrbWorkTracker {
     const sessionId = randomUUID()
     const now = Date.now()
     // 'idle' until the run's first event, which reports 'working' to Orb in order with what follows.
-    const work: OrbWork = { sessionId, title, agentId, orb, status: 'idle', startedAt: now, updatedAt: now }
+    const work: OrbWork = { sessionId, title, agentId, orb, status: 'idle', startedAt: now, updatedAt: now, ...(input.source ? { source: input.source } : {}) }
 
     await new Promise<void>((resolve, reject) => {
       const socket = this.connect(input.token, profile)

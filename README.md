@@ -266,6 +266,7 @@ your own services:
 - [ ] Old chats, jobs and Mattermost still work as before
 - [ ] Connections → Pondering Orb connects, and Orb work starts a Studio chat
 - [ ] Agent work: approve one item from each of Studio, Mattermost and Orb; the Vikunja task is marked done
+- [ ] Omi: Connections → Omi → Test connection answers; make a key, paste it in Omi as the Studio token, and "Send to agent → Studio" starts a chat listed under Work from Omi; register the webhook and the result reaches Omi ([docs/omi.md](docs/omi.md))
 - [ ] A new chat stays in Studio: no herdr space appears for it
 - [ ] herdr: elevate a Hermes chat (`/herdr`), send a message, restart the container, and check the pane is still linked
 - [ ] herdr: `/studio` on that chat closes its herdr space and the chat keeps its messages
@@ -655,6 +656,7 @@ These variables configure Ekko Studio, its local Hermes runtime integration, and
 | `HERMES_WEB_UI_DISABLE_MCP_AUTOINJECT` | unset | Disable startup injection of the managed `ekko-studio-*` MCP servers into Hermes profile configs. |
 | `HERMES_WEB_UI_ALLOW_TRANSIENT_MCP_AUTOINJECT` | unset | Allow managed MCP injection when `HERMES_WEB_UI_HOME` is under a temporary directory, such as Version Preview runtimes. |
 | `UPLOAD_DIR` | `$HERMES_WEB_UI_HOME/upload` | Upload root override. Files are stored below profile-scoped subdirectories. |
+| `STUDIO_OWN_ANDROID_CERT_SHA256` | unset | Signing fingerprint(s) of your Studio Own APK (comma-separated, `AA:BB:…`). Studio then serves `/.well-known/assetlinks.json` so links to this server open in the app ([docs/android-devices.md](docs/android-devices.md#share-to-studio-and-links)). |
 | `CORS_ORIGINS` | same host only | Comma- or space-separated cross-origin allowlist for HTTP, Socket.IO, and WebSocket requests. Set `*` only when you intentionally need legacy wildcard CORS. |
 | `AUTH_TOKEN` | auto-generated | Explicit bearer token. If unset, Studio creates one under `HERMES_WEB_UI_HOME`. |
 | `AUTH_JWT_SECRET` | `AUTH_TOKEN` | JWT signing secret override for username/password sessions. |

@@ -10,6 +10,8 @@ import { getToken } from '../services/auth/token-auth'
 import { runMcpCredentials } from '../services/auth/run-mcp-credentials'
 import { MODEL_API_KEY_PREFIX, findModelApiKey, touchModelApiKey } from '../services/model-api/keys'
 import { ModelApiError, modelApiErrorBody } from '../services/model-api/errors'
+import { looksLikeOmiKey } from '../services/omi/scope'
+import { checkOmiKey, type OmiKeyIdentity } from '../services/omi/key-auth'
 import {
   findUserById,
   getDefaultProfileForUser,
@@ -64,6 +66,8 @@ declare module 'koa' {
     serverTokenAuth?: boolean
     modelApiKey?: { id: string; models: string[] }
     modelGateway?: { userId: number; profile: string }
+    /** Signed in with a Studio key made for Omi (docs/omi.md). */
+    omiKey?: OmiKeyIdentity
   }
 }
 
@@ -414,6 +418,21 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
       ctx.status = result.status; ctx.body = result.body
       return
     }
+    await next()
+    return
+  }
+  if (looksLikeOmiKey(token)) {
+    // Omi's key starts and follows Omi's own work chats, nothing else (docs/omi.md).
+    const headerToken = (ctx.headers.authorization || '').match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || ''
+    const check = await checkOmiKey({ method: ctx.method, path: ctx.path, headerToken, token })
+    const owner = check.ok ? findUserById(check.key.userId) : null
+    if (!check.ok || !owner || owner.status !== 'active') {
+      ctx.status = check.ok ? 403 : check.status
+      ctx.body = { error: check.ok ? "The key's owner is disabled or no longer exists." : check.error }
+      return
+    }
+    ctx.state.user = toAuthenticatedUser(owner)
+    ctx.state.omiKey = check.key
     await next()
     return
   }

@@ -29,7 +29,8 @@ async function load() {
 }
 
 async function loadWork() {
-  try { work.value = (await fetchOrbWork()).work } catch { work.value = [] }
+  // Omi's chats are listed under Connections → Omi.
+  try { work.value = (await fetchOrbWork()).work.filter(item => item.source !== 'omi') } catch { work.value = [] }
 }
 
 async function save() {

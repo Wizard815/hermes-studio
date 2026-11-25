@@ -8,6 +8,7 @@ import {
   NCheckbox, NScrollbar, NTabs, NTabPane,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import McpServerCard from '@/components/hermes/mcp/McpServerCard.vue'
 import McpCatalogPanel from '@/components/hermes/mcp/McpCatalogPanel.vue'
 import McpOAuthConnect from '@/components/hermes/mcp/McpOAuthConnect.vue'
@@ -25,7 +26,8 @@ const servers = ref<McpServerInfo[]>([])
 const loading = ref(true)
 const error = ref('')
 const searchQuery = ref('')
-const activeTab = ref<'servers' | 'catalog'>('servers')
+// ?tab=catalog opens the catalog (Connections → Omi links to its Omi card).
+const activeTab = ref<'servers' | 'catalog'>(useRoute().query.tab === 'catalog' ? 'catalog' : 'servers')
 
 // Hermes signs in to OAuth MCP servers (catalog installs and servers with auth: oauth).
 const oauthServer = ref('')

@@ -5,6 +5,7 @@ import { isBuiltinEkkoSession, isExternalCodingAgentSession, isHermesSession } f
 import { EKKO_SESSION_COMMAND_DEFINITIONS } from '@/utils/hermes/bridge-session-commands'
 import type { Attachment, Session } from '@/stores/hermes/chat'
 import { useChatStore } from '@/stores/hermes/chat'
+import { appendSharedText, pendingComposerShare } from '@/utils/studio-own-share'
 import { useAppStore } from '@/stores/hermes/app'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import { useSettingsStore } from '@/stores/hermes/settings'
@@ -609,6 +610,16 @@ function restoreCancelledAttachmentDraft() {
 }
 
 watch(() => chatStore.cancelledAttachmentDrafts.get(getActiveDraftSessionId()), restoreCancelledAttachmentDraft, { flush: 'post' })
+
+// "Share to Studio" from the Studio Own app: into this chat's input, to check before sending.
+watch(pendingComposerShare, (share) => {
+  if (!share || !props.persistDraft) return
+  pendingComposerShare.value = null
+  inputText.value = appendSharedText(inputText.value, share.text)
+  if (share.files.length) addFiles(share.files)
+  message.info(t('omi.share.received'))
+  nextTick(() => focusComposer())
+}, { immediate: true, flush: 'post' })
 
 // 从 localStorage 读取设置
 onMounted(() => {

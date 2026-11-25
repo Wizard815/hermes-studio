@@ -29,6 +29,7 @@ import { useI18n } from "vue-i18n";
 import { getThemeOverrides } from "@/styles/theme";
 import { useTheme } from "@/composables/useTheme";
 import { useKeyboard } from "@/composables/useKeyboard";
+import { useStudioOwnShare } from "@/composables/useStudioOwnShare";
 import { useSessionSearch } from "@/composables/useSessionSearch";
 import { watchServerTtsSettingsHydration } from "@/composables/useTtsSettingsHydration";
 import { useAppStore } from "@/stores/hermes/app";
@@ -335,6 +336,8 @@ onUnmounted(() => {
 });
 
 useKeyboard();
+// "Share to Studio" from the Studio Own Android app.
+useStudioOwnShare();
 </script>
 
 <template>

@@ -29,21 +29,26 @@ const installBusy = ref(false)
 const connectServer = ref('')
 const showConnect = ref(false)
 
-// "Your home": Home Assistant and Unraid, added with a short form instead of the catalog's install.
-type HomeKind = 'home-assistant' | 'unraid'
-const homeForm = ref<HomeKind | null>(null)
+// "Your home": Home Assistant, Unraid and Omi, added with a short form instead of the catalog's install.
+type HomeKind = 'home-assistant' | 'unraid' | 'omi'
+const homeForm = ref<HomeKind | 'omi-skill' | null>(null)
 const serverConfigs = ref<Array<{ name: string; url: string }>>([])
 const homeEntries = computed(() => [
   { kind: 'home-assistant' as HomeKind, title: t('hermesExtensions.home.ha.title'), description: t('hermesExtensions.home.ha.description'), docs: 'https://www.home-assistant.io/integrations/mcp_server/' },
   { kind: 'unraid' as HomeKind, title: t('hermesExtensions.home.unraid.title'), description: t('hermesExtensions.home.unraid.description'), docs: 'https://github.com/tinkerologie/unraid-management-agent' },
+  { kind: 'omi' as HomeKind, title: t('omi.mcp.title'), description: t('omi.mcp.description'), docs: 'https://github.com/Wizard815/omi-local/tree/main/omi-host/examples/hermes' },
 ].filter(entry => !query.value.trim() || `${entry.title} ${entry.description}`.toLowerCase().includes(query.value.trim().toLowerCase())))
 
-/** The servers already added for it: Home Assistant by its /api/mcp address, Unraid by name or the agent's port. */
+/** The servers already added for it: Home Assistant by its /api/mcp address, Unraid by name or the agent's port, Omi by /v1/mcp. */
 function homeAdded(kind: HomeKind) {
   return serverConfigs.value.filter(server => kind === 'home-assistant'
     ? /\/api\/mcp$/.test(server.url) || server.name.includes('home-assistant')
-    : server.name.includes('unraid') || /:8043\/mcp/.test(server.url)).map(server => server.name)
+    : kind === 'omi'
+      ? /\/v1\/mcp$/.test(server.url) || server.name.includes('omi')
+      : server.name.includes('unraid') || /:8043\/mcp/.test(server.url)).map(server => server.name)
 }
+
+const homeTag = (kind: HomeKind) => kind === 'home-assistant' ? t('hermesExtensions.home.readOnlyTag') : kind === 'omi' ? t('omi.mcp.tag') : t('hermesExtensions.home.tokenTag')
 
 async function loadServerConfigs() {
   try {
@@ -197,12 +202,12 @@ void loadServerConfigs()
       <h3 class="group-title">{{ t('hermesExtensions.home.groupTitle') }}</h3>
       <p class="group-hint">{{ t('hermesExtensions.home.groupHint') }}</p>
       <div class="catalog-grid">
-        <div v-for="entry in homeEntries" :key="entry.kind" class="catalog-card" :class="{ installed: homeAdded(entry.kind).length }">
+        <div v-for="entry in homeEntries" :key="entry.kind" class="catalog-card" :class="{ installed: homeAdded(entry.kind).length }" :data-testid="`mcp-home-${entry.kind}`">
           <div class="catalog-head">
             <h3>{{ entry.title }}</h3>
             <div class="catalog-tags">
               <NTag v-if="homeAdded(entry.kind).length" size="small" type="success" round>{{ t('hermesExtensions.common.installed') }}</NTag>
-              <NTag size="small" round>{{ entry.kind === 'home-assistant' ? t('hermesExtensions.home.readOnlyTag') : t('hermesExtensions.home.tokenTag') }}</NTag>
+              <NTag size="small" round>{{ homeTag(entry.kind) }}</NTag>
             </div>
           </div>
           <p class="catalog-desc">{{ entry.description }}</p>
@@ -210,7 +215,8 @@ void loadServerConfigs()
           <div class="catalog-actions">
             <a :href="entry.docs" target="_blank" rel="noopener" class="catalog-link">{{ t('hermesExtensions.common.docs') }}</a>
             <span class="spacer" />
-            <NButton size="tiny" :type="homeAdded(entry.kind).length ? 'default' : 'primary'" @click="homeForm = entry.kind">
+            <NButton v-if="entry.kind === 'omi'" size="tiny" data-testid="mcp-omi-skill" @click="homeForm = 'omi-skill'">{{ t('omi.mcp.addSkill') }}</NButton>
+            <NButton size="tiny" :type="homeAdded(entry.kind).length ? 'default' : 'primary'" :data-testid="`mcp-home-connect-${entry.kind}`" @click="homeForm = entry.kind">
               {{ homeAdded(entry.kind).length ? t('hermesExtensions.home.addAnother') : t('hermesExtensions.home.connect') }}
             </NButton>
           </div>

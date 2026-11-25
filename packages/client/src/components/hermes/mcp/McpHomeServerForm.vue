@@ -1,16 +1,22 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { NAlert, NButton, NCheckbox, NInput, NModal, NRadioButton, NRadioGroup, NTag } from 'naive-ui'
+import { NAlert, NButton, NCheckbox, NInput, NModal, NRadioButton, NRadioGroup, NSelect, NTag } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import {
-  buildHomeAssistantServer, buildUnraidServer, homeAssistantBuilderEnv, HomeServerFormError, saveHermesEnvValue, toolIncluded,
+  buildHomeAssistantServer, buildOmiServer, buildUnraidServer, homeAssistantBuilderEnv, HomeServerFormError, saveHermesEnvValue, toolIncluded,
   type McpServerDraft, type UnraidAuth,
 } from '@/api/hermes/extensions'
-import { homeAssistantSshKey, mcpServerAddWithSecrets, mcpServerTest } from '@/api/hermes/mcp'
+import { homeAssistantSshKey, mcpServerAddWithSecrets, mcpServerTest, type McpServerConfig } from '@/api/hermes/mcp'
+import { installOmiSkill } from '@/api/studio/omi'
+import { useProfilesStore } from '@/stores/hermes/profiles'
 import { copyToClipboard } from '@/utils/clipboard'
 
-/** Short forms that add Home Assistant's or Unraid's MCP server, then test the connection. */
-const props = defineProps<{ kind: 'home-assistant' | 'unraid' | null }>()
+/**
+ * Short forms that add Home Assistant's, Unraid's or Omi's MCP server, then
+ * test the connection. Omi's form also installs Omi's Hermes skill into a
+ * profile ('omi-skill' shows only that part).
+ */
+const props = defineProps<{ kind: 'home-assistant' | 'unraid' | 'omi' | 'omi-skill' | null }>()
 const emit = defineEmits<{ close: []; added: [server: string] }>()
 
 const { t } = useI18n()
@@ -45,6 +51,35 @@ async function copyPublicKey() {
 // Key auth by default: the first time the builder is turned on, Studio's own key is filled in.
 watch(() => builder.enabled, (on) => { if (on && !builder.sshKey && !studioKey.value) void useStudioKey() })
 const unraid = reactive({ name: 'unraid', address: '', auth: 'token' as UnraidAuth, token: '', connectUrl: '' })
+const omi = reactive({ name: 'omi', address: '', key: '' })
+
+// Omi's Hermes skill: copied into the chosen profile (the one this MCP page edits by default).
+const profilesStore = useProfilesStore()
+const skillProfile = ref('')
+const skillBusy = ref(false)
+const skillResult = ref<{ ok: boolean; text: string } | null>(null)
+const profileOptions = computed(() => profilesStore.profiles.map(profile => ({ label: profile.name, value: profile.name })))
+const isOmi = computed(() => props.kind === 'omi' || props.kind === 'omi-skill')
+
+watch(isOmi, (on) => {
+  if (!on) return
+  skillResult.value = null
+  skillProfile.value = skillProfile.value || profilesStore.activeProfileName || 'default'
+  if (!profilesStore.profiles.length) void profilesStore.fetchProfiles().catch(() => undefined)
+}, { immediate: true })
+
+async function addSkill() {
+  skillBusy.value = true
+  skillResult.value = null
+  try {
+    const result = await installOmiSkill(skillProfile.value || 'default')
+    skillResult.value = { ok: true, text: t('omi.mcp.skillAdded', { profile: result.profile }) }
+  } catch (err: any) {
+    skillResult.value = { ok: false, text: err?.message || String(err) }
+  } finally {
+    skillBusy.value = false
+  }
+}
 const busy = ref(false)
 const error = ref('')
 const result = ref<{ name: string; ok: boolean; tools: string[]; allowed: string[] | null; error?: string } | null>(null)
@@ -53,15 +88,25 @@ watch(() => props.kind, () => {
   ha.token = ''
   unraid.token = ''
   unraid.connectUrl = ''
+  omi.key = ''
   error.value = ''
   result.value = null
 })
 
-const title = computed(() => props.kind === 'unraid' ? t('hermesExtensions.home.unraid.title') : t('hermesExtensions.home.ha.title'))
+const title = computed(() => props.kind === 'unraid' ? t('hermesExtensions.home.unraid.title')
+  : props.kind === 'omi' ? t('omi.mcp.title')
+    : props.kind === 'omi-skill' ? t('omi.mcp.skillTitle')
+      : t('hermesExtensions.home.ha.title'))
 
 function draft(): McpServerDraft {
   if (props.kind === 'home-assistant') return buildHomeAssistantServer(ha)
+  if (props.kind === 'omi') return buildOmiServer(omi)
   return buildUnraidServer(unraid)
+}
+
+function formError(err: HomeServerFormError): string {
+  if (props.kind === 'omi' && err.code === 'token') return t('omi.mcp.keyError')
+  return t(`hermesExtensions.home.errors.${err.code}`)
 }
 
 async function submit() {
@@ -73,15 +118,16 @@ async function submit() {
     server = draft()
     if (props.kind === 'home-assistant' && builder.enabled) builderEnv = homeAssistantBuilderEnv(ha, builder)
   } catch (err) {
-    error.value = err instanceof HomeServerFormError ? t(`hermesExtensions.home.errors.${err.code}`) : String(err)
+    error.value = err instanceof HomeServerFormError ? formError(err) : String(err)
     return
   }
   busy.value = true
   try {
-    const added = await mcpServerAddWithSecrets(server.name, server.config, server.secrets)
+    const added = await mcpServerAddWithSecrets(server.name, server.config as McpServerConfig, server.secrets)
     if (added && added.ok === false) throw new Error(added.error || t('hermesExtensions.home.addFailed'))
     for (const [key, value] of Object.entries(builderEnv)) await saveHermesEnvValue(key, value)
     ha.token = ''
+    omi.key = ''
     unraid.token = ''
     unraid.connectUrl = ''
     emit('added', server.name)
@@ -89,7 +135,9 @@ async function submit() {
     const tools = tested.tools || []
     // The test lists every tool the server offers; a read-only include list lets Hermes use only some.
     const include = server.config.tools?.include
-    const allowed = include ? tools.filter(tool => toolIncluded(tool, include)) : null
+    // Omi's delete tools are excluded; they show as off like Home Assistant's non-read tools.
+    const exclude = server.config.tools?.exclude
+    const allowed = include ? tools.filter(tool => toolIncluded(tool, include)) : exclude ? tools.filter(tool => !toolIncluded(tool, exclude)) : null
     result.value = { name: server.name, ok: !!tested.ok, tools, allowed, error: tested.error }
   } catch (err: any) {
     error.value = err?.message || t('hermesExtensions.home.addFailed')
@@ -217,12 +265,45 @@ function close() {
         </div>
       </template>
 
-      <span class="hint">{{ t('hermesExtensions.home.secretNote') }}</span>
+      <template v-else-if="kind === 'omi'">
+        <div class="steps">
+          <strong>{{ t('omi.mcp.stepsTitle') }}</strong>
+          <ol>
+            <li>{{ t('omi.mcp.step1') }}</li>
+            <li>{{ t('omi.mcp.step2') }}</li>
+          </ol>
+        </div>
+        <div class="field">
+          <label for="omi-mcp-address">{{ t('omi.mcp.address') }} <span class="required">*</span></label>
+          <NInput v-model:value="omi.address" size="small" placeholder="http://omi.lan:8000" :input-props="{ id: 'omi-mcp-address' }" data-testid="omi-mcp-address" />
+        </div>
+        <div class="field">
+          <label for="omi-mcp-key">{{ t('omi.mcp.key') }} <span class="required">*</span></label>
+          <NInput v-model:value="omi.key" size="small" type="password" show-password-on="click" placeholder="omi_mcp_…" :input-props="{ id: 'omi-mcp-key', autocomplete: 'off' }" data-testid="omi-mcp-key" />
+        </div>
+        <span class="hint">{{ t('omi.mcp.excludeHint') }}</span>
+        <div class="field">
+          <label for="omi-mcp-name">{{ t('hermesExtensions.home.name') }}</label>
+          <NInput v-model:value="omi.name" size="small" :input-props="{ id: 'omi-mcp-name' }" />
+        </div>
+      </template>
+
+      <div v-if="isOmi" class="steps skill-box" data-testid="omi-skill-box">
+        <strong>{{ t('omi.mcp.skillTitle') }}</strong>
+        <span class="hint">{{ t('omi.mcp.skillHint') }}</span>
+        <div class="key-row">
+          <NSelect v-model:value="skillProfile" size="small" :options="profileOptions" :aria-label="t('omi.mcp.skillProfile')" data-testid="omi-skill-profile" />
+          <NButton size="small" :loading="skillBusy" data-testid="omi-skill-add" @click="addSkill">{{ t('omi.mcp.addSkill') }}</NButton>
+        </div>
+        <span v-if="skillResult" class="hint" :class="skillResult.ok ? 'ok' : 'bad'" role="status" aria-live="polite" data-testid="omi-skill-result">{{ skillResult.text }}</span>
+      </div>
+
+      <span v-if="kind !== 'omi-skill'" class="hint">{{ t('hermesExtensions.home.secretNote') }}</span>
       <NAlert v-if="error" type="error" :bordered="false">{{ error }}</NAlert>
       <NAlert v-if="result" :type="result.ok ? 'success' : 'warning'" :bordered="false">
         <template v-if="result.ok">
           {{ t('hermesExtensions.home.testOk', { name: result.name, count: result.tools.length }) }}
-          <template v-if="result.allowed">{{ t('hermesExtensions.home.readOnlyAllowed', { count: result.allowed.length }) }}</template>
+          <template v-if="result.allowed">{{ kind === 'omi' ? t('omi.mcp.excludeHint') : t('hermesExtensions.home.readOnlyAllowed', { count: result.allowed.length }) }}</template>
           <div class="tools">
             <NTag v-for="tool in result.tools" :key="tool" size="small" round :type="!result.allowed || result.allowed.includes(tool) ? 'success' : 'default'" :class="{ off: result.allowed && !result.allowed.includes(tool) }">{{ tool }}</NTag>
           </div>
@@ -232,7 +313,7 @@ function close() {
 
       <div class="modal-actions">
         <NButton @click="close">{{ result ? t('hermesExtensions.common.done') : t('hermesExtensions.common.cancel') }}</NButton>
-        <NButton v-if="!result" type="primary" :loading="busy" @click="submit">{{ t('hermesExtensions.home.addAndTest') }}</NButton>
+        <NButton v-if="!result && kind !== 'omi-skill'" type="primary" :loading="busy" data-testid="mcp-home-submit" @click="submit">{{ t('hermesExtensions.home.addAndTest') }}</NButton>
       </div>
     </div>
   </NModal>
@@ -251,6 +332,9 @@ function close() {
 .field label { color: $text-muted; font-size: calc(var(--font-size-base, 14px) * 12 / 14); }
 .hint { margin: 0; color: $text-muted; font-size: calc(var(--font-size-base, 14px) * 12 / 14); }
 .required { color: $error; }
+.skill-box { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: var(--border-width, 1px) solid $border-light; }
+.hint.ok { color: $success; }
+.hint.bad { color: $error; }
 .key-row { display: flex; gap: 8px; align-items: center; }
 .key-row > :first-child { flex: 1 1 auto; }
 .key-steps { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
