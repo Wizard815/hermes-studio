@@ -125,7 +125,7 @@ bubblewrap (optional). Full per-plugin table: `ideas/hermes-official-plugins.md`
 | [sem-weave](https://hermes-agent.nousresearch.com/marketplace/sem-weave) | Maybe | Two review skills; need the `sem` CLI. |
 | [gadget](https://hermes-agent.nousresearch.com/marketplace/gadget) | Maybe | ESP32 voice devices; overlaps `packages/mcu`; only with matching boards. |
 | [print3d](https://hermes-agent.nousresearch.com/marketplace/print3d) | Maybe | Bambu printer files via Blender; only with a Bambu printer; clean room. |
-| [jakubkrehel/skills](https://github.com/jakubkrehel/skills) | Maybe | UI design skills for coding agents (about 5 worth adding). |
+| [jakubkrehel/skills](https://github.com/jakubkrehel/skills) | Done | Ten UI skills bundled for every agent (`docs/ui-skills.md`). |
 | [hermes-speech](https://hermes-agent.nousresearch.com/marketplace/hermes-speech) | Skip | Paid middleman; Studio already has TTS/STT. |
 
 ### Test Lab (proposed)
@@ -147,11 +147,14 @@ Done, all in `studio-herder` now (their branches can be deleted):
   switched on), rea, print3d: `recommended-plugins`.
 - Herdr App layout in the herdr page + install script for the desktop app:
   `herdr-app-ui`.
+- UI skills for every agent: ten UI/design skills from jakubkrehel/skills,
+  copied once into Hermes, Ekko and every coding agent, read-only in clean
+  rooms (`docs/ui-skills.md`).
+- Paper (paper.design) card on the MCP catalog, OAuth sign-in, not added on
+  its own (`docs/hermes-integrations.md#paper-design-canvas`).
 
 Next:
 
-- **UI skills for every agent**: the UI/design skills from jakubkrehel/skills,
-  installed for Hermes, Ekko and every coding agent.
 - **Gadget plugin for D.A.S.H** (Wizard815/D.A.S.H, the 4-inch ESP32 hub;
   the firmware is worked on in another chat): Studio installs and turns on the
   Hermes Gadget plugin, exposes its WebSocket (`:8765/gadget`) in Docker, and

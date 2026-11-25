@@ -151,6 +151,16 @@ What happens on the first start:
   next start. Turn it off in **Hermes Settings → Agent → Recommended Hermes
   plugins**, or set `STUDIO_RECOMMENDED_HERMES_PLUGINS=0` on the container.
   Details: [docs/hermes-integrations.md](docs/hermes-integrations.md#recommended-plugins).
+- About 5 seconds after start, Studio copies ten UI and design skills
+  (jakubkrehel/skills, MIT) once into every Hermes and Ekko profile,
+  `~/.claude/skills` and `~/.agents/skills`, so every agent builds nicer UIs.
+  A skill you delete or edit stays that way. The Skills pages show them as
+  **UI skills (bundled)**. Turn it off in **Hermes Settings → Agent → UI skills
+  for every agent**, or set `STUDIO_UI_SKILLS=0`. Details:
+  [docs/ui-skills.md](docs/ui-skills.md).
+- The **MCP** page's catalog has a **Paper (paper.design)** card (design
+  canvas, OAuth sign-in, needs a Paper account; designs go to Paper's
+  servers). It is never added on its own.
 
 ### Agent work: Vikunja tasks, approvals and alerts
 
@@ -264,6 +274,8 @@ your own services:
 - [ ] A new Hermes chat answers within about 10 s with the recommended plugins (rea) installed
 - [ ] Gadget: from a Studio Hermes chat, "show 'hello' on my gadget" shows a card on the device
 - [ ] herdr: on a new install, elevating a Claude Code chat opens the chat, not Claude Code's theme or API key questions
+- [ ] UI skills: the Skills page shows **UI skills (bundled)**, and `~/.claude/skills/better-interface` exists in the container; asking Claude Code to review a page uses it ([docs/ui-skills.md](docs/ui-skills.md))
+- [ ] Paper (optional, needs a Paper account): MCP → Catalog → Paper → Add and sign in; a Hermes chat can read a frame
 
 Known issues on this branch:
 

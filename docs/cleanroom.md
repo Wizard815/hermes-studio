@@ -19,6 +19,7 @@ clean rooms yet.
 | The agent's own config home (`CODEX_HOME`, …) | read-write (`coding-agent/model/<profile>/<provider>/<agent>`) |
 | Studio's prompt and MCP files for the agent | read-only |
 | The room's own home folder | read-write at `/root` (`coding-agent/cleanroom/homes/<hash>`) |
+| UI skills ([ui-skills.md](ui-skills.md)) | read-only at `/root/.claude/skills/<name>` and `/root/.agents/skills/<name>`, unless turned off |
 | The container's own files | read-only; `/tmp` (1 GB), `/var/tmp` and `/run` are small tmpfs folders |
 | Studio | only its model proxies (`/api/codex-proxy/…`, `/api/claude-code-proxy/…`), through a tunnel |
 | Internet | none directly (`--network none`); HTTPS through an allowlist proxy (`HTTPS_PROXY`) |
@@ -35,6 +36,10 @@ Network settings (`coding-agent/cleanroom/settings.json`,
 - `allowlist` (default): Studio plus `allowHosts` (model APIs and package registries).
 - `studio`: only Studio (agents on Studio's providers work; installs do not).
 - `internet`: any host through the proxy.
+
+The allowlist has no Paper host by default. For an agent that uses Paper's
+design canvas ([hermes-integrations.md](hermes-integrations.md#paper-design-canvas)),
+add `mcp.paper.design` to **Allowed hosts**.
 
 `image` (default `node:24-bookworm-slim`, needs node for the tunnel), `cpus`,
 `memory`, `pids` are there too.

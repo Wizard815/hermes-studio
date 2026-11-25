@@ -18,8 +18,8 @@ error messages that say "in the dashboard" say "in Studio".
 |---|---|
 | Channels | Every Hermes messaging platform (generated from Hermes's field list), test buttons, Telegram and WhatsApp guided setup, pairing approvals, inbound webhooks, gateway restart banner |
 | Memory | Memory provider picker (Honcho, Mem0, RetainDB, ByteRover, … and any future provider), its settings and setup |
-| Skills | Skill hub (browse, preview, install, uninstall), curator card, skill lock |
-| MCP | "Your home" (Home Assistant, Unraid) short forms, then the catalog of curated servers with one-click install and OAuth sign-in |
+| Skills | Skill hub (browse, preview, install, uninstall), curator card, skill lock, [UI skills (bundled)](ui-skills.md) |
+| MCP | [Paper](#paper-design-canvas) card, "Your home" (Home Assistant, Unraid) short forms, then the catalog of curated servers with one-click install and OAuth sign-in |
 | Plugins | Plugin hub (browse, install, update, update all, uninstall, auto-update, install from Git), [recommended plugins](#recommended-plugins) |
 | Settings (Hermes) | Tools (toolsets and their keys/models), Terminal (local, docker, SSH, …), Subagents (delegation), Maintenance (doctor, security audit, backup/restore, checkpoints, hooks, version) |
 | Jobs | Create a job from Hermes's templates |
@@ -109,6 +109,34 @@ startup** (super administrators), or `STUDIO_RECOMMENDED_HERMES_PLUGINS=0` on th
 (the switch then shows as off and cannot be turned on). Turning it off installs nothing
 more; plugins already installed stay. Turning the switch back on runs the install for
 whatever is not done yet.
+
+## UI skills
+
+Every Hermes profile also gets ten UI and design skills once, in its
+`skills/ui-skills/` folder (from jakubkrehel/skills, MIT). A skill you delete
+or edit there stays that way. Ekko and the coding agents get them too. See
+[ui-skills.md](ui-skills.md); turn it off in **Hermes Settings → Agent → UI
+skills for every agent** or with `STUDIO_UI_SKILLS=0`.
+
+## Paper (design canvas)
+
+The MCP page's Catalog tab has a **Paper (paper.design)** card under
+**Design**. Paper is a design canvas agents can read and draw on. **Add and
+sign in** adds the remote server `https://mcp.paper.design` (named `paper`,
+`auth: oauth`) and opens Hermes's sign-in. Studio never adds it on its own.
+
+- Your designs and the agent's canvas edits go to Paper's servers (the model
+  stays local). You need a Paper account. Paper's remote MCP is in early
+  access and its limits may change.
+- Clean rooms reach no host by default except the allowlist: add
+  `mcp.paper.design` under **Settings → Clean rooms → Allowed hosts** for a
+  clean-room agent that has Paper in its own MCP config.
+- Coding agents: add the same URL in their MCP settings. Paper Desktop's local
+  server (`http://127.0.0.1:29979/mcp`) is not reachable from Studio in Docker;
+  use the remote one.
+- Sign-in fails with "not reachable": the Paper server or your network is
+  down, or the browser could not reach Hermes's callback; paste the address
+  the browser landed on, as the sign-in window says.
 
 ## Hermes Gadget (D.A.S.H)
 

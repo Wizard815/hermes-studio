@@ -24,6 +24,7 @@ and keep this file small enough to fit into every task context.
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.
 - `docs/agent-limits.md` - run limits: cost, tokens, time and loop detector per run, for every chat type.
 - `docs/watcher.md` - the Watcher: one alert feed and bell for Studio's guards, trust rules, Settings → Watcher and Clean rooms.
+- `docs/ui-skills.md` - UI skills (bundled): design skills copied once into Hermes, Ekko and every coding agent; removal, edits, switch.
 
 ## Common Commands
 
