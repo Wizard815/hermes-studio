@@ -15,6 +15,25 @@ What it adds on top of the web console:
 Only pages from the server address you configured get these abilities (WebView
 origin rules); see [docs/android-devices.md](../../docs/android-devices.md).
 
+## Omi
+
+The app works with the Omi app on the same
+phone. The intent contract both ways is in [docs/omi.md](../../docs/omi.md).
+
+- **Share to Studio:** share text from Omi (or any app) and choose **Send to
+  Studio**. Studio opens a new chat with the text in the composer; you press Send.
+  The link `ekkostudio-own://chat?text=...` does the same.
+- **Open Omi:** the Android page's *This phone* card has **Omi and phone AI**
+  (or long-press the app icon → **Omi**). It opens Omi on its approvals
+  (`omi://approvals`), tasks (`omi://tasks`) or capture (`omi://capture`) screen,
+  or Omi's main screen while Omi does not handle those links yet.
+- **Phone AI:** the same panel starts (`~/bin/omi-phone-ai.sh`) and stops the
+  phone's own model and speech-to-text servers from Omi's phone AI guide
+  (`omi-host/PHONE-LLM.md` in the Omi repository) in Termux, after you confirm the
+  command, and shows whether `127.0.0.1:8081` (chat) and `127.0.0.1:8080`
+  (speech-to-text) answer. Termux needs `allow-external-apps = true`; the panel
+  shows the steps when it is missing.
+
 Roadmap: notifications (no Firebase), calendar/reminders, tasks and Kanban,
 home-screen widgets.
 

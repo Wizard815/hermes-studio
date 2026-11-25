@@ -10,6 +10,9 @@
 
     <queries>
         <package android:name="com.termux" />
+        <!-- Omi (prod and dev flavors): open it with omi:// links or its launcher; see docs/omi.md. -->
+        <package android:name="com.friend.ios" />
+        <package android:name="com.friend.ios.dev" />
     </queries>
 
     <application
@@ -23,11 +26,34 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- "Send to Studio": shared text opens a new chat with it in the composer (never sent). -->
+            <intent-filter android:label="@string/share_label">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- ekkostudio-own://chat?text=... : the same, from Omi or a link. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ekkostudio-own" android:host="chat" />
+            </intent-filter>
+            <!-- ekkostudio-own://omi : the Omi and phone AI panel (also the launcher shortcut). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="ekkostudio-own" android:host="omi" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
     </application>
 </manifest>
