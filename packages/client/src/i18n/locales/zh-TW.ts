@@ -10,6 +10,7 @@ import { spaceFoldersMessages } from '../space-folders-messages'
 import { herdrAppMessages } from '../herdr-app-messages'
 import { commandCenterMessages } from '../command-center-messages'
 import { runLimitsMessages } from '../run-limits-messages'
+import { watcherMessages } from '../watcher-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
@@ -33,6 +34,7 @@ export default {
   ...herdrAppMessages['zh-TW'],
   ...commandCenterMessages['zh-TW'],
   ...runLimitsMessages['zh-TW'],
+  ...watcherMessages['zh-TW'],
   ...vscodeMessages['zh-TW'],
   ...screenMessages['zh-TW'],
   ...hermesModelsMessages['zh-TW'],

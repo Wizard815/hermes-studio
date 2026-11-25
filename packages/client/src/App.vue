@@ -86,6 +86,12 @@ const ProviderConfigurationPrompt = defineAsyncComponent(
 const WebPet = defineAsyncComponent(
   async () => (await import("@/components/hermes/pets/WebPet.vue")).default,
 );
+const WatcherModal = defineAsyncComponent(
+  async () => (await import("@/components/watcher/WatcherModal.vue")).default,
+);
+const WatcherBell = defineAsyncComponent(
+  async () => (await import("@/components/watcher/WatcherBell.vue")).default,
+);
 const GlobalPendingActions = defineAsyncComponent(
   async () =>
     (await import("@/components/layout/GlobalPendingActions.vue")).default,
@@ -392,6 +398,10 @@ useKeyboard();
                 :expanded="!appStore.sidebarCollapsed"
                 @toggle="appStore.toggleSidebarCollapsed()"
               />
+              <!-- The watcher's bell (docs/watcher.md): always at the end of the top bar. -->
+              <div v-if="showNavigationRail" class="studio-header-watcher">
+                <WatcherBell />
+              </div>
             </div>
             <div class="app-box">
               <div
@@ -464,6 +474,9 @@ useKeyboard();
           />
           <GlobalPendingActions
             v-if="!isLoginPage && !isDesktopPetRoute && !isStandaloneChatPage"
+          />
+          <WatcherModal
+            v-if="!isLoginPage && !isInviteOnlyPage && !isDesktopPetRoute && !isStandaloneChatPage"
           />
           <RuntimeRestartPrompt
             v-if="!isLoginPage && !isDesktopPetRoute && !isStandaloneChatPage && isStoredSuperAdmin()"
@@ -623,7 +636,7 @@ useKeyboard();
     background: transparent;
     -webkit-app-region: drag;
 
-    > :deep(:not(.header-sidebar-control):not(.desktop-titlebar)) {
+    > :deep(:not(.header-sidebar-control):not(.desktop-titlebar):not(.studio-header-watcher)) {
       box-sizing: border-box;
       display: flex;
       align-items: center;
@@ -652,8 +665,18 @@ useKeyboard();
       }
     }
 
+    .studio-header-watcher {
+      order: 10;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+      height: 100%;
+      padding-inline-end: calc(10px * var(--spacing-scale, 1));
+      -webkit-app-region: no-drag;
+    }
+
     &--shell-sidebar {
-      > :deep(:not(.header-sidebar-control):not(.desktop-titlebar)) {
+      > :deep(:not(.header-sidebar-control):not(.desktop-titlebar):not(.studio-header-watcher)) {
         padding-inline-start: 0;
       }
 

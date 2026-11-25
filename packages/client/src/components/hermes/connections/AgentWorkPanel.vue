@@ -9,6 +9,7 @@ import {
   type AgentActivity, type AgentWork, type AgentWorkSettings,
 } from '@/api/studio/agent-work'
 import { refreshAgentWorkBadge } from '@/composables/useAgentWorkBadge'
+import TaskApprovalModes from '@/components/watcher/TaskApprovalModes.vue'
 
 /**
  * Connections → Agent work: work agents do on Vikunja tasks, approvals (which
@@ -132,6 +133,8 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
         </div>
       </div>
     </section>
+
+    <TaskApprovalModes v-if="canConfigure" :work="work" />
 
     <section class="aw-card" data-theme-surface="card">
       <header class="aw-head"><h3>{{ t('agentWork.recentTitle') }}</h3></header>

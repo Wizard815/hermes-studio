@@ -39,7 +39,9 @@ export function startWatcher(): { close: () => void } {
       sessionInfo: sessionId => {
         const session = getSession(sessionId)
         if (!session) return null
-        const agent = session.source === 'coding_agent' ? session.agent : session.agent === 'ekko-agent' ? 'ekko' : session.agent || 'hermes'
+        // The same agent ids approvals use (run.launch.agentId), so "Trust this" for an agent matches.
+        const stored = session.agent === 'claude' || session.agent === 'claude_code' ? 'claude-code' : session.agent
+        const agent = session.source === 'coding_agent' ? stored : stored === 'ekko-agent' ? 'ekko' : stored || 'hermes'
         return { title: session.title || '', agent, folder: session.workspace || '' }
       },
       // A task's or chat's own mode is the one `/yolo` sets (coding-agent chats) and Hermes chats follow too.

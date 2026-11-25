@@ -21,7 +21,7 @@ const { t } = useI18n()
     @update:show="emit('update:show', $event)"
   >
     <div class="studio-mobile-navigation">
-      <StudioNavigationRail />
+      <StudioNavigationRail mobile />
       <section v-show="hasSidebar" class="studio-mobile-navigation__panel">
         <button class="studio-mobile-navigation__close" type="button" :aria-label="t('common.close')" @click="emit('update:show', false)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" /></svg>

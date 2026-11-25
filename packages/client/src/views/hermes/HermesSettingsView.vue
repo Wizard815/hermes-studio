@@ -9,6 +9,8 @@ import AgentSettings from '@/components/hermes/settings/AgentSettings.vue'
 import GatewayAutoStartSettings from '@/components/hermes/settings/GatewayAutoStartSettings.vue'
 import RecommendedPluginsSettings from '@/components/hermes/settings/RecommendedPluginsSettings.vue'
 import RunLimitsSettings from '@/components/hermes/settings/RunLimitsSettings.vue'
+import WatcherSettings from '@/components/hermes/settings/WatcherSettings.vue'
+import CleanRoomSettings from '@/components/hermes/settings/CleanRoomSettings.vue'
 import MemorySettings from '@/components/hermes/settings/MemorySettings.vue'
 import SessionSettings from '@/components/hermes/settings/SessionSettings.vue'
 import HermesToolsetsSettings from '@/components/hermes/settings/HermesToolsetsSettings.vue'
@@ -19,9 +21,9 @@ import { isStoredSuperAdmin } from '@/api/client'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import { useSettingsStore } from '@/stores/hermes/settings'
 
-type HermesSettingsTab = 'agent' | 'memory' | 'session' | 'tools' | 'terminal' | 'subagents' | 'maintenance'
-// Tabs backed by Hermes Agent's own API (super administrators only).
-const HERMES_AGENT_TABS = ['tools', 'terminal', 'subagents', 'maintenance'] as const
+type HermesSettingsTab = 'agent' | 'memory' | 'session' | 'watcher' | 'cleanrooms' | 'tools' | 'terminal' | 'subagents' | 'maintenance'
+// Super administrators only: the watcher and clean rooms (Studio's own), and tabs backed by Hermes Agent's API.
+const HERMES_AGENT_TABS = ['watcher', 'cleanrooms', 'tools', 'terminal', 'subagents', 'maintenance'] as const
 const canUseHermesAgent = isStoredSuperAdmin()
 
 const { t } = useI18n()
@@ -89,6 +91,12 @@ onMounted(() => {
             <SessionSettings />
           </NTabPane>
           <template v-if="canUseHermesAgent">
+            <NTabPane name="watcher" :tab="t('watcher.settings.tab')" display-directive="show:lazy">
+              <WatcherSettings />
+            </NTabPane>
+            <NTabPane name="cleanrooms" :tab="t('cleanRooms.title')" display-directive="show:lazy">
+              <CleanRoomSettings />
+            </NTabPane>
             <NTabPane name="tools" :tab="t('hermesTools.tabs.tools')" display-directive="show:lazy">
               <HermesToolsetsSettings />
             </NTabPane>
