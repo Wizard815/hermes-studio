@@ -131,3 +131,24 @@ test('uses devices from another computer through its adb server', async ({ page 
   await expect(page.getByTestId('android-view')).toContainText('Devices from 192.168.1.30')
   expect(errors).toEqual([])
 })
+
+test('inside the Studio Own app, This phone opens the native Omi and phone AI panel', async ({ page }) => {
+  await page.addInitScript(() => {
+    const calls: string[] = []
+    ;(window as any).studioOwnCalls = calls
+    ;(window as any).StudioOwn = { isTermuxInstalled: () => true, runInTermux: () => calls.push('termux'), openOmiPanel: () => calls.push('omi') }
+  })
+  const { errors } = await openFixture(page)
+  await page.goto('/__android_view__')
+  await page.getByTestId('android-this-phone').getByRole('button', { name: 'Omi and phone AI' }).click()
+  await expect.poll(() => page.evaluate(() => (window as any).studioOwnCalls)).toEqual(['omi'])
+  expect(errors).toEqual([])
+})
+
+test('an older Studio Own app without the Omi panel shows no Omi button', async ({ page }) => {
+  await page.addInitScript(() => { (window as any).StudioOwn = { isTermuxInstalled: () => true, runInTermux: () => {} } })
+  await openFixture(page)
+  await page.goto('/__android_view__')
+  await expect(page.getByTestId('android-this-phone')).toBeVisible()
+  await expect(page.getByTestId('android-omi-panel')).toHaveCount(0)
+})

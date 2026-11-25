@@ -25,6 +25,7 @@ object StudioBridge {
     /**
      * Injected at document start into Studio frames only. Defines the API the
      * Studio client looks for (`window.StudioOwn`) on top of the message port,
+     * including `openOmiPanel()` for the native Omi and phone AI panel,
      * and turns replies into a `studio-own:termux-result` event.
      */
     fun documentStartScript(termuxInstalled: Boolean): String = """
@@ -40,6 +41,9 @@ object StudioBridge {
             isTermuxInstalled: function () { return $termuxInstalled; },
             runInTermux: function (command, workdir, background) {
               port.postMessage(JSON.stringify({ type: 'termux.run', command: String(command || ''), workdir: String(workdir || ''), background: !!background }));
+            },
+            openOmiPanel: function () {
+              port.postMessage(JSON.stringify({ type: 'omi.panel' }));
             }
           });
         })();
@@ -47,6 +51,9 @@ object StudioBridge {
 
     sealed interface Request {
         data class RunInTermux(val command: Termux.Command) : Request
+
+        /** Show the native Omi and phone AI panel (it asks before every Termux command itself). */
+        data object OmiPanel : Request
     }
 
     /** Parses a page message. Unknown or invalid messages are ignored (null). */
@@ -58,6 +65,7 @@ object StudioBridge {
                 json.optString("workdir"),
                 json.optBoolean("background", true),
             )?.let { Request.RunInTermux(it) }
+            "omi.panel" -> Request.OmiPanel
             else -> null
         }
     }
