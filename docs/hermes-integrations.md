@@ -63,7 +63,9 @@ disk full, Hermes's own install state can end up half written; `hermes pm repair
 **Failures are retried.** If the catalog cannot be reached (offline), a plugin needs a
 newer Hermes than this one (`requires_hermes`), or Hermes refuses the install (print3d
 without Blender), Studio logs one `[recommended-plugins]` warning, shows "not installed yet"
-on the Plugins page and tries again on its next start. It never blocks startup or a chat.
+on the Plugins page and tries again on its next start. The watcher's bell gets one alert
+per plugin and reason: a start that fails the same way again adds nothing; a new reason
+adds a new alert. It never blocks startup or a chat.
 
 **Slow MCP servers do not hold a chat.** A new Hermes chat waits at most 10 seconds for
 the profile's MCP servers (`HERMES_AGENT_BRIDGE_MCP_WAIT_SECONDS`; `0` waits for all of

@@ -376,8 +376,11 @@ export async function applyRecommendedPlugins(profile: string, deps: Recommended
   if (failed.length) {
     logger.warn('[recommended-plugins] not installed yet profile=%s (retry on next start): %s', profile,
       failed.map(([name, error]) => `${name}: ${error}`).join('; '))
-    // The watcher's bell (docs/watcher.md) shows each one.
+    // The watcher's bell (docs/watcher.md) shows each one once: again only when the reason
+    // changes, or after the plugin installed and later fails again.
+    const told = before?.lastFailure || {}
     for (const [name, error] of failed) {
+      if (told[name]?.error === error) continue
       recordWatcherEvent({ kind: 'plugin_failed', severity: 'warn', text: `Recommended plugin ${name} was not installed in profile ${profile}: ${error}. Studio tries again on its next start.`, link: '/hermes/config/settings' })
     }
   }

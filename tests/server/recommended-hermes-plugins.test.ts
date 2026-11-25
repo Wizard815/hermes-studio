@@ -20,6 +20,11 @@ vi.mock('../../packages/server/src/modules/hermes/services/profiles/config', asy
       safeFileStore.updateYaml(join(profile === 'default' ? base : join(base, 'profiles', profile), 'config.yaml'), updater),
   }
 })
+const watcherEvents: Array<{ kind: string; text: string }> = []
+vi.mock('../../packages/server/src/modules/studio/public/watcher', async (orig) => ({
+  ...(await orig<any>()),
+  recordWatcherEvent: (event: { kind: string; text: string }) => { watcherEvents.push(event) },
+}))
 vi.mock('../../packages/server/src/modules/studio/public/app-config', async (orig) => ({
   ...(await orig<any>()),
   readAppConfig: async () => savedAppConfig,
@@ -79,6 +84,7 @@ const installs = (calls: Array<{ path: string; body: unknown }>) =>
 beforeEach(() => {
   base = mkdtempSync(join(tmpdir(), 'recommended-plugins-'))
   savedAppConfig = {}
+  watcherEvents.length = 0
 })
 afterEach(() => rmSync(base, { recursive: true, force: true }))
 
@@ -173,6 +179,35 @@ describe('recommended Hermes plugins', () => {
     hermes.calls.length = 0
     await applyRecommendedPlugins('default', hermes.deps)
     expect(installs(hermes.calls)).toEqual(['print3d'])
+  })
+
+  it('tells the bell about a failure once per plugin and reason, and again only when the reason changes', async () => {
+    let reason = 'Blender 4.2+ not found. Install Blender first.'
+    let refuse = true
+    const hermes = fakeHermes(catalog(), {
+      install: name => name === 'print3d' && refuse ? { status: 400, body: { detail: reason } } : undefined as any,
+    })
+    const bell = () => watcherEvents.filter(event => event.kind === 'plugin_failed').map(event => event.text)
+    await applyRecommendedPlugins('default', hermes.deps)
+    expect(bell()).toHaveLength(1)
+    expect(bell()[0]).toMatch(/^Recommended plugin print3d was not installed/)
+    // Every later start retries, but the same refusal is not added again.
+    await applyRecommendedPlugins('default', hermes.deps)
+    await applyRecommendedPlugins('default', hermes.deps)
+    expect(bell()).toHaveLength(1)
+    const state = await readRecommendedState(hermes.deps.stateFile)
+    expect(state.homes[base].lastFailure?.print3d.attempts).toBe(3)
+    // A different reason is news.
+    reason = 'Network unreachable'
+    await applyRecommendedPlugins('default', hermes.deps)
+    expect(bell()).toHaveLength(2)
+    expect(bell()[1]).toContain('Network unreachable')
+    // Once it installs it is done for good; nothing more is added.
+    refuse = false
+    await applyRecommendedPlugins('default', hermes.deps)
+    await applyRecommendedPlugins('default', hermes.deps)
+    expect(bell()).toHaveLength(2)
+    expect((await readRecommendedState(hermes.deps.stateFile)).homes[base].lastFailure).toBeUndefined()
   })
 
   it('skips plugins for other platforms for good, and maps macos/windows names', async () => {
