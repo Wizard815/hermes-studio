@@ -672,9 +672,9 @@ export async function createManagedUser(ctx: Context) {
     defaultProfile: body.defaultProfile,
   })
   ctx.status = 201
-  // Never send the password hash back: answer with the same summary the list uses.
   const users = listUsers()
-  ctx.body = { user: users.find(item => item.id === user?.id) ?? null, users }
+  // The summary, never the stored row: that holds the password hash.
+  ctx.body = { user: users.find(u => u.id === user?.id) ?? null, users }
 }
 
 /**
@@ -761,7 +761,7 @@ export async function updateManagedUser(ctx: Context) {
     defaultProfile: body.defaultProfile,
   })
   const users = listUsers()
-  ctx.body = { user: users.find(item => item.id === user.id) ?? null, users }
+  ctx.body = { user: users.find(u => u.id === user.id) ?? null, users }
 }
 
 /**
