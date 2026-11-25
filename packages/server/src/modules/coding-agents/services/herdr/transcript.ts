@@ -1,6 +1,7 @@
 import { open, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { stripStudioContextBlocks } from '../../../../../../shared/studio-context'
 
 export interface TranscriptMessage {
   role: 'user' | 'assistant'
@@ -10,6 +11,10 @@ export interface TranscriptMessage {
 }
 
 function textOf(content: unknown): string {
+  return stripStudioContextBlocks(rawTextOf(content))
+}
+
+function rawTextOf(content: unknown): string {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
   return content

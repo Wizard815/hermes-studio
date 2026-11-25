@@ -4,6 +4,7 @@ import { needsApproval, type AgentAction } from '../approval-policy'
 import { trustRequestFromAction, watcherTrusts } from '../../../studio/public/watcher'
 import { CodexAppServerTurn } from '../codex/app-server-turn'
 import { cleanRoomNeedsRestart, parseCleanRoomCommand, spawnInCleanRoom } from '../cleanroom'
+import { STUDIO_TURN_CONTEXT_ENV, inlineTurnContextSettings, settingsFileHasTurnContextHook, writeTurnContextFile } from '../claude-code/turn-context'
 import { startAcpChatTurn } from './acp-chat-turn'
 import type { NativeTurnHost } from './turn-host'
 import { codingAgentWorkingDirectory } from './workspace'
@@ -309,6 +310,12 @@ interface CodingAgentRunSendOptions {
   systemPrompt?: string
   images?: CodingAgentImageInput[]
   storageInput?: string
+  /**
+   * Studio's per-turn context blocks (task plan, session tasks, clarify). Claude Code gets
+   * them through a UserPromptSubmit hook so its session (and a herdr pane's resumed
+   * history) shows only what the user typed; other agents get them after the input.
+   */
+  turnContext?: string
 }
 
 function nowSeconds(): number {
@@ -561,6 +568,34 @@ function decodeChildChunk(chunk: Buffer): string {
     return new TextDecoder('gb18030').decode(chunk)
   } catch {
     return utf8
+  }
+}
+
+/**
+ * How one Claude Code turn gets Studio's context blocks: through the UserPromptSubmit hook
+ * (claude-code/turn-context.ts) when the launch can carry it, else after the input as before
+ * (Windows, clean rooms, or a settings file written before the hook existed).
+ */
+export function claudeTurnContext(
+  run: Pick<ManagedCodingAgentRun, 'id' | 'launch'>,
+  input: string,
+  turnContext: string,
+  platform: NodeJS.Platform = process.platform,
+): { input: string; args: string[]; env: Record<string, string> } {
+  // Never inherit a context file from Studio's own environment (global mode spreads it).
+  const none = { [STUDIO_TURN_CONTEXT_ENV]: '' }
+  const context = String(turnContext || '').trim()
+  if (!context) return { input, args: [], env: none }
+  const settingsIndex = run.launch.args.indexOf('--settings')
+  const ownSettings = settingsIndex >= 0 ? String(run.launch.args[settingsIndex + 1] || '') : ''
+  const hookReady = platform !== 'win32'
+    && !parseCleanRoomCommand(run.launch.command)
+    && (!ownSettings || settingsFileHasTurnContextHook(ownSettings))
+  if (!hookReady) return { input: `${input}\n\n${context}`, args: [], env: none }
+  return {
+    input,
+    args: ownSettings ? [] : ['--settings', inlineTurnContextSettings()],
+    env: { [STUDIO_TURN_CONTEXT_ENV]: writeTurnContextFile(run.id, context, run.launch.promptFile) },
   }
 }
 
@@ -950,7 +985,9 @@ export class CodingAgentRunManager {
     if (!run) throw new Error('Coding agent session not found')
     if (run.nativeCompletionPending) throw new Error('Coding agent is still completing the previous input')
     if (agentUpdateLocked(run.launch.agentId)) throw new Error('Agent is updating; retry after completion')
-    const text = String(input || '').trim()
+    const turnContext = String(options.turnContext || '').trim()
+    const typed = String(input || '').trim()
+    const text = turnContext && run.launch.agentId !== 'claude-code' ? `${typed}\n\n${turnContext}` : typed
     const images = Array.isArray(options.images) ? options.images : []
     if (!text && images.length === 0) throw new Error('Input is required')
     // Keep native metadata separate from launch configuration: global CLIs can
@@ -981,7 +1018,7 @@ export class CodingAgentRunManager {
       return { runId: run.id, messageId }
     }
     if (run.launch.agentId === 'claude-code') {
-      this.startClaudePrintTurn(run, text, systemPrompt, images)
+      this.startClaudePrintTurn(run, text, systemPrompt, images, turnContext)
       return { runId: run.id, messageId }
     }
     if (run.launch.agentId === 'codex') {
@@ -2260,10 +2297,13 @@ export class CodingAgentRunManager {
     input: string,
     systemPrompt = '',
     images: CodingAgentImageInput[] = [],
+    turnContext = '',
   ) {
     if (childIsRunning(run.currentChild)) {
       throw new Error('Claude Code is still processing the previous input')
     }
+    const turn = claudeTurnContext(run, input, turnContext)
+    input = turn.input
 
     const responseId = `resp_${Date.now()}`
     run.printResponseId = responseId
@@ -2307,6 +2347,7 @@ export class CodingAgentRunManager {
       ...(asks ? withApprovals(run.launch.args) : run.launch.args),
       ...(asks ? ['--permission-prompt-tool', 'stdio'] : []),
       ...nativeSessionArgs,
+      ...turn.args,
       ...(promptArgument ? ['--append-system-prompt', promptArgument] : []),
       '-p',
       '--input-format',
@@ -2319,8 +2360,8 @@ export class CodingAgentRunManager {
     const child = spawnCodingAgentChild(run.launch.command, args, {
       cwd: codingAgentWorkingDirectory(run.launch),
       env: run.launch.mode === 'global'
-        ? { ...process.env, ...(run.launch.env || {}) }
-        : isolatedCodingAgentChildEnv(run.launch.env),
+        ? { ...process.env, ...(run.launch.env || {}), ...turn.env }
+        : { ...isolatedCodingAgentChildEnv(run.launch.env), ...turn.env },
       pipeStdin: true,
     })
     run.currentChild = child

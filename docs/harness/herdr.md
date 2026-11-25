@@ -742,3 +742,29 @@ Rules that keep it safe:
   Start the isolated Studio with `NODE_ENV=production` (`node dist/server/index.js`):
   without it Studio ignores `HERMES_WEB_UI_HOME` and opens the developer
   database `packages/server/data/hermes-web-ui.db`, which tests must never touch.
+
+## Studio's context blocks
+
+Studio adds per-turn blocks for the agent (`<studio_task_plan_context>`,
+`<studio_session_tasks_context>`, `<studio_interaction_context>`). They used
+to sit at the end of the user's message, so a herdr pane's resumed history
+(`claude --resume`) showed them as if the user had typed them.
+
+- **Claude Code**: Studio passes them separately (`turnContext` in
+  `run-manager.ts`). They go in a file next to the run's prompt file, and a
+  `UserPromptSubmit` hook (`claude-code/turn-context.ts`) prints it. Claude
+  Code saves hook output as an attachment: the model gets it, the user's
+  message stays what was typed. The hook is in Studio's `settings.json`
+  (scoped mode) or an inline `--settings` (global mode). It prints nothing
+  when `STUDIO_TURN_CONTEXT_FILE` is unset, so turns typed in the pane get
+  nothing extra.
+- Falls back to the old way (blocks after the message) on Windows, in clean
+  rooms, and for a run whose `settings.json` was written before the hook.
+- **Other agents** (Codex, Pi, ...) still get the blocks after the message.
+  The herdr transcript mirror (`herdr/transcript.ts`) strips them, so
+  Studio's chat stays clean; their own resumed history still shows them.
+- Studio's own transcript always stores what the user typed.
+
+Tests: `tests/server/claude-turn-context.test.ts`. Live check: a Studio
+Claude Code chat with the real CLI and a stub model, then `claude --resume`
+of its session shows only the typed message.

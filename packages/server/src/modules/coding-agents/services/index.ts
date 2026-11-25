@@ -41,6 +41,7 @@ export { withApprovals, withApprovalsEnv } from './approvals'
 import { getProfileDir, PROVIDER_ENV_MAP, readConfigYamlForProfile, safeReadFile } from '../../studio/public/provider-config'
 import { getCompatibleCustomProviders, resolveCustomProviderApiKey } from '../../studio/contracts/provider-compat'
 import { registerClaudeCodeProxyTarget } from './claude-code/proxy'
+import { withStudioTurnContextHook } from './claude-code/turn-context'
 import { registerCodexProxyTarget } from './codex/proxy'
 import { compactCodexThread } from './codex/compact'
 import { writeManagedPromptFile } from './prompt-file'
@@ -3516,7 +3517,8 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       },
     }
     env = settings.env
-    await writeScopedFile('settings', `${JSON.stringify(settings, null, 2)}\n`)
+    // Studio's per-turn context reaches Claude through a hook, not the user's message (claude-code/turn-context.ts).
+    await writeScopedFile('settings', `${JSON.stringify(withStudioTurnContextHook(settings), null, 2)}\n`)
     const globalMcpPath = getLiveConfigFileDefinition(tool.id, 'mcp')?.absolutePath
     const existingMcpPath = getScopedConfigFileDefinition(tool.id, 'mcp', scope)?.absolutePath
     const globalMcpConfig = globalMcpPath ? await safeReadFile(globalMcpPath) : ''
@@ -4090,8 +4092,9 @@ export function sendCodingAgentRunInput(
   systemPrompt?: string,
   images: CodingAgentImageInput[] = [],
   storageInput?: string,
+  turnContext?: string,
 ): { runId: string; messageId?: number } {
-  return codingAgentRunManager.send(sessionId, input, { systemPrompt, images, storageInput })
+  return codingAgentRunManager.send(sessionId, input, { systemPrompt, images, storageInput, turnContext })
 }
 
 export function stopCodingAgentRun(sessionId: string): { stopped: boolean } {
