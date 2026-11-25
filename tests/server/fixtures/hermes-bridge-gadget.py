@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'packages/server/src/modules/hermes/services/bridge/python'))
-from bridge_gadget import needs_desk, studio_gadget_result
+from bridge_gadget import needs_desk, offer_gadget_tools, studio_gadget_result
 from bridge_pool import AgentPool
 
 DEVICE = 'hg-0123456789abcdef'
@@ -84,6 +84,27 @@ class GadgetTests(unittest.TestCase):
         self.running()
         out = json.loads(studio_gadget_result('gadget_ask', {'question': 'Tea?', 'options': ['yes', 'no']}, self.dir))
         self.assertIn('only works in chats the Hermes gateway runs', out['error'])
+
+    def test_tools_are_offered_while_the_gateway_runs(self):
+        class Entry:
+            def __init__(self, name):
+                self.name, self.check_fn = name, (lambda: False)
+
+        class Registry:
+            def __init__(self):
+                self.entries = [Entry('gadget_display'), Entry('gadget_action'), Entry('terminal')]
+
+            def get_all_entries(self):
+                return list(self.entries)
+
+        reg = Registry()
+        self.assertEqual(offer_gadget_tools(reg, self.dir), 2)
+        self.assertEqual(offer_gadget_tools(reg, self.dir), 0)  # wrapped once
+        display, _, terminal = reg.entries
+        self.assertFalse(display.check_fn())  # gateway not running yet
+        self.assertFalse(terminal.check_fn())  # other tools untouched
+        self.running()
+        self.assertTrue(display.check_fn())
 
     def test_the_bridge_hook_replaces_the_hub_error(self):
         self.running()

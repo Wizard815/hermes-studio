@@ -291,6 +291,12 @@ class AgentPool:
             results = hooks.setdefault("transform_tool_result", [])
             if self._gadget_tool_result not in results:
                 results.append(self._gadget_tool_result)
+            # The plugin hides its tools outside the gateway process; offer them while it runs.
+            from bridge_gadget import offer_gadget_tools
+            from tools.registry import invalidate_check_fn_cache, registry
+
+            if offer_gadget_tools(registry):
+                invalidate_check_fn_cache()
         except Exception as exc:
             print(f"[hermes_bridge] failed to install the Home Assistant and Gadget hooks: {exc}", file=sys.stderr, flush=True)
 
