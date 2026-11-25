@@ -6,6 +6,18 @@ import { readFileSync, writeFileSync, unlinkSync, mkdirSync, openSync, chmodSync
 import { randomBytes, scryptSync } from 'crypto'
 import { homedir } from 'os'
 
+/**
+ * Behind a proxy (HTTPS_PROXY / HTTP_PROXY set), Node's built-in fetch, which Studio uses for model
+ * providers, plugin catalogs and Upstream, ignores those variables unless NODE_USE_ENV_PROXY=1
+ * (Node 22.21+ / 24.5+; older versions ignore it). Turn it on for the server unless set either way.
+ */
+function withEnvProxy(env) {
+  const proxied = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'].some(k => String(env[k] || '').trim())
+  if (proxied && env.NODE_USE_ENV_PROXY === undefined) env.NODE_USE_ENV_PROXY = '1'
+  return env
+}
+
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const __filename = fileURLToPath(import.meta.url)
 const serverEntry = resolve(__dirname, '..', 'dist', 'server', 'index.js')
@@ -423,7 +435,7 @@ function startDaemon(port) {
 
   const logStream = openSync(LOG_FILE, 'a')
   const windowsShell = process.platform === 'win32' ? getWindowsShell() : null
-  const serverEnv = { ...process.env, NODE_ENV: 'production', PORT: String(port), AUTH_TOKEN: token }
+  const serverEnv = withEnvProxy({ ...process.env, NODE_ENV: 'production', PORT: String(port), AUTH_TOKEN: token })
   if (windowsShell) {
     serverEnv.SHELL = serverEnv.SHELL?.trim() || windowsShell
     serverEnv.ComSpec = serverEnv.ComSpec?.trim() || windowsShell
@@ -730,11 +742,11 @@ Options:
       ensureNativeModules()
       const port = !isNaN(command) ? parseInt(command) : DEFAULT_PORT
       const windowsShell = process.platform === 'win32' ? getWindowsShell() : null
-      const serverEnv = {
+      const serverEnv = withEnvProxy({
         ...process.env,
         NODE_ENV: 'production',
         PORT: String(port),
-      }
+      })
       if (windowsShell) {
         serverEnv.SHELL = serverEnv.SHELL?.trim() || windowsShell
         serverEnv.ComSpec = serverEnv.ComSpec?.trim() || windowsShell
