@@ -11,6 +11,9 @@ dashboard with tasks, projects, ideas and upkeep. Orb is optional.
   `ekko_studio_use_orb_update` (in the `use` toolset), which go through
   `GET /api/studio/orb/data/:kind` and `POST /api/studio/orb/tools/:name` (an allow-list of
   Orb tools).
+  In Hermes these sit behind `ekko_studio_use_toolset` (list / describe / call); a model that
+  calls one by its own name is routed there by the bridge (`bridge_studio_toolsets.py`), and a
+  call with bad arguments gets the tool's schema in the error.
 - **Idea boards.** `ekko_studio_use_orb_board` lets Studio agents work on the Milaclone boards
   in Orb's Ideas tab through Orb's `orb_board_*` tools: find and read a board, lay a plan out
   (columns, route or map), add, connect, group, move and mark cards, link a board to a
