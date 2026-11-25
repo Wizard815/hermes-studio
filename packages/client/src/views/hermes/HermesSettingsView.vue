@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 import AgentSettings from '@/components/hermes/settings/AgentSettings.vue'
 import GatewayAutoStartSettings from '@/components/hermes/settings/GatewayAutoStartSettings.vue'
 import RecommendedPluginsSettings from '@/components/hermes/settings/RecommendedPluginsSettings.vue'
+import UiSkillsSettings from '@/components/hermes/settings/UiSkillsSettings.vue'
 import RunLimitsSettings from '@/components/hermes/settings/RunLimitsSettings.vue'
 import WatcherSettings from '@/components/hermes/settings/WatcherSettings.vue'
 import CleanRoomSettings from '@/components/hermes/settings/CleanRoomSettings.vue'
@@ -82,6 +83,7 @@ onMounted(() => {
             <AgentSettings />
             <GatewayAutoStartSettings />
             <RecommendedPluginsSettings v-if="canUseHermesAgent" />
+            <UiSkillsSettings v-if="canUseHermesAgent" />
             <RunLimitsSettings />
           </NTabPane>
           <NTabPane name="memory" :tab="t('settings.tabs.memory')">

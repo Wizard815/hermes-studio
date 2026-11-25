@@ -9,6 +9,7 @@ import SkillExternalDirsModal from '@/components/hermes/skills/SkillExternalDirs
 import SkillImportModal from '@/components/hermes/skills/SkillImportModal.vue'
 import SkillList from '@/components/hermes/skills/SkillList.vue'
 import SkillSourceLegend from '@/components/hermes/skills/SkillSourceLegend.vue'
+import UiSkillsBundleCard from '@/components/hermes/skills/UiSkillsBundleCard.vue'
 import type { SkillCategory, SkillFileEntry, SkillSource } from '@/api/hermes/skills'
 import {
   deleteEkkoSkill,
@@ -206,6 +207,7 @@ onUnmounted(() => mobileQuery?.removeEventListener('change', handleMobileChange)
     />
 
     <div class="skills-content">
+      <UiSkillsBundleCard target="ekko" />
       <div v-if="loading && skills.length === 0" class="skills-loading"></div>
       <div v-else class="skills-layout">
         <div class="mobile-backdrop" :class="{ active: showSidebar }" @click="showSidebar = false" />
@@ -253,6 +255,10 @@ onUnmounted(() => mobileQuery?.removeEventListener('change', handleMobileChange)
 @use '@/styles/skills-manager' as skills-manager;
 
 @include skills-manager.layout;
+
+// The UI skills card sits above the list; the list and detail take the rest.
+.skills-content { display: flex; flex-direction: column; }
+.skills-layout { flex: 1; min-height: 0; height: auto; }
 
 .header-actions { display: flex; align-items: center; gap: calc(8px * var(--spacing-scale, 1)); }
 

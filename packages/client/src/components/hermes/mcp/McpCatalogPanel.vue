@@ -4,9 +4,9 @@ import { NAlert, NButton, NEmpty, NInput, NModal, NRadioButton, NRadioGroup, NSp
 import { useI18n } from 'vue-i18n'
 import McpOAuthConnect from './McpOAuthConnect.vue'
 import McpHomeServerForm from './McpHomeServerForm.vue'
-import { fetchMcpServers } from '@/api/hermes/mcp'
+import { fetchMcpServers, mcpServerAdd } from '@/api/hermes/mcp'
 import {
-  fetchMcpCatalog, filterMcpCatalog, installMcpCatalogEntry, type McpCatalogEntry,
+  PAPER_MCP, fetchMcpCatalog, filterMcpCatalog, installMcpCatalogEntry, paperServerConfig, paperServersAdded, type McpCatalogEntry,
 } from '@/api/hermes/extensions'
 
 /** Hermes's curated MCP servers: browse, install with one click, sign in. */
@@ -50,6 +50,30 @@ async function loadServerConfigs() {
     const data = await fetchMcpServers()
     serverConfigs.value = (data.servers || []).map(server => ({ name: server.name, url: String(server.raw_config?.url || '') }))
   } catch { /* the catalog still works without it */ }
+}
+
+// Paper (paper.design): a remote server with OAuth, added here, then signed in. Never added on its own.
+const showPaper = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  return !q || `${PAPER_MCP.title} paper design canvas figma ui`.toLowerCase().includes(q)
+})
+const paperAdded = computed(() => paperServersAdded(serverConfigs.value))
+const paperBusy = ref(false)
+
+async function addPaper() {
+  paperBusy.value = true
+  try {
+    const result = await mcpServerAdd(PAPER_MCP.name, paperServerConfig())
+    if (result.error || result.ok === false) throw new Error(result.error || t('paperMcp.addFailed'))
+    message.success(t('paperMcp.added'))
+    await loadServerConfigs()
+    emit('changed', PAPER_MCP.name)
+    connect(PAPER_MCP.name)
+  } catch (err: any) {
+    message.error(err?.message || t('paperMcp.addFailed'))
+  } finally {
+    paperBusy.value = false
+  }
 }
 
 function onHomeAdded(name: string) {
@@ -140,6 +164,34 @@ void loadServerConfigs()
       </NRadioGroup>
       <NButton size="small" quaternary :loading="loading" @click="load">{{ t('hermesExtensions.common.refresh') }}</NButton>
     </div>
+
+    <section v-if="showPaper" class="home-group" data-testid="mcp-design-group">
+      <h3 class="group-title">{{ t('paperMcp.groupTitle') }}</h3>
+      <div class="catalog-grid">
+        <div class="catalog-card" :class="{ installed: paperAdded.length }" data-testid="mcp-paper-card">
+          <div class="catalog-head">
+            <h3>{{ PAPER_MCP.title }}</h3>
+            <div class="catalog-tags">
+              <NTag v-if="paperAdded.length" size="small" type="success" round>{{ t('hermesExtensions.common.installed') }}</NTag>
+              <NTag size="small" round type="info">{{ t('hermesExtensions.catalog.signInNeeded') }}</NTag>
+            </div>
+          </div>
+          <p class="catalog-desc">{{ t('paperMcp.description') }}</p>
+          <p class="catalog-note">{{ t('paperMcp.note') }}</p>
+          <div class="catalog-url" :title="PAPER_MCP.url">{{ PAPER_MCP.url }}</div>
+          <div class="catalog-actions">
+            <a :href="PAPER_MCP.docs" target="_blank" rel="noopener" class="catalog-link">{{ t('hermesExtensions.common.docs') }}</a>
+            <span class="spacer" />
+            <NButton v-if="paperAdded.length" size="tiny" secondary type="primary" @click="connect(paperAdded[0])">
+              {{ t('hermesExtensions.oauth.connect') }}
+            </NButton>
+            <NButton v-else size="tiny" type="primary" :loading="paperBusy" @click="addPaper">
+              {{ t('paperMcp.add') }}
+            </NButton>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <section v-if="homeEntries.length" class="home-group">
       <h3 class="group-title">{{ t('hermesExtensions.home.groupTitle') }}</h3>
@@ -259,6 +311,7 @@ void loadServerConfigs()
 .catalog-desc { margin: 0; color: $text-secondary; font-size: calc(var(--font-size-base, 14px) * 13 / 14); flex: 1; }
 .catalog-url { color: $text-muted; font-size: calc(var(--font-size-base, 14px) * 11 / 14); font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .catalog-actions { display: flex; align-items: center; gap: 8px; }
+.catalog-note { margin: 0; color: $text-muted; font-size: calc(var(--font-size-base, 14px) * 12 / 14); }
 .catalog-link { color: $accent-primary; font-size: calc(var(--font-size-base, 14px) * 12 / 14); text-decoration: none; }
 .spacer { flex: 1; }
 .install-body { display: flex; flex-direction: column; gap: calc(12px * var(--spacing-scale, 1)); }

@@ -1,3 +1,4 @@
+import { uiSkillsPointer } from '../../studio/public/ui-skills'
 import { providerAccountHome, providerAccountId } from '../../studio/public/provider-account'
 import { canonicalProviderId, logicalModelSelection } from '../../studio/public/model-routing'
 import { migrateSessionRuntime } from './session-runtime-migration'
@@ -139,6 +140,12 @@ const LEGACY_HERMES_MCP_COMMANDS = new Set([
 const HERMES_MCP_MANAGED_ENV_KEY = 'HERMES_WEB_UI_MANAGED_MCP'
 const HERMES_STUDIO_SESSION_ENV_KEY = 'HERMES_STUDIO_SESSION_ID'
 const GLOBAL_CODEX_SHADOW_LINK_DIRS = new Set(['memories', 'plugins', 'rules', 'skills', 'vendor_imports', 'visualizations'])
+
+/** Native agents have no skills folder Studio fills: they get a pointer to the UI skills (docs/ui-skills.md). */
+async function withUiSkillsPointer(prompt: string): Promise<string> {
+  const pointer = await uiSkillsPointer(getGlobalConfigHome()).catch(() => '')
+  return [prompt, pointer].filter(Boolean).join('\n\n')
+}
 
 let cachedCodexVersion: { version: string; checkedAt: number } | null = null
 
@@ -3229,7 +3236,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
         nativeFiles.push(selection.file)
       }
       return { agentId: tool.id, mode, profile: scope.profile, provider: 'global', model, reasoningEffort, rootDir, workspaceDir,
-        command: execution.command, args: execution.args, env: execution.env, files: nativeFiles, nativeSystemPrompt: systemPrompt, nativeMcpServers,
+        command: execution.command, args: execution.args, env: execution.env, files: nativeFiles, nativeSystemPrompt: await withUiSkillsPointer(systemPrompt), nativeMcpServers,
         shellCommand: buildLaunchShellCommand({ workspaceDir, ...execution }) }
     }
 
@@ -3888,7 +3895,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
           ? join(rootDir, 'AGENTS.md')
         : undefined,
     reasoningEffort,
-    ...(nativeCodingAgentSupportsScoped(tool.id) ? { nativeSystemPrompt: scopedSystemPrompt, nativeMcpServers } : {}),
+    ...(nativeCodingAgentSupportsScoped(tool.id) ? { nativeSystemPrompt: await withUiSkillsPointer(scopedSystemPrompt), nativeMcpServers } : {}),
   }
 }
 

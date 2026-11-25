@@ -66,6 +66,9 @@ import {
 } from '../modules/studio/repositories/app-connections-store'
 import { ensureAppRelayHostClient } from '../modules/studio/services/app-relay/connection'
 import { setupGlobalEkkoAgent } from './ekko'
+import { codingAgentUiSkillTargets, registerUiSkillTargetProvider, scheduleUiSkillsInstall } from '../modules/studio/public/ui-skills'
+import { hermesUiSkillTargets } from '../modules/hermes/services/skills/ui-skill-targets'
+import { ekkoUiSkillTargets } from '../modules/ekko/services/ui-skill-targets'
 import { injectManagedEkkoMcpServers } from '../modules/ekko/services/mcp'
 import { WorkflowSocketServer } from '../modules/studio/sockets/workflow'
 import { PetStateSocketServer } from '../modules/studio/sockets/pet-state'
@@ -619,6 +622,12 @@ export async function bootstrap() {
   // (it starts Hermes's API and clones pinned plugins; never blocks startup).
   const recommendedPluginsTimer = setTimeout(() => { void scheduleRecommendedPlugins() }, Number(process.env.STUDIO_RECOMMENDED_HERMES_PLUGINS_DELAY_MS || 30_000))
   recommendedPluginsTimer.unref()
+  // UI skills (docs/ui-skills.md), once per Hermes profile, Ekko profile and coding agent skills folder.
+  registerUiSkillTargetProvider('hermes', hermesUiSkillTargets)
+  registerUiSkillTargetProvider('ekko', ekkoUiSkillTargets)
+  registerUiSkillTargetProvider('coding-agents', () => codingAgentUiSkillTargets())
+  const uiSkillsTimer = setTimeout(() => { void scheduleUiSkillsInstall() }, Number(process.env.STUDIO_UI_SKILLS_DELAY_MS || 5_000))
+  uiSkillsTimer.unref()
   const closeScreenGateway = screenGateway.attach(servers)
   additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })
   // A screen installed before this container was rebuilt is installed again.

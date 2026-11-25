@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import { getWebUiHome } from '../../../studio/public/config'
 import { config } from '../../../studio/public/config'
 import { pipelockProxy, recordWatcherEvent } from '../../../studio/public/watcher'
+import { cleanRoomUiSkillMounts } from '../../../studio/public/ui-skills'
 import { appendEgress, forgetEgressLog, readEgress, verifyEgressChain, type EgressEntry } from './egress-log'
 import { scanForLeaks, type LeakReport } from './leaks'
 import { judgeProbe, normalizeProbe, overallState, PROBE_SCRIPT, type SelfCheckExpectations, type SelfCheckResult } from './probe'
@@ -561,7 +562,14 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
     `u=${user.uid}:${user.gid}`, `rofs=${settings.readOnlyRoot ? 1 : 0}`,
     `caps=${settings.dropAllCaps ? ['none', ...settings.capAdd].join('+') : 'default'}`, `web=${settings.allowWebTools ? 1 : 0}`,
   ].join(',')
-  const paths = [mounts.workspace, ...(mounts.configs || []), ...readOnlyConfigs.map(path => `ro:${path}`), mounts.program, `home:${roomHome}`, `walls:${hardening}`].filter(Boolean).join('|')
+  // UI skills (docs/ui-skills.md), read-only at /root/.claude/skills and /root/.agents/skills.
+  // Left out when their folder is not on a volume Docker can see.
+  let uiSkills: Array<{ host: string; inside: string }> = []
+  try {
+    uiSkills = await Promise.all((await cleanRoomUiSkillMounts()).map(async mount => ({ host: await hostPath(mount.source), inside: mount.inside })))
+  } catch { uiSkills = [] }
+  const uiLabel = uiSkills.length ? `ui:${createHash('sha256').update(uiSkills.map(mount => mount.inside).join(',')).digest('hex').slice(0, 12)}` : ''
+  const paths = [mounts.workspace, ...(mounts.configs || []), ...readOnlyConfigs.map(path => `ro:${path}`), mounts.program, `home:${roomHome}`, `walls:${hardening}`, uiLabel].filter(Boolean).join('|')
   let existing: any = null
   try { existing = (await dockerJson(['inspect', name]))[0] } catch { existing = null }
   if (process.env.STUDIO_CLEANROOM_DEBUG) process.stderr.write(`[cleanroom] ${name}: ${existing ? (existing.Config?.Labels?.['studio.cleanroom.paths'] === paths ? 'reuse' : 'remake') : 'make'} ${paths}\n`)
@@ -594,6 +602,8 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
       }
     } catch { /* the room still starts */ }
   } else updateCleanRoomState(sessionId, { leaks: undefined })
+  // Mount points for the UI skills, made now so Docker does not make root-owned folders in the room's home.
+  for (const mount of uiSkills) mkdirSync(join(roomHome, mount.inside.replace(/^\/root\//, '')), { recursive: true })
   // The room's home belongs to the user the agent runs as.
   if (studioUser.uid === 0 && user.uid !== 0) chownTree(roomHome, user.uid, user.gid)
   const files: string[] = []
@@ -628,6 +638,7 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
     // The tunnel's sockets and scripts: the agent connects to the sockets but cannot change the folder.
     ...volume(`${await hostPath(dir)}:${SOCKET_DIR_IN_CONTAINER}`, 'ro'),
     ...volume(`${await hostPath(roomHome)}:/root`, 'rw'),
+    ...uiSkills.flatMap(mount => volume(`${mount.host}:${mount.inside}`, 'ro')),
     ...files,
     '-w', mounts.workspace,
     settings.image,

@@ -15,6 +15,7 @@ import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { systemMessages } from '../system-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
+import { uiSkillsMessages } from '../ui-skills-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { navigationMessages } from '../navigation-locales'
 import { personMessages } from '../person-messages'
@@ -46,6 +47,7 @@ export default {
   ...orbMessages['fr'],
   ...systemMessages['fr'],
   ...recommendedPluginsMessages['fr'],
+  ...uiSkillsMessages['fr'],
   ...gadgetMessages['fr'],
   sessionTasks: {
       "title": "Tâches",

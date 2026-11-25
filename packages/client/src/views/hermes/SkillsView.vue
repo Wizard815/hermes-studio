@@ -13,6 +13,7 @@ import PendingWriteApprovals from '@/components/hermes/skills/PendingWriteApprov
 import CuratorCard from '@/components/hermes/skills/CuratorCard.vue'
 import SkillsHubPanel from '@/components/hermes/skills/SkillsHubPanel.vue'
 import SkillLockToggle from '@/components/hermes/skills/SkillLockToggle.vue'
+import UiSkillsBundleCard from '@/components/hermes/skills/UiSkillsBundleCard.vue'
 import { listHermesSkills } from '@/api/hermes/agent-memory'
 import { isStoredSuperAdmin } from '@/api/client'
 import { deleteSkillApi, importSkill, fetchSkills, type SkillCategory, type SkillSource, type SkillInfo, type SkillTarget } from '@/api/hermes/skills'
@@ -330,6 +331,7 @@ function handleSkillSaved() {
     </NDrawer>
 
     <div class="skills-content">
+      <UiSkillsBundleCard :target="skillTarget" :profile="profilesStore.activeProfileName" />
       <div v-if="loading && categories.length === 0" class="skills-loading"></div>
       <div v-else class="skills-layout">
           <div class="mobile-backdrop" :class="{ active: showSidebar }" @click="showSidebar = false" />
@@ -392,6 +394,10 @@ function handleSkillSaved() {
   align-items: center;
   gap: calc(8px * var(--spacing-scale, 1));
 }
+
+// The UI skills card sits above the list; the list and detail take the rest.
+.skills-content { display: flex; flex-direction: column; }
+.skills-layout { flex: 1; min-height: 0; height: auto; }
 
 .skills-view.embedded {
   height: 100%;

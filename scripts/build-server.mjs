@@ -76,6 +76,11 @@ cpSync(
   { recursive: true },
 )
 
+// UI skills (docs/ui-skills.md): copied once into Hermes, Ekko and coding agent skill folders.
+const uiSkillsOutDir = resolve(rootDir, 'dist/ui-skills')
+rmSync(uiSkillsOutDir, { recursive: true, force: true })
+cpSync(resolve(rootDir, 'packages/ui-skills'), uiSkillsOutDir, { recursive: true })
+
 const ekkoSkillsOutDir = resolve(rootDir, 'dist/ekko-skills')
 rmSync(ekkoSkillsOutDir, { recursive: true, force: true })
 cpSync(

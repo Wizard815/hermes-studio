@@ -30,6 +30,7 @@ import { listUserProfiles } from '../../studio/public/users'
 import { isHermesAgentAvailable } from '../../studio/public/agent-status-registry'
 import { applyJobPostDefaults } from '../services/cron/job-post-defaults'
 import { scheduleRecommendedPlugins } from '../services/plugins/recommended'
+import { scheduleUiSkillsInstall } from '../../studio/public/ui-skills'
 import { readAppProfileAvatar } from '../services/profiles/app-profile-avatar'
 
 const bridgeCleanupClient = () => new AgentBridgeClient({ connectRetryMs: 0, timeoutMs: 5000 })
@@ -417,6 +418,7 @@ export async function create(ctx: any) {
     await injectBundledSkillsForProfile(name)
     await applyJobPostDefaults(name).catch(err => logger.warn(err, 'Job post defaults failed for "%s"', name))
     void scheduleRecommendedPlugins([name])
+    void scheduleUiSkillsInstall()
     setRuntimeStatusCache({
       profile: name,
       bridge: { running: false, profile: name, reachable: false, error: undefined },

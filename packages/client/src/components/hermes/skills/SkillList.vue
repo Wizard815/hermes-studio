@@ -4,6 +4,7 @@ import { NSwitch, useMessage, useDialog } from 'naive-ui'
 import type { SkillCategory, SkillSource, SkillInfo } from '@/api/hermes/skills'
 import { toggleSkill, deleteSkillApi } from '@/api/hermes/skills'
 import { useI18n } from 'vue-i18n'
+import { UI_SKILLS_CATEGORY } from '@/api/studio/ui-skills'
 
 type SourceFilter = SkillSource | 'modified'
 
@@ -29,6 +30,11 @@ const emit = defineEmits<{
     select: [category: string, skill: string]
     deleted: [category: string, skill: string]
 }>()
+
+/** The bundled UI skills' folder (docs/ui-skills.md) gets a readable name. */
+function categoryLabel(name: string) {
+    return name === UI_SKILLS_CATEGORY ? t('uiSkills.title') : name
+}
 
 const collapsedCategories = ref<Set<string>>(new Set())
 const archiveCollapsed = ref(true)
@@ -229,7 +235,7 @@ function confirmDelete(category: string, skillName: string) {
                                 :class="{ collapsed: collapsedCategories.has(group.path + '::' + cat.name) }">
                                 <polyline points="6 9 12 15 18 9" />
                             </svg>
-                            <span class="category-name">{{ cat.name }}</span>
+                            <span class="category-name">{{ categoryLabel(cat.name) }}</span>
                             <span class="category-count">{{ cat.skills.length }}</span>
                         </button>
                         <div v-if="!collapsedCategories.has(group.path + '::' + cat.name)" class="category-skills">
@@ -266,7 +272,7 @@ function confirmDelete(category: string, skillName: string) {
                         class="category-arrow" :class="{ collapsed: collapsedCategories.has(cat.name) }">
                         <polyline points="6 9 12 15 18 9" />
                     </svg>
-                    <span class="category-name">{{ cat.name }}</span>
+                    <span class="category-name">{{ categoryLabel(cat.name) }}</span>
                     <span class="category-count">{{ cat.skills.length }}</span>
                 </button>
                 <div v-if="!collapsedCategories.has(cat.name)" class="category-skills">

@@ -43,6 +43,8 @@ export interface McpServerConfig {
   connect_timeout?: number
   enabled?: boolean
   transport?: 'stdio' | 'http' | 'sse'
+  /** Hermes signs in to this server with OAuth (MCP page: Sign in). */
+  auth?: 'oauth'
   tools?: { include?: string[]; exclude?: string[] }
   prompts?: boolean
   resources?: boolean

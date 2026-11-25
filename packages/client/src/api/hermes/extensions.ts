@@ -105,6 +105,33 @@ export function filterMcpCatalog(entries: McpCatalogEntry[], query: string, show
   })
 }
 
+// ---- Studio's own catalog cards ---------------------------------------------
+
+/**
+ * Paper (paper.design), a design canvas agents read and write over MCP. A
+ * remote server with OAuth: Studio adds it on the MCP page, then Hermes signs
+ * in (McpOAuthConnect). Designs go to Paper's servers; it needs a Paper account.
+ */
+export const PAPER_MCP = {
+  name: 'paper',
+  title: 'Paper (paper.design)',
+  url: 'https://mcp.paper.design',
+  host: 'mcp.paper.design',
+  docs: 'https://paper.design/docs/mcp',
+} as const
+
+/** The config Studio adds for Paper. */
+export function paperServerConfig(): { url: string; auth: 'oauth' } {
+  return { url: PAPER_MCP.url, auth: 'oauth' }
+}
+
+/** Names of servers already pointing at Paper's MCP. */
+export function paperServersAdded(servers: Array<{ name: string; url: string }>): string[] {
+  return servers.filter(server => {
+    try { return new URL(server.url).hostname === PAPER_MCP.host } catch { return false }
+  }).map(server => server.name)
+}
+
 // ---- Home servers (Home Assistant, Unraid) ---------------------------------
 
 /**

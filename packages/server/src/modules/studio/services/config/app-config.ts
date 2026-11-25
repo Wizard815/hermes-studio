@@ -89,6 +89,11 @@ export interface AppConfig {
   // profile (on unless explicitly false; STUDIO_RECOMMENDED_HERMES_PLUGINS=0
   // also turns it off).
   recommendedHermesPlugins?: boolean
+
+  // Copy the bundled UI skills (docs/ui-skills.md) once into every Hermes
+  // profile, Ekko profile and coding agent skills folder (on unless
+  // explicitly false; STUDIO_UI_SKILLS=0 also turns it off).
+  uiSkills?: boolean
 }
 
 let cache: AppConfig | null = null
