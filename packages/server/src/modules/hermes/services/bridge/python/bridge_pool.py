@@ -2090,6 +2090,9 @@ class AgentPool:
         with _profile_env(profile):
             _refresh_approval_allowlist()
             _install_execute_code_approval_memory_patch()
+            # Studio tools called by their own name reach their toolset (bridge_studio_toolsets).
+            from bridge_studio_toolsets import install_studio_toolset_routing
+            install_studio_toolset_routing()
             def stream_callback(delta: str) -> None:
                 with self._lock:
                     text = str(delta)
