@@ -43,6 +43,21 @@ export function gadgetDeviceUrl(status: Pick<GadgetStatus, 'platform'>, hostname
 /** What the panel says about the gateway: one state, most important first. */
 export type GadgetState = 'not-installed' | 'plugin-off' | 'platform-off' | 'listening' | 'gateway-stopped' | 'restart' | 'error'
 
+/** How long after "Restart gateway" the panel says "Restarting…" before it says the restart failed. */
+export const GADGET_RESTART_TIMEOUT_MS = 120_000
+
+/**
+ * After "Restart gateway" the gateway is not listening for up to a minute; that is
+ * a restart in progress, not a problem. It is back once the restarted gateway wrote
+ * its status (listening, written after the restart began: the old gateway's file
+ * still reads as listening for a moment). Null when no restart is pending or it is back.
+ */
+export function gadgetRestartPhase(status: Pick<GadgetStatus, 'listening' | 'statusUpdatedAt'>, startedAt: number | null, now = Date.now()): 'restarting' | 'failed' | null {
+  if (startedAt === null) return null
+  if (status.listening && (status.statusUpdatedAt ?? 0) * 1000 >= startedAt) return null
+  return now - startedAt < GADGET_RESTART_TIMEOUT_MS ? 'restarting' : 'failed'
+}
+
 export function gadgetState(status: GadgetStatus): GadgetState {
   if (!status.plugin.installed) return 'not-installed'
   if (!status.plugin.enabled) return 'plugin-off'

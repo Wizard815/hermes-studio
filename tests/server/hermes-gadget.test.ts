@@ -20,7 +20,7 @@ import {
   enableGadgetPlatformOnce, gadgetDefaultsFromEnv, probePort, readGadgetStatus, readLiveStatus, updateGadgetPlatform, validHost,
   type GadgetStatusDeps,
 } from '../../packages/server/src/modules/hermes/services/plugins/gadget'
-import { gadgetDeviceUrl, gadgetState } from '../../packages/client/src/api/hermes/gadget'
+import { GADGET_RESTART_TIMEOUT_MS, gadgetDeviceUrl, gadgetRestartPhase, gadgetState } from '../../packages/client/src/api/hermes/gadget'
 
 const config = () => YAML.load(readFileSync(join(base, 'config.yaml'), 'utf8')) as any
 
@@ -144,5 +144,19 @@ describe('Hermes Gadget status', () => {
     expect(await probePort('0.0.0.0', port)).toBe(true)
     await new Promise<void>(done => server.close(() => done()))
     expect(await probePort('127.0.0.1', port, 300)).toBe(false)
+  })
+})
+
+describe('the Gadget card during a gateway restart', () => {
+  it('says restarting until the gateway listens, and failed after the timeout', () => {
+    const started = 1_000_000
+    const before = (started - 5000) / 1000
+    const after = (started + 20_000) / 1000
+    expect(gadgetRestartPhase({ listening: false, statusUpdatedAt: before }, null, started)).toBeNull()
+    expect(gadgetRestartPhase({ listening: false, statusUpdatedAt: before }, started, started + 30_000)).toBe('restarting')
+    // The old gateway's status file still says listening: not back yet.
+    expect(gadgetRestartPhase({ listening: true, statusUpdatedAt: before }, started, started + 1000)).toBe('restarting')
+    expect(gadgetRestartPhase({ listening: true, statusUpdatedAt: after }, started, started + 30_000)).toBeNull()
+    expect(gadgetRestartPhase({ listening: false, statusUpdatedAt: null }, started, started + GADGET_RESTART_TIMEOUT_MS)).toBe('failed')
   })
 })

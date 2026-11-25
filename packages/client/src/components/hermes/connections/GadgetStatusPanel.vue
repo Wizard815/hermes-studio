@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { NButton, NInput, NInputNumber, NSwitch, NTag, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { fetchGadgetStatus, gadgetDeviceUrl, gadgetState, updateGadgetPlatform, type GadgetStatus } from '@/api/hermes/gadget'
+import { fetchGadgetStatus, gadgetDeviceUrl, gadgetRestartPhase, gadgetState, updateGadgetPlatform, type GadgetStatus } from '@/api/hermes/gadget'
 import { restartProfileGateway } from '@/api/hermes/profiles'
 
 /** Hermes Gadget (Hermes plugin `gadget`): is it on, is the gateway listening, which devices are connected. */
@@ -14,11 +14,18 @@ const saving = ref(false)
 const restarting = ref(false)
 const host = ref('')
 const port = ref<number | null>(null)
+/** When "Restart gateway" was pressed; cleared once the gateway listens again. */
+const restartStartedAt = ref<number | null>(null)
+const now = ref(Date.now())
 let timer: ReturnType<typeof setInterval> | null = null
+let restartTimer: ReturnType<typeof setInterval> | null = null
 
 const state = computed(() => status.value ? gadgetState(status.value) : null)
+const restartPhase = computed(() => status.value ? gadgetRestartPhase(status.value, restartStartedAt.value, now.value) : null)
 const url = computed(() => status.value ? gadgetDeviceUrl(status.value, window.location.hostname || 'this-host') : '')
 const notice = computed(() => {
+  if (restartPhase.value === 'restarting') return t('gadget.restartingNotice')
+  if (restartPhase.value === 'failed') return t('gadget.restartFailed')
   switch (state.value) {
     case 'not-installed': return t('gadget.notInstalled')
     case 'plugin-off': return t('gadget.pluginOff')
@@ -69,17 +76,38 @@ function saveAddress() {
   void save({ host: host.value.trim(), port: port.value || undefined })
 }
 
+function stopRestartWatch() {
+  if (restartTimer) clearInterval(restartTimer)
+  restartTimer = null
+}
+
+/** Until the gateway listens again (or the restart times out), check every 3 s and say "Restarting…". */
+function watchRestart() {
+  stopRestartWatch()
+  restartStartedAt.value = Date.now()
+  now.value = Date.now()
+  restartTimer = setInterval(() => {
+    now.value = Date.now()
+    if (restartPhase.value !== 'restarting') {
+      stopRestartWatch()
+      if (!restartPhase.value) restartStartedAt.value = null
+      return
+    }
+    void load(true)
+  }, 3000)
+}
+
 async function restart() {
   if (!status.value) return
   restarting.value = true
   try {
     await restartProfileGateway(status.value.profile)
     message.success(t('gadget.restarting'))
+    watchRestart()
   } catch (error: any) {
     message.error(error?.message || t('gadget.restart'))
   } finally {
     restarting.value = false
-    setTimeout(() => { void load(true) }, 4000)
   }
 }
 
@@ -91,7 +119,7 @@ onMounted(() => {
   void load()
   timer = setInterval(() => { void load(true) }, 10_000)
 })
-onBeforeUnmount(() => { if (timer) clearInterval(timer) })
+onBeforeUnmount(() => { if (timer) clearInterval(timer); stopRestartWatch() })
 </script>
 
 <template>
@@ -107,7 +135,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
           v-if="canConfigure && status.platform.enabled"
           size="small"
           :type="state === 'restart' || state === 'gateway-stopped' ? 'primary' : 'default'"
-          :loading="restarting"
+          :loading="restarting || restartPhase === 'restarting'"
           @click="restart"
         >
           {{ t('gadget.restart') }}
@@ -123,14 +151,15 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
         <NTag size="small" round :bordered="false" :type="status.platform.enabled ? 'success' : 'default'">{{ status.platform.enabled ? t('gadget.on') : t('gadget.off') }}</NTag>
       </span>
       <span class="gadget-fact" data-testid="gadget-listening">{{ t('gadget.listening') }}
-        <NTag size="small" round :bordered="false" :type="status.listening ? 'success' : 'warning'">{{ status.listening ? t('gadget.yes') : t('gadget.no') }}</NTag>
+        <NTag v-if="restartPhase === 'restarting'" size="small" round :bordered="false" type="info">{{ t('gadget.restartingTag') }}</NTag>
+        <NTag v-else size="small" round :bordered="false" :type="status.listening ? 'success' : 'warning'">{{ status.listening ? t('gadget.yes') : t('gadget.no') }}</NTag>
       </span>
       <span class="gadget-fact">{{ t('gadget.connected') }}
         <NTag size="small" round :bordered="false" :type="status.connected ? 'success' : 'default'">{{ status.connected }}</NTag>
       </span>
     </div>
 
-    <p v-if="notice" class="gadget-notice" :class="{ 'is-error': state === 'error' }">{{ notice }}</p>
+    <p v-if="notice" class="gadget-notice" :class="{ 'is-error': state === 'error' || restartPhase === 'failed' }" role="status" aria-live="polite" data-testid="gadget-notice">{{ notice }}</p>
 
     <div v-if="canConfigure" class="gadget-config">
       <label class="gadget-field gadget-switch">

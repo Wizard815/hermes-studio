@@ -126,6 +126,9 @@ the connection is treated as a browser and `mcu.events.subscribe` gets no answer
   platform are on, whether the gateway listens (the plugin's `status.json` is fresh), the
   connected devices (from `plugin-data/gadget/`; device keys are never read out) and
   Hermes's own error for the platform, if any. **Restart gateway** applies a change.
+  While the gateway restarts, Listening says "Restarting…" until the restarted gateway
+  listens (usually within a minute); after 2 minutes without it the card says the
+  restart did not come back and to check the gateway log.
 - **Bind address and port:** the same panel (super administrators) writes
   `platforms.gadget.extra.host` and `.port`. Defaults: `0.0.0.0` and `8765`, or
   `STUDIO_GADGET_HOST` / `STUDIO_GADGET_PORT` the first time Studio turns the platform on.
