@@ -55,6 +55,18 @@ STOPWORDS = set(
 )
 
 
+# Studio appends per-turn blocks to the message it sends Hermes (<studio_task_plan_context>,
+# <studio_session_tasks_context>, <studio_interaction_context>): tool names and a context id,
+# not what the user asked. Recall and the chat's log line use the user's own words.
+_STUDIO_BLOCK = re.compile(r"<(studio_[a-z_]+)>.*?</\1>", re.S)
+_STUDIO_TAIL = re.compile(r"<studio_[a-z_]+>.*\Z", re.S)
+
+
+def user_text(text: Any) -> str:
+    """The message without Studio's context blocks (a cut-off block at the end goes too)."""
+    return _STUDIO_TAIL.sub("", _STUDIO_BLOCK.sub("", str(text or ""))).strip()
+
+
 def _is_trivial(text: str) -> bool:
     try:
         from agent.memory_provider import is_trivial_prompt
@@ -363,6 +375,7 @@ class LlmWikiMemoryProvider(MemoryProvider):
 
     def recall(self, query: str, *, session_id: str = "") -> str:
         self._last_count = 0
+        query = user_text(query)
         if not self._client or not self._settings.get("recall", True) or _is_trivial(query):
             return ""
         parts: list[str] = []
@@ -419,6 +432,7 @@ class LlmWikiMemoryProvider(MemoryProvider):
 
     def on_turn_start(self, turn_number: int, message: str, **kwargs) -> None:
         session = self._session_id
+        message = user_text(message)
         if session and session not in self._first_message and not _is_trivial(message):
             self._first_message[session] = _one_line(message)[:160]
 
@@ -439,8 +453,9 @@ class LlmWikiMemoryProvider(MemoryProvider):
         first = self._first_message.pop(self._session_id, "")
         if not first:
             for message in messages or []:
-                if message.get("role") == "user" and isinstance(message.get("content"), str) and not _is_trivial(message["content"]):
-                    first = _one_line(message["content"])[:160]
+                text = user_text(message.get("content")) if isinstance(message.get("content"), str) else ""
+                if message.get("role") == "user" and text and not _is_trivial(text):
+                    first = _one_line(text)[:160]
                     break
         if not first:
             return
