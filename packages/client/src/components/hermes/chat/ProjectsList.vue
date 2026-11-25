@@ -181,9 +181,11 @@ defineExpose({ refresh })
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="project-chevron" :class="{ open: expanded.has(project.id) }" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
           <span class="project-name">{{ project.name }}</span>
         </button>
-        <span v-for="item in projectSummary(project)" :key="item.key" class="project-badge" :class="`project-badge--${item.key}`">
-          {{ t(`projects.badge.${item.key}`, { n: item.count }) }}
-        </span>
+        <div v-if="projectSummary(project).length" class="project-badges">
+          <span v-for="item in projectSummary(project)" :key="item.key" class="project-badge" :class="`project-badge--${item.key}`">
+            {{ t(`projects.badge.${item.key}`, { n: item.count }) }}
+          </span>
+        </div>
       </div>
 
       <div v-if="expanded.has(project.id)" class="project-body">
@@ -228,8 +230,10 @@ defineExpose({ refresh })
                 @click="openThread(thread)"
               >
                 <AgentStatusIcon :status="threadDisplayStatus(thread.liveStatus)" :live="thread.liveStatus !== 'idle' && thread.liveStatus !== 'gone'" />
-                <span class="project-item-title">{{ thread.title }}</span>
-                <span class="project-item-meta">{{ thread.liveStatus === 'starting' ? t('projects.starting') : thread.agent }}</span>
+                <span class="project-thread-text">
+                  <span class="project-item-title">{{ thread.title }}</span>
+                  <span class="project-item-meta">{{ thread.liveStatus === 'starting' ? t('projects.starting') : thread.agent }}</span>
+                </span>
               </button>
               <button
                 type="button"
@@ -358,9 +362,16 @@ defineExpose({ refresh })
 
 .project-row {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
   padding: 0 8px;
+}
+
+// Counts sit under the name so a long name and three counts both fit.
+.project-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 0 4px 16px;
 }
 
 .project-toggle {
@@ -407,7 +418,7 @@ defineExpose({ refresh })
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 0 0 6px 18px;
+  padding: 0 0 6px 10px;
 }
 
 .project-actions {
@@ -454,6 +465,15 @@ defineExpose({ refresh })
   &:disabled { cursor: default; color: $text-secondary; }
 }
 
+.project-thread-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  padding: 3px 0;
+  line-height: 1.3;
+}
+
 .project-item-title {
   flex: 1;
   min-width: 0;
@@ -465,6 +485,9 @@ defineExpose({ refresh })
 
 .project-item-meta {
   flex: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 11px;
   color: $text-muted;
 }
