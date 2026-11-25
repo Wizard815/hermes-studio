@@ -98,6 +98,9 @@ export interface CodingAgentSessionCommandData {
   model?: string
   provider?: string
   mode?: 'scoped' | 'global'
+  /** The agent the chat was opened with (a brand-new chat has no run or stored agent yet). */
+  coding_agent_id?: string
+  agent_id?: string
 }
 
 export async function handleCodingAgentSessionCommand(
@@ -246,7 +249,8 @@ export async function handleCodingAgentSessionCommand(
     const row = getSession(sessionId)
     const info = codingAgentRunManager.getRunInfo(sessionId)
     // Chats store Claude Code as "claude"; its approval mode is keyed by "claude-code".
-    const agentId = info?.agentId || (row?.agent === 'claude' ? 'claude-code' : row?.agent) || ''
+    // A brand-new chat has no run or stored agent yet: the agent it was opened with sets its mode.
+    const agentId = info?.agentId || (row?.agent === 'claude' ? 'claude-code' : row?.agent) || String(data.coding_agent_id || data.agent_id || '').trim()
     const running = Boolean(info?.running) || state.isWorking
     if (!agentId) {
       emitCommand({ ok: false, action: 'yolo', terminal: !running, message: 'YOLO: this chat has no coding agent yet. Send a message first, then /yolo.' })

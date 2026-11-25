@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chatApprovalMode, chatApprovalOverride, launchAsks, setChatApprovalOverride, toggleChatYolo, writeAgentApprovalSettings } from '../../packages/server/src/modules/coding-agents/services/approvals'
-import { parseCodingAgentSessionCommand, toggleCodingAgentYolo } from '../../packages/server/src/modules/coding-agents/services/session-command'
+import { handleCodingAgentSessionCommand, parseCodingAgentSessionCommand, toggleCodingAgentYolo } from '../../packages/server/src/modules/coding-agents/services/session-command'
 import { applyResponseStreamEvent, flushResponseRunToDb } from '../../packages/server/src/modules/studio/services/chat-run/response-stream'
 import { extractResponseText } from '../../packages/server/src/modules/studio/services/chat-run/response-utils'
 import { initAllHermesTables } from '../../packages/server/src/modules/studio/infrastructure/database/schemas'
@@ -101,5 +101,25 @@ describe('the /yolo note and what it does to a running chat', () => {
     expect(off.message).toBe('YOLO off for this chat: Codex asks before running commands and before writing outside this chat\'s folder. Send /yolo again to let it act without asking.')
     void codingAgentRunManager.askApproval(run(), command)
     expect(emitted.some(entry => entry.event === 'approval.requested')).toBe(true)
+  })
+})
+
+describe('/yolo in a brand-new chat', () => {
+  beforeAll(() => { initAllHermesTables() })
+
+  it('sets the mode for the chat before its first message, from the agent it was opened with', async () => {
+    const sessionId = `yolo-new-${Date.now().toString(36)}`
+    writeAgentApprovalSettings({ agents: { codex: 'ask' } })
+    const sent: any[] = []
+    const nsp = { to: () => ({ emit: (_event: string, payload: any) => sent.push(payload) }), adapter: { rooms: new Map() } } as any
+    const socket = { join: () => undefined, connected: false, emit: () => undefined } as any
+    const sessions = new Map()
+    await handleCodingAgentSessionCommand(nsp, socket, { session_id: sessionId, coding_agent_id: 'codex' }, parseCodingAgentSessionCommand('/yolo')!, 'default', sessions)
+    expect(sent.at(-1)).toMatchObject({ action: 'yolo', yolo: true, mode: 'auto' })
+    expect(chatApprovalOverride(sessionId)).toBe('auto')
+    // Without any agent to go on it still asks for a message first.
+    await handleCodingAgentSessionCommand(nsp, socket, { session_id: `${sessionId}-x` }, parseCodingAgentSessionCommand('/yolo')!, 'default', sessions)
+    expect(sent.at(-1)).toMatchObject({ ok: false, message: expect.stringContaining('Send a message first') })
+    setChatApprovalOverride(sessionId, null)
   })
 })
