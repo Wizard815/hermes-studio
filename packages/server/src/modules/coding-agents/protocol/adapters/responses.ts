@@ -133,6 +133,19 @@ function normalizedNamespaceName(value: unknown): string {
 
 export type McpToolRoutes = Record<string, { name: string; namespace: string }>
 
+/**
+ * Whether the request declared the Responses API's built-in `tool_search` tool (Codex does). Only then is a
+ * call to `tool_search` answered as a `tool_search_call` item; a client that offers an ordinary function
+ * named `tool_search` (Hermes does, for its deferred tools) must get a plain `function_call`, or it never
+ * sees the call and ends its turn. Kept on the routes object, which every converter already receives.
+ */
+const NATIVE_TOOL_SEARCH = Symbol('nativeToolSearch')
+
+export function nativeToolSearch(routes?: McpToolRoutes): boolean {
+  // no routes at all: the caller predates this distinction, keep the built-in reading
+  return routes === undefined ? true : (routes as any)[NATIVE_TOOL_SEARCH] === true
+}
+
 // Stable provider-safe aliases retain namespace identity without a global registry.
 // The original name remains in the description for model-side tool selection.
 function mcpToolAlias(namespace: string, name: string): string {
@@ -141,6 +154,7 @@ function mcpToolAlias(namespace: string, name: string): string {
 
 export function responseMcpToolRoutes(body: any): McpToolRoutes {
   const routes: McpToolRoutes = Object.create(null)
+  if (responsesAvailableTools(body).some(tool => tool?.type === 'tool_search')) (routes as any)[NATIVE_TOOL_SEARCH] = true
   for (const tool of expandedResponseTools(responsesAvailableTools(body))) {
     if (tool.namespace?.startsWith('mcp__')) {
       routes[mcpToolAlias(tool.namespace, tool.name)] = { name: tool.name, namespace: tool.namespace }
@@ -419,7 +433,7 @@ function toolSearchArguments(value: unknown): Record<string, unknown> {
 function responseToolCall(name: unknown, argumentsValue: unknown, id: unknown, index: number, routes?: McpToolRoutes): any {
   const rawName = String(name || 'tool')
   const callId = String(id || `call_${index}`)
-  if (rawName === TOOL_SEARCH_NAME) {
+  if (rawName === TOOL_SEARCH_NAME && nativeToolSearch(routes)) {
     return {
       type: 'tool_search_call',
       call_id: callId,

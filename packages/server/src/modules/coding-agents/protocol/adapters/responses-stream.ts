@@ -1,7 +1,7 @@
 import type { ReasoningCodec } from '../../../studio/public/model-reasoning-codec'
 // Shared Responses stream translation for Coding Agent provider proxies.
 import { readSseFrameTexts } from '../sse'
-import { type McpToolRoutes, normalizeResponseFunctionCall, responseToolNamespaceForName } from './responses'
+import { type McpToolRoutes, nativeToolSearch, normalizeResponseFunctionCall, responseToolNamespaceForName } from './responses'
 
 export interface ResponsesStreamAdapterTarget {
   reasoningCodec?: ReasoningCodec
@@ -107,7 +107,7 @@ function functionCallItem(input: {
   mcpToolRoutes?: McpToolRoutes
   status?: 'in_progress' | 'completed'
 }) {
-  if (input.name === 'tool_search') {
+  if (input.name === 'tool_search' && nativeToolSearch(input.mcpToolRoutes)) {
     return {
       type: 'tool_search_call',
       call_id: input.callId || input.id,
@@ -339,7 +339,7 @@ export async function* openAiChatSseToResponsesEvents(
           const argsDelta = toolCall.function?.arguments
           if (typeof argsDelta === 'string' && argsDelta) {
             call.arguments += argsDelta
-            if (call.name !== 'tool_search') {
+            if (call.name !== 'tool_search' || !nativeToolSearch(target.mcpToolRoutes)) {
               yield {
                 type: 'response.function_call_arguments.delta',
                 data: {
@@ -643,7 +643,7 @@ export async function* anthropicMessagesSseToResponsesEvents(
             const block = yield* ensureTool(index)
             const argsDelta = String(delta.partial_json)
             block.arguments += argsDelta
-            if (block.name !== 'tool_search') {
+            if (block.name !== 'tool_search' || !nativeToolSearch(target.mcpToolRoutes)) {
               yield {
                 type: 'response.function_call_arguments.delta',
                 data: {

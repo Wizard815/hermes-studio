@@ -1,5 +1,5 @@
 import type { CanonicalResponsesEvent } from './responses-stream'
-import { normalizeResponseFunctionCall, responseFunctionTools, responseMcpToolRoutes } from './responses'
+import { nativeToolSearch, normalizeResponseFunctionCall, responseFunctionTools, responseMcpToolRoutes } from './responses'
 
 function customTools(body: any): Map<string, any> {
   return new Map((body?.tools || []).filter((tool: any) => tool.type === 'custom').map((tool: any) => [tool.name, tool]))
@@ -38,7 +38,7 @@ function restoredItem(item: any, body: any): any {
     if (typeof parsed.input !== 'string') throw new Error('Provider returned invalid free-form tool input')
     return { ...rest, ...(tool.namespace ? { namespace: tool.namespace } : {}), type: 'custom_tool_call', input: parsed.input }
   }
-  if (item.name === 'tool_search') return { type: 'tool_search_call', call_id: item.call_id || item.id, status: item.status || 'completed', execution: 'client', arguments: args ? JSON.parse(args) : {} }
+  if (item.name === 'tool_search' && nativeToolSearch(responseMcpToolRoutes(body))) return { type: 'tool_search_call', call_id: item.call_id || item.id, status: item.status || 'completed', execution: 'client', arguments: args ? JSON.parse(args) : {} }
   return { ...item, ...normalizeResponseFunctionCall(item.name, args, responseMcpToolRoutes(body)) }
 }
 
@@ -55,7 +55,7 @@ export async function* portableResponsesEvents(events: AsyncIterable<CanonicalRe
     const { sequence_number: _sequence, ...data } = event.data as any
     const item = data.item
     if (item?.type === 'function_call') {
-      const special = names.has(item.name) || item.name === 'tool_search'
+      const special = names.has(item.name) || (item.name === 'tool_search' && nativeToolSearch(responseMcpToolRoutes(body)))
       if (special) calls.add(item.id)
       if (event.type === 'response.output_item.done') {
         const restored = restoredItem(item, body)
