@@ -11,6 +11,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.provider.OpenableColumns
 import android.text.InputType
 import android.view.ViewGroup
@@ -58,6 +60,8 @@ class MainActivity : AppCompatActivity() {
     /** A share waiting for a Studio page to finish loading. */
     private var pendingShareScript: String? = null
     private var pageReady = false
+    /** The Studio page's port, to tell Settings → Android app about approval alerts. */
+    private var alertsReply: JavaScriptReplyProxy? = null
 
     private val prefs get() = getSharedPreferences("studio_own", Context.MODE_PRIVATE)
 
@@ -113,10 +117,16 @@ class MainActivity : AppCompatActivity() {
     private fun handleIntent(intent: Intent?) {
         intent ?: return
         val server = prefs.getString(KEY_SERVER_URL, null)
+        if (intent.action == ACTION_CONFIRM_APPROVAL) {
+            intent.action = null
+            confirmApproval(intent)
+            return
+        }
         if (intent.action == Intent.ACTION_VIEW) {
             when (val target = LinkRoute.resolve(intent.dataString, server)) {
                 is LinkRoute.Target.InApp -> webView?.loadUrl(target.url) ?: showWebView(target.url)
                 is LinkRoute.Target.Browser -> openInBrowser(target.url)
+                is LinkRoute.Target.Pair -> { intent.action = null; confirmPairLink(target.link) }
                 LinkRoute.Target.Ignore -> if (server.isNullOrBlank()) toast(getString(R.string.share_connect_first))
             }
             return
@@ -193,6 +203,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // Termux may have been installed or removed while Studio was in the background.
         webView?.let { installBridgeScript(it) }
+        // Notification or battery settings may have changed in Android's settings.
+        sendAlertsState()
     }
 
     private fun showSetup() {
@@ -270,6 +282,11 @@ class MainActivity : AppCompatActivity() {
         WebViewCompat.addWebMessageListener(view, StudioBridge.PORT_NAME, setOf(origin)) { _, message, _, _, reply ->
             when (val request = StudioBridge.parse(message.data)) {
                 is StudioBridge.Request.RunInTermux -> requestTermux(request.command, reply)
+                StudioBridge.Request.AlertsStatus -> { alertsReply = reply; sendAlertsState() }
+                is StudioBridge.Request.AlertsPair -> { alertsReply = reply; pairAlerts(prefs.getString(KEY_SERVER_URL, null), request.code, request.name) }
+                is StudioBridge.Request.AlertsMode -> { alertsReply = reply; setAlertsMode(request.mode) }
+                StudioBridge.Request.AlertsUnpair -> { alertsReply = reply; ApprovalAlertControl.unpaired(this); sendAlertsState() }
+                StudioBridge.Request.AlertsBattery -> openBatterySettings()
                 null -> Unit
             }
         }
@@ -306,6 +323,7 @@ class MainActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Java")
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) { sendAlertsState(); return }
         if (requestCode != REQUEST_TERMUX_PERMISSION) return
         val (command, reply) = pendingTermux ?: return
         pendingTermux = null
@@ -345,6 +363,108 @@ class MainActivity : AppCompatActivity() {
             replies.remove(id)
             reply.postMessage(StudioBridge.resultMessage(mapOf("error" to (error.message ?: getString(R.string.termux_failed)))))
         }
+    }
+
+    // --- Approval alerts (docs/approval-alerts.md) ----------------------------
+
+    private fun sendAlertsState(message: String? = null) {
+        val reply = alertsReply ?: return
+        val store = ApprovalAlertStore(this)
+        val power = getSystemService(PowerManager::class.java)
+        val unrestricted = power?.isIgnoringBatteryOptimizations(packageName) ?: false
+        reply.postMessage(ApprovalAlerts.stateMessage(store.paired, store.deviceName, store.mode, ApprovalNotifier(this).enabled(), unrestricted, message))
+    }
+
+    /** A QR code or link from Studio's Settings → Android app. */
+    private fun confirmPairLink(link: ApprovalAlerts.PairLink) {
+        val saved = prefs.getString(KEY_SERVER_URL, null)
+        // Pair with the server the app already uses; a link only sets it up when there is none yet.
+        val server = saved ?: link.server
+        if (server == null) { toast(getString(R.string.share_connect_first)); return }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.alerts_pair_title)
+            .setMessage(getString(R.string.alerts_pair_body, server))
+            .setPositiveButton(R.string.alerts_pair) { _, _ ->
+                if (saved == null) {
+                    prefs.edit().putString(KEY_SERVER_URL, server).apply()
+                    showWebView(server)
+                }
+                pairAlerts(server, link.code, "")
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun pairAlerts(server: String?, code: String, name: String) {
+        if (server.isNullOrBlank()) { sendAlertsState(getString(R.string.share_connect_first)); return }
+        val deviceName = name.ifBlank { listOf(Build.MANUFACTURER, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ").take(60) }
+        thread(name = "approval-pair") {
+            val response = ApprovalAlertClient(server).pair(code, deviceName)
+            val paired = if (response.status == 201) ApprovalAlerts.parsePaired(response.body) else null
+            runOnUiThread {
+                if (paired == null) {
+                    val why = ApprovalAlerts.answerMessage(response.status, response.body)
+                    toast(getString(R.string.alerts_pair_failed, why))
+                    sendAlertsState(getString(R.string.alerts_pair_failed, why))
+                    return@runOnUiThread
+                }
+                ApprovalAlertStore(this).savePairing(paired)
+                setAlertsMode("live", getString(R.string.alerts_paired))
+                toast(getString(R.string.alerts_paired))
+            }
+        }
+    }
+
+    private fun setAlertsMode(mode: String, message: String? = null) {
+        if (mode != "off") askForNotifications()
+        ApprovalAlertControl.setMode(this, mode)
+        sendAlertsState(message)
+    }
+
+    /** Android 13+ asks once; without it the alerts stay silent and the Studio page says so. */
+    private fun askForNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION_PERMISSION)
+        }
+    }
+
+    private fun openBatterySettings() {
+        try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (_: Exception) { toast(getString(R.string.download_unsupported)) }
+    }
+
+    /** A risky approval: show all of it and ask again before answering. */
+    private fun confirmApproval(intent: Intent) {
+        val itemId = intent.getStringExtra(ApprovalNotifier.EXTRA_ITEM_ID) ?: return
+        val title = intent.getStringExtra(ApprovalNotifier.EXTRA_TITLE).orEmpty()
+        val detail = intent.getStringExtra(ApprovalNotifier.EXTRA_DETAIL).orEmpty()
+        val openUrl = intent.getStringExtra(ApprovalNotifier.EXTRA_OPEN_URL)
+        val asked = runCatching { ApprovalAlerts.Decision.valueOf(intent.getStringExtra(ApprovalNotifier.EXTRA_DECISION).orEmpty()) }.getOrNull()
+            ?: ApprovalAlerts.Decision.APPROVE
+        val other = if (asked == ApprovalAlerts.Decision.APPROVE) ApprovalAlerts.Decision.REJECT else ApprovalAlerts.Decision.APPROVE
+        val answer = { decision: ApprovalAlerts.Decision ->
+            thread(name = "approval-answer") {
+                val message = ApprovalActionReceiver.answer(applicationContext, itemId, title, decision)
+                runOnUiThread { toast(message) }
+            }
+        }
+        val label = { decision: ApprovalAlerts.Decision -> if (decision == ApprovalAlerts.Decision.APPROVE) R.string.alerts_approve else R.string.alerts_reject }
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val body = TextView(this).apply {
+            text = getString(R.string.alerts_confirm_body, detail)
+            setTextIsSelectable(true)
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title.ifBlank { getString(R.string.alerts_confirm_title) })
+            .setView(body)
+            .setPositiveButton(label(asked)) { _, _ -> answer(asked) }
+            .setNegativeButton(label(other)) { _, _ -> answer(other) }
+            .setNeutralButton(R.string.alerts_open_chat) { _, _ ->
+                val server = prefs.getString(KEY_SERVER_URL, null)
+                val target = (LinkRoute.resolve(openUrl, server) as? LinkRoute.Target.InApp)?.url
+                if (target != null) webView?.loadUrl(target) ?: showWebView(target)
+            }
+            .show()
     }
 
     // --- APK downloads --------------------------------------------------------
@@ -398,6 +518,9 @@ class MainActivity : AppCompatActivity() {
         private const val ACTION_TERMUX_RESULT = "com.ekkostudio.own.TERMUX_RESULT"
         private const val EXTRA_REQUEST_ID = "request_id"
         private const val REQUEST_TERMUX_PERMISSION = 41
+        private const val REQUEST_NOTIFICATION_PERMISSION = 42
+        /** A risky approval's button: confirm in the app first (ApprovalNotifier). */
+        const val ACTION_CONFIRM_APPROVAL = "com.ekkostudio.own.CONFIRM_APPROVAL"
 
         /** Up to [limit] bytes (InputStream.readNBytes needs Android 13). */
         fun InputStream.readNBytesCompat(limit: Int): ByteArray {

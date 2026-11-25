@@ -8,6 +8,7 @@ import { getActiveProfileName, getProfileDir } from '../modules/studio/public/pr
 import { getDb } from '../modules/studio/infrastructure/database'
 import { getSession } from '../modules/studio/repositories/session-store'
 import { getAgentWork } from '../modules/studio/services/agent-work'
+import { approvalAlertsWantMattermost, observeApprovalAlertBlocked } from '../modules/studio/services/approval-alerts'
 import { readProfileEnv } from '../modules/hermes/controllers/mattermost-setup'
 import { chatApprovalOverride, setChatApprovalOverride } from '../modules/coding-agents/services/approvals'
 import { closeWatcher, configureWatcher, recordWatcherEvent, WatcherConfigFile, WatcherExtras, WatcherStore } from '../modules/studio/services/watcher'
@@ -56,6 +57,11 @@ export function startWatcher(): { close: () => void } {
         // Run limits keep the post they always had (#agentlimit #blocked with the @mentions).
         if (event.kind === 'run_limit' || event.kind === 'loop') return agentWork.alertBlocked(title || 'A chat', event.text)
         return agentWork.postAlert(['studiowatcher', event.kind], title, event.text, event.severity === 'block')
+      },
+      // Settings → Watcher → "Where approvals reach you": Blocked alerts to Mattermost and phones (docs/approval-alerts.md).
+      blocked: {
+        mattermost: () => approvalAlertsWantMattermost('blocked'),
+        notify: (event, title) => observeApprovalAlertBlocked(event, title),
       },
       onError: (what, error) => logger.warn({ err: error }, '[watcher] %s failed', what),
     })

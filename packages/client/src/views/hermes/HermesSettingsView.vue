@@ -12,6 +12,8 @@ import UiSkillsSettings from '@/components/hermes/settings/UiSkillsSettings.vue'
 import RunLimitsSettings from '@/components/hermes/settings/RunLimitsSettings.vue'
 import WatcherSettings from '@/components/hermes/settings/WatcherSettings.vue'
 import CleanRoomSettings from '@/components/hermes/settings/CleanRoomSettings.vue'
+import ApprovalAlertsSettings from '@/components/hermes/settings/ApprovalAlertsSettings.vue'
+import AndroidAppSettings from '@/components/hermes/settings/AndroidAppSettings.vue'
 import MemorySettings from '@/components/hermes/settings/MemorySettings.vue'
 import SessionSettings from '@/components/hermes/settings/SessionSettings.vue'
 import HermesToolsetsSettings from '@/components/hermes/settings/HermesToolsetsSettings.vue'
@@ -23,9 +25,9 @@ import { isStoredSuperAdmin } from '@/api/client'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import { useSettingsStore } from '@/stores/hermes/settings'
 
-type HermesSettingsTab = 'agent' | 'memory' | 'session' | 'watcher' | 'cleanrooms' | 'tools' | 'terminal' | 'subagents' | 'maintenance'
+type HermesSettingsTab = 'agent' | 'memory' | 'session' | 'watcher' | 'android-app' | 'cleanrooms' | 'tools' | 'terminal' | 'subagents' | 'maintenance'
 // Super administrators only: the watcher and clean rooms (Studio's own), and tabs backed by Hermes Agent's API.
-const HERMES_AGENT_TABS = ['watcher', 'cleanrooms', 'tools', 'terminal', 'subagents', 'maintenance'] as const
+const HERMES_AGENT_TABS = ['watcher', 'android-app', 'cleanrooms', 'tools', 'terminal', 'subagents', 'maintenance'] as const
 const canUseHermesAgent = isStoredSuperAdmin()
 
 const { t } = useI18n()
@@ -95,7 +97,11 @@ onMounted(() => {
           </NTabPane>
           <template v-if="canUseHermesAgent">
             <NTabPane name="watcher" :tab="t('watcher.settings.tab')" display-directive="show:lazy">
+              <ApprovalAlertsSettings />
               <WatcherSettings />
+            </NTabPane>
+            <NTabPane name="android-app" :tab="t('androidApp.tab')" display-directive="show:lazy">
+              <AndroidAppSettings />
             </NTabPane>
             <NTabPane name="cleanrooms" :tab="t('cleanRooms.title')" display-directive="show:lazy">
               <CleanRoomSettings />

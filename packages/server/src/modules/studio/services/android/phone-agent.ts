@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { getWebUiHome } from '../../public/config'
 import { getWatcher, recordWatcherEvent, watcherTrusts } from '../watcher'
+import { observeApprovalAlertPhoneEvent } from '../approval-alerts'
 import { PhoneTools } from './agent-tools'
 import { androidDeviceManager, compressWithSharp } from './manager'
 
@@ -25,6 +26,10 @@ export const phoneAgent = new PhoneTools({
     kind, severity, text, sessionId, agent, link: '/android',
     ...(kind === 'approval_asked' || kind === 'approval_denied' ? { action: { kind: 'tool', value } } : {}),
   }),
-  emit: (event, payload) => emit(event, payload),
+  emit: (event, payload) => {
+    emit(event, payload)
+    // Questions also reach paired phones and Mattermost (docs/approval-alerts.md).
+    if (event === 'agent.approval' || event === 'agent.approval.resolved') observeApprovalAlertPhoneEvent(event, payload)
+  },
   pullDir: () => join(getWebUiHome(), 'android', 'pulled'),
 })

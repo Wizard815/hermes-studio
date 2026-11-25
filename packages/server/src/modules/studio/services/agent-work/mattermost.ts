@@ -41,6 +41,15 @@ const STATUS_TEXT: Record<AgentWorkStatus, string> = {
 
 const VIA_TEXT: Record<string, string> = { studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb', omi: 'Omi' }
 
+/**
+ * Where a decision was made, for people: "in Mattermost by robin", or
+ * "on phone (Pixel 8)" for the Studio Own app, whose `by` is the phone's name.
+ */
+export function decidedPlace(via: string, by = ''): string {
+  if (via === 'phone') return `on phone${by ? ` (${by})` : ''}`
+  return `in ${VIA_TEXT[via] || via}${by ? ` by ${by}` : ''}`
+}
+
 export function mentionsFor(status: AgentWorkStatus, settings: AgentWorkSettings['mattermost']): string {
   const wants = status === 'blocked' || (status === 'awaiting_approval' && settings.mentionOnApproval)
   if (!wants || !settings.mention.length) return ''
@@ -68,11 +77,20 @@ export function composeStatusMessage(work: AgentWork, status: AgentWorkStatus, s
 }
 
 export function approvalProps(work: AgentWork, token: string, actionUrl: string): Record<string, unknown> | undefined {
+  return approvalButtons({ work_id: work.id, token }, actionUrl)
+}
+
+/**
+ * Approve / Reject buttons that call Studio's one Mattermost action route.
+ * `context` names what they answer: `work_id` for Agent work, `alert_id` for
+ * a chat approval or a phone question (docs/approval-alerts.md), plus its secret.
+ */
+export function approvalButtons(context: Record<string, string>, actionUrl: string): Record<string, unknown> | undefined {
   if (!actionUrl) return undefined
   const url = `${actionUrl}/api/studio/agent-work/mattermost/action`
   const action = (decision: 'approve' | 'reject', name: string, style: string) => ({
     id: decision, name, style, type: 'button',
-    integration: { url, context: { work_id: work.id, token, decision } },
+    integration: { url, context: { ...context, decision } },
   })
   return { attachments: [{ text: '', actions: [action('approve', 'Approve', 'primary'), action('reject', 'Reject', 'danger')] }] }
 }
@@ -80,8 +98,7 @@ export function approvalProps(work: AgentWork, token: string, actionUrl: string)
 /** What an approval post turns into once it is decided anywhere: no buttons, no further alert. */
 export function composeResolvedMessage(work: AgentWork): string {
   const verdict = work.decision === 'approved' ? 'approved' : 'rejected'
-  const where = VIA_TEXT[work.decidedVia] || work.decidedVia
-  return `#agentwork #${verdict} ~~#approval~~ **${work.title}** was ${verdict} in ${where}${work.decidedBy ? ` by ${work.decidedBy}` : ''}.${describe(work)}`
+  return `#agentwork #${verdict} ~~#approval~~ **${work.title}** was ${verdict} ${decidedPlace(work.decidedVia, work.decidedBy)}.${describe(work)}`
 }
 
 export const APPROVE_EMOJI = new Set(['white_check_mark', 'heavy_check_mark', '+1', 'ballot_box_with_check'])

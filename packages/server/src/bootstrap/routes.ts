@@ -46,6 +46,7 @@ import { runLimitRoutes } from '../modules/studio/routes/run-limits'
 import { toolLoadRoutes } from '../modules/studio/routes/tool-load'
 import { uiSkillsRoutes } from '../modules/studio/routes/ui-skills'
 import { watcherRoutes } from '../modules/studio/routes/watcher'
+import { approvalAlertPublicRoutes, approvalAlertRoutes } from '../modules/studio/routes/approval-alerts'
 import { vscodeRoutes } from '../modules/studio/routes/vscode'
 import { screenRoutes } from '../modules/studio/routes/screen'
 import { modelApiRoutes } from '../modules/studio/routes/model-api'
@@ -125,6 +126,8 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(browserPublicRoutes.routes())
   // Mattermost's Approve / Reject buttons carry their own per-item secret.
   app.use(agentWorkPublicRoutes.routes())
+  // A phone trades its one-use pairing code for its key (docs/approval-alerts.md).
+  app.use(approvalAlertPublicRoutes.routes())
 
   // herdr plugin routes carry their own token and loopback check.
   app.use(herdrPluginRoutes.routes())
@@ -163,6 +166,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(toolLoadRoutes.routes())
   app.use(uiSkillsRoutes.routes())
   app.use(watcherRoutes.routes())
+  app.use(approvalAlertRoutes.routes())
   app.use(vscodeRoutes.routes())
   app.use(screenRoutes.routes())
   app.use(hermesApiRoutes.routes())

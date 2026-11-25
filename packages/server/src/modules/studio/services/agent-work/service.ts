@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { AGENT_WORK_STATUSES, DECISION_VIAS, type AgentActivity, type AgentWork, type AgentWorkStatus, type AgentWorkStore, type DecisionVia, type MattermostPostRef } from './store'
 import { parseMentions, type AgentWorkPublicSettings, type AgentWorkSettings } from './settings'
-import { approvalProps, composeResolvedMessage, composeStatusMessage, decisionFromReactions, mentionsFor, type MattermostPort } from './mattermost'
+import { approvalButtons, approvalProps, composeResolvedMessage, composeStatusMessage, decidedPlace, decisionFromReactions, mentionsFor, type MattermostPort } from './mattermost'
 import type { OrbSharePort } from './orb-share'
 import type { AllGlancePort } from './allglance'
 import { buildDigest, dayBounds, localDay, type WikiPort } from './wiki'
@@ -38,6 +38,12 @@ export interface AgentWorkDeps {
   onError?: (what: string, error: unknown) => void
   /** Every change, for the watcher's feed (docs/watcher.md). */
   observe?: (work: AgentWork, change: 'created' | 'status' | 'decided') => void
+  /**
+   * Whether approval requests are posted to Mattermost (with their buttons).
+   * Settings → Watcher → "Where approvals reach you" (docs/approval-alerts.md);
+   * missing: always, as before.
+   */
+  approvalPostWanted?: () => boolean
   now?: () => number
 }
 
@@ -46,7 +52,7 @@ export interface DecisionResult { work: AgentWork; changed: boolean; message: st
 const STATUS_WORDS: Record<AgentWorkStatus, string> = {
   queued: 'queued', working: 'working', blocked: 'blocked', awaiting_approval: 'awaiting approval', done: 'done', rejected: 'rejected',
 }
-const VIA_WORDS: Record<string, string> = { studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb', omi: 'Omi' }
+const VIA_WORDS: Record<string, string> = { studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb', omi: 'Omi', phone: 'phone' }
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -150,11 +156,11 @@ export class AgentWorkService {
     const work = this.deps.store.get(id)!
     if (!won) {
       if (work.decision) {
-        return { work, changed: false, message: `Already ${work.decision} in ${VIA_WORDS[work.decidedVia] || work.decidedVia}${work.decidedBy ? ` by ${work.decidedBy}` : ''}.` }
+        return { work, changed: false, message: `Already ${work.decision} ${decidedPlace(work.decidedVia, work.decidedBy)}.` }
       }
       throw new AgentWorkError(`This work is ${STATUS_WORDS[work.status]}, not awaiting approval`, 409)
     }
-    const entry = this.deps.store.log(id, { kind: verdict, status: work.status, actor: by, via, message: `${verdict} in ${VIA_WORDS[via]}` }, this.now())
+    const entry = this.deps.store.log(id, { kind: verdict, status: work.status, actor: by, via, message: `${verdict} ${via === 'phone' ? decidedPlace(via, by) : `in ${VIA_WORDS[via]}`}` }, this.now())
     await this.fanOut(work, entry, { posted: null, approvalChanged: true })
     if (verdict === 'approved' && work.vikunjaTaskId) await this.completeVikunja(work)
     this.observe(this.deps.store.get(id)!, 'decided')
@@ -200,6 +206,8 @@ export class AgentWorkService {
   private async postStatus(work: AgentWork, status: AgentWorkStatus, settings: AgentWorkSettings): Promise<void> {
     const mm = settings.mattermost
     if (!mm.channel) return
+    // Settings → Watcher → "Where approvals reach you": nobody wants approvals in Mattermost.
+    if (status === 'awaiting_approval' && this.deps.approvalPostWanted && !safeWanted(this.deps.approvalPostWanted)) return
     try {
       const channelId = mm.channelId || (await this.deps.mattermost.findChannel(mm.channel, mm.teamId || this.deps.setupRecord()?.teamId))?.id
       if (!channelId) throw new Error(`Mattermost has no channel ~${mm.channel}`)
@@ -279,6 +287,39 @@ export class AgentWorkService {
     return true
   }
 
+  /**
+   * A chat approval or a phone question in Agent work's channel, with the same
+   * Approve / Reject buttons as Agent work (docs/approval-alerts.md). The
+   * buttons' `alert_id` and secret come back to `setAlertActionHandler`. Null
+   * when no channel is set.
+   */
+  async postQuestion(input: { tags: string[]; title: string; text: string; alertId: string; token: string }): Promise<{ id: string; channelId: string } | null> {
+    const settings = await this.deps.settings.load()
+    const mm = settings.mattermost
+    if (!mm.channel) return null
+    const channelId = mm.channelId || (await this.deps.mattermost.findChannel(mm.channel, mm.teamId || this.deps.setupRecord()?.teamId))?.id
+    if (!channelId) throw new Error(`Mattermost has no channel ~${mm.channel}`)
+    const mention = mentionsFor('awaiting_approval', mm)
+    const hashtags = input.tags.map(tag => `#${tag.replace(/[^a-z0-9_]/gi, '')}`).filter(tag => tag.length > 1).join(' ')
+    const quoted = input.text.trim().replace(/\n+/g, '\n> ')
+    const how = mm.actionUrl ? 'Approve or reject with the buttons, in Studio or on your phone.' : 'Answer it in Studio or on your phone.'
+    const message = `${hashtags}${mention ? ` ${mention}` : ''} **${input.title}**\n> ${quoted}\n${how}`
+    const post = await this.deps.mattermost.createPost(channelId, message, approvalButtons({ alert_id: input.alertId, token: input.token }, mm.actionUrl))
+    return { id: post.id, channelId }
+  }
+
+  /** The question was answered somewhere: its post loses its buttons and says how it ended. */
+  async resolveQuestion(postId: string, message: string): Promise<void> {
+    await this.deps.mattermost.patchPost(postId, message, { attachments: [] })
+  }
+
+  private alertAction: ((input: { alertId: string; token: string; decision: 'approve' | 'reject'; by: string }) => Promise<{ message: string; resolved: string }>) | null = null
+
+  /** Who answers the buttons of `postQuestion` posts (the approval alerts service). */
+  setAlertActionHandler(handler: typeof this.alertAction): void {
+    this.alertAction = handler
+  }
+
   // --- Mattermost decisions --------------------------------------------------
 
   private async allowedDeciders(settings: AgentWorkSettings): Promise<Set<string> | null> {
@@ -297,6 +338,7 @@ export class AgentWorkService {
   /** Approve / Reject button on an approval post (Mattermost calls this). */
   async mattermostAction(payload: any): Promise<{ update?: { message: string; props: Record<string, unknown> }; ephemeral_text: string }> {
     const context = payload?.context || {}
+    if (context.alert_id) return this.alertButton(payload)
     const workId = String(context.work_id || '')
     const token = String(context.token || '')
     const decision = context.decision === 'reject' ? 'reject' : context.decision === 'approve' ? 'approve' : null
@@ -314,6 +356,20 @@ export class AgentWorkService {
       update: { message: composeResolvedMessage(result.work), props: { attachments: [] } },
       ephemeral_text: result.message,
     }
+  }
+
+  /** A chat approval's or phone question's button: the same people may answer as for Agent work. */
+  private async alertButton(payload: any): Promise<{ update?: { message: string; props: Record<string, unknown> }; ephemeral_text: string }> {
+    const context = payload?.context || {}
+    const decision = context.decision === 'reject' ? 'reject' : context.decision === 'approve' ? 'approve' : null
+    if (!this.alertAction || !decision) throw new AgentWorkError('This button is not valid any more', 403)
+    const settings = await this.deps.settings.load()
+    const allowed = await this.allowedDeciders(settings)
+    const userId = String(payload?.user_id || '')
+    if (allowed && !allowed.has(userId)) return { ephemeral_text: 'You are not one of the people who can answer approvals.' }
+    const by = String(payload?.user_name || '') || (await this.usernameFor(userId))
+    const result = await this.alertAction({ alertId: String(context.alert_id), token: String(context.token || ''), decision, by })
+    return { update: { message: result.resolved, props: { attachments: [] } }, ephemeral_text: result.message }
   }
 
   private async usernameFor(userId: string): Promise<string> {
@@ -431,4 +487,8 @@ export class AgentWorkService {
     if (this.digestTimer) clearTimeout(this.digestTimer)
     this.digestTimer = null
   }
+}
+
+function safeWanted(wanted: () => boolean): boolean {
+  try { return wanted() } catch { return true }
 }

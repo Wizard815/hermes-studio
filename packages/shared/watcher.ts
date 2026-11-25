@@ -21,6 +21,7 @@ export const WATCHER_KINDS = [
   'connection',
   'pipelock_blocked',
   'tool_load',
+  'approval_remote',
 ] as const
 export type WatcherKind = typeof WATCHER_KINDS[number]
 
@@ -98,6 +99,8 @@ export const DEFAULT_WATCHER_KINDS: Record<WatcherKind, WatcherKindSetting> = {
   pipelock_blocked: { alert: true, mattermost: false },
   // Info: a Hermes chat started with more tools than a small model handles (docs/hermes-tool-load.md).
   tool_load: { alert: true, mattermost: false },
+  // Info: answered on a paired phone or with a Mattermost button (docs/approval-alerts.md).
+  approval_remote: { alert: true, mattermost: false },
 }
 
 export const DEFAULT_WATCHER_SETTINGS: WatcherSettings = {

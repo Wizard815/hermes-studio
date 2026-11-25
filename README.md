@@ -165,7 +165,11 @@ What happens on the first start:
 ### Agent work: Vikunja tasks, approvals and alerts
 
 Agents record the work they do on your Vikunja tasks; you approve it once, in
-Studio, Mattermost or Pondering Orb, and it counts everywhere. Set it up in
+Studio, Mattermost, Pondering Orb, Omi or on your phone, and it counts everywhere.
+**Settings → Watcher → Where approvals reach you** picks Mattermost, the Studio
+Own Android app, both or off for each super admin, and for which approvals
+(Agent work, chat approvals, phone actions, Blocked alerts); see
+[docs/approval-alerts.md](docs/approval-alerts.md). Set it up in
 **Connections → Agent work → Settings**; nothing is on until you fill it in.
 
 - **Mattermost:** run **Channels → Mattermost → Set up Mattermost** first
@@ -271,6 +275,7 @@ your own services:
 - [ ] herdr: elevate a Hermes chat (`/herdr`), send a message, restart the container, and check the pane is still linked
 - [ ] herdr: `/studio` on that chat closes its herdr space and the chat keeps its messages
 - [ ] Watcher: a denied approval shows in the bell; Trust this lets the next run through without asking ([docs/watcher.md](docs/watcher.md))
+- [ ] Approval alerts: pair Studio Own in Settings → Android app, pick "Both" in Settings → Watcher; an Agent work approval shows on the phone and in Mattermost, Approve on the phone, and Studio and Mattermost say "approved on phone" ([docs/approval-alerts.md](docs/approval-alerts.md))
 - [ ] Home Assistant: "turn on the kitchen light" in a Hermes chat asks first; Trust this with `light.*` lets the next one run ([docs](docs/hermes-integrations.md#home-assistant-actions-ask-first))
 - [ ] A new Hermes chat answers within about 10 s with the recommended plugins (rea) installed
 - [ ] Gadget: from a Studio Hermes chat, "show 'hello' on my gadget" shows a card on the device

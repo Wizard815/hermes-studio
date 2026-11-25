@@ -34,4 +34,12 @@ class LinkRouteTest {
         assertEquals(LinkRoute.Target.Ignore, LinkRoute.resolve("studio-own://open?url=studio-own%3A%2F%2Fchat%2Fx", server))
         assertEquals(LinkRoute.Target.Ignore, LinkRoute.resolve("studio-own://settings", server))
     }
+
+    @Test
+    fun pairingLinksWorkWithOrWithoutAServer() {
+        val expected = LinkRoute.Target.Pair(ApprovalAlerts.PairLink("https://studio.example.com", "ABCD-EF23"))
+        assertEquals(expected, LinkRoute.resolve("studio-own://pair?server=https%3A%2F%2Fstudio.example.com&code=ABCD-EF23", server))
+        assertEquals(expected, LinkRoute.resolve("studio-own://pair?server=https%3A%2F%2Fstudio.example.com&code=ABCD-EF23", null))
+        assertEquals(LinkRoute.Target.Ignore, LinkRoute.resolve("studio-own://pair?code=bad", server))
+    }
 }

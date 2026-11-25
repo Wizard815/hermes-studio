@@ -12,6 +12,7 @@ import { MODEL_API_KEY_PREFIX, findModelApiKey, touchModelApiKey } from '../serv
 import { ModelApiError, modelApiErrorBody } from '../services/model-api/errors'
 import { looksLikeOmiKey } from '../services/omi/scope'
 import { checkOmiKey, type OmiKeyIdentity } from '../services/omi/key-auth'
+import { checkPhoneKey, looksLikePhoneKey, type PhoneKeyIdentity } from '../services/approval-alerts/scope'
 import {
   findUserById,
   getDefaultProfileForUser,
@@ -68,6 +69,8 @@ declare module 'koa' {
     modelGateway?: { userId: number; profile: string }
     /** Signed in with a Studio key made for Omi (docs/omi.md). */
     omiKey?: OmiKeyIdentity
+    /** Signed in with a paired phone's key (docs/approval-alerts.md). */
+    phoneKey?: PhoneKeyIdentity
   }
 }
 
@@ -433,6 +436,21 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
     }
     ctx.state.user = toAuthenticatedUser(owner)
     ctx.state.omiKey = check.key
+    await next()
+    return
+  }
+  if (looksLikePhoneKey(token)) {
+    // A paired phone reads and answers its owner's approvals, nothing else (docs/approval-alerts.md).
+    const headerToken = (ctx.headers.authorization || '').match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || ''
+    const check = checkPhoneKey({ method: ctx.method, path: ctx.path, headerToken, token })
+    const owner = check.ok ? findUserById(check.key.userId) : null
+    if (!check.ok || !owner || owner.status !== 'active') {
+      ctx.status = check.ok ? 403 : check.status
+      ctx.body = { error: check.ok ? "The phone's owner is disabled or no longer exists." : check.error }
+      return
+    }
+    ctx.state.user = toAuthenticatedUser(owner)
+    ctx.state.phoneKey = check.key
     await next()
     return
   }

@@ -274,12 +274,12 @@ export class PhoneTools {
     this.record({ ...entry, status: 'waiting' })
     this.deps.alert({ kind: 'approval_asked', severity: 'warn', text: `${agent} wants to ${entry.summary} on ${approval.device}${reason ? ` (${reason})` : ''}. Allow or deny it on the Android page.`, sessionId, agent, value })
     const allowed = await new Promise<boolean>(done => {
-      const timer = setTimeout(() => finish(false), APPROVAL_TIMEOUT_MS)
+      const timer = setTimeout(() => finish(false, true), APPROVAL_TIMEOUT_MS)
       timer.unref?.()
-      const finish = (ok: boolean) => {
+      const finish = (ok: boolean, timedOut = false) => {
         if (!this.pending.delete(approval.id)) return
         clearTimeout(timer)
-        this.deps.emit('agent.approval.resolved', { id: approval.id, allowed: ok })
+        this.deps.emit('agent.approval.resolved', { id: approval.id, allowed: ok, ...(timedOut ? { timedOut } : {}) })
         done(ok)
       }
       this.pending.set(approval.id, { ...approval, finish })

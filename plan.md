@@ -93,8 +93,12 @@ Android:
    the open one). APK not built here (no Android SDK).
 2. Studio Own opens links to its server, and `studio-own://`. Done in code.
 3. "Open in Studio" and a "Send to agent" quick action in Omi (Omi side). Not done.
-4. Studio Own notifications with Approve / Reject. Not done (needs a phone
-   key and a poller).
+4. Studio Own notifications with Approve / Reject. Done in code
+   (docs/approval-alerts.md): Settings → Watcher → Where approvals reach you
+   (Mattermost, Android app, both, off; per kind), Settings → Android app
+   pairs a phone (QR or code, its own key), Live alerts over a server-sent
+   events stream in a foreground service or Battery saver every 15 minutes.
+   APK not built here (no Android SDK); not tried on a real phone.
 5. to 8. Widgets and folding the apps together. Not done.
 
 Local AI for Omi (all Omi side, `.env` and omi-local code): point omi-proxy at

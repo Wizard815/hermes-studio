@@ -41,7 +41,8 @@ export const watcherMessages = {
         "plugin_failed": "Plugin install failed",
         "connection": "Connection problem",
         "pipelock_blocked": "pipelock blocked",
-        "tool_load": "Many tools in a chat"
+        "tool_load": "Many tools in a chat",
+        "approval_remote": "Answered on phone or in Mattermost"
       },
       "kindHint": {
         "approval_asked": "An agent waits for your yes or no.",
@@ -58,7 +59,8 @@ export const watcherMessages = {
         "plugin_failed": "A recommended Hermes plugin did not install.",
         "connection": "herdr, pipelock or InnerWarden is not there.",
         "pipelock_blocked": "pipelock stopped a clean-room connection.",
-        "tool_load": "A Hermes chat started with more tools than small models handle."
+        "tool_load": "A Hermes chat started with more tools than small models handle.",
+        "approval_remote": "An approval was answered on a paired phone or with a Mattermost button."
       },
       "trust": {
         "title": "Trust this",
@@ -270,7 +272,8 @@ export const watcherMessages = {
         "plugin_failed": "插件安装失败",
         "connection": "连接问题",
         "pipelock_blocked": "pipelock 已拦截",
-        "tool_load": "对话工具过多"
+        "tool_load": "对话工具过多",
+        "approval_remote": "在手机或 Mattermost 上已回答"
       },
       "kindHint": {
         "approval_asked": "有智能体在等你同意或拒绝。",
@@ -287,7 +290,8 @@ export const watcherMessages = {
         "plugin_failed": "推荐的 Hermes 插件没有装上。",
         "connection": "herdr、pipelock 或 InnerWarden 不在。",
         "pipelock_blocked": "pipelock 拦下了洁净室的一个连接。",
-        "tool_load": "一个 Hermes 对话启动时的工具数超过小模型能处理的量。"
+        "tool_load": "一个 Hermes 对话启动时的工具数超过小模型能处理的量。",
+        "approval_remote": "有审批在配对的手机上或通过 Mattermost 按钮得到了回答。"
       },
       "trust": {
         "title": "信任此项",
@@ -499,7 +503,8 @@ export const watcherMessages = {
         "plugin_failed": "外掛安裝失敗",
         "connection": "連線問題",
         "pipelock_blocked": "pipelock 已攔截",
-        "tool_load": "對話工具過多"
+        "tool_load": "對話工具過多",
+        "approval_remote": "已在手機或 Mattermost 回覆"
       },
       "kindHint": {
         "approval_asked": "有代理在等你同意或拒絕。",
@@ -516,7 +521,8 @@ export const watcherMessages = {
         "plugin_failed": "推薦的 Hermes 外掛沒有裝上。",
         "connection": "herdr、pipelock 或 InnerWarden 不在。",
         "pipelock_blocked": "pipelock 攔下了無塵室的一個連線。",
-        "tool_load": "一個 Hermes 對話啟動時的工具數超過小模型能處理的量。"
+        "tool_load": "一個 Hermes 對話啟動時的工具數超過小模型能處理的量。",
+        "approval_remote": "有審核在配對的手機上或透過 Mattermost 按鈕得到回覆。"
       },
       "trust": {
         "title": "信任此項",
@@ -728,7 +734,8 @@ export const watcherMessages = {
         "plugin_failed": "プラグインのインストール失敗",
         "connection": "接続の問題",
         "pipelock_blocked": "pipelock がブロック",
-        "tool_load": "チャットのツールが多い"
+        "tool_load": "チャットのツールが多い",
+        "approval_remote": "スマホまたは Mattermost で回答"
       },
       "kindHint": {
         "approval_asked": "エージェントがあなたの可否を待っています。",
@@ -745,7 +752,8 @@ export const watcherMessages = {
         "plugin_failed": "おすすめの Hermes プラグインがインストールされませんでした。",
         "connection": "herdr、pipelock、InnerWarden のいずれかがありません。",
         "pipelock_blocked": "pipelock がクリーンルームの接続を止めました。",
-        "tool_load": "Hermes チャットが小さなモデルには多すぎるツールで始まりました。"
+        "tool_load": "Hermes チャットが小さなモデルには多すぎるツールで始まりました。",
+        "approval_remote": "承認がペアリングしたスマホか Mattermost のボタンで回答されました。"
       },
       "trust": {
         "title": "これを信頼",
@@ -957,7 +965,8 @@ export const watcherMessages = {
         "plugin_failed": "플러그인 설치 실패",
         "connection": "연결 문제",
         "pipelock_blocked": "pipelock 차단",
-        "tool_load": "채팅 도구가 많음"
+        "tool_load": "채팅 도구가 많음",
+        "approval_remote": "휴대폰 또는 Mattermost에서 답변"
       },
       "kindHint": {
         "approval_asked": "에이전트가 예 또는 아니요를 기다립니다.",
@@ -974,7 +983,8 @@ export const watcherMessages = {
         "plugin_failed": "추천 Hermes 플러그인이 설치되지 않았습니다.",
         "connection": "herdr, pipelock 또는 InnerWarden이 없습니다.",
         "pipelock_blocked": "pipelock이 클린룸 연결을 막았습니다.",
-        "tool_load": "Hermes 채팅이 작은 모델이 다루기 힘든 수의 도구로 시작했습니다."
+        "tool_load": "Hermes 채팅이 작은 모델이 다루기 힘든 수의 도구로 시작했습니다.",
+        "approval_remote": "승인이 페어링된 휴대폰이나 Mattermost 버튼으로 답변되었습니다."
       },
       "trust": {
         "title": "이것 신뢰",
@@ -1186,7 +1196,8 @@ export const watcherMessages = {
         "plugin_failed": "Plugin-Installation fehlgeschlagen",
         "connection": "Verbindungsproblem",
         "pipelock_blocked": "pipelock hat gesperrt",
-        "tool_load": "Viele Werkzeuge im Chat"
+        "tool_load": "Viele Werkzeuge im Chat",
+        "approval_remote": "Auf dem Handy oder in Mattermost beantwortet"
       },
       "kindHint": {
         "approval_asked": "Ein Agent wartet auf dein Ja oder Nein.",
@@ -1203,7 +1214,8 @@ export const watcherMessages = {
         "plugin_failed": "Ein empfohlenes Hermes-Plugin wurde nicht installiert.",
         "connection": "herdr, pipelock oder InnerWarden fehlt.",
         "pipelock_blocked": "pipelock hat eine Verbindung aus dem Reinraum gestoppt.",
-        "tool_load": "Ein Hermes-Chat startete mit mehr Werkzeugen, als kleine Modelle schaffen."
+        "tool_load": "Ein Hermes-Chat startete mit mehr Werkzeugen, als kleine Modelle schaffen.",
+        "approval_remote": "Eine Freigabe wurde auf einem gekoppelten Handy oder mit einer Mattermost-Schaltfläche beantwortet."
       },
       "trust": {
         "title": "Vertrauen",
@@ -1415,7 +1427,8 @@ export const watcherMessages = {
         "plugin_failed": "Falló la instalación de un plugin",
         "connection": "Problema de conexión",
         "pipelock_blocked": "pipelock bloqueó",
-        "tool_load": "Muchas herramientas en un chat"
+        "tool_load": "Muchas herramientas en un chat",
+        "approval_remote": "Respondida en el móvil o en Mattermost"
       },
       "kindHint": {
         "approval_asked": "Un agente espera tu sí o tu no.",
@@ -1432,7 +1445,8 @@ export const watcherMessages = {
         "plugin_failed": "Un plugin de Hermes recomendado no se instaló.",
         "connection": "Falta herdr, pipelock o InnerWarden.",
         "pipelock_blocked": "pipelock detuvo una conexión de una sala limpia.",
-        "tool_load": "Un chat de Hermes empezó con más herramientas de las que manejan los modelos pequeños."
+        "tool_load": "Un chat de Hermes empezó con más herramientas de las que manejan los modelos pequeños.",
+        "approval_remote": "Una aprobación se respondió en un móvil vinculado o con un botón de Mattermost."
       },
       "trust": {
         "title": "Confiar en esto",
@@ -1644,7 +1658,8 @@ export const watcherMessages = {
         "plugin_failed": "Installation de plugin échouée",
         "connection": "Problème de connexion",
         "pipelock_blocked": "pipelock a bloqué",
-        "tool_load": "Beaucoup d'outils dans une discussion"
+        "tool_load": "Beaucoup d'outils dans une discussion",
+        "approval_remote": "Répondu sur le téléphone ou dans Mattermost"
       },
       "kindHint": {
         "approval_asked": "Un agent attend votre oui ou non.",
@@ -1661,7 +1676,8 @@ export const watcherMessages = {
         "plugin_failed": "Un plugin Hermes recommandé ne s'est pas installé.",
         "connection": "herdr, pipelock ou InnerWarden est absent.",
         "pipelock_blocked": "pipelock a arrêté une connexion d'une salle blanche.",
-        "tool_load": "Une discussion Hermes a démarré avec plus d'outils que les petits modèles n'en gèrent."
+        "tool_load": "Une discussion Hermes a démarré avec plus d'outils que les petits modèles n'en gèrent.",
+        "approval_remote": "Une approbation a reçu une réponse sur un téléphone associé ou avec un bouton Mattermost."
       },
       "trust": {
         "title": "Faire confiance",
@@ -1873,7 +1889,8 @@ export const watcherMessages = {
         "plugin_failed": "Falha ao instalar plugin",
         "connection": "Problema de conexão",
         "pipelock_blocked": "pipelock bloqueou",
-        "tool_load": "Muitas ferramentas num chat"
+        "tool_load": "Muitas ferramentas num chat",
+        "approval_remote": "Respondida no celular ou no Mattermost"
       },
       "kindHint": {
         "approval_asked": "Um agente espera seu sim ou não.",
@@ -1890,7 +1907,8 @@ export const watcherMessages = {
         "plugin_failed": "Um plugin recomendado do Hermes não foi instalado.",
         "connection": "herdr, pipelock ou InnerWarden não está lá.",
         "pipelock_blocked": "O pipelock parou uma conexão de uma sala limpa.",
-        "tool_load": "Um chat do Hermes começou com mais ferramentas do que modelos pequenos aguentam."
+        "tool_load": "Um chat do Hermes começou com mais ferramentas do que modelos pequenos aguentam.",
+        "approval_remote": "Uma aprovação foi respondida em um celular pareado ou com um botão do Mattermost."
       },
       "trust": {
         "title": "Confiar nisto",
@@ -2102,7 +2120,8 @@ export const watcherMessages = {
         "plugin_failed": "Плагин не установился",
         "connection": "Проблема с подключением",
         "pipelock_blocked": "pipelock заблокировал",
-        "tool_load": "Много инструментов в чате"
+        "tool_load": "Много инструментов в чате",
+        "approval_remote": "Отвечено на телефоне или в Mattermost"
       },
       "kindHint": {
         "approval_asked": "Агент ждёт вашего да или нет.",
@@ -2119,7 +2138,8 @@ export const watcherMessages = {
         "plugin_failed": "Рекомендованный плагин Hermes не установился.",
         "connection": "Нет herdr, pipelock или InnerWarden.",
         "pipelock_blocked": "pipelock остановил соединение из чистой комнаты.",
-        "tool_load": "Чат Hermes начался с большим числом инструментов, чем справляются маленькие модели."
+        "tool_load": "Чат Hermes начался с большим числом инструментов, чем справляются маленькие модели.",
+        "approval_remote": "На запрос ответили с привязанного телефона или кнопкой в Mattermost."
       },
       "trust": {
         "title": "Доверять",
@@ -2331,7 +2351,8 @@ export const watcherMessages = {
         "plugin_failed": "Eklenti kurulamadı",
         "connection": "Bağlantı sorunu",
         "pipelock_blocked": "pipelock engelledi",
-        "tool_load": "Sohbette çok araç"
+        "tool_load": "Sohbette çok araç",
+        "approval_remote": "Telefonda veya Mattermost'ta yanıtlandı"
       },
       "kindHint": {
         "approval_asked": "Bir ajan evet ya da hayır yanıtınızı bekliyor.",
@@ -2348,7 +2369,8 @@ export const watcherMessages = {
         "plugin_failed": "Önerilen bir Hermes eklentisi kurulmadı.",
         "connection": "herdr, pipelock veya InnerWarden yok.",
         "pipelock_blocked": "pipelock bir temiz oda bağlantısını durdurdu.",
-        "tool_load": "Bir Hermes sohbeti küçük modellerin kaldırabileceğinden fazla araçla başladı."
+        "tool_load": "Bir Hermes sohbeti küçük modellerin kaldırabileceğinden fazla araçla başladı.",
+        "approval_remote": "Bir onay, eşleştirilmiş telefonda veya Mattermost düğmesiyle yanıtlandı."
       },
       "trust": {
         "title": "Buna güven",
@@ -2560,7 +2582,8 @@ export const watcherMessages = {
         "plugin_failed": "فشل تثبيت إضافة",
         "connection": "مشكلة اتصال",
         "pipelock_blocked": "حظر pipelock",
-        "tool_load": "أدوات كثيرة في محادثة"
+        "tool_load": "أدوات كثيرة في محادثة",
+        "approval_remote": "تمت الإجابة على الهاتف أو في Mattermost"
       },
       "kindHint": {
         "approval_asked": "وكيل ينتظر نعم أو لا منك.",
@@ -2577,7 +2600,8 @@ export const watcherMessages = {
         "plugin_failed": "لم تُثبَّت إضافة Hermes موصى بها.",
         "connection": "herdr أو pipelock أو InnerWarden غير موجود.",
         "pipelock_blocked": "أوقف pipelock اتصالًا من غرفة نظيفة.",
-        "tool_load": "بدأت محادثة Hermes بأدوات أكثر مما تتحمله النماذج الصغيرة."
+        "tool_load": "بدأت محادثة Hermes بأدوات أكثر مما تتحمله النماذج الصغيرة.",
+        "approval_remote": "تمت الإجابة على طلب موافقة من هاتف مقترن أو بزر في Mattermost."
       },
       "trust": {
         "title": "الوثوق بهذا",

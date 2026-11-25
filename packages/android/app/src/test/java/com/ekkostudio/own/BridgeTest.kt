@@ -44,4 +44,17 @@ class BridgeTest {
         assertTrue(script.contains("return true;"))
         assertTrue(script.contains("studio-own:termux-result"))
     }
+
+    @Test
+    fun approvalAlertMessagesFromThePage() {
+        assertEquals(StudioBridge.Request.AlertsStatus, StudioBridge.parse("""{"type":"alerts.status"}"""))
+        assertEquals(StudioBridge.Request.AlertsPair("ABCD-EF23", "Pixel 8"), StudioBridge.parse("""{"type":"alerts.pair","code":"abcd ef23","name":" Pixel 8 "}"""))
+        assertNull(StudioBridge.parse("""{"type":"alerts.pair","code":"nope"}"""))
+        assertEquals(StudioBridge.Request.AlertsMode("saver"), StudioBridge.parse("""{"type":"alerts.mode","mode":"saver"}"""))
+        assertNull(StudioBridge.parse("""{"type":"alerts.mode","mode":"always"}"""))
+        assertEquals(StudioBridge.Request.AlertsUnpair, StudioBridge.parse("""{"type":"alerts.unpair"}"""))
+        val script = StudioBridge.documentStartScript(termuxInstalled = false)
+        assertTrue(script.contains("approvalAlerts"))
+        assertTrue(script.contains("studio-own:alerts"))
+    }
 }

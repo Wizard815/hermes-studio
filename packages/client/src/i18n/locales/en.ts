@@ -14,6 +14,7 @@ import { watcherMessages } from '../watcher-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { omiMessages } from '../omi-messages'
+import { approvalAlertMessages } from '../approval-alerts-messages'
 import { agentWorkMessages } from '../agent-work-messages'
 import { systemMessages } from '../system-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
@@ -49,6 +50,7 @@ export default {
   ...androidMessages['en'],
   ...orbMessages['en'],
   ...omiMessages['en'],
+  ...approvalAlertMessages['en'],
   ...agentWorkMessages.en,
   ...systemMessages['en'],
   ...recommendedPluginsMessages['en'],

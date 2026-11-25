@@ -5,20 +5,20 @@ import { readProfileEnv, readSetupRecord } from '../../../hermes/controllers/mat
 import { logger } from '../../public/logging'
 import { AgentWorkStore } from './store'
 import { AgentWorkSettingsFile } from './settings'
-import { MattermostRest } from './mattermost'
+import { MattermostRest, decidedPlace } from './mattermost'
 import { OrbShare } from './orb-share'
 import { AllGlanceMcp } from './allglance'
 import { ObsidianWiki } from './wiki'
 import { AgentWorkService } from './service'
 import { recordWatcherEvent } from '../watcher'
+import { approvalAlertsWantMattermost, approvalAlertsWorkChanged } from '../approval-alerts'
 import type { AgentWork } from './store'
 
 /** Agent work in the watcher's feed (docs/watcher.md): waiting for approval, blocked, decided. */
 export function watchAgentWork(work: AgentWork, change: 'created' | 'status' | 'decided'): void {
   const base = { taskId: work.id, sessionId: work.sessionId || undefined, agent: work.agent || undefined, link: '/hermes/connections?tab=agent-work' }
   if (change === 'decided' && work.decision) {
-    const via = ({ studio: 'Studio', mattermost: 'Mattermost', orb: 'Pondering Orb', omi: 'Omi' } as Record<string, string>)[work.decidedVia] || work.decidedVia
-    recordWatcherEvent({ ...base, kind: 'work_decided', severity: 'info', text: `${work.decision === 'approved' ? 'Approved' : 'Rejected'} in ${via}${work.decidedBy ? ` by ${work.decidedBy}` : ''}: ${work.title}` })
+    recordWatcherEvent({ ...base, kind: 'work_decided', severity: 'info', text: `${work.decision === 'approved' ? 'Approved' : 'Rejected'} ${decidedPlace(work.decidedVia, work.decidedBy)}: ${work.title}` })
   } else if (work.status === 'awaiting_approval') {
     recordWatcherEvent({ ...base, kind: 'work_approval', severity: 'warn', text: `Waiting for your approval: ${work.title}` })
   } else if (work.status === 'blocked') {
@@ -52,7 +52,8 @@ export function configureAgentWork(settingsFile: string): AgentWorkService {
     allglance: new AllGlanceMcp(async () => (await settings.load()).allglance),
     wiki: new ObsidianWiki(async () => (await settings.load()).wiki),
     onError: (what, error) => logger.warn({ err: error }, '[agent-work] %s failed', what),
-    observe: watchAgentWork,
+    observe: (work, change) => { watchAgentWork(work, change); approvalAlertsWorkChanged() },
+    approvalPostWanted: () => approvalAlertsWantMattermost('work'),
   })
   const current = service
   // ✅ / ❌ reactions on approval posts, and Vikunja tasks still to mark done.

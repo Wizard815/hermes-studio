@@ -25,6 +25,7 @@ and keep this file small enough to fit into every task context.
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.
 - `docs/agent-limits.md` - run limits: cost, tokens, time and loop detector per run, for every chat type.
 - `docs/watcher.md` - the Watcher: one alert feed and bell for Studio's guards, trust rules, Settings → Watcher and Clean rooms.
+- `docs/approval-alerts.md` - where approvals reach you: Mattermost, the Studio Own Android app (paired phone key, live stream, notifications with Approve / Reject), both or off.
 - `docs/hermes-tool-load.md` - too many tools for a small model: the chat notice, the tool search switch per profile.
 - `docs/ui-skills.md` - UI skills (bundled): design skills copied once into Hermes, Ekko and every coding agent; removal, edits, switch.
 

@@ -12,6 +12,7 @@ import { startOmiIntegration } from './omi'
 import { startAgentWork } from './agent-work'
 import { startRunLimits } from './run-limits'
 import { startWatcher } from './watcher'
+import { startApprovalAlerts } from './approval-alerts'
 import { startCleanRoomCleanup } from './cleanroom'
 import { getSessionMetadata as getTerminalSessionMetadata } from '../modules/studio/public/sessions'
 import Koa from 'koa'
@@ -689,6 +690,8 @@ export async function bootstrap() {
   additionalShutdownSteps.push({ name: 'Watcher', close: () => watcher.close() })
   const agentWork = startAgentWork()
   additionalShutdownSteps.push({ name: 'Agent work', close: () => agentWork.close() })
+  const approvalAlerts = startApprovalAlerts()
+  additionalShutdownSteps.push({ name: 'Approval alerts', close: () => approvalAlerts.close() })
   const omiIntegration = startOmiIntegration()
   additionalShutdownSteps.push({ name: 'Omi', close: () => omiIntegration.close() })
   const runLimits = startRunLimits()

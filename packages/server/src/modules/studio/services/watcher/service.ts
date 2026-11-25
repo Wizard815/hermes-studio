@@ -23,6 +23,12 @@ export interface WatcherDeps {
   emit?: (event: 'watcher.event' | 'watcher.changed', payload: Record<string, unknown>) => void
   /** Agent work's Mattermost channel; false when none is set. */
   mattermost?: (event: WatcherEvent, title: string) => Promise<boolean>
+  /**
+   * Blocked alerts for "Where approvals reach you" (docs/approval-alerts.md):
+   * `mattermost()` says someone wants them in Mattermost too; `notify` hands
+   * each one to paired phones.
+   */
+  blocked?: { mattermost(): boolean; notify(event: WatcherEvent, title: string): void }
   /** A chat's title, agent and folder. */
   sessionInfo?: (sessionId: string) => { title?: string; agent?: string; folder?: string } | null
   /** A chat's own approval mode (`/yolo`, a task's mode), when it has one. */
@@ -62,7 +68,8 @@ export class WatcherService {
   record(input: WatcherEventInput): WatcherEvent | null {
     const settings = this.settings()
     const wanted = settings.kinds[input.kind]
-    if (!wanted || (!wanted.alert && !wanted.mattermost)) return null
+    const forward = input.severity === 'block' && input.kind !== 'approval_denied' ? this.deps.blocked : undefined
+    if (!wanted || (!wanted.alert && !wanted.mattermost && !forward)) return null
     const now = this.now()
     const repeatKey = `${input.kind}|${input.sessionId || ''}|${input.taskId || ''}|${input.text}`
     const last = this.recent.get(repeatKey)
@@ -87,10 +94,12 @@ export class WatcherService {
       this.prune()
       this.deps.emit?.('watcher.event', { event, unread: this.deps.store.unreadCount() })
     }
-    if (wanted.mattermost && this.deps.mattermost) {
-      const post = event || { ...filled, id: 0, time: now, read: false, sessionId: filled.sessionId || '', taskId: filled.taskId || '', agent: filled.agent || '', folder: filled.folder || '', link: filled.link || '' } as WatcherEvent
+    const post = event || { ...filled, id: 0, time: now, read: false, sessionId: filled.sessionId || '', taskId: filled.taskId || '', agent: filled.agent || '', folder: filled.folder || '', link: filled.link || '' } as WatcherEvent
+    const extraMattermost = !!forward && !wanted.mattermost && !!safeCall(() => forward.mattermost())
+    if ((wanted.mattermost || extraMattermost) && this.deps.mattermost) {
       void this.deps.mattermost(post, title).catch(error => this.fail('mattermost', error))
     }
+    if (forward) safeCall(() => forward.notify(post, title))
     return event
   }
 

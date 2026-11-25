@@ -206,6 +206,12 @@ Links open in the app:
 Code: `ShareIntent.kt` and `LinkRoute.kt` (unit tests next to them), and in the
 web app `utils/studio-own-share.ts`.
 
+## Approval alerts
+
+Studio Own can show Studio's approvals as notifications with Approve and
+Reject: pair it in Settings → Android app and pick "Android app" or "Both"
+in Settings → Watcher. See [approval-alerts.md](approval-alerts.md).
+
 ## Agents on the phone
 
 Hermes, Ekko and the coding agents get one Studio tool, `ekko_studio_use_phone`

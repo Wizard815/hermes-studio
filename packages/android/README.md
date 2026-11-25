@@ -19,8 +19,12 @@ origin rules); see [docs/android-devices.md](../../docs/android-devices.md).
   Studio chat or the open one; links to your server and `studio-own://chat/<id>`
   open in the app (see [docs/android-devices.md](../../docs/android-devices.md#share-to-studio-and-links)).
 
-Roadmap: notifications (no Firebase), calendar/reminders, tasks and Kanban,
-home-screen widgets.
+- **Approval alerts:** pair the app in Studio (Settings → Android app) and
+  approvals arrive as notifications with Approve / Reject, over a stream from
+  your own server (no Firebase). Live or Battery saver; see
+  [docs/approval-alerts.md](../../docs/approval-alerts.md).
+
+Roadmap: calendar/reminders, tasks and Kanban, home-screen widgets.
 
 Build: GitHub Actions workflow `Android APK` (see `.github/workflows/android-apk.yml`)
 builds a debug APK on every change under `packages/android/`; download it from the

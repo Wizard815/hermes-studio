@@ -118,6 +118,7 @@ import { personCollaborationPendingCount } from '../repositories/person-stage-st
 import { observeChatRunWebhookEvent as publishChatRunWebhookEvent, type ChatRunWebhookAgent } from '../services/webhooks'
 import { getRunLimits, observeRunLimitEvent } from '../services/run-limits'
 import { observeWatcherChatEvent } from '../services/watcher'
+import { observeApprovalAlertChatEvent } from '../services/approval-alerts'
 import type { RunLimitHit } from '../../../../../shared/run-limits'
 import { persistSessionCommandMessage } from '../services/chat-run/session-command'
 
@@ -126,6 +127,8 @@ function observeChatRunWebhookEvent(input: Parameters<typeof publishChatRunWebho
   try { observeRunLimitEvent(input.sessionId, input.event, input.payload) } catch { /* limits never break a run */ }
   // The watcher (docs/watcher.md) notes approvals asked, approved and denied in every chat type.
   observeWatcherChatEvent(input.sessionId, input.event, input.payload as Record<string, any> | undefined, input.agent)
+  // Approval alerts (docs/approval-alerts.md): the same approvals, for phones and Mattermost.
+  observeApprovalAlertChatEvent(input.sessionId, input.event, input.payload as Record<string, any> | undefined, input.agent)
   return publishChatRunWebhookEvent(input)
 }
 import { getAgentStatusSnapshot } from '../public/agent-status-registry'

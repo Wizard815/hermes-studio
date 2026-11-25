@@ -57,7 +57,7 @@ function remember<K, V>(map: Map<K, V> | Set<K>, key: K, value?: V) {
   if (map.size > 500) map.delete(map.keys().next().value as K)
 }
 
-const AGENT_NAMES: Record<string, string> = {
+export const AGENT_NAMES: Record<string, string> = {
   bridge: 'Hermes', hermes: 'Hermes', ekko: 'Ekko', 'claude-code': 'Claude Code', codex: 'Codex', pi: 'Pi', grok: 'Grok', opencode: 'OpenCode',
   dsh: 'DSH', cursor: 'Cursor', antigravity: 'Antigravity', qwen: 'Qwen Code', kimi: 'Kimi Code', codebuddy: 'CodeBuddy', qoder: 'Qoder', copilot: 'Copilot', zcode: 'ZCode',
 }

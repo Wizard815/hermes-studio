@@ -26,4 +26,22 @@
         <item quantity="one">%1$d image</item>
         <item quantity="other">%1$d images</item>
     </plurals>
+    <string name="alerts_channel">Approvals</string>
+    <string name="alerts_channel_hint">Studio asks for your yes or no. Approve or Reject from the notification.</string>
+    <string name="alerts_service_channel">Approval alerts connection</string>
+    <string name="alerts_service_channel_hint">A quiet notification while Live approval alerts keep a connection to Studio.</string>
+    <string name="alerts_approve">Approve</string>
+    <string name="alerts_reject">Reject</string>
+    <string name="alerts_open_chat">Open chat</string>
+    <string name="alerts_ongoing_title">Approval alerts on</string>
+    <string name="alerts_ongoing_connected">Connected to Studio. Tap to open Studio.</string>
+    <string name="alerts_ongoing_waiting">Reconnecting to Studio…</string>
+    <string name="alerts_not_paired">This phone is not paired any more. Pair it again in Studio: Settings → Android app.</string>
+    <string name="alerts_pair_title">Turn on approval alerts?</string>
+    <string name="alerts_pair_body">Pair this phone with %1$s? It can then read your approvals and answer them. You can remove it in Studio at any time.</string>
+    <string name="alerts_pair">Pair</string>
+    <string name="alerts_pair_failed">Pairing did not work: %1$s</string>
+    <string name="alerts_paired">Paired. Approval alerts are on.</string>
+    <string name="alerts_confirm_title">Answer this approval?</string>
+    <string name="alerts_confirm_body">Check what it does before you answer:\n\n%1$s</string>
 </resources>

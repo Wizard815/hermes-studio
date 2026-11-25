@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Run commands in Termux; Termux also requires allow-external-apps = true. -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+    <!-- Live approval alerts: one connection to Studio in a foreground service (docs/approval-alerts.md). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <queries>
         <package android:name="com.termux" />
@@ -61,5 +65,26 @@
                 <data android:host="${studioOwnHost}" />
             </intent-filter>
         </activity>
+
+        <!-- Live approval alerts (ApprovalAlertService.kt). specialUse: a self-hosted push connection without Google services. -->
+        <service
+            android:name=".ApprovalAlertService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Self-hosted push: a server-sent events connection to the user's own Studio server for approval notifications, without Google Firebase." />
+        </service>
+        <receiver
+            android:name=".ApprovalActionReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".ApprovalBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

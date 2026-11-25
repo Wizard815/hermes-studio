@@ -14,7 +14,8 @@ approval system, and it never stops a run by itself.
   Blocked), what kind it is, when, a short text, and buttons: Open chat (or
   Open task), Trust this (for approvals), Langfuse (when on), Mark read,
   Remove. At the top: Mark all read, Clear.
-- **Settings → Watcher**: which events alert in the bell and which also go to
+- **Settings → Watcher**: where approvals reach you (Mattermost, the Android
+  app, both or off; see [approval-alerts.md](approval-alerts.md)), which events alert in the bell and which also go to
   Mattermost, how many alerts are kept and for how long, the trust rules
   (list, Remove, Add a rule), scheduled jobs' rule, and the extras.
 - **Settings → Clean rooms**: the clean-room settings that were API-only
@@ -38,6 +39,7 @@ approval system, and it never stops a run by itself.
 | Connection problem | herdr not starting, pipelock not answering, InnerWarden hook missing | warn | on | off |
 | pipelock blocked | pipelock refusing a clean-room connection | block | on | off |
 | Many tools in a chat | a Hermes chat starting with more tools than the threshold ([hermes-tool-load.md](hermes-tool-load.md)) | info | on | off |
+| Answered on phone or in Mattermost | an approval answered on a paired phone or with a Mattermost button ([approval-alerts.md](approval-alerts.md)) | info | on | off |
 
 The same alert (kind, chat, text) again within a minute is dropped, so a
 retrying agent does not fill the bell. Mattermost posts go to the channel set

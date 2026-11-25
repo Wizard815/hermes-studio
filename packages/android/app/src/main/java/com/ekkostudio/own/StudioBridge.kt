@@ -34,19 +34,34 @@ object StudioBridge {
           port.onmessage = function (event) {
             var detail;
             try { detail = JSON.parse(event.data); } catch (e) { return; }
-            window.dispatchEvent(new CustomEvent('studio-own:termux-result', { detail: detail }));
+            var name = detail && detail.channel === 'alerts' ? 'studio-own:alerts' : 'studio-own:termux-result';
+            window.dispatchEvent(new CustomEvent(name, { detail: detail }));
           };
+          var send = function (message) { port.postMessage(JSON.stringify(message)); };
           window.StudioOwn = Object.freeze({
             isTermuxInstalled: function () { return $termuxInstalled; },
             runInTermux: function (command, workdir, background) {
-              port.postMessage(JSON.stringify({ type: 'termux.run', command: String(command || ''), workdir: String(workdir || ''), background: !!background }));
-            }
+              send({ type: 'termux.run', command: String(command || ''), workdir: String(workdir || ''), background: !!background });
+            },
+            approvalAlerts: Object.freeze({
+              status: function () { send({ type: 'alerts.status' }); },
+              pair: function (code, name) { send({ type: 'alerts.pair', code: String(code || ''), name: String(name || '') }); },
+              setMode: function (mode) { send({ type: 'alerts.mode', mode: String(mode || '') }); },
+              unpair: function () { send({ type: 'alerts.unpair' }); },
+              openBatterySettings: function () { send({ type: 'alerts.battery' }); }
+            })
           });
         })();
     """.trimIndent()
 
     sealed interface Request {
         data class RunInTermux(val command: Termux.Command) : Request
+        /** Approval alerts on this phone (docs/approval-alerts.md). */
+        data object AlertsStatus : Request
+        data class AlertsPair(val code: String, val name: String) : Request
+        data class AlertsMode(val mode: String) : Request
+        data object AlertsUnpair : Request
+        data object AlertsBattery : Request
     }
 
     /** Parses a page message. Unknown or invalid messages are ignored (null). */
@@ -58,6 +73,11 @@ object StudioBridge {
                 json.optString("workdir"),
                 json.optBoolean("background", true),
             )?.let { Request.RunInTermux(it) }
+            "alerts.status" -> Request.AlertsStatus
+            "alerts.pair" -> ApprovalAlerts.normalizeCode(json.optString("code"))?.let { Request.AlertsPair(it, json.optString("name").trim().take(60)) }
+            "alerts.mode" -> json.optString("mode").takeIf { it in ApprovalAlerts.MODES }?.let { Request.AlertsMode(it) }
+            "alerts.unpair" -> Request.AlertsUnpair
+            "alerts.battery" -> Request.AlertsBattery
             else -> null
         }
     }
