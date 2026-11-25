@@ -589,7 +589,9 @@ export class HerdrBridge {
         for (const paneId of gone) {
           const ref = this.persisted.working[paneId]
           delete this.persisted.working[paneId]
-          if (ref.started) this.reportWork(ref, paneId, 'gone', null)
+          // Report it even when the agent never got as far as working (it crashed or quit on start):
+          // otherwise the work it was given stays "in progress" wherever it came from.
+          this.reportWork(ref, paneId, 'gone', null)
         }
         void this.savePersisted()
       }

@@ -353,6 +353,20 @@ describe('herdr bridge', () => {
     expect(seen).toEqual(['w9:p2:working:t1234'])
   })
 
+  it('reports an Upstream agent gone even when it quit before it ever worked', async () => {
+    const { deps } = makeDeps(dir)
+    const seen: string[] = []
+    deps.workStatusChanged = (data, paneId, status) => { seen.push(`${paneId}:${status}:${data.upstream?.task}`) }
+    await startBridge(deps)
+    await bridge!.launchAgent('claude-code', { title: 'Fix it', workspace: join(dir, 'task-branch'), onWorking: { upstream: { task: 't9' } } })
+    // the agent crashes on start (its model connection never came up): herdr closes the pane
+    ;(bridge as any).persisted.working['w9:p2'].at = 0
+    herdr.panes = herdr.panes.filter((p: any) => p.pane_id !== 'w9:p2')
+    herdr.emit('pane_closed')
+    await until(() => seen.length === 1)
+    expect(seen).toEqual(['w9:p2:gone:t9'])
+  })
+
   it('starts project work in the matching Studio folder and files its chat there', async () => {
     const { deps, sessions } = makeDeps(dir)
     const prepared: Array<string | undefined> = []
