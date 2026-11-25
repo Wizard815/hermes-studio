@@ -9,6 +9,7 @@ on 2026-11-25. No model or paid API calls were made.
 | `studio-own-debug.apk` | Studio Own 0.4.0 (versionCode 4), debug | `com.ekkostudio.own` | hermes-studio `studio-herder` @ `bd7407b` + the fix below |
 | `omi-dev-release.apk` | Omi Dev 1.0.543 (versionCode 2992), dev flavor, release, arm64-only, obfuscated, 96.2 MiB | `com.friend.ios.dev` | omi-local `studio-herder` @ `0f6fc00caf` + `omi-fixes.patch` |
 | `omi-fixes.patch` | the Omi fix as a `git am` patch (the session could not push to omi-local) | | |
+| `TEST-CHECKLIST.md` | step-by-step phone test for both apps (calling home, Doze, share, links, Termux, Omi approvals) | | |
 | `screenshots/` | Omi's Approvals page with Studio approval cards, rendered by a Flutter widget test | | |
 
 ## Install
