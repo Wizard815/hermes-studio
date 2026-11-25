@@ -15,7 +15,13 @@ import { dirname, join, resolve } from 'node:path'
  * - the launch's own API key approved (taken off the rejected list), as
  *   Claude Code keeps it: the key's last 20 characters;
  * - the chat's folder trusted;
- * - bypass-permissions mode accepted only when the launch uses it (clean rooms).
+ * - bypass-permissions mode accepted only when the launch uses it (clean rooms);
+ * - Claude Code's auto mode billing notice ("We're changing auto mode to no longer
+ *   charge for classifier requests…") read, when Studio gives the key: requests go
+ *   through Studio's model gateway, so Claude Code shows it at the first action auto
+ *   mode checks and holds the pane until Enter. Claude Code keeps the answer as
+ *   `autoModeClassifierBillingNoticeAcknowledgedAt` (ms) and asks again after 24 hours,
+ *   so each launch renews an answer older than an hour.
  *
  * Nothing else in the file changes. Answers already there stay.
  */
@@ -26,7 +32,13 @@ export interface ClaudeFirstRunInput {
   workspace?: string
   apiKey?: string
   skipPermissions?: boolean
+  /** Now, in ms (tests). */
+  now?: number
 }
+
+/** Claude Code shows its auto mode billing notice again 24 hours after it was answered. */
+export const CLAUDE_AUTO_MODE_NOTICE_KEY = 'autoModeClassifierBillingNoticeAcknowledgedAt'
+const AUTO_MODE_NOTICE_RENEW_MS = 60 * 60 * 1000
 
 export function claudeConfigFile(input: Pick<ClaudeFirstRunInput, 'configDir' | 'home'>): string {
   return input.configDir ? join(input.configDir, '.claude.json') : join(input.home || homedir(), '.claude.json')
@@ -66,6 +78,9 @@ export function answerClaudeFirstRun(input: ClaudeFirstRunInput): { file: string
       approved: approved.includes(tail) ? approved : [...approved, tail].slice(-50),
       rejected: rejected.filter(item => item !== tail),
     }
+    const now = input.now ?? Date.now()
+    const answered = Number(config[CLAUDE_AUTO_MODE_NOTICE_KEY])
+    if (!Number.isFinite(answered) || now - answered >= AUTO_MODE_NOTICE_RENEW_MS) config[CLAUDE_AUTO_MODE_NOTICE_KEY] = now
   }
   if (input.workspace) {
     const folder = resolve(input.workspace)

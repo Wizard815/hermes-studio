@@ -225,7 +225,13 @@ starts the pane:
   (Studio's model gateway), onboarding is marked done (theme kept, dark when
   none was picked) and that key is approved (Claude Code keeps its last 20
   characters), also when someone answered "No" to it before. Clean rooms also
-  accept bypass-permissions mode. A Claude Code on its own sign-in still shows
+  accept bypass-permissions mode. With Studio's key, Claude Code's auto mode
+  notice ("We're changing auto mode to no longer charge for classifier
+  requests…", shown at the first action auto mode checks because requests go
+  through a gateway) is marked read (`autoModeClassifierBillingNoticeAcknowledgedAt`).
+  Claude Code asks again 24 hours after the answer, so each launch renews an
+  answer older than an hour; a pane left open for more than a day can still
+  show it once (Enter goes on). A Claude Code on its own sign-in still shows
   its login. Nothing else in the file changes.
 - **Hermes** (`hermes/services/herdr-first-run.ts`): a profile that never
   answered "Help improve Hermes?" gets Hermes's default answer, "No thanks"

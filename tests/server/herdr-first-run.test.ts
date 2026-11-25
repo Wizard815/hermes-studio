@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { answerClaudeFirstRun, claudeConfigFile } from '../../packages/server/src/modules/coding-agents/services/herdr/first-run'
+import { CLAUDE_AUTO_MODE_NOTICE_KEY, answerClaudeFirstRun, claudeConfigFile } from '../../packages/server/src/modules/coding-agents/services/herdr/first-run'
 import { hermesMetricsUndecided, withHermesMetricsDeclined } from '../../packages/server/src/modules/hermes/services/herdr-first-run'
 
 const dirs: string[] = []
@@ -14,17 +14,19 @@ const KEY = 'sk-studio-gateway-0123456789abcdefTAIL'
 describe('Claude Code in a herdr pane skips its first-run questions', () => {
   it('a fresh home: onboarding done, the launch key approved, the folder trusted', () => {
     const home = temp()
-    const result = answerClaudeFirstRun({ home, workspace: '/srv/app', apiKey: KEY })
+    const now = 1_795_000_000_000
+    const result = answerClaudeFirstRun({ home, workspace: '/srv/app', apiKey: KEY, now })
     expect(result).toEqual({ file: join(home, '.claude.json'), changed: true })
     const config = JSON.parse(readFileSync(result.file, 'utf8'))
     expect(config).toEqual({
       hasCompletedOnboarding: true,
       theme: 'dark',
       customApiKeyResponses: { approved: ['0123456789abcdefTAIL'], rejected: [] },
+      [CLAUDE_AUTO_MODE_NOTICE_KEY]: now,
       projects: { '/srv/app': { hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true } },
     })
     // Again: nothing to change.
-    expect(answerClaudeFirstRun({ home, workspace: '/srv/app', apiKey: KEY }).changed).toBe(false)
+    expect(answerClaudeFirstRun({ home, workspace: '/srv/app', apiKey: KEY, now: now + 60_000 }).changed).toBe(false)
   })
 
   it('keeps what is there, and takes a key someone said "No" to off the rejected list', () => {
@@ -41,6 +43,21 @@ describe('Claude Code in a herdr pane skips its first-run questions', () => {
       customApiKeyResponses: { approved: ['other', '0123456789abcdefTAIL'], rejected: [] },
       projects: { '/srv/app': { allowedTools: ['Bash'], hasTrustDialogAccepted: true } },
     })
+  })
+
+  it('reads the auto mode billing notice for a gateway launch, and renews an answer older than an hour (Claude Code asks again after 24 h)', () => {
+    const home = temp()
+    const file = join(home, '.claude.json')
+    const now = 1_795_000_000_000
+    writeFileSync(file, JSON.stringify({ [CLAUDE_AUTO_MODE_NOTICE_KEY]: now - 30 * 60_000 }))
+    answerClaudeFirstRun({ home, apiKey: KEY, now })
+    expect(JSON.parse(readFileSync(file, 'utf8'))[CLAUDE_AUTO_MODE_NOTICE_KEY]).toBe(now - 30 * 60_000)
+    answerClaudeFirstRun({ home, apiKey: KEY, now: now + 23 * 3600_000 })
+    expect(JSON.parse(readFileSync(file, 'utf8'))[CLAUDE_AUTO_MODE_NOTICE_KEY]).toBe(now + 23 * 3600_000)
+    // An agent on its own sign-in (no gateway) is not answered for.
+    const own = temp()
+    answerClaudeFirstRun({ home: own, workspace: '/srv/app', now })
+    expect(JSON.parse(readFileSync(join(own, '.claude.json'), 'utf8'))[CLAUDE_AUTO_MODE_NOTICE_KEY]).toBeUndefined()
   })
 
   it('an agent on its own sign-in keeps its onboarding (login); only the folder is trusted', () => {
