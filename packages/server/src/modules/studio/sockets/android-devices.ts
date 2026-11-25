@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io'
 import { authenticateUserToken } from '../public/auth'
 import { SERIAL } from '../services/android/adb'
 import { androidDeviceManager } from '../services/android/manager'
+import { setPhoneAgentEmitter } from '../services/android/phone-agent'
 
 const MAX_WATCHES_PER_SOCKET = 4
 
@@ -12,6 +13,8 @@ const MAX_WATCHES_PER_SOCKET = 4
  */
 export function setupAndroidDeviceSocket(io: Server): { close: () => void } {
   const nsp = io.of('/android')
+  // Agents' phone actions, questions and take over reach every open Android page.
+  setPhoneAgentEmitter((event, payload) => nsp.emit(event, payload))
   nsp.use((socket, next) => {
     void (async () => {
       const user = await authenticateUserToken(String(socket.handshake.auth?.token || ''))

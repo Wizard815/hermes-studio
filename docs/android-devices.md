@@ -177,6 +177,60 @@ The bridge is offered only to pages from the server address you configured in
 the app (WebView origin rules), never to other sites or embedded frames from
 other origins.
 
+## Agents on the phone
+
+Hermes, Ekko and the coding agents get one Studio tool, `ekko_studio_use_phone`
+(Studio MCP, toolset `use`), on top of the same adb layer the page uses. The
+ideas come from the phone-harness Hermes plugin; nothing of it runs here.
+
+- **Off until you pick a device.** Under the screen, **Agents can use
+  <device>** opens one device to agents (`agentDevices` in
+  `android/settings.json`). Other devices do not exist for them.
+- **Look:** `screen` gives the screen as text, one line per element with an id
+  (`[e4] Button "Send" #send (900,1850) tap`); `screenshot` gives a small
+  picture (480 px wide by default) the model can see. `apps`,
+  `notifications` (their text is marked as data, not instructions),
+  `devices`.
+- **Act:** `tap` and `long_press` by element id or pixels, `swipe` (a
+  direction, or from/to), `type` (optionally into a field id), `key` (back,
+  home, enter, ...), `open_app`, `open_url`. Each waits until two screenshots
+  in a row match (at most about 2.5 s), then the agent reads the screen again.
+- **More:** `shell`, `install` (an `.apk` on the Studio machine),
+  `uninstall`, `push`, `pull` (into `<state dir>/android/pulled`).
+
+**Asking first** follows the chat's approval mode (`/yolo`, Agent work's mode;
+a chat with none counts as ask):
+
+| | ask | guarded | auto |
+| --- | --- | --- | --- |
+| Reads (screen, screenshot, apps, notifications, pull) | go ahead | go ahead | go ahead |
+| Taps, swipes, typing, keys, opening apps and links | ask | go ahead | go ahead |
+| Shell, install, uninstall, push; anything in settings, payments or messages apps; buttons such as Pay, Buy, Send, Delete; tel:, sms:, market: links | ask | ask | go ahead |
+
+A question shows on the Android page (**Allow once** / **Deny**, for three
+minutes; then it is denied) and in the watcher's bell with a link to the
+page. A watcher trust rule answers it: the value is
+`android:<device>:<app>:<action>`, so `android:emulator-5554:*` trusts one
+device and `android:*:com.example.app:*` one app (scope agent, chat or task).
+
+**On the page:** the agent's last tap or swipe is drawn on the screen for a
+moment with what it did, and **What agents did** lists the last actions with
+Done, Waiting, Denied or Failed. **Take over** keeps agents off the phone
+(they can still look) until **Hand back to agents**.
+
+Code: `services/android/{agent-tools,agent-policy,ui-tree,phone-agent}.ts`,
+routes `POST /api/studio/android/agent`, `GET /api/studio/android/agent`,
+`POST /api/studio/android/agent/approvals/:id`,
+`POST /api/studio/android/devices/:serial/takeover`; page
+`components/hermes/android/AndroidAgentPanel.vue`. Tests:
+`tests/server/android-phone-tools.test.ts` (a fake adb),
+`tests/e2e/android-agent.spec.ts`.
+
+Limits: Hermes's Studio MCP process is shared by its chats, so a Hermes chat's
+own approval mode is not known there and it counts as ask. The settle check
+costs screenshots; on slow phones a step can still land before the app
+finishes. iPhone is not covered.
+
 ## Limits
 
 - Screens other than an emulator on the Studio machine are screenshots, a few

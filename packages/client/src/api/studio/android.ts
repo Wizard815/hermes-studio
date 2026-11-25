@@ -28,6 +28,8 @@ export interface AndroidSettings {
   autoConnect: string[]
   detectBlueStacks: boolean
   adbServer: string
+  /** Devices agents may use with the phone tools; none until the person picks one. */
+  agentDevices: string[]
 }
 
 export interface BlueStacksInstance {
@@ -73,6 +75,39 @@ export const stopAndroidEmulator = (serial: string) => post<{ ok: true }>(`${dev
 export const installAndroidApk = (serial: string, path: string) =>
   post<{ message: string; packageName: string | null }>(`${device(serial)}/install`, { path })
 export const launchAndroidApp = (serial: string, packageName: string) => post<{ ok: true }>(`${device(serial)}/launch`, { packageName })
+
+/** Agents on the phone (docs/android-devices.md): what they did, what they ask, who has the phone. */
+export interface PhoneAgentEntry {
+  id: string
+  at: number
+  serial: string
+  action: string
+  summary: string
+  status: 'waiting' | 'done' | 'denied' | 'failed'
+  level: 'read' | 'act' | 'danger'
+  agent: string
+  sessionId: string
+  point?: { x: number; y: number; x2?: number; y2?: number }
+  error?: string
+}
+
+export interface PhoneAgentApproval {
+  id: string
+  at: number
+  serial: string
+  device: string
+  action: string
+  summary: string
+  reason: string
+  agent: string
+  sessionId: string
+  trustValue: string
+}
+
+export const fetchPhoneAgentState = () =>
+  request<{ log: PhoneAgentEntry[]; approvals: PhoneAgentApproval[]; takenOver: string[] }>(`${base}/agent`)
+export const answerPhoneAgent = (id: string, allow: boolean) => post<{ ok: true }>(`${base}/agent/approvals/${encodeURIComponent(id)}`, { allow })
+export const takeOverPhone = (serial: string, held: boolean) => post<{ serial: string; held: boolean }>(`${device(serial)}/takeover`, { held })
 
 export function connectAndroidSocket(): Socket {
   const endpoint = socketEndpoint(getBaseUrlValue(), '/android')

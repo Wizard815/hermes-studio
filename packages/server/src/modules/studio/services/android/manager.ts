@@ -3,7 +3,7 @@ import { closeSync, existsSync, openSync, readdirSync, readFileSync, statSync } 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import {
-  assertSerial, parseEndpoint, resolveAdb, resolveEmulator, run,
+  assertSerial, parseEndpoint, resolveAdb, resolveEmulator, run, SERIAL,
   type AndroidToolPaths,
 } from './adb'
 import { parseAvds, parseDevices, parseScreenSize, type AndroidAvd, type AndroidDevice } from './devices'
@@ -24,9 +24,11 @@ export interface AndroidSettings extends AndroidToolPaths {
    * emulators, its USB phones) is used through it.
    */
   adbServer: string
+  /** Devices agents may use with the phone tools (docs/android-devices.md). None until the person picks one. */
+  agentDevices: string[]
 }
 
-export const DEFAULT_ANDROID_SETTINGS: AndroidSettings = { adbPath: '', sdkPath: '', streamWidth: 540, autoConnect: [], detectBlueStacks: true, adbServer: '' }
+export const DEFAULT_ANDROID_SETTINGS: AndroidSettings = { adbPath: '', sdkPath: '', streamWidth: 540, autoConnect: [], detectBlueStacks: true, adbServer: '', agentDevices: [] }
 
 export interface AndroidStatus {
   adb: string | null
@@ -59,6 +61,8 @@ export function normalizeSettings(input: Partial<AndroidSettings> | null | undef
     }))].slice(0, MAX_AUTO_CONNECT),
     detectBlueStacks: input?.detectBlueStacks !== false,
     adbServer: adbServerEndpoint(input?.adbServer),
+    agentDevices: [...new Set((Array.isArray(input?.agentDevices) ? input.agentDevices : [])
+      .map(value => String(value || '').trim()).filter(value => SERIAL.test(value)))].slice(0, 50),
   }
 }
 
@@ -87,7 +91,7 @@ export function labelBlueStacks(devices: AndroidDevice[], instances: BlueStacksI
 type Compressor = (png: Buffer, width: number) => Promise<{ data: Buffer; mime: 'image/png' | 'image/jpeg'; width: number; height: number }>
 
 /** Screencaps are full-resolution PNGs; send a smaller JPEG when sharp is available. */
-const compressWithSharp: Compressor = async (png, width) => {
+export const compressWithSharp: Compressor = async (png, width) => {
   try {
     const { default: sharp } = await import('sharp')
     const { data, info } = await sharp(png).resize({ width, withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer({ resolveWithObject: true })

@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { NButton, NInput, NSpin, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import type { Socket } from 'socket.io-client'
 import {
   connectAndroidDevice, connectAndroidSocket, disconnectAndroidDevice, fetchAndroidStatus, installAndroidApk,
   launchAndroidApp, pairAndroidDevice, saveAndroidSettings, startAndroidAvd, stopAndroidEmulator, studioOwnBridge,
-  type AndroidDevice, type AndroidFrame, type AndroidStatus,
+  type AndroidDevice, type AndroidFrame, type AndroidStatus, type PhoneAgentEntry,
 } from '@/api/studio/android'
+import AndroidAgentPanel from '@/components/hermes/android/AndroidAgentPanel.vue'
 import { keyboardInput, pointerGesture, type AndroidGesture, type AndroidKey } from '@/utils/android-input'
 import { uploadRuntimeFiles } from '@/api/studio/files'
 
@@ -34,6 +35,11 @@ const adbServer = ref('')
 const termuxResult = ref('')
 
 let socket: Socket | null = null
+// The same socket, for the agents panel (it listens for agents' actions and questions).
+const socketRef = shallowRef<Socket | null>(null)
+/** The agent's last tap or swipe, drawn on the screen for a moment. */
+const agentMark = ref<(PhoneAgentEntry & { key: number }) | null>(null)
+let markTimer: ReturnType<typeof setTimeout> | null = null
 let watching = ''
 let press: { x: number; y: number; t: number; id: number } | null = null
 let pendingText = ''
@@ -108,6 +114,20 @@ const saveAdbServer = () => act('adbServer', async () => {
   await saveAndroidSettings({ adbServer: adbServer.value.trim() })
   selected.value = ''
 })
+
+const agentAllowed = computed(() => !!current.value && (status.value?.settings.agentDevices ?? []).includes(current.value.serial))
+const setAgentAllowed = (value: boolean) => act('agentDevices', () => {
+  const serial = current.value?.serial
+  const list = (status.value?.settings.agentDevices ?? []).filter(item => item !== serial)
+  return saveAndroidSettings({ agentDevices: value && serial ? [...list, serial] : list })
+})
+
+function showAgentMark(entry: PhoneAgentEntry) {
+  if (entry.serial !== selected.value || !entry.point) return
+  agentMark.value = { ...entry, key: Date.now() }
+  if (markTimer) clearTimeout(markTimer)
+  markTimer = setTimeout(() => { agentMark.value = null }, 2500)
+}
 
 const setDetectBlueStacks = (value: boolean) => act('detect', () => saveAndroidSettings({ detectBlueStacks: value }))
 const forget = (endpoint: string) => act(`forget:${endpoint}`, () => saveAndroidSettings({
@@ -248,6 +268,7 @@ watch(selected, serial => watchScreen(serial))
 
 onMounted(() => {
   socket = connectAndroidSocket()
+  socketRef.value = socket
   socket.on('screen.frame', (frame: AndroidFrame, ack?: () => void) => {
     setFrame(frame)
     ack?.()
@@ -269,8 +290,10 @@ onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer)
   if (textTimer) clearTimeout(textTimer)
   if (wheelTimer) clearTimeout(wheelTimer)
+  if (markTimer) clearTimeout(markTimer)
   socket?.disconnect()
   socket = null
+  socketRef.value = null
   clearFrame()
 })
 </script>
@@ -319,6 +342,18 @@ onBeforeUnmount(() => {
           </li>
         </ul>
         <p v-if="devices.some(device => device.state === 'unauthorized')" class="android-muted">{{ t('android.unauthorized') }}</p>
+      </section>
+
+      <section v-if="current" class="android-card" data-theme-surface="card">
+        <AndroidAgentPanel
+          :serial="current.serial"
+          :device-name="deviceName(current)"
+          :allowed="agentAllowed"
+          :saving="busy === 'agentDevices'"
+          :socket="socketRef"
+          @update:allowed="setAgentAllowed"
+          @point="showAgentMark"
+        />
       </section>
 
       <section v-if="status?.avds.length" class="android-card" data-theme-surface="card">
@@ -420,8 +455,8 @@ onBeforeUnmount(() => {
           </div>
         </header>
         <div class="android-stage">
+          <div v-if="frameUrl" class="android-screen-wrap">
           <img
-            v-if="frameUrl"
             ref="screen"
             class="android-screen"
             :src="frameUrl"
@@ -435,6 +470,26 @@ onBeforeUnmount(() => {
             @wheel="onWheel"
             @keydown="onKeyDown"
           />
+          <svg
+            v-if="agentMark?.point"
+            :key="agentMark.key"
+            class="android-agent-mark"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            role="img"
+            :aria-label="t('android.agent.markLabel', { agent: agentMark.agent, action: agentMark.summary })"
+            data-testid="android-agent-mark"
+          >
+            <line
+              v-if="agentMark.point.x2 !== undefined && agentMark.point.y2 !== undefined"
+              :x1="agentMark.point.x * 100" :y1="agentMark.point.y * 100"
+              :x2="agentMark.point.x2 * 100" :y2="agentMark.point.y2 * 100"
+              vector-effect="non-scaling-stroke"
+            />
+            <circle :cx="agentMark.point.x * 100" :cy="agentMark.point.y * 100" r="2.2" vector-effect="non-scaling-stroke" />
+          </svg>
+          <span v-if="agentMark" class="android-agent-caption" data-theme-surface="card" role="status">{{ agentMark.agent }}: {{ agentMark.summary }}</span>
+          </div>
           <p v-else-if="screenError" class="android-error">{{ screenError }}</p>
           <NSpin v-else />
         </div>
@@ -624,6 +679,60 @@ onBeforeUnmount(() => {
   &:focus-visible {
     box-shadow: 0 0 0 2px $accent-primary;
   }
+}
+
+.android-screen-wrap {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+
+// The agent's tap or swipe, over the live screen. It ignores the pointer so people can keep using it.
+.android-agent-mark {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  animation: android-agent-fade 2.5s ease-out forwards;
+
+  circle {
+    fill: none;
+    stroke: $accent-primary;
+    stroke-width: 3px;
+  }
+
+  line {
+    stroke: $accent-primary;
+    stroke-width: 3px;
+    stroke-dasharray: 6 4;
+  }
+}
+
+.android-agent-caption {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  padding: 2px 8px;
+  overflow: hidden;
+  font-size: 12px;
+  color: $text-primary;
+  background: $bg-card;
+  border: var(--border-width, 1px) solid $accent-primary;
+  border-radius: var(--radius-component, 8px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+@keyframes android-agent-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .android-agent-mark { animation: none; }
 }
 
 .android-footer {

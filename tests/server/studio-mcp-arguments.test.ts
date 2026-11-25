@@ -93,6 +93,15 @@ describe('Studio MCP: arguments are checked before Studio is called', () => {
     expect(bad.hits).toEqual([])
   })
 
+  it('phone actions go to Studio\'s Android agent route with the chat and agent, and nothing else', async () => {
+    const out = await mcp.call('ekko_studio_use_phone', { action: 'tap', arguments: { id: 'e3' }, agent: 'hermes' })
+    expect(out.error).toBe('')
+    expect(out.hits).toEqual(['POST /api/studio/android/agent {"action":"tap","arguments":{"id":"e3"},"sessionId":"","agent":"hermes"}'])
+    const bad = await mcp.call('ekko_studio_use_phone', { action: 'factory_reset' })
+    expect(bad.error).toMatch(/action must be one of: devices, screen/)
+    expect(bad.hits).toEqual([])
+  })
+
   it('deletes are marked destructive in the catalog and in describe', async () => {
     const { result } = await mcp.rpc('tools/call', { name: 'ekko_studio_use_toolset', arguments: { action: 'list', query: 'delete' } })
     const ops = JSON.parse(result.content[0].text).operations

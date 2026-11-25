@@ -68,7 +68,31 @@ export const androidMessages = {
       "adbServer": "Use devices from another computer",
       "adbServerHint": "On the computer with BlueStacks, the emulator or USB phones, run: adb kill-server, then adb -a -P 5037 nodaemon server. Enter that computer's address here, or leave it empty to use this machine.",
       "save": "Save",
-      "usingServer": "Devices from {server}"
+      "usingServer": "Devices from {server}",
+      "agent": {
+        "title": "Agents on this phone",
+        "youHaveIt": "You have it",
+        "allow": "Agents can use {name}",
+        "allowedHint": "Hermes, Ekko and coding agents can see the screen and act on it. Taps and typing ask first in ask mode; shell, installs and anything in settings, payments or messages ask unless the chat is in auto mode.",
+        "notAllowedHint": "Agents cannot see or use this device. Turn it on to let them.",
+        "takeOver": "Take over",
+        "handBack": "Hand back to agents",
+        "asks": "{agent} wants to {action} on {device}.",
+        "because": "Why it asks: {reason}.",
+        "allowOnce": "Allow once",
+        "deny": "Deny",
+        "trustHint": "To stop being asked, use Trust this on the alert in the bell (a pattern like android:emulator-5554:* trusts the whole device).",
+        "logTitle": "What agents did",
+        "logEmpty": "Nothing yet.",
+        "markLabel": "{agent}: {action}",
+        "failed": "That did not work. Check that Studio is running and try again.",
+        "status": {
+          "waiting": "Waiting",
+          "done": "Done",
+          "denied": "Denied",
+          "failed": "Failed"
+        }
+      }
     }
   },
   "zh": {
@@ -139,7 +163,31 @@ export const androidMessages = {
       "adbServer": "使用另一台电脑上的设备",
       "adbServerHint": "在装有 BlueStacks、模拟器或 USB 手机的电脑上运行：adb kill-server，然后 adb -a -P 5037 nodaemon server。在这里输入那台电脑的地址；留空则使用本机。",
       "save": "保存",
-      "usingServer": "来自 {server} 的设备"
+      "usingServer": "来自 {server} 的设备",
+      "agent": {
+        "title": "此手机上的智能体",
+        "youHaveIt": "由你操作中",
+        "allow": "允许智能体使用 {name}",
+        "allowedHint": "Hermes、Ekko 和编程智能体可以查看并操作屏幕。在询问模式下，点击和输入会先问你；shell、安装以及涉及设置、支付或消息的操作，除非对话处于自动模式，否则都会先问你。",
+        "notAllowedHint": "智能体无法查看或使用此设备。打开后即可使用。",
+        "takeOver": "接管",
+        "handBack": "交还给智能体",
+        "asks": "{agent} 想在 {device} 上{action}。",
+        "because": "询问原因：{reason}。",
+        "allowOnce": "允许一次",
+        "deny": "拒绝",
+        "trustHint": "不想再被询问时，在铃铛里的提醒上点“信任此操作”（如 android:emulator-5554:* 表示信任整个设备）。",
+        "logTitle": "智能体的操作",
+        "logEmpty": "暂无。",
+        "markLabel": "{agent}：{action}",
+        "failed": "操作失败。请确认 Studio 正在运行后重试。",
+        "status": {
+          "waiting": "等待中",
+          "done": "完成",
+          "denied": "已拒绝",
+          "failed": "失败"
+        }
+      }
     }
   },
   "zh-TW": {
@@ -210,7 +258,31 @@ export const androidMessages = {
       "adbServer": "使用另一台電腦上的裝置",
       "adbServerHint": "在裝有 BlueStacks、模擬器或 USB 手機的電腦上執行：adb kill-server，然後 adb -a -P 5037 nodaemon server。在這裡輸入那台電腦的位址；留空則使用本機。",
       "save": "儲存",
-      "usingServer": "來自 {server} 的裝置"
+      "usingServer": "來自 {server} 的裝置",
+      "agent": {
+        "title": "此手機上的智慧體",
+        "youHaveIt": "由你操作中",
+        "allow": "允許智慧體使用 {name}",
+        "allowedHint": "Hermes、Ekko 和程式設計智慧體可以查看並操作螢幕。在詢問模式下，點擊和輸入會先問你；shell、安裝以及涉及設定、付款或訊息的操作，除非對話處於自動模式，否則都會先問你。",
+        "notAllowedHint": "智慧體無法查看或使用此裝置。開啟後即可使用。",
+        "takeOver": "接管",
+        "handBack": "交還給智慧體",
+        "asks": "{agent} 想在 {device} 上{action}。",
+        "because": "詢問原因：{reason}。",
+        "allowOnce": "允許一次",
+        "deny": "拒絕",
+        "trustHint": "不想再被詢問時，在鈴鐺裡的提醒上點「信任此操作」（如 android:emulator-5554:* 表示信任整個裝置）。",
+        "logTitle": "智慧體的操作",
+        "logEmpty": "尚無。",
+        "markLabel": "{agent}：{action}",
+        "failed": "操作失敗。請確認 Studio 正在執行後重試。",
+        "status": {
+          "waiting": "等待中",
+          "done": "完成",
+          "denied": "已拒絕",
+          "failed": "失敗"
+        }
+      }
     }
   },
   "ja": {
@@ -281,7 +353,31 @@ export const androidMessages = {
       "adbServer": "別のコンピューターのデバイスを使う",
       "adbServerHint": "BlueStacks、エミュレーター、USB 接続のスマートフォンがあるコンピューターで adb kill-server を実行し、次に adb -a -P 5037 nodaemon server を実行します。そのコンピューターのアドレスをここに入力します。空欄ならこのマシンを使います。",
       "save": "保存",
-      "usingServer": "{server} のデバイス"
+      "usingServer": "{server} のデバイス",
+      "agent": {
+        "title": "このスマホのエージェント",
+        "youHaveIt": "あなたが操作中",
+        "allow": "エージェントが {name} を使えるようにする",
+        "allowedHint": "Hermes、Ekko、コーディングエージェントが画面を見て操作できます。確認モードではタップと入力の前に確認します。shell、インストール、設定・支払い・メッセージでの操作は、自動モード以外では必ず確認します。",
+        "notAllowedHint": "エージェントはこの端末を見ることも使うこともできません。オンにすると使えます。",
+        "takeOver": "操作を代わる",
+        "handBack": "エージェントに戻す",
+        "asks": "{agent} が {device} で「{action}」をしようとしています。",
+        "because": "確認する理由: {reason}。",
+        "allowOnce": "今回だけ許可",
+        "deny": "拒否",
+        "trustHint": "確認を減らすには、ベルの通知で「信頼する」を使います（android:emulator-5554:* なら端末全体）。",
+        "logTitle": "エージェントがしたこと",
+        "logEmpty": "まだありません。",
+        "markLabel": "{agent}: {action}",
+        "failed": "うまくいきませんでした。Studio が動いているか確認して、もう一度お試しください。",
+        "status": {
+          "waiting": "待機中",
+          "done": "完了",
+          "denied": "拒否",
+          "failed": "失敗"
+        }
+      }
     }
   },
   "ko": {
@@ -352,7 +448,31 @@ export const androidMessages = {
       "adbServer": "다른 컴퓨터의 기기 사용",
       "adbServerHint": "BlueStacks, 에뮬레이터 또는 USB 휴대폰이 있는 컴퓨터에서 adb kill-server 후 adb -a -P 5037 nodaemon server를 실행하세요. 그 컴퓨터의 주소를 여기에 입력하고, 비워 두면 이 컴퓨터를 사용합니다.",
       "save": "저장",
-      "usingServer": "{server}의 기기"
+      "usingServer": "{server}의 기기",
+      "agent": {
+        "title": "이 휴대폰의 에이전트",
+        "youHaveIt": "직접 조작 중",
+        "allow": "에이전트가 {name} 사용 허용",
+        "allowedHint": "Hermes, Ekko, 코딩 에이전트가 화면을 보고 조작할 수 있습니다. 확인 모드에서는 탭과 입력 전에 묻고, shell, 설치, 설정·결제·메시지 관련 동작은 자동 모드가 아니면 항상 묻습니다.",
+        "notAllowedHint": "에이전트는 이 기기를 보거나 사용할 수 없습니다. 켜면 사용할 수 있습니다.",
+        "takeOver": "직접 조작",
+        "handBack": "에이전트에게 돌려주기",
+        "asks": "{agent}이(가) {device}에서 {action}하려고 합니다.",
+        "because": "묻는 이유: {reason}.",
+        "allowOnce": "이번만 허용",
+        "deny": "거부",
+        "trustHint": "그만 묻게 하려면 알림 벨의 항목에서 \"신뢰\"를 사용하세요(android:emulator-5554:* 는 기기 전체).",
+        "logTitle": "에이전트가 한 일",
+        "logEmpty": "아직 없습니다.",
+        "markLabel": "{agent}: {action}",
+        "failed": "실패했습니다. Studio가 실행 중인지 확인하고 다시 시도하세요.",
+        "status": {
+          "waiting": "대기 중",
+          "done": "완료",
+          "denied": "거부됨",
+          "failed": "실패"
+        }
+      }
     }
   },
   "de": {
@@ -423,7 +543,31 @@ export const androidMessages = {
       "adbServer": "Geräte eines anderen Computers verwenden",
       "adbServerHint": "Auf dem Computer mit BlueStacks, Emulator oder USB-Telefonen ausführen: adb kill-server, dann adb -a -P 5037 nodaemon server. Gib hier die Adresse dieses Computers ein oder lass das Feld leer für diesen Rechner.",
       "save": "Speichern",
-      "usingServer": "Geräte von {server}"
+      "usingServer": "Geräte von {server}",
+      "agent": {
+        "title": "Agenten auf diesem Gerät",
+        "youHaveIt": "Du hast es",
+        "allow": "Agenten dürfen {name} nutzen",
+        "allowedHint": "Hermes, Ekko und Coding-Agenten sehen den Bildschirm und bedienen ihn. Tippen und Schreiben fragen im Modus Fragen vorher; Shell, Installationen und alles in Einstellungen, Zahlungen oder Nachrichten fragen immer, außer der Chat ist im Auto-Modus.",
+        "notAllowedHint": "Agenten können dieses Gerät weder sehen noch nutzen. Schalte es ein, um es zu erlauben.",
+        "takeOver": "Übernehmen",
+        "handBack": "An Agenten zurückgeben",
+        "asks": "{agent} möchte auf {device}: {action}.",
+        "because": "Warum gefragt wird: {reason}.",
+        "allowOnce": "Einmal erlauben",
+        "deny": "Ablehnen",
+        "trustHint": "Um nicht mehr gefragt zu werden, nutze „Vertrauen“ an der Meldung in der Glocke (android:emulator-5554:* vertraut dem ganzen Gerät).",
+        "logTitle": "Was Agenten getan haben",
+        "logEmpty": "Noch nichts.",
+        "markLabel": "{agent}: {action}",
+        "failed": "Das hat nicht geklappt. Prüfe, ob Studio läuft, und versuche es erneut.",
+        "status": {
+          "waiting": "Wartet",
+          "done": "Erledigt",
+          "denied": "Abgelehnt",
+          "failed": "Fehlgeschlagen"
+        }
+      }
     }
   },
   "es": {
@@ -494,7 +638,31 @@ export const androidMessages = {
       "adbServer": "Usar dispositivos de otro equipo",
       "adbServerHint": "En el equipo con BlueStacks, el emulador o los teléfonos USB, ejecuta: adb kill-server y luego adb -a -P 5037 nodaemon server. Escribe aquí la dirección de ese equipo o déjalo vacío para usar este.",
       "save": "Guardar",
-      "usingServer": "Dispositivos de {server}"
+      "usingServer": "Dispositivos de {server}",
+      "agent": {
+        "title": "Agentes en este teléfono",
+        "youHaveIt": "Lo tienes tú",
+        "allow": "Los agentes pueden usar {name}",
+        "allowedHint": "Hermes, Ekko y los agentes de código ven la pantalla y la usan. Toques y escritura preguntan antes en modo preguntar; shell, instalaciones y todo lo de ajustes, pagos o mensajes preguntan salvo que el chat esté en modo automático.",
+        "notAllowedHint": "Los agentes no pueden ver ni usar este dispositivo. Actívalo para permitirlo.",
+        "takeOver": "Tomar el control",
+        "handBack": "Devolver a los agentes",
+        "asks": "{agent} quiere {action} en {device}.",
+        "because": "Por qué pregunta: {reason}.",
+        "allowOnce": "Permitir una vez",
+        "deny": "Denegar",
+        "trustHint": "Para que no pregunte más, usa Confiar en el aviso de la campana (android:emulator-5554:* confía en todo el dispositivo).",
+        "logTitle": "Lo que hicieron los agentes",
+        "logEmpty": "Nada todavía.",
+        "markLabel": "{agent}: {action}",
+        "failed": "No funcionó. Comprueba que Studio está en marcha e inténtalo de nuevo.",
+        "status": {
+          "waiting": "Esperando",
+          "done": "Hecho",
+          "denied": "Denegado",
+          "failed": "Falló"
+        }
+      }
     }
   },
   "fr": {
@@ -565,7 +733,31 @@ export const androidMessages = {
       "adbServer": "Utiliser les appareils d’un autre ordinateur",
       "adbServerHint": "Sur l’ordinateur avec BlueStacks, l’émulateur ou les téléphones USB, lancez : adb kill-server, puis adb -a -P 5037 nodaemon server. Saisissez ici l’adresse de cet ordinateur, ou laissez vide pour utiliser cette machine.",
       "save": "Enregistrer",
-      "usingServer": "Appareils de {server}"
+      "usingServer": "Appareils de {server}",
+      "agent": {
+        "title": "Agents sur ce téléphone",
+        "youHaveIt": "C'est vous",
+        "allow": "Les agents peuvent utiliser {name}",
+        "allowedHint": "Hermes, Ekko et les agents de code voient l'écran et s'en servent. Les touches et la saisie demandent d'abord en mode demander ; le shell, les installations et tout ce qui touche aux réglages, paiements ou messages demandent sauf si la discussion est en mode auto.",
+        "notAllowedHint": "Les agents ne peuvent ni voir ni utiliser cet appareil. Activez-le pour le permettre.",
+        "takeOver": "Prendre la main",
+        "handBack": "Rendre aux agents",
+        "asks": "{agent} veut {action} sur {device}.",
+        "because": "Pourquoi il demande : {reason}.",
+        "allowOnce": "Autoriser une fois",
+        "deny": "Refuser",
+        "trustHint": "Pour ne plus être sollicité, utilisez Faire confiance sur l'alerte de la cloche (android:emulator-5554:* fait confiance à tout l'appareil).",
+        "logTitle": "Ce que les agents ont fait",
+        "logEmpty": "Rien pour le moment.",
+        "markLabel": "{agent} : {action}",
+        "failed": "Ça n'a pas marché. Vérifiez que Studio fonctionne et réessayez.",
+        "status": {
+          "waiting": "En attente",
+          "done": "Fait",
+          "denied": "Refusé",
+          "failed": "Échec"
+        }
+      }
     }
   },
   "pt": {
@@ -636,7 +828,31 @@ export const androidMessages = {
       "adbServer": "Usar dispositivos de outro computador",
       "adbServerHint": "No computador com BlueStacks, emulador ou telefones USB, execute: adb kill-server e depois adb -a -P 5037 nodaemon server. Digite aqui o endereço desse computador ou deixe vazio para usar esta máquina.",
       "save": "Salvar",
-      "usingServer": "Dispositivos de {server}"
+      "usingServer": "Dispositivos de {server}",
+      "agent": {
+        "title": "Agentes neste telefone",
+        "youHaveIt": "Você está no controle",
+        "allow": "Agentes podem usar {name}",
+        "allowedHint": "Hermes, Ekko e agentes de código veem a tela e a usam. Toques e digitação perguntam antes no modo perguntar; shell, instalações e tudo em configurações, pagamentos ou mensagens perguntam, a menos que o chat esteja no modo automático.",
+        "notAllowedHint": "Agentes não podem ver nem usar este dispositivo. Ligue para permitir.",
+        "takeOver": "Assumir",
+        "handBack": "Devolver aos agentes",
+        "asks": "{agent} quer {action} em {device}.",
+        "because": "Por que pergunta: {reason}.",
+        "allowOnce": "Permitir uma vez",
+        "deny": "Negar",
+        "trustHint": "Para não ser mais perguntado, use Confiar no alerta do sino (android:emulator-5554:* confia no dispositivo inteiro).",
+        "logTitle": "O que os agentes fizeram",
+        "logEmpty": "Nada ainda.",
+        "markLabel": "{agent}: {action}",
+        "failed": "Não funcionou. Verifique se o Studio está rodando e tente de novo.",
+        "status": {
+          "waiting": "Aguardando",
+          "done": "Feito",
+          "denied": "Negado",
+          "failed": "Falhou"
+        }
+      }
     }
   },
   "ru": {
@@ -707,7 +923,31 @@ export const androidMessages = {
       "adbServer": "Использовать устройства другого компьютера",
       "adbServerHint": "На компьютере с BlueStacks, эмулятором или USB-телефонами выполните: adb kill-server, затем adb -a -P 5037 nodaemon server. Введите здесь адрес этого компьютера или оставьте поле пустым, чтобы использовать эту машину.",
       "save": "Сохранить",
-      "usingServer": "Устройства с {server}"
+      "usingServer": "Устройства с {server}",
+      "agent": {
+        "title": "Агенты на этом телефоне",
+        "youHaveIt": "Управляете вы",
+        "allow": "Агенты могут пользоваться {name}",
+        "allowedHint": "Hermes, Ekko и агенты для кода видят экран и управляют им. В режиме «спрашивать» касания и ввод требуют подтверждения; shell, установка и всё в настройках, платежах и сообщениях требуют его всегда, кроме автоматического режима.",
+        "notAllowedHint": "Агенты не видят это устройство и не могут им пользоваться. Включите, чтобы разрешить.",
+        "takeOver": "Взять управление",
+        "handBack": "Вернуть агентам",
+        "asks": "{agent} хочет {action} на {device}.",
+        "because": "Почему спрашивает: {reason}.",
+        "allowOnce": "Разрешить один раз",
+        "deny": "Запретить",
+        "trustHint": "Чтобы больше не спрашивало, нажмите «Доверять» у оповещения в колокольчике (android:emulator-5554:* — всё устройство).",
+        "logTitle": "Что сделали агенты",
+        "logEmpty": "Пока ничего.",
+        "markLabel": "{agent}: {action}",
+        "failed": "Не получилось. Проверьте, что Studio запущена, и попробуйте ещё раз.",
+        "status": {
+          "waiting": "Ожидает",
+          "done": "Готово",
+          "denied": "Запрещено",
+          "failed": "Ошибка"
+        }
+      }
     }
   },
   "tr": {
@@ -778,7 +1018,31 @@ export const androidMessages = {
       "adbServer": "Başka bir bilgisayarın cihazlarını kullan",
       "adbServerHint": "BlueStacks, emülatör veya USB telefonların olduğu bilgisayarda şunu çalıştırın: adb kill-server, ardından adb -a -P 5037 nodaemon server. O bilgisayarın adresini buraya girin veya bu makineyi kullanmak için boş bırakın.",
       "save": "Kaydet",
-      "usingServer": "{server} cihazları"
+      "usingServer": "{server} cihazları",
+      "agent": {
+        "title": "Bu telefondaki ajanlar",
+        "youHaveIt": "Kontrol sizde",
+        "allow": "Ajanlar {name} cihazını kullanabilir",
+        "allowedHint": "Hermes, Ekko ve kod ajanları ekranı görür ve kullanır. Sor modunda dokunma ve yazma önce sorar; shell, kurulumlar ve ayarlar, ödemeler veya mesajlardaki her şey sohbet otomatik modda değilse sorar.",
+        "notAllowedHint": "Ajanlar bu cihazı göremez ve kullanamaz. İzin vermek için açın.",
+        "takeOver": "Devral",
+        "handBack": "Ajanlara geri ver",
+        "asks": "{agent}, {device} üzerinde {action} yapmak istiyor.",
+        "because": "Neden soruyor: {reason}.",
+        "allowOnce": "Bir kez izin ver",
+        "deny": "Reddet",
+        "trustHint": "Bir daha sorulmasın diye zildeki uyarıda Güven seçeneğini kullanın (android:emulator-5554:* tüm cihaza güvenir).",
+        "logTitle": "Ajanların yaptıkları",
+        "logEmpty": "Henüz bir şey yok.",
+        "markLabel": "{agent}: {action}",
+        "failed": "Olmadı. Studio’nun çalıştığını kontrol edip yeniden deneyin.",
+        "status": {
+          "waiting": "Bekliyor",
+          "done": "Tamam",
+          "denied": "Reddedildi",
+          "failed": "Başarısız"
+        }
+      }
     }
   },
   "ar": {
@@ -849,7 +1113,31 @@ export const androidMessages = {
       "adbServer": "استخدام أجهزة كمبيوتر آخر",
       "adbServerHint": "على الكمبيوتر الذي يحوي BlueStacks أو المحاكي أو هواتف USB شغّل: adb kill-server ثم adb -a -P 5037 nodaemon server. أدخل عنوان ذلك الكمبيوتر هنا، أو اتركه فارغًا لاستخدام هذا الجهاز.",
       "save": "حفظ",
-      "usingServer": "الأجهزة من {server}"
+      "usingServer": "الأجهزة من {server}",
+      "agent": {
+        "title": "الوكلاء على هذا الهاتف",
+        "youHaveIt": "أنت تتحكم الآن",
+        "allow": "يمكن للوكلاء استخدام {name}",
+        "allowedHint": "يمكن لـ Hermes وEkko ووكلاء البرمجة رؤية الشاشة واستخدامها. في وضع السؤال تسأل اللمسات والكتابة أولًا؛ وتسأل أوامر shell والتثبيت وكل ما في الإعدادات أو المدفوعات أو الرسائل ما لم تكن المحادثة في الوضع التلقائي.",
+        "notAllowedHint": "لا يستطيع الوكلاء رؤية هذا الجهاز أو استخدامه. فعّله للسماح لهم.",
+        "takeOver": "تولَّ التحكم",
+        "handBack": "أعده إلى الوكلاء",
+        "asks": "يريد {agent} أن {action} على {device}.",
+        "because": "سبب السؤال: {reason}.",
+        "allowOnce": "اسمح مرة واحدة",
+        "deny": "ارفض",
+        "trustHint": "لإيقاف الأسئلة استخدم «ثق بهذا» على التنبيه في الجرس (android:emulator-5554:* يثق بالجهاز كله).",
+        "logTitle": "ما فعله الوكلاء",
+        "logEmpty": "لا شيء بعد.",
+        "markLabel": "{agent}: {action}",
+        "failed": "لم ينجح ذلك. تأكد أن Studio يعمل ثم حاول مرة أخرى.",
+        "status": {
+          "waiting": "بانتظار",
+          "done": "تم",
+          "denied": "مرفوض",
+          "failed": "فشل"
+        }
+      }
     }
   }
 }
