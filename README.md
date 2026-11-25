@@ -38,13 +38,23 @@ package and command remain supported and receive the same releases.
 This fork adds herdr, Pondering Orb, Mattermost, Home Assistant, Unraid and
 Agent work (Vikunja tasks and approvals) on top of the newest Ekko Studio,
 with its model gateway. Until it is merged into `main`, all of it lives on
-one test branch, **`herdr-integration`**. `main` stays as it is until
-`herdr-integration` has been tested on real machines.
+one test branch, **`studio-herder`**: Studio with herdr, where chats start in
+Studio and can be elevated to herdr. `main` stays as it is until
+`studio-herder` has been tested on a real machine.
 
 | Branch | What it is |
 |---|---|
-| `main` | Current stable build (Pondering Orb through Studio, no herdr) |
-| **`herdr-integration`** | **Test this one.** Everything in this fork + newest Ekko Studio |
+| `main` | Current stable build (Pondering Orb through Studio, no herdr). Unchanged until `studio-herder` is confirmed. |
+| **`studio-herder`** | **Test this one.** Studio with herdr: chats start in Studio and can be elevated to herdr. Everything in this fork + newest Ekko Studio, and all of `main`'s fixes. |
+| `herdr-integration` | Older version where every chat is a herdr space. Will be retired; don't start new installs on it. |
+
+Old branches you can delete on GitHub (everything in them is already in
+`studio-herder`): `herdr-separation` (renamed to `studio-herder`),
+`herdr-space-folders`, `herdr-command-center`, `herdr-app-ui`,
+`herdr-combined-ui`, `herdr-agents-reopen`, `recommended-plugins`,
+`agent-limits`, `cleanroom-hardening`, `herdr-upstream`, `agent-work`,
+`upstream-sync`, `desktop-apk` and `claude/awesome-archimedes-0x0di9`.
+Delete `herdr-integration` too once `studio-herder` works for you.
 
 ### How chats use herdr
 
@@ -69,7 +79,7 @@ move a chat to herdr only when you want its agent in a terminal.
 Needs Docker with the compose plugin and about 7 GB of disk.
 
 ```bash
-git clone -b herdr-integration https://github.com/Wizard815/hermes-studio.git
+git clone -b studio-herder https://github.com/Wizard815/hermes-studio.git
 cd hermes-studio
 docker compose up -d --build
 docker compose logs -f hermes-webui
@@ -85,24 +95,28 @@ To update later:
 git pull && docker compose up -d --build
 ```
 
-### Upgrade an existing install from `main` to `herdr-integration`
+### Upgrade an existing install from `main` to `studio-herder`
 
 1. **Back up first.** Stop Studio and copy the whole data folder: the folder
    mounted at `/home/agent/.hermes` (`./hermes_data` with compose, the
    container's appdata folder on Unraid). This copy is the surest way back.
 2. **Get the branch:**
-   - Compose (same checkout): `git fetch origin && git checkout herdr-integration && git pull`
-   - Unraid / plain Docker (new folder): `git clone -b herdr-integration https://github.com/Wizard815/hermes-studio.git`
+   - Compose (same checkout): `git fetch origin && git checkout studio-herder && git pull`
+   - Unraid / plain Docker (new folder): `git clone -b studio-herder https://github.com/Wizard815/hermes-studio.git`
 3. **Build the image** (about 5 minutes):
    - Compose: `docker compose up -d --build`
-   - Unraid / plain Docker: `docker build -t hermes-studio:herdr-integration .`
+   - Unraid / plain Docker: `docker build -t hermes-studio:studio-herder .`
 4. **Point the container at it** (Unraid / plain Docker only): edit the Studio
-   container, set **Repository** to `hermes-studio:herdr-integration`, keep the
+   container, set **Repository** to `hermes-studio:studio-herder`, keep the
    same data path, and apply.
 5. **Add herdr's folders** so herdr keeps its spaces across restarts. Compose
    already has them. On Unraid add two paths:
    - `<appdata>/herdr/config` → `/home/agent/.config/herdr`
    - `<appdata>/herdr/state` → `/home/agent/.local/state/herdr`
+
+Already on `herdr-integration`? Back up the same way, then
+`git fetch origin && git checkout studio-herder && git pull` and rebuild
+(steps 3 and 4). Your data folder and herdr folders stay as they are.
 
 What happens on the first start:
 
@@ -210,13 +224,17 @@ page Upstream shows, so reloads and the back button keep your place.
 
 ### Going back to `main`
 
-Easiest: stop Studio, put the backup from step 1 back, and run the `main` image
-again.
+`main` has not changed, so its image still works with your backup.
+
+Easiest: stop Studio, put the backup from step 1 back, check out `main`
+(`git checkout main`) and rebuild, or point the container back at your old
+`main` image.
 
 Without the backup: stop Studio, copy the files in each
 `<profile>/pre-studio-gateway/` back into that profile (`cron-jobs.json` goes
 back to `cron/jobs.json`), then start the `main` image. If you skip the copy,
-the old build opens but no model works.
+the old build opens but no model works. herdr spaces stay in herdr's folders;
+`main` ignores them.
 
 ### What to check after upgrading
 
@@ -230,7 +248,9 @@ your own services:
 - [ ] Key pools switch to the next key on a real rate limit
 - [ ] Hermes local works with a downloaded model (if you use it)
 - [ ] Old chats, jobs and Mattermost still work as before
+- [ ] Connections → Pondering Orb connects, and Orb work starts a Studio chat
 - [ ] Agent work: approve one item from each of Studio, Mattermost and Orb; the Vikunja task is marked done
+- [ ] A new chat stays in Studio: no herdr space appears for it
 - [ ] herdr: elevate a Hermes chat (`/herdr`), send a message, restart the container, and check the pane is still linked
 - [ ] herdr: `/studio` on that chat closes its herdr space and the chat keeps its messages
 

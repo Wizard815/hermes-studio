@@ -1,6 +1,10 @@
 # herdr + Studio plan
 
-Branch: `herdr-integration` (kept apart from `main` until the herdr work is finished).
+Branch: `studio-herder` (Studio with herdr: chats start in Studio and can be
+elevated to herdr). It is the one test branch and has all of `main`'s own
+fixes. `main` stays unchanged until the user confirms `studio-herder` works on
+their NUC. `herdr-integration` is the older all-in-herdr version and will be
+retired.
 
 ## Now: Studio and herdr, separate but together
 
@@ -134,7 +138,7 @@ and cost, then cleans up. Waiting on the user's answers.
 
 ### Decisions (2026-11-21)
 
-In progress (each on its own branch, screenshots before merging):
+Done, all in `studio-herder` now (their branches can be deleted):
 
 - Clean-room hardening: `cleanroom-hardening`.
 - Run limits (cost, tokens, time, loop catcher): `agent-limits`.
@@ -169,8 +173,8 @@ Next:
 - **Import chats**: learn from agent-importers how to bring Hermes chats from
   other installs (and other agents' sessions) in as Studio/herdr chats.
 
-Order: herdr-app-ui, then plugins (with Gadget), then limits, then clean room,
-then watcher.
+Order: watcher next; the herdr-app-ui, plugins (with Gadget), limits and
+clean-room branches are merged into `studio-herder`.
 
 Not adding: sem-weave (the watcher covers it), hermes-speech, Apollo Watcher,
 omh (its checks run on the host without approvals, which works against clean
