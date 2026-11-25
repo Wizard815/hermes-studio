@@ -200,6 +200,34 @@ def studio_gadget_result(tool_name: str, args: Any, data_dir: Path | None = None
     return _result({"success": True, "device": name, "action": action, "result": answer.get("result")})
 
 
+def offer_gadget_tools(registry: Any, data_dir: Path | None = None) -> int:
+    """Offer the plugin's gadget_* tools here while the gateway that holds the gadget hub runs.
+
+    The plugin's own check (``runtime.any_active()``) only sees its own process, which is never
+    true in Studio's bridge, so Hermes hid the tools and the model could not call them. Returns
+    how many checks were wrapped (0 when already done)."""
+    wrapped = 0
+    for entry in registry.get_all_entries():
+        if not str(getattr(entry, "name", "")).startswith("gadget_"):
+            continue
+        original = getattr(entry, "check_fn", None)
+        if getattr(original, "_studio_gadget", False):
+            continue
+
+        def studio_check(original=original, root=data_dir) -> bool:
+            try:
+                if original is not None and original():
+                    return True
+            except Exception:
+                pass
+            return live_devices(root or gadget_data_dir())[0]
+
+        studio_check._studio_gadget = True  # type: ignore[attr-defined]
+        entry.check_fn = studio_check
+        wrapped += 1
+    return wrapped
+
+
 def needs_desk(tool_name: str, result: Any) -> bool:
     """A gadget tool that failed only because this process has no gadget hub."""
     return str(tool_name or "").startswith("gadget_") and isinstance(result, str) and NOT_HERE in result
