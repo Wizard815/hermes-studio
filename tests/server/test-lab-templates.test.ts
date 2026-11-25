@@ -12,6 +12,15 @@ afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: tru
 const base = { id: 'demo', name: 'Demo', description: 'x', image: 'nginx:1.29.8-alpine', port: 80, health: { path: '/' }, logins: [] }
 
 describe('Test Lab templates', () => {
+  it("keeps Vikunja's files and database where the image's user (uid 1000) can write", () => {
+    // vikunja/vikunja:2.7.1 runs as uid 1000 with a root-owned /app/vikunja and no volume: Vikunja exits
+    // with "mkdir /app/vikunja/files: permission denied" unless its files folder is somewhere writable.
+    const { templates } = loadTemplates([{ dir: builtinTemplateDir(), source: 'builtin' }])
+    const env = templates.find(t => t.id === 'vikunja')!.env as Record<string, string>
+    expect(env.VIKUNJA_FILES_BASEPATH).toMatch(/^\/tmp\//)
+    expect(env.VIKUNJA_DATABASE_PATH.startsWith(`${env.VIKUNJA_FILES_BASEPATH}/`)).toBe(true)
+  })
+
   it('ships valid templates for every app in the plan', () => {
     const { templates, problems } = loadTemplates([{ dir: builtinTemplateDir(), source: 'builtin' }])
     expect(problems).toEqual([])
