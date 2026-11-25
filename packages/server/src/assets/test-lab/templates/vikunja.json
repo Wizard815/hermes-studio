@@ -9,7 +9,8 @@
   "env": {
     "VIKUNJA_SERVICE_PUBLICURL": "http://vikunja:3456/",
     "VIKUNJA_DATABASE_TYPE": "sqlite",
-    "VIKUNJA_DATABASE_PATH": "/app/vikunja/files/vikunja.db",
+    "VIKUNJA_DATABASE_PATH": "/tmp/vikunja/vikunja.db",
+    "VIKUNJA_FILES_BASEPATH": "/tmp/vikunja",
     "VIKUNJA_SERVICE_ENABLEREGISTRATION": "true"
   },
   "health": { "path": "/api/v1/info", "timeoutSeconds": 120 },
