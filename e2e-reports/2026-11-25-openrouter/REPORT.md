@@ -20,9 +20,35 @@ All data was fake (test users, test tasks, a demo Home Assistant).
 | 10 | Home Assistant | Partial | Hermes listed the 6 demo lights and turned `light.bed_light` on. No approval was asked. |
 | 11 | FAITH | Pass | `hermes_ask` answered a dinner question through Hermes's API server; `studio_start` started a Studio job (first try timed out, see below). |
 | 12 | Gadget / D.A.S.H | Pass with gaps | Restart gateway works; a simulated device paired and showed the card Hermes sent; Studio's `/global-agent` subscription delivered chat events. |
-| 13 | Watcher | Skipped | The `watcher` branch's last commit does not say it is finished, and its plan still lists the watcher as "next". |
+| 13 | Watcher | Pass | Run on `watcher` (6530466) after its session said it was ready. The bell showed approvals, a run-limit hit and both clean-room alerts; Trust this let the next run through; auto mode ran without asking. |
 | 14 | Clean room | Pass | Self-check, leak warning (`.env`) and egress log (`example.com` blocked) all show. |
 | 15 | mcp-serve | Pass | Claude Code read the latest Hermes conversation through `hermes-chats`. |
+
+## Scenario 13: watcher branch
+
+At first this was skipped: `watcher`'s last commit (dc5ae7d) did not say it
+was finished. Its session then reported the branch ready (6530466, "docs and
+test checklist"). It was built in a separate worktree and run in a fresh test
+home, with the same model and limits. The recommended-plugin install was
+turned off there to avoid the `rea` delay.
+
+- **Approvals in the bell:** an Ekko `rm -rf old-a` showed as "Warning ·
+  Approval asked" with Open chat and Trust this. A Claude Code approval showed
+  the same way.
+- **Trust this:** the dialog offered the command, "This chat only", never
+  expires. With the pattern `rm -rf old-*`, the next `rm -rf old-b` ran without
+  a question. The rule is in `watcher.json`.
+- **Run limits:** `/limits tokens 2k` gave "Blocked · Run limit hit".
+- **Clean room:** "Clean room: possible secrets" (`.env`) and "Clean room:
+  connection blocked" (`example.com:443`).
+- **Auto mode:** after `/yolo`, Claude Code ran `rm -rf junk2` without asking,
+  and no new alert was added.
+- Notes: `/yolo` in a brand-new chat says "send a message first". The phone
+  bell (drawer) was not screenshotted here; the branch's own Playwright test
+  covers it.
+
+![](w-bell-approval.png) ![](w-trust-dialog.png) ![](w-trusted-run.png)
+![](w-bell-limit.png) ![](w-bell-cleanroom.png) ![](w-auto-mode.png)
 
 ## What was fixed
 
@@ -84,7 +110,8 @@ test profile to try the Orb tools.
 
 ## Cost
 
-OpenRouter key usage: **$7.3021 before, $7.3927 after: $0.0906 in total.**
+OpenRouter key usage: **$7.3021 before, $7.4001 after: $0.0980 in total**
+(scenarios 1–12, 14, 15: $0.0906; scenario 13: $0.0074).
 Studio's run limits were $0.10 per run and 10 minutes; the time limit stopped
 one stuck chat (it showed in Mattermost).
 
