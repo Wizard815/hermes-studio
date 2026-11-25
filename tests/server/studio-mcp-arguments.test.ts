@@ -70,6 +70,14 @@ describe('Studio MCP: arguments are checked before Studio is called', () => {
     expect(out.hits).toEqual([])
   })
 
+  it('a toolset call with bad arguments gets the tool\'s schema in the error', async () => {
+    const out = await mcp.call('ekko_studio_use_toolset', { action: 'call', tool: 'ekko_studio_use_orb_board', arguments: {} })
+    expect(out.error).toContain('arguments.action is required')
+    expect(out.error).toContain('action=call, tool=ekko_studio_use_orb_board')
+    expect(out.error).toContain('"enum":["find","read","activity","create"')
+    expect(out.hits).toEqual([])
+  })
+
   it('enum typos, wrong types and unknown keys are refused', async () => {
     expect((await mcp.call('ekko_studio_use_orb_read', { kind: 'taks' })).error).toMatch(/kind must be one of: tasks, lists/)
     expect((await mcp.call('ekko_studio_use_sessions_list', { limit: 'five' })).error).toContain('limit must be number')
