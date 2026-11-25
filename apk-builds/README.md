@@ -7,7 +7,7 @@ on 2026-11-25. No model or paid API calls were made.
 | File | App | Package | Built from |
 |---|---|---|---|
 | `studio-own-debug.apk` | Studio Own 0.4.0 (versionCode 4), debug | `com.ekkostudio.own` | hermes-studio `studio-herder` @ `bd7407b` + the fix below |
-| `omi-dev-release.apk` | Omi Dev (dev flavor), release, arm64-only, obfuscated | `com.friend.ios.dev` | omi-local `studio-herder` @ `0f6fc00caf` + `omi-fixes.patch` |
+| `omi-dev-release.apk` | Omi Dev 1.0.543 (versionCode 2992), dev flavor, release, arm64-only, obfuscated, 96.2 MiB | `com.friend.ios.dev` | omi-local `studio-herder` @ `0f6fc00caf` + `omi-fixes.patch` |
 | `omi-fixes.patch` | the Omi fix as a `git am` patch (the session could not push to omi-local) | | |
 | `screenshots/` | Omi's Approvals page with Studio approval cards, rendered by a Flutter widget test | | |
 
@@ -48,7 +48,24 @@ wrapper 8.14.2, AGP 8.11.1, Kotlin 2.2.20, compileSdk 36, NDK 28.2.13676358.
 Before the build it needs the local, git-ignored files that `setup.sh android`
 creates: `.dev.env` (`API_BASE_URL=http://127.0.0.1:8000/`), the local Firebase
 options and `google-services.json`, and `android/key.properties` (debug keystore).
-Then `dart run build_runner build` and `app/scripts/build_local_apk.sh`.
+Then `dart run build_runner build` and the script's build, with `--split-per-abi` added:
+
+```bash
+flutter build apk --release --flavor dev --target-platform android-arm64 \
+  --split-debug-info=build/symbols --obfuscate --split-per-abi
+# -> build/app/outputs/flutter-apk/app-arm64-v8a-dev-release.apk, copied here as omi-dev-release.apk
+```
+
+Why `--split-per-abi`: `app/scripts/build_local_apk.sh` as it is gives a **152 MB**
+`app-dev-release.apk`, over GitHub's 100 MB file limit. `--target-platform android-arm64`
+only limits the Dart/Flutter libraries. Plugins still bring their x86_64 and
+armeabi-v7a native libraries (onnxruntime and twilio, about 55 MB). So the
+"arm64-only" APK also declares x86_64. On an x86_64 device or emulator Android
+would pick that ABI and then fail to find `libflutter.so`. The split build holds
+only `arm64-v8a` (checked with `aapt2`). Flutter adds 2000 to its versionCode for
+arm64, so it upgrades over an earlier 992 build. Making the script do this
+(`--split-per-abi`, or `ndk { abiFilters 'arm64-v8a' }` for the dev flavor) would be a
+separate change in omi-local. It's not in the patch.
 The server URL is entered in the app at sign-in, so the baked-in `127.0.0.1` default
 doesn't matter.
 
