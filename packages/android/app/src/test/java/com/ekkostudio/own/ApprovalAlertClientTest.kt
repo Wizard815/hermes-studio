@@ -1,56 +1,62 @@
 package com.ekkostudio.own
 
-import com.sun.net.httpserver.HttpServer
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.net.InetSocketAddress
 import java.util.concurrent.CopyOnWriteArrayList
 
-/** The phone's HTTP side against a small stand-in for Studio (the JDK's own HTTP server). */
+/**
+ * The phone's HTTP side against a small stand-in for Studio (OkHttp's
+ * MockWebServer: the JDK's com.sun HTTP server is not on the Android unit-test
+ * compile classpath).
+ */
 class ApprovalAlertClientTest {
-    private lateinit var server: HttpServer
+    private lateinit var server: MockWebServer
     private val key = "sk-studio-phone-" + "k".repeat(43)
     private val seen = CopyOnWriteArrayList<String>()
-    private var answered = false
+    @Volatile private var answered = false
 
     @Before
     fun start() {
-        server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        server.createContext("/") { exchange ->
-            val auth = exchange.requestHeaders.getFirst("Authorization").orEmpty()
-            seen += "${exchange.requestMethod} ${exchange.requestURI} ${if (auth == "Bearer $key") "key" else "nokey"}"
-            val path = exchange.requestURI.path
-            val (status, body, type) = when {
-                path == ApprovalAlerts.PAIR_PATH -> {
-                    val sent = exchange.requestBody.bufferedReader().readText()
-                    if (sent.contains("ABCD-EF23")) Triple(201, """{"key":"$key","device":{"id":"d1","name":"Pixel 8"},"username":"robin"}""", "application/json")
-                    else Triple(401, """{"error":"This code is wrong or has expired."}""", "application/json")
+        server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val auth = request.getHeader("Authorization").orEmpty()
+                val target = request.path.orEmpty()
+                seen += "${request.method} $target ${if (auth == "Bearer $key") "key" else "nokey"}"
+                val path = target.substringBefore('?')
+                val (status, body, type) = when {
+                    path == ApprovalAlerts.PAIR_PATH -> {
+                        val sent = request.body.readUtf8()
+                        if (sent.contains("ABCD-EF23")) Triple(201, """{"key":"$key","device":{"id":"d1","name":"Pixel 8"},"username":"robin"}""", "application/json")
+                        else Triple(401, """{"error":"This code is wrong or has expired."}""", "application/json")
+                    }
+                    auth != "Bearer $key" -> Triple(401, """{"error":"This phone is not paired any more."}""", "application/json")
+                    path.endsWith("/stream") -> Triple(200, "retry: 10000\n\nevent: approvals\ndata: {\"items\":[{\"id\":\"work-abc\",\"kind\":\"work\",\"title\":\"T\",\"detail\":\"D\",\"answerable\":true}]}\n\n: ping\n\nevent: approvals\ndata: {\"items\":[]}\n\n", "text/event-stream")
+                    path.endsWith("/approvals") -> Triple(200, """{"items":[{"id":"chat-1","kind":"chat","title":"T","detail":"D","answerable":true}]}""", "application/json")
+                    path.endsWith("/approve") -> {
+                        val body = if (answered) """{"changed":false,"message":"Already approved on phone (Pixel 8)."}""" else """{"changed":true,"message":"Approved."}"""
+                        answered = true
+                        Triple(200, body, "application/json")
+                    }
+                    else -> Triple(404, """{"error":"No such approval"}""", "application/json")
                 }
-                auth != "Bearer $key" -> Triple(401, """{"error":"This phone is not paired any more."}""", "application/json")
-                path.endsWith("/stream") -> Triple(200, "retry: 10000\n\nevent: approvals\ndata: {\"items\":[{\"id\":\"work-abc\",\"kind\":\"work\",\"title\":\"T\",\"detail\":\"D\",\"answerable\":true}]}\n\n: ping\n\nevent: approvals\ndata: {\"items\":[]}\n\n", "text/event-stream")
-                path.endsWith("/approvals") -> Triple(200, """{"items":[{"id":"chat-1","kind":"chat","title":"T","detail":"D","answerable":true}]}""", "application/json")
-                path.endsWith("/approve") -> {
-                    val body = if (answered) """{"changed":false,"message":"Already approved on phone (Pixel 8)."}""" else """{"changed":true,"message":"Approved."}"""
-                    answered = true
-                    Triple(200, body, "application/json")
-                }
-                else -> Triple(404, """{"error":"No such approval"}""", "application/json")
+                return MockResponse().setResponseCode(status).setHeader("Content-Type", type).setBody(body)
             }
-            val bytes = body.toByteArray()
-            exchange.responseHeaders.add("Content-Type", type)
-            exchange.sendResponseHeaders(status, bytes.size.toLong())
-            exchange.responseBody.use { it.write(bytes) }
         }
         server.start()
     }
 
     @After
-    fun stop() = server.stop(0)
+    fun stop() = server.shutdown()
 
-    private val base get() = "http://127.0.0.1:${server.address.port}"
+    private val base get() = server.url("/").toString().trimEnd('/')
 
     @Test
     fun pairsWithACodeAndKeepsTheKeyOutOfUrls() {
