@@ -11,6 +11,12 @@ dashboard with tasks, projects, ideas and upkeep. Orb is optional.
   `ekko_studio_use_orb_update` (in the `use` toolset), which go through
   `GET /api/studio/orb/data/:kind` and `POST /api/studio/orb/tools/:name` (an allow-list of
   Orb tools).
+- **Idea boards.** `ekko_studio_use_orb_board` lets Studio agents work on the Milaclone boards
+  in Orb's Ideas tab through Orb's `orb_board_*` tools: find and read a board, lay a plan out
+  (columns, route or map), add, connect, group, move and mark cards, link a board to a
+  project, turn cards into Orb tasks and lay a project's tasks out as a board. Agents pass
+  `agent` (their name) so Orb shows who changed what. `remove` only asks; the user approves it
+  in Orb. The logic follows Adolanium's Hermes Whiteboard plugin (MIT).
 - **Orb sends work to Studio.** `POST /api/studio/orb/work` with `agentId` (`ekko-agent`,
   `hermes`, `claude-code`, `codex`, `pi`, `grok`, `opencode`), `prompt`, optional `title`,
   `workspace` and `orb` (`{ task: { title, list } }` or `{ project }`) starts a new Studio chat

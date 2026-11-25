@@ -83,6 +83,16 @@ describe('Studio MCP: arguments are checked before Studio is called', () => {
     expect((await mcp.call('ekko_studio_use_orb_read', { kind: 'lists' })).hits).toEqual(['POST /api/studio/orb/tools/orb_list_lists {}'])
   })
 
+  it('board actions reach the matching Orb board tool, and nothing else', async () => {
+    const out = await mcp.call('ekko_studio_use_orb_board', { action: 'mark', arguments: { board: 'Garage', marks: [{ card: 'Pegboard', state: 'doing' }], agent: 'Hermes' } })
+    expect(out.hits).toEqual(['POST /api/studio/orb/tools/orb_board_mark {"board":"Garage","marks":[{"card":"Pegboard","state":"doing"}],"agent":"Hermes"}'])
+    expect((await mcp.call('ekko_studio_use_orb_board', { action: 'remove', arguments: { board: 'Garage' } })).hits)
+      .toEqual(['POST /api/studio/orb/tools/orb_board_remove {"board":"Garage"}'])
+    const bad = await mcp.call('ekko_studio_use_orb_board', { action: 'wipe' })
+    expect(bad.error).toMatch(/action must be one of: find, read/)
+    expect(bad.hits).toEqual([])
+  })
+
   it('deletes are marked destructive in the catalog and in describe', async () => {
     const { result } = await mcp.rpc('tools/call', { name: 'ekko_studio_use_toolset', arguments: { action: 'list', query: 'delete' } })
     const ops = JSON.parse(result.content[0].text).operations

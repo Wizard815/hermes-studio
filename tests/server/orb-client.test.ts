@@ -69,6 +69,7 @@ describe('Pondering Orb client', () => {
     expect(calls.every(call => call.url.startsWith('http://orb:8080/'))).toBe(true)
     await expect(client.data('secrets')).rejects.toMatchObject({ status: 404 })
     await expect(client.tool('orb_delete_everything')).rejects.toMatchObject({ status: 404 })
+    expect(await client.tool('orb_board_read', { board: 'Garage' })).toEqual({ called: 'orb_board_read', args: { board: 'Garage' } })
     await expect(client.tool('orb_complete_task', {})).rejects.toThrow('id is required')
   })
 
