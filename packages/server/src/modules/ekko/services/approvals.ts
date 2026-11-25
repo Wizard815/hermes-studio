@@ -2,6 +2,7 @@ import type {
   AgentToolApprovalChoice,
   AgentToolApprovalRequest,
 } from '../../../../../ekko-agent/src'
+import { watcherTrusts } from '../../studio/public/watcher'
 
 interface PendingEkkoToolApproval {
   request: AgentToolApprovalRequest
@@ -36,6 +37,11 @@ export function waitForEkkoToolApproval(
   options: WaitForEkkoToolApprovalOptions,
 ): Promise<AgentToolApprovalChoice> {
   if (options.signal?.aborted) return Promise.resolve('deny')
+  // "Trust this" rules (docs/watcher.md): a trusted command or tool is answered once without asking.
+  const trusted = request.command
+    ? watcherTrusts({ sessionId: options.sessionId, agentId: 'ekko' }, { kind: 'command', values: [request.command] }, request.command)
+    : watcherTrusts({ sessionId: options.sessionId, agentId: 'ekko' }, request.toolName ? { kind: 'tool', values: [request.toolName] } : null, request.toolName)
+  if (trusted) return Promise.resolve('once')
   if (
     pendingApprovals.has(request.approvalId) ||
     [...pendingApprovals.values()].some(pending => pending.sessionId === options.sessionId)

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { chatApprovalMode, launchAsks, withApprovals } from '../approvals'
 import { needsApproval, type AgentAction } from '../approval-policy'
+import { trustRequestFromAction, watcherTrusts } from '../../../studio/public/watcher'
 import { CodexAppServerTurn } from '../codex/app-server-turn'
 import { cleanRoomNeedsRestart, parseCleanRoomCommand, spawnInCleanRoom } from '../cleanroom'
 import { startAcpChatTurn } from './acp-chat-turn'
@@ -1234,6 +1235,9 @@ export class CodingAgentRunManager {
     const mode = chatApprovalMode(run.launch.agentId, run.launch.sessionId)
     if (!needsApproval(run.launch.approvalRequired === true && mode !== 'ask' ? 'ask' : mode, request.action, run.launch.workspaceDir)) return Promise.resolve('once')
     if (this.chatApprovals.get(sessionId)?.has(request.key)) return Promise.resolve('session')
+    // "Trust this" rules (docs/watcher.md) answer what you trusted for this chat, task, agent or folder.
+    const trustRequest = trustRequestFromAction(request.action, request.key)
+    if (watcherTrusts({ sessionId, agentId: run.launch.agentId, folder: run.launch.workspaceDir }, trustRequest, request.command || request.title)) return Promise.resolve('once')
     const approvalId = `agent-${randomUUID()}`
     run.agentApprovals ??= new Map()
     return new Promise(resolve => {
@@ -1262,6 +1266,7 @@ export class CodingAgentRunManager {
         title: request.title,
         description: request.description,
         ...(request.command ? { command: request.command } : {}),
+        ...(trustRequest ? { trust_action: { kind: trustRequest.kind, value: trustRequest.values[0] } } : {}),
         choices: ['once', 'session', 'deny'],
         source: run.launch.agentId,
         timeout_ms: AGENT_APPROVAL_TIMEOUT_MS,
@@ -2014,6 +2019,7 @@ export class CodingAgentRunManager {
         const mode = chatApprovalMode(run.launch.agentId, run.launch.sessionId)
         const allowed = !needsApproval(run.launch.approvalRequired === true && mode !== 'ask' ? 'ask' : mode, action, run.launch.workspaceDir)
           || this.chatApprovals.get(run.launch.sessionId)?.has(`pi:${piTool}`)
+          || watcherTrusts({ sessionId: run.launch.sessionId, agentId: run.launch.agentId, folder: run.launch.workspaceDir }, trustRequestFromAction(action, piTool), what)
         if (allowed) {
           try { this.writePiRpcCommand(run, { type: 'extension_ui_response', id: approvalId, confirmed: true }) } catch {}
           return

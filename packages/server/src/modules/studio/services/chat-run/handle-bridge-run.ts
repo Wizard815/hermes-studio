@@ -16,6 +16,7 @@ import { getFirstSessionMessageByRole, getSession, getSessionMessageCountByRole,
 import { logger, bridgeLogger } from '../../public/logging'
 import { scheduleSessionTitle } from './session-title'
 import { recordBridgeModelUsage } from '../usage/bridge-model-usage'
+import { chatAutoApproves, watcherTrusts } from '../watcher'
 import type {
   PrimaryAgentBridgeClient as AgentBridgeClient,
   PrimaryAgentBridgeContextEstimate as AgentBridgeContextEstimate,
@@ -1527,6 +1528,18 @@ async function applyBridgeChunkAsync(
       replaceState(sessionMap, sessionId, 'moa.aggregating', payload)
       emit('moa.aggregating', payload)
     } else if (evType === 'approval.requested') {
+      // The chat's own mode is auto (a task set to run unattended), or a "Trust this" rule
+      // allows the command (docs/watcher.md): answer once for you, as the Approve button would.
+      const command = typeof ev.command === 'string' ? ev.command : ''
+      if (ev.approval_id && (chatAutoApproves(sessionId)
+        || watcherTrusts({ sessionId, agentId: 'hermes', folder: workspace || undefined }, command ? { kind: 'command', values: [command] } : null, command))) {
+        try {
+          const answer = await bridge.approvalRespond(String(ev.approval_id), 'once')
+          if (answer?.resolved) continue
+        } catch (error) {
+          bridgeLogger.warn({ err: error, sessionId }, '[chat-run-socket] could not answer a trusted approval; asking instead')
+        }
+      }
       const requestedAt = Date.now()
       const payload = {
         event: 'approval.requested',

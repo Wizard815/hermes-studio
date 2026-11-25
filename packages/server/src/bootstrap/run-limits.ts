@@ -7,9 +7,8 @@ import { onSessionUsageRecorded } from '../modules/studio/public/usage'
 import { getModelCatalogSnapshot } from '../modules/studio/public/model-catalog'
 import { priceGatewayRunUsage } from '../modules/studio/services/run-limits/pricing'
 import { getUsagePricing } from '../modules/studio/repositories/usage-pricing-store'
-import { getSession } from '../modules/studio/repositories/session-store'
 import { closeRunLimits, configureRunLimits, RunLimitSettingsStore } from '../modules/studio/services/run-limits'
-import { getAgentWork } from '../modules/studio/services/agent-work'
+import { recordWatcherEvent } from '../modules/studio/public/watcher'
 import { herdrManager } from '../modules/coding-agents/services/herdr/manager'
 
 /**
@@ -28,11 +27,10 @@ export function startRunLimits(): { close: () => void } {
     postNotice: (sessionId, text, hit) => getChatRunServer()?.postRunLimitNotice?.(sessionId, text, hit),
     setHit: (sessionId, hit) => setSessionLimitHit(sessionId, hit),
     getHit: sessionId => getSessionLimitHit(sessionId),
-    alert: async (sessionId, text) => {
-      let agentWork
-      try { agentWork = getAgentWork() } catch { return }
-      const title = getSession(sessionId)?.title?.trim() || `Chat ${sessionId.slice(0, 8)}`
-      await agentWork.alertBlocked(title, text)
+    // The watcher (docs/watcher.md) shows the hit in the bell and, as Settings → Watcher says
+    // (on by default, as before), posts it to Agent work's Mattermost channel.
+    alert: (sessionId, text, hit) => {
+      recordWatcherEvent({ kind: hit.kind === 'loop' ? 'loop' : 'run_limit', severity: 'block', sessionId, text })
     },
     priceGatewayUsage: input => priceGatewayRunUsage(input, getUsagePricing(input.profile || 'default'), getModelCatalogSnapshot()),
     onError: (what, error) => logger.warn({ err: error }, '[run-limits] %s failed', what),

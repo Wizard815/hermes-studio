@@ -8,6 +8,7 @@ import { execHermesWithBin, spawnHermesWithBin } from '../services/runtime/proce
 import { readSetupRecord } from './mattermost-setup'
 import { hermesGatewayRoute } from '../../studio/public/provider-projection'
 import { logicalModelSelection } from '../../studio/public/model-routing'
+import { readCronApprovalMode, writeCronApprovalMode } from '../services/cron/approval-mode'
 
 const TIMEOUT_MS = 60_000
 
@@ -586,5 +587,19 @@ export async function run(ctx: Context) {
     ctx.body = { job }
   } catch (error: any) {
     sendCommandError(ctx, error)
+  }
+}
+
+/** Dangerous commands in this profile's scheduled jobs: Hermes's approvals.cron_mode (docs/watcher.md). */
+export async function approvalMode(ctx: Context) {
+  ctx.body = { mode: await readCronApprovalMode(resolveProfile(ctx) || 'default') }
+}
+
+export async function setApprovalMode(ctx: Context) {
+  try {
+    ctx.body = { mode: await writeCronApprovalMode(resolveProfile(ctx) || 'default', (ctx.request.body as any)?.mode) }
+  } catch (err: any) {
+    ctx.status = err?.status || 500
+    ctx.body = { error: err?.message || 'Could not save the scheduled jobs approval mode' }
   }
 }

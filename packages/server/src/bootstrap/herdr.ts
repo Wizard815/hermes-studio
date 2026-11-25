@@ -69,6 +69,7 @@ import { issueModelRunJwt, type AuthenticatedUser } from '../modules/studio/publ
 import { chatAgentLabel } from '../modules/coding-agents/services/herdr/chat-spaces'
 import { SpaceFolderSync, spaceFoldersFile, type SpaceFolderChat } from '../modules/coding-agents/services/herdr/space-folder-sync'
 import { orderedCategories } from '../modules/coding-agents/services/herdr/space-folder-file'
+import { recordWatcherEvent } from '../modules/studio/public/watcher'
 
 function toRef(row: HermesSessionRow | null): HerdrSessionRef | null {
   if (!row) return null
@@ -601,7 +602,10 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
     herdrManager.getBridge()?.scheduleChatSync()
     folders.soon()
   })
-  void herdrManager.init().catch(error => logger.warn(error, '[herdr] integration failed to start'))
+  void herdrManager.init().catch(error => {
+    logger.warn(error, '[herdr] integration failed to start')
+    recordWatcherEvent({ kind: 'connection', severity: 'warn', text: `herdr did not start: ${String(error?.message || error).slice(0, 200)}`, link: '/hermes/chat?center=herdr' })
+  })
   return {
     close: () => {
       stopListChanges?.(); stopListChanges = null

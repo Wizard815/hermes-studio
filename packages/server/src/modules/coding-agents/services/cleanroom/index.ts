@@ -7,6 +7,7 @@ import { delimiter, dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { getWebUiHome } from '../../../studio/public/config'
 import { config } from '../../../studio/public/config'
+import { pipelockProxy, recordWatcherEvent } from '../../../studio/public/watcher'
 import { appendEgress, forgetEgressLog, readEgress, verifyEgressChain, type EgressEntry } from './egress-log'
 import { scanForLeaks, type LeakReport } from './leaks'
 import { judgeProbe, normalizeProbe, overallState, PROBE_SCRIPT, type SelfCheckExpectations, type SelfCheckResult } from './probe'
@@ -294,7 +295,7 @@ function handleStudioTunnel(client: Socket) {
 }
 
 /** An HTTP proxy (CONNECT for HTTPS, absolute URLs for HTTP) limited to allowed hosts. */
-function handleProxy(client: Socket, sessionId = '') {
+export function handleProxy(client: Socket, sessionId = '') {
   let head = Buffer.alloc(0)
   const onData = (chunk: Buffer) => {
     head = Buffer.concat([head, chunk])
@@ -316,10 +317,11 @@ function handleProxy(client: Socket, sessionId = '') {
     const settings = readCleanRoomSettings()
     if (!host || !hostAllowed(host, settings)) {
       logEgress(sessionId, settings, { host: host || '(none)', port, allowed: false, reason: host ? `not allowed (${settings.network})` : 'bad request' })
+      if (sessionId) recordWatcherEvent({ kind: 'cleanroom_blocked', severity: 'block', sessionId, text: `Clean room blocked a connection to ${host || 'a bad request'}${host ? `:${port}` : ''} (${settings.network === 'studio' ? 'this room may reach only Studio' : 'not an allowed host'})` })
       client.end(`HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nThe clean room does not allow ${host || 'this request'}\n`)
       return
     }
-    void openUpstream(host, port).then(upstream => {
+    void openUpstream(host, port, sessionId).then(upstream => {
       logEgress(sessionId, settings, { host, port, allowed: true })
       if (method === 'CONNECT') client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
       else upstream.write(Buffer.concat([head.subarray(0, end + 4)]))
@@ -328,7 +330,14 @@ function handleProxy(client: Socket, sessionId = '') {
       client.pipe(upstream).pipe(client)
       const close = () => { client.destroy(); upstream.destroy() }
       client.on('error', close); upstream.on('error', close)
-    }).catch((error: Error) => {
+    }).catch((error: Error & { pipelock?: boolean }) => {
+      if (error?.pipelock) {
+        // pipelock (Settings → Watcher) refused it: a secret or an injection about to leave.
+        logEgress(sessionId, settings, { host, port, allowed: false, reason: `pipelock: ${String(error.message).slice(0, 120)}` })
+        if (sessionId) recordWatcherEvent({ kind: 'pipelock_blocked', severity: 'block', sessionId, text: `pipelock blocked a connection to ${host}:${port} (${String(error.message).slice(0, 160)})` })
+        client.end('HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nBlocked by pipelock\n')
+        return
+      }
       logEgress(sessionId, settings, { host, port, allowed: true, reason: `unreachable: ${String(error?.message || error).slice(0, 120)}` })
       client.end('HTTP/1.1 502 Bad Gateway\r\n\r\n')
     })
@@ -337,9 +346,26 @@ function handleProxy(client: Socket, sessionId = '') {
   client.on('error', () => client.destroy())
 }
 
-/** Reach a host from Studio, through Studio's own proxy when it has one. */
-function openUpstream(host: string, port: number): Promise<Socket> {
-  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy || ''
+/**
+ * Reach a host from Studio: through pipelock when Settings → Watcher turns it
+ * on (it may refuse: that is a block), else through Studio's own proxy when it
+ * has one. pipelock not answering never stops the room: it goes out without
+ * it and the bell says so.
+ */
+export async function openUpstream(host: string, port: number, sessionId = '', pipelock = pipelockProxy()): Promise<Socket> {
+  if (pipelock) {
+    try {
+      return await connectThrough(pipelock, host, port, true)
+    } catch (error: any) {
+      // pipelock answered (refused, or could not reach the host): that is its answer.
+      if (error?.replied) throw error
+      recordWatcherEvent({ kind: 'connection', severity: 'warn', sessionId: sessionId || undefined, text: `pipelock is on but does not answer at ${pipelock}; clean-room traffic goes out without it`, link: '/hermes/config/settings?tab=watcher' })
+    }
+  }
+  return connectThrough(process.env.HTTPS_PROXY || process.env.https_proxy || '', host, port, false)
+}
+
+function connectThrough(proxy: string, host: string, port: number, isPipelock: boolean): Promise<Socket> {
   return new Promise((resolveSocket, reject) => {
     if (!proxy) {
       const socket = createConnection({ host, port }, () => resolveSocket(socket))
@@ -357,7 +383,7 @@ function openUpstream(host: string, port: number): Promise<Socket> {
       if (!reply.includes('\r\n\r\n')) return
       socket.off('data', onReply)
       if (/^HTTP\/1\.[01] 200/.test(reply)) resolveSocket(socket)
-      else { socket.destroy(); reject(new Error(reply.split('\r\n')[0])) }
+      else { socket.destroy(); reject(Object.assign(new Error(reply.split('\r\n')[0]), { replied: true, pipelock: isPipelock && /^HTTP\/1\.[01] 403/.test(reply) })) }
     }
     socket.on('data', onReply)
     socket.once('error', reject)
@@ -558,7 +584,15 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
   }
   // Leak check before the chat's folder goes in: warn, do not block.
   if (settings.leakCheck) {
-    try { updateCleanRoomState(sessionId, { leaks: scanForLeaks(mounts.workspace) }) } catch { /* the room still starts */ }
+    try {
+      const leaks = scanForLeaks(mounts.workspace)
+      updateCleanRoomState(sessionId, { leaks })
+      if (leaks.findings.length) {
+        const names = leaks.findings.slice(0, 4).map(finding => finding.path).join(', ')
+        const more = leaks.findings.length > 4 ? ` and ${leaks.findings.length - 4} more` : ''
+        recordWatcherEvent({ kind: 'cleanroom_leak', severity: 'warn', sessionId, folder: mounts.workspace, text: `Possible secrets in the clean room's folder: ${names}${more}. Move them out if the agent must not read them.` })
+      }
+    } catch { /* the room still starts */ }
   } else updateCleanRoomState(sessionId, { leaks: undefined })
   // The room's home belongs to the user the agent runs as.
   if (studioUser.uid === 0 && user.uid !== 0) chownTree(roomHome, user.uid, user.gid)
