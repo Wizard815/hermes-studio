@@ -337,6 +337,12 @@ function titleFromFirstMessage(messages: TranscriptMessage[]): string {
 }
 
 /** Hermes's terminal UI is up: its input line ("❯") and status bar ("☤ <model>") are drawn. */
+/** A question Hermes asks on start that Enter answers with "later"/the default, on the screen's last lines. */
+export function hermesStartupQuestion(screen: string): boolean {
+  const tail = screen.split(/\r?\n/).filter(line => line.trim()).slice(-4).join('\n')
+  return /\[[^\]]*Enter\s*=\s*[^\]]*\]:\s*$/i.test(tail)
+}
+
 export function hermesInputReady(screen: string): boolean {
   const lines = screen.split(/\r?\n/)
   return lines.some(line => /^\s*❯/.test(line)) && lines.some(line => /^\s*☤\s/.test(line))
@@ -1511,7 +1517,9 @@ export class HerdrBridge {
       if (!pane && Date.now() > deadline - timeoutMs + 15000) break
       if (pane?.agent && (pane.agent_status === 'idle' || pane.agent_status === 'done')) {
         try {
-          await this.requireClient().request('agent.prompt', { target: paneId, text }, 15000)
+          // The same care as a chat message: a Hermes pane gets it once its input line is drawn, and a
+          // prompt that stayed in the input (or vanished into a startup question) is submitted or resent.
+          await this.sendToPane(paneId, text, 60000)
           return true
         } catch (error) {
           this.log('warn', '[herdr] could not send the initial prompt', { paneId, error: String(error) })
@@ -1593,7 +1601,15 @@ export class HerdrBridge {
       // herdr reports a resumed Hermes idle before its terminal UI is drawn; what is typed
       // then never reaches the conversation. Wait for its input line (at most waitMs).
       const deadline = Date.now() + waitMs
+      let answered = 0
       while (Date.now() < deadline && !this.stopped && !hermesInputReady(before)) {
+        // Hermes can open with a question of its own (e.g. "Enable auto-prune? [... Enter = remind me
+        // later]:"): whatever is typed next would answer it. Take its "later" so the prompt isn't eaten.
+        if (answered < 3 && hermesStartupQuestion(before)) {
+          answered += 1
+          this.log('info', '[herdr] Hermes asked a startup question; answering "later" before the prompt', { paneId })
+          await this.requireClient().request('pane.send_keys', { pane_id: paneId, keys: ['Enter'] })
+        }
         await new Promise(resolve => setTimeout(resolve, 500))
         before = await this.readPane(paneId)
       }

@@ -14,6 +14,7 @@ class FakeHerdr {
   requests: Array<{ method: string; params: any }> = []
   panes: any[] = []
   workspaces: any[] = [{ workspace_id: 'w1', label: 'demo', agent_status: 'idle' }]
+  screens: Record<string, string> = {}
   promptError: { code: string; message: string } | null = null
   created = 0
   /** Each pane's foreground processes (`pane.process_info`). */
@@ -63,7 +64,14 @@ class FakeHerdr {
         return reply({ type: 'session_snapshot', snapshot: { version: '0.9.5', workspaces: this.workspaces, panes: this.panes, focused_pane_id: this.panes[0]?.pane_id ?? null } })
       case 'agent.prompt':
         if (this.promptError) return socket.write(`${JSON.stringify({ id: request.id, error: this.promptError })}\n`)
+        if (this.screens[request.params.target] !== undefined) {
+          // a Hermes screen: a startup question eats what is typed; a ready input submits it
+          const screen = this.screens[request.params.target]
+          this.screens[request.params.target] = /Enter = remind me later\]: $/.test(screen) ? `${screen}${request.params.text}\n  Later.\n` : `${request.params.text}\n☤ Hermes\n❯ `
+        }
         return reply({ type: 'agent_prompt' })
+      case 'pane.read':
+        return reply({ type: 'pane_read', read: { text: this.screens[request.params.pane_id] ?? '' } })
       case 'workspace.create': {
         this.created += 1
         const id = this.created === 1 ? 'w9' : `w9x${this.created}`
@@ -77,8 +85,11 @@ class FakeHerdr {
       }
       case 'pane.focus':
         return reply({ type: 'pane_info', pane: { pane_id: request.params.pane_id } })
-      case 'pane.send_keys':
+      case 'pane.send_keys': {
+        const screen = this.screens[request.params.pane_id]
+        if (screen !== undefined && /Enter = remind me later\]: $/.test(screen)) this.screens[request.params.pane_id] = 'Later.\n☤ hy4-flash\n❯ '
         return reply({ type: 'ok' })
+      }
       case 'pane.report_agent':
       case 'pane.report_agent_session':
         return reply({ type: 'ok' })
@@ -365,6 +376,20 @@ describe('herdr bridge', () => {
     herdr.emit('pane_closed')
     await until(() => seen.length === 1)
     expect(seen).toEqual(['w9:p2:gone:t9'])
+  })
+
+  it('answers a Hermes startup question before typing the first prompt, so the prompt is not eaten', async () => {
+    const { deps } = makeDeps(dir)
+    await startBridge(deps)
+    await bridge!.launchAgent('hermes', { title: 'Add /info', prompt: 'Task: add /info as the wiki says', workspace: dir })
+    herdr.screens['w9:p2'] = '☤ Low disk (12 GB free)\n  Enable auto-prune? [y = enable / n = never prune, don\'t ask again / Enter = remind me later]: '
+    Object.assign(herdr.panes.find(p => p.pane_id === 'w9:p2'), { agent: 'hermes', agent_status: 'idle' })
+    herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2', agent_status: 'idle' })
+    await until(() => herdr.requests.some(r => r.method === 'agent.prompt'), 8000)
+    const order = herdr.requests.filter(r => r.method === 'pane.send_keys' || r.method === 'agent.prompt').map(r => r.method)
+    expect(order[0]).toBe('pane.send_keys')                     // "later" first
+    expect(herdr.requests.find(r => r.method === 'agent.prompt')!.params.text).toBe('Task: add /info as the wiki says')
+    expect(herdr.screens['w9:p2']).toContain('Task: add /info as the wiki says\n☤ Hermes')   // submitted, not swallowed
   })
 
   it('starts project work in the matching Studio folder and files its chat there', async () => {
