@@ -245,8 +245,11 @@ a chat with none counts as ask):
 A question shows on the Android page (**Allow once** / **Deny**, for three
 minutes; then it is denied) and in the watcher's bell with a link to the
 page. A watcher trust rule answers it: the value is
-`android:<device>:<app>:<action>`, so `android:emulator-5554:*` trusts one
+`android:<device>:<app>:<action>`, and `android:<device>:<app>:<action>:danger`
+for an action from the last row, so `android:emulator-5554:*` trusts one
 device and `android:*:com.example.app:*` one app (scope agent, chat or task).
+A rule made from an ordinary tap (`...:tap`) does not cover a "Send" or "Pay"
+tap; one made from a dangerous question covers both.
 
 **On the page:** the agent's last tap or swipe is drawn on the screen for a
 moment with what it did, and **What agents did** lists the last actions with

@@ -3,6 +3,7 @@ import { PhoneTools, deviceQuote, parseFocusedPackage, parseNotifications, type 
 import { classifyPhoneAction, phoneActionNeedsApproval } from '../../packages/server/src/modules/studio/services/android/agent-policy'
 import { compactUiTree, parseUiDump } from '../../packages/server/src/modules/studio/services/android/ui-tree'
 import { normalizeSettings } from '../../packages/server/src/modules/studio/services/android/manager'
+import { trustPatternMatches } from '../../packages/shared/watcher'
 
 const DUMP = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0">
 <node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="com.example.chat" clickable="false" bounds="[0,0][1080,2400]">
@@ -151,6 +152,26 @@ describe('phone tools on a fake adb', () => {
     phone.trust(true)
     await expect(phone.tools.run({ action: 'shell', arguments: { command: 'echo hi' } })).resolves.toEqual({ text: 'hi\n' })
     expect(phone.alerts.at(-1)).toMatchObject({ kind: 'approval_trusted' })
+  })
+
+  it('a trust rule made from an ordinary tap does not let a "Send" tap through', async () => {
+    let rules = ['android:emulator-5554:com.example.notes:tap']
+    const phone = fakePhone({ trusted: ({ value }) => rules.some(rule => trustPatternMatches(rule, value)) })
+    await phone.tools.run({ action: 'screen' })
+    await phone.tools.run({ action: 'tap', arguments: { id: 'e2' } })
+    expect(phone.tools.approvals()).toEqual([])
+    const run = phone.tools.run({ action: 'tap', arguments: { id: 'e4' } })
+    const question = await answer(phone, false)
+    expect(question).toMatchObject({ reason: 'presses "Send"', trustValue: 'android:emulator-5554:com.example.notes:tap:danger' })
+    await expect(run).rejects.toThrow()
+    rules = ['android:emulator-5554:com.example.notes:tap:danger']
+    await phone.tools.run({ action: 'screen' })
+    await phone.tools.run({ action: 'tap', arguments: { id: 'e4' } })
+    await phone.tools.run({ action: 'tap', arguments: { id: 'e2' } })
+    rules = ['android:emulator-5554:*']
+    await phone.tools.run({ action: 'tap', arguments: { id: 'e4' } })
+    expect(phone.tools.approvals()).toEqual([])
+    expect(phone.calls.filter(call => call.includes('input tap'))).toHaveLength(4)
   })
 
   it('guarded mode still asks before tapping in a messaging app', async () => {

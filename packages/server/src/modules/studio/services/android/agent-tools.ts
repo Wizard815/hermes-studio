@@ -259,8 +259,10 @@ export class PhoneTools {
     const agent = String(request.agent || 'agent')
     const mode = this.deps.approvalMode(sessionId)
     if (!phoneActionNeedsApproval(level, mode)) return
-    const value = phoneTrustValue(entry.serial, pkg, entry.action)
-    if (this.deps.trusted({ sessionId, agent, value })) {
+    const value = phoneTrustValue(entry.serial, pkg, entry.action, level)
+    // A rule that trusts the dangerous form of an action covers its ordinary form too.
+    const dangerValue = phoneTrustValue(entry.serial, pkg, entry.action, 'danger')
+    if (this.deps.trusted({ sessionId, agent, value }) || (value !== dangerValue && this.deps.trusted({ sessionId, agent, value: dangerValue }))) {
       this.deps.alert({ kind: 'approval_trusted', severity: 'info', text: `${agent} on ${entry.serial}: ${entry.summary}`, sessionId, agent, value })
       return
     }
