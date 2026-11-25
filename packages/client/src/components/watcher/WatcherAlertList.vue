@@ -78,7 +78,7 @@ function open(event: WatcherEvent) {
           </div>
           <p class="watcher-item__text">{{ event.text }}</p>
           <div class="watcher-item__buttons">
-            <NButton v-if="event.link" size="tiny" secondary data-testid="watcher-open" @click="open(event)">{{ event.taskId && !event.sessionId ? t('watcher.openTask') : t('watcher.openChat') }}</NButton>
+            <NButton v-if="event.link" size="tiny" secondary data-testid="watcher-open" @click="open(event)">{{ event.link.startsWith('/hermes/session/') ? t('watcher.openChat') : event.link.startsWith('/hermes/connections') ? t('watcher.openTask') : t('watcher.open') }}</NButton>
             <NButton v-if="event.action" size="tiny" secondary type="primary" data-testid="watcher-trust" @click="trusting = event">{{ t('watcher.trustThis') }}</NButton>
             <NButton v-if="event.trace" size="tiny" quaternary tag="a" :href="event.trace" target="_blank" rel="noopener">{{ t('watcher.langfuse') }}</NButton>
             <NButton v-if="!event.read" size="tiny" quaternary data-testid="watcher-mark-read" @click="act(() => watcher.markRead([event.id]))">{{ t('watcher.markRead') }}</NButton>

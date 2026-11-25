@@ -30,7 +30,7 @@ export function startRunLimits(): { close: () => void } {
     // The watcher (docs/watcher.md) shows the hit in the bell and, as Settings → Watcher says
     // (on by default, as before), posts it to Agent work's Mattermost channel.
     alert: (sessionId, text, hit) => {
-      recordWatcherEvent({ kind: hit.kind === 'loop' ? 'loop' : 'run_limit', severity: 'block', sessionId, text })
+      recordWatcherEvent({ kind: hit.kind === 'loop' ? 'loop' : 'run_limit', severity: 'block', sessionId, text: text.split('\nContinue with')[0] })
     },
     priceGatewayUsage: input => priceGatewayRunUsage(input, getUsagePricing(input.profile || 'default'), getModelCatalogSnapshot()),
     onError: (what, error) => logger.warn({ err: error }, '[run-limits] %s failed', what),
