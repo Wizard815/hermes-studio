@@ -881,8 +881,75 @@ def _load_enabled_toolsets() -> list[str] | None:
         return None
 
 
+# How long a new chat waits for MCP servers before it starts without the slow ones.
+DEFAULT_MCP_DISCOVERY_WAIT_SECONDS = 10.0
+
+
+def _mcp_discovery_wait_seconds() -> float:
+    """``HERMES_AGENT_BRIDGE_MCP_WAIT_SECONDS``; 0 waits for every server, as before."""
+    raw = os.environ.get("HERMES_AGENT_BRIDGE_MCP_WAIT_SECONDS", "").strip()
+    if not raw:
+        return DEFAULT_MCP_DISCOVERY_WAIT_SECONDS
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return DEFAULT_MCP_DISCOVERY_WAIT_SECONDS
+
+
+def _connected_mcp_tool_names() -> list[str]:
+    try:
+        from tools.mcp_tool_registration import _existing_tool_names
+    except ImportError:
+        return []
+    try:
+        names = _existing_tool_names()
+        return list(names) if isinstance(names, list) else []
+    except Exception:
+        return []
+
+
+def _discover_bridge_mcp_tools_bounded(wait_seconds: float) -> list[str] | None:
+    """Connect MCP servers in the background and wait at most ``wait_seconds``.
+
+    A slow or broken server (an ``npx`` package that cannot download, a host that does not
+    answer) used to hold every new chat for Hermes's whole connect timeout (60 s). Now the
+    chat starts with the servers that answered in time; the others keep connecting and
+    later chats get their tools. None when this Hermes has no background discovery.
+    """
+    try:
+        from hermes_cli.mcp_startup import join_mcp_discovery, start_background_mcp_discovery
+    except ImportError:
+        return None
+    import logging
+
+    start_background_mcp_discovery(logger=logging.getLogger("hermes_bridge.mcp"), thread_name="studio-bridge-mcp-discovery")
+    if not join_mcp_discovery(timeout=wait_seconds):
+        pending: list[str] = []
+        try:
+            from tools.mcp_tool_discovery import mcp_servers_awaiting_connect
+
+            pending = list(mcp_servers_awaiting_connect() or [])
+        except Exception:
+            pass
+        print(
+            f"[hermes_bridge] MCP servers still connecting after {wait_seconds:g}s"
+            f"{': ' + ', '.join(pending) if pending else ''}; this chat starts without them",
+            file=sys.stderr,
+            flush=True,
+        )
+    return _connected_mcp_tool_names()
+
+
 def _discover_bridge_mcp_tools() -> list[str]:
     _ensure_agent_imports()
+    wait_seconds = _mcp_discovery_wait_seconds()
+    if wait_seconds > 0:
+        try:
+            bounded = _discover_bridge_mcp_tools_bounded(wait_seconds)
+            if bounded is not None:
+                return bounded
+        except Exception as exc:
+            print(f"[hermes_bridge] background MCP discovery failed, waiting for it instead: {exc}", file=sys.stderr, flush=True)
     try:
         try:
             from tools.mcp_tool_discovery import discover_mcp_tools

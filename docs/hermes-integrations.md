@@ -65,6 +65,30 @@ newer Hermes than this one (`requires_hermes`), or Hermes refuses the install (p
 without Blender), Studio logs one `[recommended-plugins]` warning, shows "not installed yet"
 on the Plugins page and tries again on its next start. It never blocks startup or a chat.
 
+**Slow MCP servers do not hold a chat.** A new Hermes chat waits at most 10 seconds for
+the profile's MCP servers (`HERMES_AGENT_BRIDGE_MCP_WAIT_SECONDS`; `0` waits for all of
+them, as before). A server that is still connecting keeps connecting in the background:
+the chat starts without its tools, and chats started after it connected have them. Before
+this, a server that never connected (rea, see below) made every new chat wait about 60 s.
+
+**rea behind a proxy.** Hermes starts MCP servers with only `PATH`, `HOME`, `USER`, `LANG`,
+`TERM`, `SHELL`, `TMPDIR` and `XDG_*` from its own environment. `HTTPS_PROXY`,
+`NODE_EXTRA_CA_CERTS` and npm's settings are not passed, so `npx rea-agents` cannot reach
+the npm registry through a proxy, even when its package is already in the npm cache, and
+rea never connects ("CancelledError" in Hermes's log). Without a proxy it connects (the
+first start downloads about 30 MB). To use rea through a proxy, give it its own entry in
+the profile's `config.yaml`; an entry with the plugin's server name replaces the plugin's:
+
+```yaml
+mcp_servers:
+  rea:
+    command: npx
+    args: ["-y", "rea-agents@6.7.0", "mcp"]
+    env:
+      HTTPS_PROXY: ${HTTPS_PROXY}
+      NODE_EXTRA_CA_CERTS: ${NODE_EXTRA_CA_CERTS}
+```
+
 **mcp-serve on the MCP page.** Once mcp-serve is installed, Studio adds one stdio MCP
 server named `hermes-chats` to the profile (`hermes [-p <profile>] mcp-serve`), with only
 its read tools on (`conversations_list`, `conversation_get`, `messages_read`,
