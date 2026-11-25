@@ -116,3 +116,10 @@ All routes need a super admin.
 Tests: `tests/server/projects.test.ts`, `tests/client/project-groups.test.ts`,
 the project case in `tests/server/studio-mcp-arguments.test.ts`, and
 `tests/e2e/projects-list.spec.ts`, `tests/e2e/projects-thread-pane.spec.ts`.
+
+Live check with real models (opt-in, uses OpenRouter):
+`LIVE_PROJECTS=1 NODE_USE_ENV_PROXY=1 npx vitest run tests/live/projects-coordinator.live.test.ts`.
+A coordinator model drives the real project service; each thread is a worker
+model with file and git tools in the project's one folder. herdr and the
+database are stood in. Models are set with `LIVE_COORDINATOR_MODEL`,
+`LIVE_CLAUDE_MODEL`, `LIVE_CODEX_MODEL` and `LIVE_HERMES_MODEL`.
