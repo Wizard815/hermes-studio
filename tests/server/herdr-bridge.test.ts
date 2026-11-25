@@ -721,6 +721,22 @@ describe('herdr bridge', () => {
     await expect(bridge!.followCleanRoom('w1:p9', launch, { sessionId: 'chat-1', nativeId, recap: false }, { startMs: 600 })).resolves.toBe(false)
   })
 
+  it('gives an imported Hermes chat the chat so far when Hermes has no session for it', async () => {
+    const { deps, sessions } = makeDeps(dir)
+    deps.chatRecap = async () => 'The chat so far'
+    deps.hermesNeedsRecap = async id => id === 'import-hermes'
+    deps.prepareSessionLaunch = async () => ({ agentId: 'hermes', command: 'hermes', args: [], env: {}, workspaceDir: dir, provider: '', model: '', cleanRoom: true })
+    for (const id of ['import-hermes', 'studio-hermes']) sessions.set(id, { id, agent: 'hermes', title: id, workspace: null, agent_native_session_id: '', profile: 'default' })
+    await startBridge(deps)
+    herdr.panes.push({ pane_id: 'w1:p7', workspace_id: 'w1', agent_status: 'unknown' })
+    await bridge!.refresh()
+    const follow: Array<{ sessionId: string; recap: boolean }> = []
+    ;(bridge as any).followCleanRoom = async (_pane: string, _launch: unknown, chat: { sessionId: string; recap: boolean }) => { follow.push({ sessionId: chat.sessionId, recap: chat.recap }); return true }
+    await bridge!.prepareResume('import-hermes', 'w1:p7')
+    await bridge!.prepareResume('studio-hermes', 'w1:p7')
+    expect(follow).toEqual([{ sessionId: 'import-hermes', recap: true }, { sessionId: 'studio-hermes', recap: false }])
+  })
+
   it('records a fresh clean-room session from its transcript in the room\'s home, and tells herdr', async () => {
     const { deps, sessions } = makeDeps(dir)
     sessions.set('chat-r', { id: 'chat-r', agent: 'claude-code', title: 'Room', workspace: dir, agent_native_session_id: '' })

@@ -281,6 +281,7 @@ your own services:
 - [ ] Gadget: from a Studio Hermes chat, "show 'hello' on my gadget" shows a card on the device
 - [ ] herdr: on a new install, elevating a Claude Code chat opens the chat, not Claude Code's theme or API key questions
 - [ ] UI skills: the Skills page shows **UI skills (bundled)**, and `~/.claude/skills/better-interface` exists in the container; asking Claude Code to review a page uses it ([docs/ui-skills.md](docs/ui-skills.md))
+- [ ] Import chats: chat list ⋯ → Import chats…, point it at a backup of `~/.claude` or a Hermes home; the preview lists the chats, Import adds them, running it again skips them all ([docs/chat-import.md](docs/chat-import.md))
 - [ ] Paper (optional, needs a Paper account): MCP → Catalog → Paper → Add and sign in; a Hermes chat can read a frame
 
 Known issues on this branch:

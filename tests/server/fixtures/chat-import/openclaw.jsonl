@@ -1,0 +1,6 @@
+{"type":"session","version":3,"id":"oc-session-1","timestamp":"2026-04-10T09:00:00.000Z","cwd":"/home/someone/workspace"}
+{"type":"model_change","id":"m1","timestamp":"2026-04-10T09:00:00.000Z","provider":"anthropic","modelId":"claude-opus-4"}
+{"type":"message","id":"e1","timestamp":"2026-04-10T09:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"What's on my calendar?"}],"timestamp":1775811601000}}
+{"type":"message","id":"e2","timestamp":"2026-04-10T09:00:02.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Check the calendar tool."},{"type":"toolCall","id":"tc1","name":"calendar_list","arguments":{"day":"today"}}],"model":"claude-opus-4"}}
+{"type":"message","id":"e3","timestamp":"2026-04-10T09:00:03.000Z","message":{"role":"toolResult","toolCallId":"tc1","toolName":"calendar_list","content":[{"type":"text","text":"10:00 Dentist"}]}}
+{"type":"message","id":"e4","timestamp":"2026-04-10T09:00:04.000Z","message":{"role":"assistant","content":[{"type":"text","text":"You have the dentist at 10:00."}]}}

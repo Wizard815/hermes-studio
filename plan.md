@@ -221,8 +221,11 @@ Next:
   Extras off by default: pipelock (clean-room upstream), InnerWarden (hook
   status), Langfuse (trace links). Left: real pipelock and InnerWarden not
   tried here; Hermes cron has no per-job approval mode.
-- **Import chats**: learn from agent-importers how to bring Hermes chats from
-  other installs (and other agents' sessions) in as Studio/herdr chats.
+- **Import chats** (done, `docs/chat-import.md`): chat list ⋯ → Import chats…
+  reads another Hermes home (state.db, all profiles), Claude Code, Codex and
+  OpenClaw sessions from a folder on the server or an uploaded zip/tar,
+  previews first, imports into a chosen profile and folder, skips duplicates,
+  never reads credential files. Cursor is not supported.
 
 Order: watcher done (branch `watcher`); the herdr-app-ui, plugins (with Gadget), limits and
 clean-room branches are merged into `studio-herder`.

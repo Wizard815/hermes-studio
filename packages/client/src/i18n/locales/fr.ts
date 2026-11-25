@@ -16,6 +16,7 @@ import { orbMessages } from '../orb-messages'
 import { omiMessages } from '../omi-messages'
 import { approvalAlertMessages } from '../approval-alerts-messages'
 import { systemMessages } from '../system-messages'
+import { chatImportMessages } from '../chat-import-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
 import { gadgetMessages } from '../gadget-messages'
@@ -51,6 +52,7 @@ export default {
   ...omiMessages['fr'],
   ...approvalAlertMessages['fr'],
   ...systemMessages['fr'],
+  ...chatImportMessages['fr'],
   ...recommendedPluginsMessages['fr'],
   ...uiSkillsMessages['fr'],
   ...gadgetMessages['fr'],

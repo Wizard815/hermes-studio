@@ -126,6 +126,11 @@ export interface HerdrBridgeDeps {
    * (no saved agent session to resume). Empty when there is nothing to tell.
    */
   chatRecap?: (sessionId: string) => Promise<string>
+  /**
+   * A Hermes chat Hermes itself has no session for (an imported chat, see
+   * docs/chat-import.md): it starts fresh, so it gets the chat so far too.
+   */
+  hermesNeedsRecap?: (sessionId: string, profile: string) => Promise<boolean>
   /** A chat's newest messages for its card in herdr. */
   chatPreview?: (sessionId: string) => Promise<Array<{ role: string; text: string }>>
   /**
@@ -1174,8 +1179,11 @@ export class HerdrBridge {
     else this.afterRetryInputs.delete(paneId)
     this.scheduleRefresh(500)
     // No agent session to resume (an old chat): the fresh session starts from the chat so far.
-    // Hermes resumes the whole conversation by Studio's session id, so it needs no recap.
-    const needsRecap = !row.agent_native_session_id && launch.agentId !== 'hermes' && row.agent !== 'hermes' && !!this.deps.chatRecap
+    // Hermes resumes the whole conversation by Studio's session id, so it needs no recap,
+    // unless Hermes has no session under that id (a chat imported from elsewhere).
+    const hermesChat = launch.agentId === 'hermes' || row.agent === 'hermes'
+    const needsRecap = !row.agent_native_session_id && !!this.deps.chatRecap
+      && (!hermesChat || await this.deps.hermesNeedsRecap?.(sessionId, row.profile || 'default').catch(() => false) === true)
     if (launch.cleanRoom) {
       // The agent's own herdr hooks cannot reach herdr from inside its container.
       void this.followCleanRoom(paneId, launch, { sessionId, nativeId: row.agent_native_session_id || '', recap: needsRecap })

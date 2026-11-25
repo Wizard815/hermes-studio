@@ -51,6 +51,13 @@ const router = createRouter({
       component: () => import('@/views/hermes/ChatView.vue'),
     },
     {
+      // Bring chats from another Hermes, Claude Code, Codex or OpenClaw (docs/chat-import.md).
+      path: '/hermes/import-chats',
+      name: 'hermes.chatImport',
+      component: () => import('@/views/hermes/ChatImportView.vue'),
+      meta: { requiresSuperAdmin: true },
+    },
+    {
       path: '/hermes/session/:sessionId',
       name: 'hermes.session',
       component: () => import('@/views/hermes/ChatView.vue'),

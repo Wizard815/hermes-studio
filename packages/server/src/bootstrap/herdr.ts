@@ -37,6 +37,8 @@ import {
   prepareCodingAgentSessionLaunch,
   storedAgentIdForCodingAgent,
 } from '../modules/coding-agents/services'
+import { isImportedChatId } from '../modules/studio/services/chat-import/service'
+import { getExactSessionDetailFromDbWithProfile } from '../modules/hermes/services/history/sessions-db'
 import { herdrManager, type HerdrPluginDeps } from '../modules/coding-agents/services/herdr/manager'
 import { listProfileModelChoices, listProfileModelGroups } from '../modules/hermes/controllers/models'
 import { getProfileDir, listProfileNamesFromDisk } from '../modules/hermes/services/profiles/profile'
@@ -323,6 +325,9 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
       return { token, profile: row.profile || 'default', run: chatRunFields(row), agent: chatAgentLabel(stored), name }
     },
     chatRecap: async sessionId => chatRecap(getSession(sessionId)?.title || '', getRecentSessionMessages(sessionId, 50).map(message => ({ role: message.role, text: messageText(message.content) }))),
+    // An imported Hermes chat (docs/chat-import.md) has no Hermes session until its first turn.
+    hermesNeedsRecap: async (sessionId, profile) => isImportedChatId(sessionId)
+      && !(await getExactSessionDetailFromDbWithProfile(sessionId, profile).catch(() => null)),
     chatPreview: async sessionId => getRecentSessionMessages(sessionId, 6).map(message => ({ role: message.role, text: messageText(message.content) })).filter(message => message.text),
     chatPane: () => herdrManager.chatPaneSetup(),
     // Agents in herdr act for the Studio admin using herdr (herdr routes are
