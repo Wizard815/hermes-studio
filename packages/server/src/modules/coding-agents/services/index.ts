@@ -34,7 +34,7 @@ import { promisify } from 'util'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { getWebUiHome } from '../../studio/public/config'
 import { agentAsksBeforeActing, withApprovals, withApprovalsEnv } from './approvals'
-import { cleanRoomCommand, cleanRoomExec, cleanRoomHome, cleanRoomTerminalDocker, ensureCleanRoom, isCleanRoom, studioConfigMounts } from './cleanroom'
+import { cleanRoomCommand, cleanRoomExec, cleanRoomHome, cleanRoomTerminalDocker, cleanRoomWebTools, ensureCleanRoom, isCleanRoom, studioConfigMounts } from './cleanroom'
 import { herdrKindForStudioAgent } from './herdr/protocol'
 import { answerClaudeFirstRun } from './herdr/first-run'
 export { withApprovals, withApprovalsEnv } from './approvals'
@@ -3987,13 +3987,16 @@ async function startCodingAgentRunInternal(
   // The container runs the program by its full path (the same path is shared with it).
   const roomProgram = isCleanRoom(sessionId) ? cleanRoomProgram(await resolveInteractiveCommand(runtimeCommand)) : null
   const roomCommand = roomProgram?.command || runtimeCommand
+  // The agent's own web tools stay off in the room unless its settings allow them (cleanroom/web-tools.ts).
+  const roomWeb = roomProgram ? cleanRoomWebTools(sessionId, launch.agentId, launch.env) : null
   const cleanRoom = roomProgram
     ? await ensureCleanRoom(sessionId, {
         workspace: launch.workspaceDir,
         ...studioConfigMounts([...launch.args, ...(launch.rootDir ? [launch.rootDir] : [])], launch.env),
         program: roomProgram.dir,
-      }, { env: launch.env })
+      }, { env: launch.env, agent: launch.agentId, webConfigFile: roomWeb?.configFile })
     : ''
+  if (cleanRoom) roomWeb?.apply()
   const started = codingAgentRunManager.start({
     ownerUserId: providerAccountId(launch.profile),
     agentSessionId,
@@ -4007,7 +4010,7 @@ async function startCodingAgentRunInternal(
     agentNativeSessionId,
     nativeResume: Boolean(existingNativeSessionId),
     command: cleanRoom ? cleanRoomCommand(cleanRoom, roomCommand) : runtimeCommand,
-    args: launch.args,
+    args: cleanRoom && roomWeb ? [...launch.args, ...roomWeb.args] : launch.args,
     shellCommand: launch.shellCommand,
     workspaceDir: launch.workspaceDir,
     env: cleanRoom ? launch.env : runtimeEnv,
@@ -4296,11 +4299,13 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
   if (!cleanRoom) return launch
   // A clean-room chat in a terminal (herdr): the agent runs in the chat's container.
   const program = cleanRoomProgram(launch.command)
+  const roomWeb = cleanRoomWebTools(sessionId, launch.agentId, launch.env)
   const container = await ensureCleanRoom(sessionId, {
     workspace: launch.workspaceDir,
     ...studioConfigMounts(launch.args, launch.env),
     program: program.dir,
-  }, { env: launch.env })
+  }, { env: launch.env, agent: launch.agentId, webConfigFile: roomWeb.configFile })
+  roomWeb.apply()
   if (launch.agentId === 'claude-code') {
     // The clean room's own home (`/root` inside) needs the same first-run answers.
     try {
@@ -4309,7 +4314,7 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
       logger.warn({ err: error, sessionId }, '[herdr] could not pre-answer Claude Code first-run questions in the clean room')
     }
   }
-  const exec = cleanRoomExec(container, program.command, launch.args, launch.workspaceDir, launch.env, { tty: true })
+  const exec = cleanRoomExec(container, program.command, [...launch.args, ...roomWeb.args], launch.workspaceDir, launch.env, { tty: true })
   // The docker client under the agent's name, so herdr sees which agent runs in the pane.
   const agentName = herdrKindForStudioAgent(launch.agentId)
   const command = agentName ? cleanRoomTerminalDocker(agentName, String((await commandEnv()).PATH || process.env.PATH || '')) : exec.command
