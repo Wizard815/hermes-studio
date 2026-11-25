@@ -1,6 +1,6 @@
 # End-to-end test with OpenRouter (2026-11-25)
 
-Branch tested: `studio-herder` (6217c46). Fix branch: `e2e-openrouter`.
+Branch tested: `studio-herder` (6217c46; round 4: 7e7855d). Fix branch: `e2e-openrouter`.
 Model: `tencent/hy4-flash` on OpenRouter, the only model used (Studio, Hermes, Ekko, Claude Code, FAITH).
 All data was fake (test users, test tasks, a demo Home Assistant).
 
@@ -279,3 +279,87 @@ tools). Total for this session's three rounds: $0.098 + $0.0755 + $0.1097 = **$0
 - 6: ![](r3-6-open-to-agents.png) ![](r3-6-question-1.png) ![](r3-6-bell.png) ![](r3-6-trust-dialog.png) ![](r3-6-after.png)
 - 7: ![](r3-7-gadget.png)
 - 8: ![](r3-8-claude.png) ![](r3-8-cleanroom-egress.png) ![](r3-8-limit-hit.png) ![](r3-8-returned.png)
+
+## Round 4 (Omi, approval alerts, web tools, import, LLM wiki, Test Lab)
+
+Run on `studio-herder` 7e7855d in a fresh container: Hermes 0.23.4 from source (Python 3.14),
+herdr 0.9.5 through Studio's own "Install herdr", Claude Code 2.1.332, Codex 0.172.0, Qwen Code
+0.28.4, OpenCode 1.19.6 and Gemini CLI 0.71.1 under Node 24. Studio ran with `env -i` and a short
+variable list, a fresh home outside `/tmp` (`/srv/r4`), recommended plugins off (no rea), run limits
+**$0.05 and 10 minutes**. Model: `tencent/hy4-flash` only. Fake data only; every outside service was a
+local fake (Omi, the phone, adb) or a throwaway container (Mattermost preview, Test Lab apps).
+
+| # | Check | Result | Notes |
+|---|---|---|---|
+| 1 | Omi in Studio | Pass (approval item made by hand) | Fake Omi on :18800. Test connection "Omi answered /v1/health (ok)"; key `sk-studio-omi-…` shown once; webhook registered. A work chat started with the key ran a real Hermes turn (wrote the file); both `chat.run.completed` events reached Omi with a **valid `X-Hermes-Signature-256`**, and no other chat was sent. With the key: `/api/hermes/sessions` → 403 "This key is for Omi…"; key in the URL → 401; approving work in a chat Omi did not start → 404. Omi approved with `by: Robin` → "Approved."; Studio's reject then got "Already approved in Omi by Robin (Omi)."; Agent work shows "Done in Omi" / "approved in Omi". Revoked key → 401. MCP card: "omi is connected: 2 tools", the delete tool excluded, key in `.env`; Omi skill copied. hy4-flash did not create the Agent work item itself (it announced the tool call twice and stopped), so it was created with Studio's REST API, linked to Omi's chat. |
+| 2 | Approval alerts | Pass | Settings → Watcher → **Both**, Agent work + Chat approvals + Phone actions. Fake phone paired with a code (`POST …/pair` → key), held the SSE stream (`approvals` on connect and on each change). Its key gets 403 outside its scope. A real Claude Code turn asked twice; both reached the phone live, `rm -rf …` flagged `dangerous: true`. Approved from the phone → "Approved.", again → "Already approved on phone (Pixel 8 (fake))." The Mattermost post `#approval #chatapproval @testadmin` with buttons changed to "#approved ~~#approval~~ … was approved on phone (Pixel 8 (fake))" without buttons; the folder was deleted. Removing the phone sent `revoked`, closed the stream, and the key got 401. |
+| 3 | Web tools off in clean rooms | Pass (Codex inconclusive) | Claude Code, Codex, Qwen Code, OpenCode rooms: self-check "off for Claude Code (WebSearch, WebFetch)", "off for Codex (web_search)", "off for Qwen Code (web_fetch, web_search)", "off for OpenCode (webfetch, websearch)"; `example.com` refused, npm reachable. Each agent's own tool list had no web tool (outside a room Claude Code lists WebFetch/WebSearch). `allowWebTools: true` → self-check "allowed (Claude Code)", the room was made again, and Claude Code listed WebFetch and WebSearch again. Codex lists no `web_search` either way through Studio's chat-completions provider, so its switch could not be seen. Gemini CLI: `/etc/gemini-cli/settings.json` (`tools.exclude`) is mounted in every room; Studio does not run Gemini as a chat agent. |
+| 4 | Studio context for elevated chats | Pass after fix | **Claude Code**: elevated, a message from Studio's chat box reached the pane as typed text only; the `UserPromptSubmit` hook gave a fresh `context_id` and both task-card calls returned `ok` ("Write bye.txt" completed). **Hermes CLI**: before the fix Studio always appended the blocks to the typed text, and they stayed in Hermes's history (fixed below). After it, Studio wrote `turn-context/hermes-<chat>.json`, the stored message was only the typed text and the model got the context, but hy4-flash then returned empty answers ("Thinking-only response") and made no tool calls, so the task card was not updated in this run. The gateway-restart gap did not come up: no Hermes gateway was running. |
+| 5 | Chat import | Pass | Zip with two Hermes profiles (copies of a real `state.db`, ids rewritten), a Claude Code session, Codex and OpenClaw files, plus `.env`, `auth.json`, `.credentials.json`: preview 6 chats, "4 other files in the archive were left out"; 6 imported. Re-scan of the zip and of Studio's own home: all "Already imported". No fake credential string anywhere in Studio's data. An imported Hermes chat continued with a real turn and answered from its history ("I reported oats"). The imported Claude Code chat (no local session file) was elevated; the pane got the recap and answered "hello.txt and bye.txt". |
+| 6 | LLM wiki | Pass after fix | The vault's real `llmwiki-mcp-bridge/main.js` on Express :27123 with an on-disk `obsidian` stub, over a copy without `.git`; tokens from `family-setup.mjs` (member `sam`, shared `house-assistant`). Connections → LLM wiki: "Connected as Sam (member)" and "House assistant (shared), the household's view". Before the fix recall searched Studio's tool names (below). After: profile `sam` recalled the shared "Bin Day" note and Sam's private "Piano Lessons" note; profile `household` recalled Bin Day and said the piano teacher was unknown (its search found nothing). Remember: Sam's turn wrote to `people/sam/daily/2026-11-25.md` (Worked on), the household's to `household/daily/2026-11-25.md` (Follow-ups). |
+| 7 | Test Lab | Pass after fix | nginx + Vikunja via `mirror.gcr.io`, hy4-flash, cap $0.10, 10 min. The first run failed: Vikunja exited at once (fixed below). Re-run: images, network, apps, health, seed, agent, report all done; report "3 passed, 0 failed" (alice sees "Alice's secret task", bob does not, nginx page); cost $0.0003 (gateway, 33,508 tokens) / $0.0002 (OpenRouter key counter); cleanup "4 containers, 1 network". The Mattermost and clean-room containers (not Test Lab's) were left alone. |
+| 8 | Regression | Pass | Hermes, Ekko and Claude Code chats (Claude asked before Bash, Allow once worked); `/limits tokens 2k` gave "Run stopped by a limit"; bell shows approvals, "Approved on phone", clean-room blocks; Elevate and Return to Studio (pane closed); UI skills (10) in Hermes, `~/.claude/skills`, `~/.agents/skills`. Phone tools with a fake adb: closed by default (Ekko: "no device is currently open to agents"); after "Agents can use Fake Phone", tap Save waited for approval and reached adb (`input tap 280 1075`) only after Allow once. |
+
+### Fixed in round 4
+
+- `3f135a4` fix(herdr): Hermes panes get Studio's context through the plugin. Studio decided
+  whether its `studio-turn-context` plugin was on by reading its own provider config
+  (`studio/public/provider-config`), which has no `plugins` section, while the plugin is enabled in
+  the profile's Hermes `config.yaml`. The check was always false, so every message from Studio's chat
+  box to an elevated Hermes pane carried the context blocks after the text, and Hermes kept them in
+  its history. Test: `tests/server/herdr-hermes-turn-context.test.ts`. Re-run: only the typed text is
+  stored.
+- `445673c` fix(llm-wiki): recall from the user's words, not Studio's context blocks. In a Studio
+  Hermes chat the message the provider sees ends with `<studio_task_plan_context>` and the other
+  blocks; the word search took its four longest words from them (`mcp__ekko_studio_…`, the turn's
+  context id), so recall never found the user's notes ("Recycling bin: unknown"). The provider now
+  drops `<studio_*>` blocks before recall, the trivial check and the chat's "Worked on" line. Test:
+  `tests/server/llm-wiki-provider.test.ts` (fails without the fix). Re-run: both notes recalled.
+- `ed239a3` fix(test-lab): Vikunja starts. `vikunja/vikunja:2.7.1` runs as uid 1000 with a
+  root-owned `/app/vikunja`; the template's `/app/vikunja/files` could not be created ("permission
+  denied"), Vikunja exited, its health check failed (`EAI_AGAIN`) and the agent reported it
+  unreachable. The template now sets `VIKUNJA_FILES_BASEPATH=/tmp/vikunja` with the database inside.
+  Test: `tests/server/test-lab-templates.test.ts`. Re-run passed.
+
+Checks: `npm run build` passes. The touched suites pass (7 files, 73 tests: herdr turn context and
+bridge, LLM wiki provider and settings, Test Lab templates and service). `npm run harness:check`: the
+same 29 findings as `studio-herder`, plus this report folder.
+
+### Broken or open, not fixed
+
+1. **hy4-flash stops before tool calls.** Several Hermes turns ended with "I'll call the tool"
+   and no call, or with empty "thinking-only" answers (Omi's Agent work item, the elevated Hermes
+   pane, the phone screen). Ekko and Claude Code with the same model did call their tools. A model
+   limit; Studio's side worked when the tool was reached.
+2. **Phone questions from Ekko are not linked to the chat.** The phone approval had
+   `sessionId: ""`, so the bell's alert opens the Android page, not the chat.
+3. **Coding agents that are not installed say "Node/npm environment was not detected"** although
+   npm is on Studio's PATH. `isNodeEnvironmentMissingError` treats any `ENOENT` (such as the agent's
+   own missing binary) as a missing Node.
+4. **Codex's web switch can't be seen through Studio's provider**: Codex offers no `web_search` on a
+   chat-completions provider, with the switch on or off.
+5. Clean rooms ran as root (Studio ran as root here), as in round 1.
+
+Setup notes (not Studio bugs): Node 22 made the client warn "upgrade to version 23", so Studio
+ran on Node 24 (`npm rebuild node-pty`); npm 11 skips install scripts unless allowed, so Claude Code
+and OpenCode needed `--allow-scripts`; Studio's new-chat form keeps its own profile choice (chat
+settings icon), not the active profile; the test home's `config.yaml` triggers block deleting
+sessions from a copied `state.db` (dropped in the copy for the import fixture). Two screenshots that
+showed the (fake, revoked) Omi key and webhook secret were left out.
+
+### Cost
+
+OpenRouter key usage: **$11.3885 before, $11.4308 after: $0.0423** for round 4 (stop at $0.45,
+budget $0.50). The key had gone up about $3.79 between rounds 3 and 4, not from this session.
+Total for this session's four rounds: $0.098 + $0.0755 + $0.1097 + $0.0423 = **$0.325**.
+
+### Screenshots
+
+- 1: ![](r4-1-omi-connected.png) ![](r4-1-omi-chat.png) ![](r4-1-agentwork-done-in-omi.png) ![](r4-1-omi-work.png) ![](r4-1-omi-mcp.png)
+- 2: ![](r4-2-watcher-both.png) ![](r4-2-pairing-code.png) ![](r4-2-claude-asks.png) ![](r4-2-mattermost-approved-on-phone.png) ![](r4-2-claude-after-phone.png)
+- 3: ![](r4-3-claude-room.png) ![](r4-3-codex-room.png) ![](r4-3-qwencode-room.png) ![](r4-3-opencode-room.png) ![](r4-3-claude-web-on.png) ![](r4-3-codex-web-on.png)
+- 4: ![](r4-4-claude-elevated.png) ![](r4-4-claude-taskcard.png) ![](r4-4-hermes-elevated.png) ![](r4-4-hermes-sent.png)
+- 5: ![](r4-5-import-preview.png) ![](r4-5-import-done.png) ![](r4-5-import-studio-home.png) ![](r4-5-imported-hermes-continued.png) ![](r4-5-imported-claude-elevated.png) ![](r4-5-imported-claude-asked.png)
+- 6: ![](r4-6-wiki-sam.png) ![](r4-6-wiki-household.png) ![](r4-6-sam-recall.png) ![](r4-6-household-recall.png) ![](r4-6-sam-remember.png) ![](r4-6-household-remember.png)
+- 7: ![](r4-7-testlab-new-run.png) ![](r4-7-testlab-report.png)
+- 8: ![](r4-8-hermes.png) ![](r4-8-ekko.png) ![](r4-8-claude.png) ![](r4-8-claude-done.png) ![](r4-8-limit-hit.png) ![](r4-8-bell.png) ![](r4-8-returned.png) ![](r4-8-phone-closed.png) ![](r4-8-phone-open.png) ![](r4-8-phone-tap.png) ![](r4-8-phone-allowed.png)
