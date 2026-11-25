@@ -42,4 +42,6 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // org.json is a stub in local unit tests; the real one parses bridge messages there.
     testImplementation("org.json:json:20240303")
+    // A stand-in Studio for ApprovalAlertClientTest (com.sun.net.httpserver is not on the unit-test classpath).
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }
