@@ -8,7 +8,7 @@ on 2026-11-25. No model or paid API calls were made.
 |---|---|---|---|
 | `studio-own-debug.apk` | Studio Own 0.4.0 (versionCode 4), debug | `com.ekkostudio.own` | hermes-studio `studio-herder` @ `bd7407b` + the fix below |
 | `omi-dev-release.apk` | Omi Dev 1.0.543 (versionCode 2992), dev flavor, release, arm64-only, obfuscated, 96.2 MiB | `com.friend.ios.dev` | omi-local `studio-herder` @ `0f6fc00caf` + `omi-fixes.patch` |
-| `omi-fixes.patch` | the Omi fix as a `git am` patch (the session could not push to omi-local) | | |
+| `omi-fixes.patch` | the two Omi commits as a `git am` patch (the session could not push to omi-local) | | |
 | `TEST-CHECKLIST.md` | step-by-step phone test for both apps (calling home, Doze, share, links, Termux, Omi approvals) | | |
 | `screenshots/` | Omi's Approvals page with Studio approval cards, rendered by a Flutter widget test | | |
 
@@ -49,24 +49,19 @@ wrapper 8.14.2, AGP 8.11.1, Kotlin 2.2.20, compileSdk 36, NDK 28.2.13676358.
 Before the build it needs the local, git-ignored files that `setup.sh android`
 creates: `.dev.env` (`API_BASE_URL=http://127.0.0.1:8000/`), the local Firebase
 options and `google-services.json`, and `android/key.properties` (debug keystore).
-Then `dart run build_runner build` and the script's build, with `--split-per-abi` added:
+Then `dart run build_runner build` and `app/scripts/build_local_apk.sh` (with the
+patch applied, which adds `--split-per-abi`). The output is
+`build/app/outputs/flutter-apk/app-arm64-v8a-dev-release.apk`, copied here as `omi-dev-release.apk`.
 
-```bash
-flutter build apk --release --flavor dev --target-platform android-arm64 \
-  --split-debug-info=build/symbols --obfuscate --split-per-abi
-# -> build/app/outputs/flutter-apk/app-arm64-v8a-dev-release.apk, copied here as omi-dev-release.apk
-```
-
-Why `--split-per-abi`: `app/scripts/build_local_apk.sh` as it is gives a **152 MB**
-`app-dev-release.apk`, over GitHub's 100 MB file limit. `--target-platform android-arm64`
-only limits the Dart/Flutter libraries. Plugins still bring their x86_64 and
-armeabi-v7a native libraries (onnxruntime and twilio, about 55 MB). So the
-"arm64-only" APK also declares x86_64. On an x86_64 device or emulator Android
-would pick that ABI and then fail to find `libflutter.so`. The split build holds
-only `arm64-v8a` (checked with `aapt2`). Flutter adds 2000 to its versionCode for
-arm64, so it upgrades over an earlier 992 build. Making the script do this
-(`--split-per-abi`, or `ndk { abiFilters 'arm64-v8a' }` for the dev flavor) would be a
-separate change in omi-local. It's not in the patch.
+Why `--split-per-abi`: without it the script gave a **152 MB** `app-dev-release.apk`,
+over GitHub's 100 MB file limit. `--target-platform android-arm64` only limits the
+Dart/Flutter libraries. Plugins still brought their x86_64 and armeabi-v7a native
+libraries (onnxruntime and twilio, about 55 MB). So the "arm64-only" APK also
+declared x86_64, and on an x86_64 device or emulator Android would pick that ABI
+and then fail to find `libflutter.so`. The split build holds only `arm64-v8a`
+(checked with `aapt2`). Flutter adds 2000 to its versionCode for arm64, so it
+upgrades over an earlier 992 build. CI's emulator check builds its own x86_64 APK
+without the script, so it isn't affected.
 The server URL is entered in the app at sign-in, so the baked-in `127.0.0.1` default
 doesn't matter.
 
@@ -128,7 +123,7 @@ doesn't matter.
   OkHttp's `mockwebserver` 4.12.0 (`testImplementation` only, not in the APK),
   with the same routes and assertions.
 
-**omi-local** (`omi-fixes.patch`, a commit on a local `apk-fixes` branch from `studio-herder`):
+**omi-local** (`omi-fixes.patch`: two commits on a local `apk-fixes` branch from `studio-herder`):
 
 - `App: keep a Studio approval card full width once someone else answered it`.
   The Approvals page lays its cards out in a start-aligned column. When Approve /
@@ -136,5 +131,9 @@ doesn't matter.
   text (it was visible in the first render). The card now takes the full width.
   The new widget test fails without the fix (466 px instead of 1200) and passes
   with it.
+- `Build the local APK per ABI so it is really arm64-only`.
+  `app/scripts/build_local_apk.sh` now passes `--split-per-abi` and checks for
+  `app-arm64-v8a-dev-release.apk`. `OMI-LOCAL-SETUP.md` uses the new file name.
+  The script was run again after the change and gave the same 96.2 MiB arm64-only APK.
 
-  Apply it with: `cd omi-local && git checkout -b apk-fixes origin/studio-herder && git am /path/to/omi-fixes.patch`
+  Apply both with: `cd omi-local && git checkout -b apk-fixes origin/studio-herder && git am /path/to/omi-fixes.patch`

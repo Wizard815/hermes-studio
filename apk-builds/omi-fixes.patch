@@ -1,8 +1,8 @@
 From 412de30cfa696e2ca40273280fa9166317f1f493 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Wed, 25 Nov 2026 18:20:53 +0000
-Subject: [PATCH] App: keep a Studio approval card full width once someone else
- answered it
+Subject: [PATCH 1/2] App: keep a Studio approval card full width once someone
+ else answered it
 
 On the Approvals page the cards sit in a start-aligned column, so when the
 Approve / Decline buttons gave way to who answered, the card shrank to its
@@ -149,6 +149,92 @@ index 016644cf9e..3904379f77 100644
    testWidgets('Send to Coinpile: a transaction needs an account and sends exactly the fields', (tester) async {
      final api = FakeConnections();
      await _pump(tester, SendToCoinpileSheet(conversationId: 'c1', api: api));
+-- 
+2.43.0
+
+
+From ae0680a0a6446e692f7c5ba1f5a48ea120bd5128 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 25 Nov 2026 20:16:57 +0000
+Subject: [PATCH 2/2] Build the local APK per ABI so it is really arm64-only
+
+--target-platform android-arm64 limits only Flutter's own libraries; plugins
+(onnxruntime, twilio) still added x86_64 and armeabi-v7a .so files, making a
+152 MB APK that an x86_64 device would install and then fail to start.
+--split-per-abi keeps only arm64-v8a: 96 MiB, under GitHub's 100 MiB file
+limit. The script and OMI-LOCAL-SETUP.md now point at
+app-arm64-v8a-dev-release.apk.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01QtAegQeJfjcVt7NtMf7qnx
+---
+ OMI-LOCAL-SETUP.md             |  9 +++++----
+ app/scripts/build_local_apk.sh | 11 +++++++++--
+ 2 files changed, 14 insertions(+), 6 deletions(-)
+
+diff --git a/OMI-LOCAL-SETUP.md b/OMI-LOCAL-SETUP.md
+index ccf8414dce..44c68e246e 100644
+--- a/OMI-LOCAL-SETUP.md
++++ b/OMI-LOCAL-SETUP.md
+@@ -30,14 +30,15 @@ the Docker-bridge network this dev container sits on.
+ **2. Build and install the APK on the phone:**
+ 
+ ```bash
+-# build: release, arm64 only, obfuscated — about half the size of the old
++# build: release, arm64 only (--split-per-abi, so plugins' x86_64/armv7 libs are
++# left out too), obfuscated — much smaller than the old
+ # `flutter build apk --debug --flavor dev` (debug JIT, all ABIs). The dev flavor
+ # is release-signed with the debug keystore (android/app/build.gradle), so no
+ # release keystore is needed. Prints the APK path and size.
+ app/scripts/build_local_apk.sh
+ # from a machine that can reach the repo (or scp the apk straight to the phone):
+-adb install -r app/build/app/outputs/flutter-apk/app-dev-release.apk   # path printed by the script
+-# or: copy app-dev-release.apk to the phone, open it and tap install
++adb install -r app/build/app/outputs/flutter-apk/app-arm64-v8a-dev-release.apk   # path printed by the script
++# or: copy app-arm64-v8a-dev-release.apk to the phone, open it and tap install
+ #     (allow "install unknown apps" for your file manager)
+ ```
+ 
+@@ -114,7 +115,7 @@ the audit behind it: [`omi-host/NETWORK.md`](omi-host/NETWORK.md).
+   **Login**.) Created a user in the Auth emulator → its token verified by the backend →
+   `GET /v1/conversations` and `GET /v1/users/onboarding` returned **200**
+   (`/v1/users/profile` → `410 User not found`, the correct pre-onboarding state).
+-- APK built (`app/scripts/build_local_apk.sh` — release, arm64-only, obfuscated; the earlier
++- APK built (`app/scripts/build_local_apk.sh` — release, arm64-only (split per ABI), obfuscated; the earlier
+   `flutter build apk --debug --flavor dev` all-ABI debug build was ~2x larger), `aapt2` confirms
+   `com.friend.ios.dev`, `usesCleartextTraffic=true`, `omi-dev://` callback,
+   `RECORD_AUDIO` + BLE permissions, launchable `com.friend.ios.MainActivity`.
+diff --git a/app/scripts/build_local_apk.sh b/app/scripts/build_local_apk.sh
+index 9035a38703..aeaf8d0c8e 100755
+--- a/app/scripts/build_local_apk.sh
++++ b/app/scripts/build_local_apk.sh
+@@ -3,7 +3,13 @@
+ # arm64-only, obfuscated build. Roughly half the size of the documented
+ # `flutter build apk --debug --flavor dev` (debug JIT, all ABIs), which is the
+ # wrong shape for a phone install: it ships the JIT snapshot plus x86_64/armv7
+-# native libs nobody runs. The dev flavor is release-signed with the debug
++# native libs nobody runs. --target-platform only limits Flutter's own
++# libraries; plugins (onnxruntime, twilio, ...) still add their x86_64 and
++# armeabi-v7a .so files (~55 MB, 152 MB in all), and an x86_64 device would then
++# pick that ABI and fail to load libflutter.so. --split-per-abi keeps only
++# arm64-v8a (~96 MiB, under GitHub's 100 MiB file limit). Flutter adds 2000 to
++# the arm64 versionCode, so it installs over a fat build.
++# The dev flavor is release-signed with the debug
+ # keystore (android/app/build.gradle: productFlavors.dev.signingConfig
+ # signingConfigs.debug), so no release keystore is needed.
+ #
+@@ -19,9 +25,10 @@ flutter build apk \
+   --target-platform android-arm64 \
+   --split-debug-info=build/symbols \
+   --obfuscate \
++  --split-per-abi \
+   "$@"
+ 
+-APK="$APP_DIR/build/app/outputs/flutter-apk/app-dev-release.apk"
++APK="$APP_DIR/build/app/outputs/flutter-apk/app-arm64-v8a-dev-release.apk"
+ if [[ ! -f "$APK" ]]; then
+   echo "error: expected APK not found at $APK" >&2
+   exit 1
 -- 
 2.43.0
 
