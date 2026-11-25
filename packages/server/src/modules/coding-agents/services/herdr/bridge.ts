@@ -142,7 +142,27 @@ export interface HerdrBridgeDeps {
    * Studio run's. Called on launch and while agents work.
    */
   grantAgentAccess?: (profile: string) => Promise<void>
+  /**
+   * Studio's per-turn context for a message Studio's chat box types into a chat's live
+   * pane (docs/harness/herdr.md, "Studio's context blocks"). Studio begins the turn's
+   * context (task card), puts it where the pane's agent reads it, and returns what to
+   * add after the typed text when the pane cannot read it otherwise. `isCurrent` says
+   * whether the pane turn still runs; `end` is called once when it is over.
+   */
+  paneTurn?: (sessionId: string, paneId: string, isCurrent: () => boolean) => Promise<HerdrPaneTurn | null>
 }
+
+/** Studio's context for one pane turn typed from Studio's chat box. */
+export interface HerdrPaneTurn {
+  /** Context blocks to type after the message (agents without Studio's hook). */
+  append?: string
+  end: (state: 'ended' | 'interrupted' | 'failed') => void
+}
+
+type PaneTurnEntry = { sessionId: string; working: boolean; timer?: ReturnType<typeof setTimeout>; end: HerdrPaneTurn['end'] }
+
+/** A pane turn waits this long for its agent to start working before it counts as over. */
+const PANE_TURN_START_MS = 120_000
 
 /** What a launched agent is for (e.g. a Pondering Orb task or project). */
 export interface HerdrWorkRef {
@@ -355,6 +375,8 @@ export class HerdrBridge {
   private snapshot: HerdrSnapshot = { workspaces: [], panes: [] }
   private panes: HerdrPaneView[] = []
   private links = new Map<string, HerdrLinkInfo>()
+  /** Turns Studio's chat box typed into a live pane, by pane, until the agent is done. */
+  private paneTurns = new Map<string, PaneTurnEntry>()
   /** Panes Studio opened itself: pane id → launch details. */
   private pending = new Map<string, PendingLaunch>()
   /** Text to type into a pane once its agent's retry launch runs (see `HerdrInteractiveLaunch.retryArgs`). */
@@ -478,6 +500,7 @@ export class HerdrBridge {
     if (this.chatSyncTimer) clearTimeout(this.chatSyncTimer)
     if (this.reconcileRetry) clearTimeout(this.reconcileRetry)
     this.refreshTimer = this.mirrorTimer = this.retryTimer = this.chatSyncTimer = this.reconcileRetry = null
+    for (const paneId of [...this.paneTurns.keys()]) this.endPaneTurn(paneId, 'interrupted')
     for (const sessionId of this.links.keys()) this.deps.setLink(sessionId, null)
     this.links.clear()
     this.panes = []
@@ -604,6 +627,7 @@ export class HerdrBridge {
     const views: HerdrPaneView[] = []
     const livePaneIds = new Set(snapshot.panes.map(pane => pane.pane_id))
     for (const paneId of this.pending.keys()) if (!livePaneIds.has(paneId)) this.pending.delete(paneId)
+    for (const paneId of [...this.paneTurns.keys()]) if (!livePaneIds.has(paneId)) this.endPaneTurn(paneId, 'interrupted')
     if (this.persisted.hosted) {
       const gone = Object.keys(this.persisted.hosted).filter(paneId => !livePaneIds.has(paneId))
       for (const paneId of gone) delete this.persisted.hosted[paneId]
@@ -637,6 +661,7 @@ export class HerdrBridge {
 
       if (nativeId && (status === 'working' || status === 'blocked')) this.active.add(nativeId)
       if (this.persisted.working?.[pane.pane_id]) this.trackWork(pane.pane_id, status, pane.agent || null)
+      this.trackPaneTurn(pane.pane_id, status)
       if (status === 'working' && pane.agent) void this.refreshAgentAccess(false)
 
       if (pending?.sessionId) {
@@ -1663,8 +1688,47 @@ export class HerdrBridge {
     if (link.waiting) throw Object.assign(new Error('The chat\'s agent is not running in herdr'), { status: 409, code: 'agent_not_running' })
     const body = String(text || '')
     if (!body.trim()) throw Object.assign(new Error('Message is empty'), { status: 400 })
-    await this.sendToPane(link.paneId, body)
-    return { paneId: link.paneId }
+    const paneId = link.paneId
+    // A new message ends the pane's previous Studio turn (its context no longer applies).
+    this.endPaneTurn(paneId, 'interrupted')
+    let turn: HerdrPaneTurn | null = null
+    let current = true
+    try {
+      turn = await this.deps.paneTurn?.(sessionId, paneId, () => current) ?? null
+    } catch (error) {
+      this.log('warn', '[herdr] could not prepare Studio\'s context for the pane turn', { sessionId, error: String(error) })
+    }
+    const ending = turn
+    const entry = ending ? { sessionId, working: false, end: (state: 'ended' | 'interrupted' | 'failed') => { current = false; ending.end(state) } } as PaneTurnEntry : null
+    if (entry) this.paneTurns.set(paneId, entry)
+    try {
+      await this.sendToPane(paneId, turn?.append ? `${body}\n\n${turn.append}` : body)
+    } catch (error) {
+      this.endPaneTurn(paneId, 'failed')
+      throw error
+    }
+    if (entry && this.paneTurns.get(paneId) === entry) {
+      // An agent that never starts working on it (the text did not land) ends the turn.
+      entry.timer = setTimeout(() => { if (!entry.working) this.endPaneTurn(paneId, 'interrupted', entry) }, PANE_TURN_START_MS)
+      entry.timer.unref?.()
+    }
+    return { paneId }
+  }
+
+  /** The pane's agent status for a turn Studio typed: working starts it, idle or done after that ends it. */
+  private trackPaneTurn(paneId: string, status: HerdrAgentStatus) {
+    const turn = this.paneTurns.get(paneId)
+    if (!turn) return
+    if (status === 'working' || status === 'blocked') turn.working = true
+    else if (turn.working && (status === 'idle' || status === 'done')) this.endPaneTurn(paneId, 'ended')
+  }
+
+  private endPaneTurn(paneId: string, state: 'ended' | 'interrupted' | 'failed', only?: PaneTurnEntry) {
+    const turn = this.paneTurns.get(paneId)
+    if (!turn || (only && only !== turn)) return
+    this.paneTurns.delete(paneId)
+    if (turn.timer) clearTimeout(turn.timer)
+    try { turn.end(state) } catch (error) { this.log('warn', '[herdr] could not end the pane turn', { paneId, error: String(error) }) }
   }
 
   /**

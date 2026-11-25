@@ -24,7 +24,12 @@ import {
   type HermesSessionRow,
 } from '../modules/studio/public/sessions'
 import { notifySessionListChanged, onSessionListChanged, setSessionHerdrLink } from '../modules/studio/public/session-status'
+import { setPaneTurnContext } from '../modules/coding-agents/services/claude-code/turn-context'
+import { taskPlanTurnInstruction } from '../modules/studio/services/task-plan-runs'
+import { studioMcpCapabilities } from '../modules/studio/public/runs/mcp-capabilities'
+import { getChatCodingAgentMcpServers } from '../modules/studio/public/chat-agent-runtime'
 import {
+  chatPaneTurnContextFile,
   codingAgentIdForStoredAgent,
   getCodingAgentsStatus,
   getCodingAgentDefinition,
@@ -61,7 +66,7 @@ export function herdrHostableAgentId(agent: string | null | undefined, source?: 
 import { herdrChatMode, herdrKindForStudioAgent } from '../modules/coding-agents/services/herdr/protocol'
 import { locateTranscript } from '../modules/coding-agents/services/herdr/transcript'
 import { cleanRoomHomes } from '../modules/coding-agents/services/cleanroom'
-import type { HerdrBridgeDeps, HerdrSessionRef, HerdrWorkRef } from '../modules/coding-agents/services/herdr/bridge'
+import type { HerdrBridgeDeps, HerdrPaneTurn, HerdrSessionRef, HerdrWorkRef } from '../modules/coding-agents/services/herdr/bridge'
 import { setupHerdrSocket } from '../modules/coding-agents/sockets/herdr'
 import { getOrbClient } from '../modules/studio/services/orb/client'
 import { reportUpstreamAgentStatus } from '../modules/studio/services/upstream/client'
@@ -301,9 +306,57 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     chatPane: () => herdrManager.chatPaneSetup(),
     // Agents in herdr act for the Studio admin using herdr (herdr routes are
     // super-admin only), or the first active super admin after a restart.
+    paneTurn: async (sessionId, _paneId, isCurrent) => beginHerdrPaneTurn(sessionId, isCurrent),
     grantAgentAccess: async profile => {
       const user = herdrManager.actingUser() ?? listUsers().find(item => item.role === 'super_admin' && item.status === 'active') ?? null
       if (user) await writeModelRunProfileToken({ id: user.id, username: user.username, role: user.role as AuthenticatedUser['role'] }, profile)
+    },
+  }
+}
+
+export interface HerdrPaneTurnDeps {
+  getSession: (id: string) => Pick<HermesSessionRow, 'agent' | 'profile'> | null
+  /** The chat's agent has Studio's task-card tools (the interaction MCP server). */
+  hasInteraction: (agentId: string, profile: string) => boolean
+  beginPlan: (sessionId: string, profile: string, isCurrent: () => boolean) => { contextId: string; finish: HerdrPaneTurn['end'] } | null
+  contextFile: (sessionId: string) => string
+}
+
+const paneTurnDeps: HerdrPaneTurnDeps = {
+  getSession,
+  hasInteraction: (agentId, profile) => studioMcpCapabilities(getChatCodingAgentMcpServers(agentId, profile)).interaction,
+  beginPlan: (sessionId, profile, isCurrent) => getChatRunServer()?.beginPaneTurnTaskPlan?.(sessionId, profile, isCurrent) ?? null,
+  contextFile: chatPaneTurnContextFile,
+}
+
+/**
+ * A message Studio's chat box types into an elevated coding-agent chat's live pane gets
+ * the context a Studio run would give it (docs/harness/herdr.md, "Studio's context
+ * blocks"): a new task-card context, live while the pane's agent works on the turn.
+ * Claude Code panes Studio launched read it through the UserPromptSubmit hook (the file
+ * is filled before the text is typed and emptied when the turn ends); other agents, and
+ * a Claude Code pane Studio did not launch, get the blocks after the typed text (the
+ * transcript mirror strips them from Studio's chat).
+ */
+export async function beginHerdrPaneTurn(sessionId: string, isCurrent: () => boolean, deps: HerdrPaneTurnDeps = paneTurnDeps): Promise<HerdrPaneTurn | null> {
+  const row = deps.getSession(sessionId)
+  const agentId = row ? codingAgentIdForStoredAgent(row.agent) : null
+  if (!row || !agentId) return null
+  const profile = row.profile || 'default'
+  if (!deps.hasInteraction(agentId, profile)) return null
+  const plan = deps.beginPlan(sessionId, profile, isCurrent)
+  if (!plan) return null
+  const text = taskPlanTurnInstruction(plan.contextId, true)
+  const file = agentId === 'claude-code' ? deps.contextFile(sessionId) : ''
+  let viaHook = false
+  try { viaHook = !!file && setPaneTurnContext(file, text) } catch (error) {
+    logger.warn({ sessionId, error: String(error) }, '[herdr] could not write the pane turn context; typing it after the message')
+  }
+  return {
+    ...(viaHook ? {} : { append: text }),
+    end: state => {
+      if (viaHook) { try { setPaneTurnContext(file, '') } catch { /* the next turn overwrites it */ } }
+      plan.finish(state)
     },
   }
 }

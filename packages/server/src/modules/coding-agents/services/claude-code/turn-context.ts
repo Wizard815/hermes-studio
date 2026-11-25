@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -41,4 +41,40 @@ export function writeTurnContextFile(runId: string, text: string, promptFile?: s
   const path = join(dir, `turn-context-${runId.replace(/[^\w.-]/g, '_')}.md`)
   writeFileSync(path, `${text.trim()}\n`, { mode: 0o600 })
   return path
+}
+
+/**
+ * A Studio chat elevated to herdr: messages typed in Studio's chat box go into the
+ * chat's Claude Code pane (`agent.prompt`), not through a Studio run. The pane is
+ * launched with this file in the variable, so the same hook prints Studio's context
+ * for those turns: Studio fills the file before it types and empties it when the turn
+ * ends. The file existing (empty between turns) is how Studio knows the pane has it.
+ */
+export function paneTurnContextFile(dir: string, sessionId: string): string {
+  return join(dir, `pane-${sessionId.replace(/[^\w.-]/g, '_')}.md`)
+}
+
+/** Launch changes that give a chat's Claude Code pane the context file; null when it cannot carry it. */
+export function paneTurnContextLaunch(
+  launch: { args: string[] },
+  file: string,
+  options: { cleanRoom?: boolean; platform?: NodeJS.Platform } = {},
+): { args: string[]; env: Record<string, string> } | null {
+  if ((options.platform ?? process.platform) === 'win32' || options.cleanRoom) return null
+  const settingsIndex = launch.args.indexOf('--settings')
+  const ownSettings = settingsIndex >= 0 ? String(launch.args[settingsIndex + 1] || '') : ''
+  if (ownSettings && !settingsFileHasTurnContextHook(ownSettings)) return null
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, '', { mode: 0o600 })
+  return {
+    args: ownSettings ? [] : ['--settings', inlineTurnContextSettings()],
+    env: { [STUDIO_TURN_CONTEXT_ENV]: file },
+  }
+}
+
+/** Fill (or, with no text, empty) a pane's context file; false when the pane was not launched with one. */
+export function setPaneTurnContext(file: string, text: string): boolean {
+  if (!existsSync(file)) return false
+  writeFileSync(file, text.trim() ? `${text.trim()}\n` : '', { mode: 0o600 })
+  return true
 }

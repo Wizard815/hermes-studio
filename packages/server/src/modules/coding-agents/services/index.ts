@@ -41,7 +41,7 @@ export { withApprovals, withApprovalsEnv } from './approvals'
 import { getProfileDir, PROVIDER_ENV_MAP, readConfigYamlForProfile, safeReadFile } from '../../studio/public/provider-config'
 import { getCompatibleCustomProviders, resolveCustomProviderApiKey } from '../../studio/contracts/provider-compat'
 import { registerClaudeCodeProxyTarget } from './claude-code/proxy'
-import { withStudioTurnContextHook } from './claude-code/turn-context'
+import { paneTurnContextFile, paneTurnContextLaunch, withStudioTurnContextHook } from './claude-code/turn-context'
 import { registerCodexProxyTarget } from './codex/proxy'
 import { compactCodexThread } from './codex/compact'
 import { writeManagedPromptFile } from './prompt-file'
@@ -4262,6 +4262,11 @@ export function cleanRoomProgram(command: string): { command: string; dir?: stri
 }
 
 /** Interactive launch for an existing Studio chat, reusing its stored provider and model. */
+/** A Studio chat's Claude Code pane context file (claude-code/turn-context.ts, `paneTurnContextFile`). */
+export function chatPaneTurnContextFile(sessionId: string): string {
+  return paneTurnContextFile(join(getWebUiHome(), 'herdr', 'turn-context'), sessionId)
+}
+
 export async function prepareCodingAgentSessionLaunch(sessionId: string, profile?: string): Promise<CodingAgentInteractiveLaunch> {
   const session = getSession(sessionId)
   const id = codingAgentIdForStoredAgent(session?.agent)
@@ -4275,7 +4280,7 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
     agentSessionId: session.agent_session_id || undefined,
   }, session)
   const cleanRoom = isCleanRoom(sessionId)
-  const launch = await prepareCodingAgentInteractiveLaunch(id, {
+  let launch = await prepareCodingAgentInteractiveLaunch(id, {
     ...resolved,
     // The pane resumes the native session; it must not also claim a new one.
     agentNativeSessionId: undefined,
@@ -4283,6 +4288,11 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
     // In a clean room the agent may do anything inside its container.
     yolo: cleanRoom,
   })
+  if (launch.agentId === 'claude-code') {
+    // Studio's chat box types into this pane; the hook gives those turns Studio's context.
+    const pane = paneTurnContextLaunch(launch, chatPaneTurnContextFile(sessionId), { cleanRoom })
+    if (pane) launch = { ...launch, args: [...launch.args, ...pane.args], env: { ...launch.env, ...pane.env } }
+  }
   if (!cleanRoom) return launch
   // A clean-room chat in a terminal (herdr): the agent runs in the chat's container.
   const program = cleanRoomProgram(launch.command)

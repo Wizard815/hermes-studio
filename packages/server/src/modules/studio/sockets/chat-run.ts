@@ -613,6 +613,20 @@ export class ChatRunSocket {
     return { contextId, finish: (state: 'ended' | 'interrupted' | 'failed') => this.taskPlanRuns.finish(contextId, state) }
   }
 
+  /**
+   * A turn Studio's chat box typed into an elevated chat's herdr pane (docs/harness/herdr.md,
+   * "Studio's context blocks"): the same task-card and session-goal context as a Studio run,
+   * live while `isCurrent` says the pane's agent still works on it.
+   */
+  beginPaneTurnTaskPlan(sessionId: string, profile: string, isCurrent: () => boolean) {
+    const runId = `herdr-pane:${randomUUID()}`
+    runMcpCredentials.revoke(sessionId)
+    this.clarificationRuns.finishSession(sessionId)
+    const contextId = this.taskPlanRuns.begin(sessionId, profile,
+      () => ({ isWorking: isCurrent(), activeRunMarker: runId }), undefined, true)
+    return { contextId, finish: (state: 'ended' | 'interrupted' | 'failed') => this.taskPlanRuns.finish(contextId, state) }
+  }
+
   private beginTaskPlanRun(sessionId: string | undefined, profile: string, sessionTasksEnabled = true) {
     if (!sessionId) return undefined
     runMcpCredentials.revoke(sessionId)

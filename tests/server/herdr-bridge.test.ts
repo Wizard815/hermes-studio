@@ -282,6 +282,67 @@ describe('herdr bridge', () => {
     await expect(bridge!.promptSession('missing', 'x')).rejects.toMatchObject({ status: 409 })
   })
 
+  it("gives a message typed from Studio's chat box Studio's turn context, live until the pane's agent is done", async () => {
+    const nativeId = '57575757-2222-3333-4444-555555555555'
+    const { deps, sessions, links } = makeDeps(dir)
+    sessions.set('chat-t', { id: 'chat-t', agent: 'codex', title: 'T', workspace: null, agent_native_session_id: nativeId })
+    herdr.panes = [{ pane_id: 'w1:p3', workspace_id: 'w1', agent: 'codex', agent_status: 'idle', agent_session: { kind: 'id', value: nativeId } }]
+    const turns: Array<{ sessionId: string; paneId: string; isCurrent: () => boolean; ended: string[] }> = []
+    deps.paneTurn = async (sessionId, paneId, isCurrent) => {
+      const turn = { sessionId, paneId, isCurrent, ended: [] as string[] }
+      turns.push(turn)
+      return { append: `<studio_task_plan_context>ctx-${turns.length}</studio_task_plan_context>`, end: state => { turn.ended.push(state) } }
+    }
+    await startBridge(deps)
+    await bridge!.promptSession('chat-t', 'fix the build')
+    expect(herdr.requests.filter(r => r.method === 'agent.prompt').at(-1)?.params)
+      .toEqual({ target: 'w1:p3', text: 'fix the build\n\n<studio_task_plan_context>ctx-1</studio_task_plan_context>' })
+    expect(turns[0]).toMatchObject({ sessionId: 'chat-t', paneId: 'w1:p3' })
+    // Still current before the agent starts, and while it works or waits on an approval.
+    expect(turns[0].isCurrent()).toBe(true)
+    herdr.panes[0].agent_status = 'working'
+    herdr.emit('pane_agent_status_changed')
+    await until(() => links.get('chat-t')?.status === 'working')
+    herdr.panes[0].agent_status = 'blocked'
+    herdr.emit('pane_agent_status_changed')
+    await until(() => links.get('chat-t')?.status === 'blocked')
+    expect(turns[0].ended).toEqual([])
+    herdr.panes[0].agent_status = 'idle'
+    herdr.emit('pane_agent_status_changed')
+    await until(() => turns[0].ended.length === 1)
+    expect(turns[0].ended).toEqual(['ended'])
+    expect(turns[0].isCurrent()).toBe(false)
+    // A new message ends a turn still waiting; a message that cannot be typed fails its turn.
+    await bridge!.promptSession('chat-t', 'one')
+    await bridge!.promptSession('chat-t', 'two')
+    expect(turns[1].ended).toEqual(['interrupted'])
+    expect(turns[2].ended).toEqual([])
+    herdr.promptError = { code: 'agent_blocked', message: 'blocked' }
+    await expect(bridge!.promptSession('chat-t', 'three')).rejects.toMatchObject({ code: 'agent_blocked' })
+    expect(turns[2].ended).toEqual(['interrupted'])
+    expect(turns[3].ended).toEqual(['failed'])
+    herdr.promptError = null
+    // A pane that closes ends its turn.
+    await bridge!.promptSession('chat-t', 'four')
+    herdr.panes = []
+    herdr.emit('pane_closed')
+    await until(() => turns[4].ended.length === 1)
+    expect(turns[4].ended).toEqual(['interrupted'])
+  })
+
+  it('types only the message when Studio has no context for the pane turn', async () => {
+    const nativeId = '58585858-2222-3333-4444-555555555555'
+    const { deps, sessions } = makeDeps(dir)
+    sessions.set('chat-u', { id: 'chat-u', agent: 'claude-code', title: 'U', workspace: null, agent_native_session_id: nativeId })
+    herdr.panes = [{ pane_id: 'w1:p4', workspace_id: 'w1', agent: 'claude', agent_status: 'idle', agent_session: { kind: 'id', value: nativeId } }]
+    let ended = ''
+    deps.paneTurn = async () => ({ end: state => { ended = state } })
+    await startBridge(deps)
+    await bridge!.promptSession('chat-u', 'hello')
+    expect(herdr.requests.filter(r => r.method === 'agent.prompt').at(-1)?.params).toEqual({ target: 'w1:p4', text: 'hello' })
+    expect(ended).toBe('')
+  })
+
   it('opens a Studio chat as a herdr pane with the routed launch command and env', async () => {
     const nativeId = '78787878-2222-3333-4444-555555555555'
     const { deps, sessions, links } = makeDeps(dir)

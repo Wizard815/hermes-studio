@@ -770,7 +770,23 @@ to sit at the end of the user's message, so a herdr pane's resumed history
   The herdr transcript mirror (`herdr/transcript.ts`) strips them, so
   Studio's chat stays clean; their own resumed history still shows them.
 - Studio's own transcript always stores what the user typed.
+- **Messages from Studio's chat box to an elevated chat** are typed into its
+  pane (`agent.prompt`), not run by Studio. They get the same blocks as a
+  Studio run: the bridge asks `paneTurn` (`beginHerdrPaneTurn` in
+  `bootstrap/herdr.ts`) for a new task-card context before typing, and the
+  context stays live while the pane's agent works on the turn (working or
+  blocked; it ends at idle or done, when the pane closes, when the next
+  message is typed, or after 2 minutes without work). A Claude Code pane
+  Studio launched has `STUDIO_TURN_CONTEXT_FILE` set to
+  `HERMES_WEB_UI_HOME/herdr/turn-context/pane-<chat>.md` (empty between
+  turns): Studio fills it before typing and empties it when the turn ends,
+  so turns typed in the pane by hand get nothing. Other agents, and a Claude
+  Code pane Studio did not launch (started by hand), get the blocks after
+  the typed text. Only coding-agent chats with Studio's interaction tools get
+  them; Hermes and Ekko panes do not.
 
-Tests: `tests/server/claude-turn-context.test.ts`. Live check: a Studio
+Tests: `tests/server/claude-turn-context.test.ts`,
+`tests/server/herdr-pane-turn-context.test.ts` and the bridge's pane-turn
+tests in `tests/server/herdr-bridge.test.ts`. Live check: a Studio
 Claude Code chat with the real CLI and a stub model, then `claude --resume`
 of its session shows only the typed message.
