@@ -740,6 +740,10 @@ export default {
     toolsHint: 'Ajoute les outils d\'Upstream Manager au profil Hermes actif : ses discussions et les agents hermes de herdr peuvent prendre du travail auprès du superviseur, commenter les tâches et s\'écrire.',
     toolsAdded: 'Hermes a les outils du tableau',
     toolsAddedNow: 'Ajoutés au profil {profile}. Les nouvelles discussions et les nouveaux agents Hermes les ont.',
+    giveWikiTools: 'Donner à Hermes les outils du wiki',
+    wikiToolsAdded: 'Hermes a les outils du wiki',
+    wikiToolsHint: 'Ajoute les outils MCP de votre wiki LLM au profil Hermes actif (la clé va dans le .env du profil) : les discussions Hermes et les agents hermes de herdr peuvent chercher et écrire dans le wiki directement.',
+    wikiToolsAddedNow: 'Ajoutés au profil {profile}. Les nouvelles discussions et les nouveaux agents Hermes les ont.',
   },
 
   sidebar: {

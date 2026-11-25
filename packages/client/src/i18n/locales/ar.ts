@@ -728,6 +728,10 @@ export default {
     toolsHint: 'يضيف أدوات Upstream Manager إلى ملف Hermes النشط، لتتمكن محادثاته ووكلاء hermes في herdr من أخذ العمل من المشرف والتعليق على المهام ومراسلة بعضهم.',
     toolsAdded: 'لدى Hermes أدوات اللوحة',
     toolsAddedNow: 'أُضيفت إلى الملف {profile}. محادثات Hermes ووكلاؤه الجدد لديهم هذه الأدوات.',
+    giveWikiTools: 'امنح Hermes أدوات الويكي',
+    wikiToolsAdded: 'لدى Hermes أدوات الويكي',
+    wikiToolsHint: 'يضيف أدوات MCP الخاصة بويكي LLM إلى ملف Hermes النشط (يُحفظ المفتاح في ملف .env الخاص بالملف)، ليتمكن Hermes ووكلاء hermes في herdr من البحث في الويكي والإضافة إليه مباشرة.',
+    wikiToolsAddedNow: 'أُضيفت إلى الملف {profile}. محادثات Hermes ووكلاؤه الجدد لديهم هذه الأدوات.',
   },
 
   sidebar: {

@@ -740,6 +740,10 @@ export default {
     toolsHint: 'Fügt dem aktiven Hermes-Profil die Werkzeuge von Upstream Manager hinzu, damit seine Chats und die hermes-Agenten von herdr Arbeit vom Overseer übernehmen, an Aufgaben kommentieren und einander schreiben können.',
     toolsAdded: 'Hermes hat die Board-Werkzeuge',
     toolsAddedNow: 'Zum Profil {profile} hinzugefügt. Neue Hermes-Chats und -Agenten haben sie.',
+    giveWikiTools: 'Hermes die Wiki-Werkzeuge geben',
+    wikiToolsAdded: 'Hermes hat die Wiki-Werkzeuge',
+    wikiToolsHint: 'Fügt dem aktiven Hermes-Profil die MCP-Werkzeuge deines LLM-Wikis hinzu (der Schlüssel kommt in die .env des Profils), damit Hermes-Chats und die hermes-Agenten von herdr direkt im Wiki suchen und ergänzen können.',
+    wikiToolsAddedNow: 'Zum Profil {profile} hinzugefügt. Neue Hermes-Chats und -Agenten haben sie.',
   },
 
   sidebar: {

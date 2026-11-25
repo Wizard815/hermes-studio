@@ -740,6 +740,10 @@ export default {
     toolsHint: '有効な Hermes プロファイルに Upstream Manager のツールを追加します。チャットや herdr の hermes エージェントがオーバーシーアから作業を受け取り、タスクにコメントし、互いにメッセージを送れるようになります。',
     toolsAdded: 'Hermes はボードのツールを使えます',
     toolsAddedNow: 'プロファイル {profile} に追加しました。新しい Hermes のチャットとエージェントで使えます。',
+    giveWikiTools: 'Hermes に Wiki のツールを渡す',
+    wikiToolsAdded: 'Hermes は Wiki のツールを使えます',
+    wikiToolsHint: 'LLM Wiki の MCP ツールを有効な Hermes プロファイルに追加します（キーはプロファイルの .env に保存）。Hermes のチャットや herdr の hermes エージェントが Wiki を直接検索・追記できます。',
+    wikiToolsAddedNow: 'プロファイル {profile} に追加しました。新しい Hermes のチャットとエージェントで使えます。',
   },
 
   sidebar: {

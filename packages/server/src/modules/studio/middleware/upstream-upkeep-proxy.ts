@@ -3,9 +3,10 @@ import { logger } from '../public/logging'
 import { authenticateUserToken, getUserJwtExpiresSeconds, issueUserJwt, type AuthenticatedUser } from './auth'
 import { config } from '../public/config'
 import {
-  giveHermesUpstreamTools, hermesHasUpstreamTools, upstreamMcpServer, upstreamOverview, upstreamStatus, type ProfileConfigAccess,
+  giveHermesUpstreamTools, giveHermesWikiTools, hermesHasUpstreamTools, hermesHasWikiTools, upstreamMcpServer, upstreamOverview,
+  upstreamStatus, upstreamWikiConnection, type ProfileConfigAccess,
 } from '../services/upstream/client'
-import { getActiveProfileName, readConfigYamlForProfile, updateConfigYamlForProfile } from '../public/profile-config'
+import { getActiveProfileName, readConfigYamlForProfile, saveEnvValueForProfile, updateConfigYamlForProfile } from '../public/profile-config'
 
 const profileConfigAccess: ProfileConfigAccess = {
   read: readConfigYamlForProfile,
@@ -183,7 +184,30 @@ export function upstreamUpkeepProxy(): (ctx: Context, next: Next) => Promise<voi
     // The Overseer's picture, for the summary above the Upstream tab.
     if (path === '/api/studio/upstream/overview' && method === 'GET') {
       if (!(await authorize(ctx))) return
-      ctx.body = { ...(await upstreamOverview()), hermesTools: await hermesHasUpstreamTools(getActiveProfileName(), profileConfigAccess) }
+      const profile = getActiveProfileName()
+      const wiki = await upstreamWikiConnection()
+      ctx.body = {
+        ...(await upstreamOverview()),
+        hermesTools: await hermesHasUpstreamTools(profile, profileConfigAccess),
+        // the key never goes to the browser: only whether there is a wiki and whether Hermes has it
+        wikiAvailable: !!wiki,
+        wikiTools: wiki ? await hermesHasWikiTools(profile, profileConfigAccess, wiki.url) : false,
+      }
+      return
+    }
+    // Give the active Hermes profile the LLM wiki's own tools, as Upstream reaches the wiki.
+    if (path === '/api/studio/upstream/wiki-tools' && method === 'POST') {
+      if (!(await authorize(ctx))) return
+      const wiki = await upstreamWikiConnection()
+      if (!wiki) {
+        ctx.status = 404
+        ctx.body = { ok: false, error: 'Upstream has no LLM wiki connection (LLMWIKI_MCP_URL in its .env)' }
+        return
+      }
+      const profile = getActiveProfileName()
+      const added = await giveHermesWikiTools(profile, wiki, profileConfigAccess, saveEnvValueForProfile)
+      logger.info({ profile, added }, '[upstream-upkeep] LLM wiki tools for Hermes')
+      ctx.body = { ok: true, added, profile }
       return
     }
     // Give the active Hermes profile Upstream's tools (the board, the Overseer): one click in the Upstream tab.

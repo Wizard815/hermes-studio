@@ -740,6 +740,10 @@ export default {
     toolsHint: 'Adiciona as ferramentas do Upstream Manager ao perfil ativo do Hermes, para que seus chats e os agentes hermes do herdr peguem trabalho do supervisor, comentem nas tarefas e troquem mensagens.',
     toolsAdded: 'O Hermes tem as ferramentas do quadro',
     toolsAddedNow: 'Adicionadas ao perfil {profile}. Novos chats e agentes do Hermes as têm.',
+    giveWikiTools: 'Dar ao Hermes as ferramentas do wiki',
+    wikiToolsAdded: 'O Hermes tem as ferramentas do wiki',
+    wikiToolsHint: 'Adiciona as ferramentas MCP do seu wiki LLM ao perfil ativo do Hermes (a chave vai para o .env do perfil), para que chats do Hermes e agentes hermes do herdr pesquisem e acrescentem ao wiki diretamente.',
+    wikiToolsAddedNow: 'Adicionadas ao perfil {profile}. Novos chats e agentes do Hermes as têm.',
   },
 
   sidebar: {

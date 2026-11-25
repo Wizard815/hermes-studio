@@ -740,6 +740,10 @@ export default {
     toolsHint: '활성 Hermes 프로필에 Upstream Manager 도구를 추가해 채팅과 herdr의 hermes 에이전트가 오버시어에게서 작업을 받고, 작업에 댓글을 달고, 서로 메시지를 보낼 수 있게 합니다.',
     toolsAdded: 'Hermes에 보드 도구가 있습니다',
     toolsAddedNow: '{profile} 프로필에 추가했습니다. 새 Hermes 채팅과 에이전트에서 쓸 수 있습니다.',
+    giveWikiTools: 'Hermes에 위키 도구 주기',
+    wikiToolsAdded: 'Hermes에 위키 도구가 있습니다',
+    wikiToolsHint: 'LLM 위키의 MCP 도구를 활성 Hermes 프로필에 추가합니다(키는 프로필의 .env에 저장). Hermes 채팅과 herdr의 hermes 에이전트가 위키를 직접 검색하고 추가할 수 있습니다.',
+    wikiToolsAddedNow: '{profile} 프로필에 추가했습니다. 새 Hermes 채팅과 에이전트에서 쓸 수 있습니다.',
   },
 
   sidebar: {

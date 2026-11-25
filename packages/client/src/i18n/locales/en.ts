@@ -731,6 +731,10 @@ export default {
     toolsHint: 'Adds Upstream Manager\'s tools to the active Hermes profile, so its chats and herdr\'s hermes agents can take work from the Overseer, talk on tasks and message each other.',
     toolsAdded: 'Hermes has the board tools',
     toolsAddedNow: 'Added to profile {profile}. New Hermes chats and agents have them.',
+    giveWikiTools: 'Give Hermes the wiki tools',
+    wikiToolsAdded: 'Hermes has the wiki tools',
+    wikiToolsHint: 'Adds your LLM wiki\'s own MCP tools to the active Hermes profile (the key goes to the profile\'s .env), so Hermes chats and herdr\'s hermes agents can search and add to the wiki directly.',
+    wikiToolsAddedNow: 'Added to profile {profile}. New Hermes chats and agents have them.',
   },
 
   sidebar: {

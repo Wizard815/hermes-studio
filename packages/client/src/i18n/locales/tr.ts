@@ -599,6 +599,10 @@ export default {
     toolsHint: 'Upstream Manager araçlarını etkin Hermes profiline ekler; sohbetleri ve herdr\'ın hermes ajanları gözetmenden iş alabilir, görevlere yorum yazabilir ve birbirine mesaj atabilir.',
     toolsAdded: 'Hermes\'in pano araçları var',
     toolsAddedNow: '{profile} profiline eklendi. Yeni Hermes sohbetleri ve ajanlarında var.',
+    giveWikiTools: 'Hermes\'e wiki araçlarını ver',
+    wikiToolsAdded: 'Hermes\'in wiki araçları var',
+    wikiToolsHint: 'LLM wiki\'nin MCP araçlarını etkin Hermes profiline ekler (anahtar profilin .env dosyasına gider); Hermes sohbetleri ve herdr\'ın hermes ajanları wiki\'de doğrudan arama yapıp ekleme yapabilir.',
+    wikiToolsAddedNow: '{profile} profiline eklendi. Yeni Hermes sohbetleri ve ajanlarında var.',
   },
 
   sidebar: {

@@ -728,6 +728,10 @@ export default {
     toolsHint: '把 Upstream Manager 的工具加到当前 Hermes 配置中，这样它的对话和 herdr 的 hermes 代理可以从监督者领取任务、在任务上留言并互相发消息。',
     toolsAdded: 'Hermes 已有看板工具',
     toolsAddedNow: '已加入配置 {profile}。新的 Hermes 对话和代理可以使用。',
+    giveWikiTools: '给 Hermes 维基工具',
+    wikiToolsAdded: 'Hermes 已有维基工具',
+    wikiToolsHint: '把你的 LLM 维基的 MCP 工具加到当前 Hermes 配置中（密钥保存在配置的 .env 中），这样 Hermes 对话和 herdr 的 hermes 代理可以直接搜索和写入维基。',
+    wikiToolsAddedNow: '已加入配置 {profile}。新的 Hermes 对话和代理可以使用。',
   },
 
   sidebar: {

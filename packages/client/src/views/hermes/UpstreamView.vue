@@ -86,6 +86,8 @@ interface Overview {
   waitingForYou: number
   unread: number
   hermesTools?: boolean
+  wikiAvailable?: boolean
+  wikiTools?: boolean
 }
 const overview = ref<Overview | null>(null)
 const toolsBusy = ref(false)
@@ -103,6 +105,19 @@ async function loadOverview() {
 /** Show a page of Upstream in the tab (the same as a deep link). */
 function openPage(path: string) {
   void router.replace({ query: { ...route.query, path } })
+}
+
+async function giveWikiTools() {
+  toolsBusy.value = true
+  try {
+    const r = await request<{ ok: boolean; added: boolean; profile: string; error?: string }>('/api/studio/upstream/wiki-tools', { method: 'POST', body: JSON.stringify({}) })
+    toolsNote.value = r.ok ? t('upstreamView.wikiToolsAddedNow', { profile: r.profile }) : (r.error || '')
+    await loadOverview()
+  } catch (e: any) {
+    toolsNote.value = String(e?.message || e)
+  } finally {
+    toolsBusy.value = false
+  }
 }
 
 async function giveHermesTools() {
@@ -156,6 +171,10 @@ function retry() {
       <button type="button" class="ov-btn" data-testid="upstream-open-overseer" @click="openPage('/overseer')">{{ t('upstreamView.overseer') }}</button>
       <span v-if="overview.hermesTools" class="ov-chip ok" :title="t('upstreamView.toolsHint')">✓ {{ t('upstreamView.toolsAdded') }}</span>
       <button v-else type="button" class="ov-btn" :disabled="toolsBusy" :title="t('upstreamView.toolsHint')" data-testid="upstream-give-tools" @click="giveHermesTools">{{ t('upstreamView.giveTools') }}</button>
+      <template v-if="overview.wikiAvailable">
+        <span v-if="overview.wikiTools" class="ov-chip ok" :title="t('upstreamView.wikiToolsHint')">✓ {{ t('upstreamView.wikiToolsAdded') }}</span>
+        <button v-else type="button" class="ov-btn" :disabled="toolsBusy" :title="t('upstreamView.wikiToolsHint')" data-testid="upstream-give-wiki-tools" @click="giveWikiTools">{{ t('upstreamView.giveWikiTools') }}</button>
+      </template>
       <span v-if="toolsNote" class="muted ov-note">{{ toolsNote }}</span>
     </div>
 

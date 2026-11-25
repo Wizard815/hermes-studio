@@ -189,3 +189,54 @@ export async function giveHermesUpstreamTools(profile: string, server: UpstreamM
     return { data, result: true }
   })) === true
 }
+
+// ---------------------------------------------------------------- the LLM wiki, for Hermes
+
+/** The name the vault's own MCP server gets in a Hermes profile, and the .env name its key goes under. */
+export const WIKI_MCP_NAME = 'llmwiki'
+export const WIKI_KEY_ENV = 'MCP_LLMWIKI_API_KEY'
+
+export interface WikiConnection { url: string; key: string }
+
+/** Where the user's LLM wiki takes MCP calls and its key, as Upstream has them (LLMWIKI_MCP_URL / LLMWIKI_API_KEY). */
+export async function upstreamWikiConnection(fetchImpl: typeof fetch = fetch): Promise<WikiConnection | null> {
+  try {
+    const res = await call('/api/wiki/connect', { method: 'GET', timeoutMs: 3000 }, fetchImpl)
+    if (!res.ok) return null
+    const body = await res.json().catch(() => ({})) as { url?: unknown; key?: unknown }
+    const url = typeof body.url === 'string' ? body.url.trim() : ''
+    if (!/^https?:\/\/[^\s]+$/.test(url)) return null
+    return { url, key: typeof body.key === 'string' ? body.key.trim() : '' }
+  } catch {
+    return null
+  }
+}
+
+const isWikiEntry = (name: string, server: any, url?: string) =>
+  ['llmwiki', 'llm-wiki', 'wiki'].includes(name.toLowerCase()) || (!!url && typeof server?.url === 'string' && server.url.replace(/\/+$/, '') === url.replace(/\/+$/, ''))
+
+/** Whether a Hermes profile already has the vault's tools (by name, or an entry at the same address). */
+export async function hermesHasWikiTools(profile: string, cfg: ProfileConfigAccess, url?: string): Promise<boolean> {
+  const current = await cfg.read(profile).catch(() => ({} as Record<string, any>))
+  const servers = current?.mcp_servers && typeof current.mcp_servers === 'object' ? current.mcp_servers : {}
+  return Object.entries(servers).some(([name, server]) => isWikiEntry(name, server, url))
+}
+
+/**
+ * Give a Hermes profile the vault's own MCP tools (its memory tools, search...), so Hermes chats and the hermes
+ * agents herdr starts with that profile use the wiki directly. The key goes to the profile's .env as
+ * MCP_LLMWIKI_API_KEY; the config only says ${MCP_LLMWIKI_API_KEY}. An entry the user already has is kept.
+ */
+export async function giveHermesWikiTools(
+  profile: string, conn: WikiConnection, cfg: ProfileConfigAccess, saveEnv: (profile: string, key: string, value: string) => Promise<void>,
+): Promise<boolean> {
+  const added = (await cfg.update<boolean>(profile, (current) => {
+    const data = current && typeof current === 'object' ? current : {}
+    const servers = data.mcp_servers && typeof data.mcp_servers === 'object' && !Array.isArray(data.mcp_servers) ? data.mcp_servers : {}
+    if (Object.entries(servers).some(([name, server]) => isWikiEntry(name, server, conn.url))) return { data, result: false, write: false }
+    data.mcp_servers = { ...servers, [WIKI_MCP_NAME]: { url: conn.url, ...(conn.key ? { headers: { Authorization: `Bearer \${${WIKI_KEY_ENV}}` } } : {}) } }
+    return { data, result: true }
+  })) === true
+  if (added && conn.key) await saveEnv(profile, WIKI_KEY_ENV, conn.key)
+  return added
+}

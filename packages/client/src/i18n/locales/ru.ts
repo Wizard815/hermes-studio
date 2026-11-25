@@ -654,6 +654,10 @@ export default {
     toolsHint: 'Добавляет инструменты Upstream Manager в активный профиль Hermes: его чаты и агенты hermes в herdr смогут брать работу у надзирателя, комментировать задачи и писать друг другу.',
     toolsAdded: 'У Hermes есть инструменты доски',
     toolsAddedNow: 'Добавлено в профиль {profile}. Новые чаты и агенты Hermes их получат.',
+    giveWikiTools: 'Дать Hermes инструменты вики',
+    wikiToolsAdded: 'У Hermes есть инструменты вики',
+    wikiToolsHint: 'Добавляет MCP-инструменты вашей LLM-вики в активный профиль Hermes (ключ сохраняется в .env профиля), чтобы чаты Hermes и агенты hermes в herdr искали и дополняли вики напрямую.',
+    wikiToolsAddedNow: 'Добавлено в профиль {profile}. Новые чаты и агенты Hermes их получат.',
   },
 
   sidebar: {
