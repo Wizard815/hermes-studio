@@ -58,8 +58,10 @@ answers `403 This key is for Omi` (`services/omi/scope.ts`):
 
 Agent work approvals in Omi's chats can be answered from Omi, as from Studio,
 Mattermost or Pondering Orb. The first answer wins; the others get
-"Already approved in Omi by …". The watcher's feed and bell log it:
-"Approved in Omi by Robin (Omi): …". `decidedVia` is `omi`.
+"Already approved in Omi by …". Connections → Agent work shows "Done in
+Omi" and logs "approved in Omi" in its activity. The watcher's bell shows
+"Approved in Omi by Robin (Omi): …" when Settings → Watcher → "Agent work
+decided" is on (it is off by default). `decidedVia` is `omi`.
 
 Per-chat command approvals (the chat's own "Allow once / Deny") are not part
 of this. Omi still shows those as "answer it in Studio".
