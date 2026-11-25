@@ -2303,7 +2303,9 @@ async function callToolInner(name, args = {}, signal) {
     // Without this a missing session_id reached Studio as DELETE /api/studio/sessions/undefined.
     const tool = tools.find(item => item.name === resolvedName)
     const error = tool && (validateToolArguments(tool, args) || emptyIdError(tool, args))
-    if (error) return errorText(`${error}. Nothing was sent to Studio.${categoryToolset ? ` Use ${categoryToolset.name} action=describe tool=${resolvedName} for the schema.` : ''}`)
+    // Behind a toolset the model may not have seen the schema (it called the tool by name or
+    // skipped describe): give it here, so the next call can be right without another step.
+    if (error) return errorText(`${error}. Nothing was sent to Studio.${categoryToolset && tool ? ` Call ${categoryToolset.name} again with action=call, tool=${resolvedName} and arguments matching this schema: ${JSON.stringify(tool.inputSchema)}` : ''}`)
   }
   switch (resolvedName) {
     case 'ekko_studio_browser_tabs': {
