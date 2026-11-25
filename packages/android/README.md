@@ -15,6 +15,10 @@ What it adds on top of the web console:
 Only pages from the server address you configured get these abilities (WebView
 origin rules); see [docs/android-devices.md](../../docs/android-devices.md).
 
+- **Share to Studio:** share text, links or images from any app into a new
+  Studio chat or the open one; links to your server and `studio-own://chat/<id>`
+  open in the app (see [docs/android-devices.md](../../docs/android-devices.md#share-to-studio-and-links)).
+
 Roadmap: notifications (no Firebase), calendar/reminders, tasks and Kanban,
 home-screen widgets.
 

@@ -15,4 +15,15 @@
     <string name="apk_install_failed">The app could not be installed.</string>
     <string name="apk_allow_installs">Allow Studio to install apps, then download the APK again.</string>
     <string name="download_unsupported">No app on this phone can open that download.</string>
+    <string name="share_target">Studio</string>
+    <string name="share_title">Share to Studio</string>
+    <string name="share_new_chat">New chat</string>
+    <string name="share_current_chat">Current chat</string>
+    <string name="share_nothing">There was nothing to share. Share text, a link or an image.</string>
+    <string name="share_connect_first">Connect to your Studio server first.</string>
+    <string name="share_images_skipped">%1$d image(s) were left out: only images up to 8 MB can be shared.</string>
+    <plurals name="share_images">
+        <item quantity="one">%1$d image</item>
+        <item quantity="other">%1$d images</item>
+    </plurals>
 </resources>

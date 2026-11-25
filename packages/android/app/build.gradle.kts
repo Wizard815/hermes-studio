@@ -11,8 +11,11 @@ android {
         applicationId = "com.ekkostudio.own"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
+        // Links to this host open in the app (docs/android-devices.md). Build with
+        // -PstudioOwnHost=studio.example.com; the default claims no real host.
+        manifestPlaceholders["studioOwnHost"] = (project.findProperty("studioOwnHost") as String?) ?: "studio-own.invalid"
     }
 
     buildTypes {

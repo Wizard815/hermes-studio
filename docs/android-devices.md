@@ -177,6 +177,35 @@ The bridge is offered only to pages from the server address you configured in
 the app (WebView origin rules), never to other sites or embedded frames from
 other origins.
 
+## Share to Studio and links
+
+**Share → Studio** works from any app (a browser, Omi, the gallery):
+
+- Text and links, and up to 4 images of 8 MB or less each, are accepted.
+- The app asks **New chat** or **Current chat**. The text and images then wait
+  in that chat's input; nothing is sent until you press Send.
+- If no server is set up yet, the app asks for it first and then offers the
+  share.
+- Larger images, and files that are not images, are left out, and the app says so.
+
+Links open in the app:
+
+- `studio-own://chat/<chat id>` opens that chat.
+- `studio-own://open?url=<a link on your Studio server>` opens that page.
+  A link to any other site is ignored.
+- Plain `https://` links to your Studio server open in the app when it was
+  built for that host:
+  `gradle :app:assembleDebug -PstudioOwnHost=studio.example.com`.
+  Android checks the server's `/.well-known/assetlinks.json`. Set
+  `STUDIO_OWN_ANDROID_CERT_SHA256` on the Studio server to the APK's signing
+  fingerprint (`apksigner verify --print-certs app-debug.apk`). Without it,
+  Android asks which app should open the link, or opens it in the browser.
+- Links to other sites always go to the browser. The app's bridge (Termux,
+  APK installs) is only for your server's pages.
+
+Code: `ShareIntent.kt` and `LinkRoute.kt` (unit tests next to them), and in the
+web app `utils/studio-own-share.ts`.
+
 ## Agents on the phone
 
 Hermes, Ekko and the coding agents get one Studio tool, `ekko_studio_use_phone`

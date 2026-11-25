@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.text.InputType
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -31,6 +32,7 @@ import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import java.io.InputStream
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
@@ -51,6 +53,11 @@ class MainActivity : AppCompatActivity() {
     private var pendingTermux: Pair<Termux.Command, JavaScriptReplyProxy>? = null
     private val replies = mutableMapOf<Int, JavaScriptReplyProxy>()
     private val requestIds = AtomicInteger(1)
+    /** Shared before a server was set up: offered once it is. */
+    private var pendingShared: ShareIntent.Shared? = null
+    /** A share waiting for a Studio page to finish loading. */
+    private var pendingShareScript: String? = null
+    private var pageReady = false
 
     private val prefs get() = getSharedPreferences("studio_own", Context.MODE_PRIVATE)
 
@@ -82,7 +89,10 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.registerReceiver(this, termuxResults, IntentFilter(ACTION_TERMUX_RESULT), ContextCompat.RECEIVER_NOT_EXPORTED)
         ContextCompat.registerReceiver(this, installStatus, IntentFilter(ApkInstaller.ACTION_STATUS), ContextCompat.RECEIVER_NOT_EXPORTED)
         val saved = prefs.getString(KEY_SERVER_URL, null)
-        if (saved.isNullOrBlank()) showSetup() else showWebView(saved)
+        // A link to the server opens that page instead of the start page.
+        val link = (LinkRoute.resolve(intent?.dataString, saved) as? LinkRoute.Target.InApp)?.url
+        if (saved.isNullOrBlank()) showSetup() else showWebView(link ?: saved)
+        if (link == null) handleIntent(intent)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -90,6 +100,93 @@ class MainActivity : AppCompatActivity() {
                 if (view != null && view.canGoBack()) view.goBack() else finish()
             }
         })
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    // --- Share to Studio, and links ---------------------------------------------
+
+    private fun handleIntent(intent: Intent?) {
+        intent ?: return
+        val server = prefs.getString(KEY_SERVER_URL, null)
+        if (intent.action == Intent.ACTION_VIEW) {
+            when (val target = LinkRoute.resolve(intent.dataString, server)) {
+                is LinkRoute.Target.InApp -> webView?.loadUrl(target.url) ?: showWebView(target.url)
+                is LinkRoute.Target.Browser -> openInBrowser(target.url)
+                LinkRoute.Target.Ignore -> if (server.isNullOrBlank()) toast(getString(R.string.share_connect_first))
+            }
+            return
+        }
+        @Suppress("DEPRECATION")
+        val streams = when (intent.action) {
+            Intent.ACTION_SEND -> listOfNotNull(
+                if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM),
+            )
+            Intent.ACTION_SEND_MULTIPLE -> (if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java) else intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)).orEmpty()
+            else -> return
+        }.map { it.toString() }
+        val shared = ShareIntent.parse(intent.action, intent.type, intent.getCharSequenceExtra(Intent.EXTRA_TEXT), intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT), streams)
+        // Handled once: rotating or reopening the app does not share it again.
+        intent.action = null
+        if (shared == null) { toast(getString(R.string.share_nothing)); return }
+        if (server.isNullOrBlank()) { pendingShared = shared; toast(getString(R.string.share_connect_first)); return }
+        askWhereToShare(shared)
+    }
+
+    private fun askWhereToShare(shared: ShareIntent.Shared) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.share_title)
+            .setMessage(shared.text.take(300).ifBlank { resources.getQuantityString(R.plurals.share_images, shared.imageUris.size, shared.imageUris.size) })
+            .setPositiveButton(R.string.share_new_chat) { _, _ -> readAndShare(shared, ShareIntent.Mode.NEW_CHAT) }
+            .setNeutralButton(R.string.share_current_chat) { _, _ -> readAndShare(shared, ShareIntent.Mode.CURRENT_CHAT) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** Reads the shared images (off the main thread), then hands everything to the Studio page. */
+    private fun readAndShare(shared: ShareIntent.Shared, mode: ShareIntent.Mode) {
+        thread(name = "share-read") {
+            val images = shared.imageUris.mapNotNull { readImage(Uri.parse(it)) }
+            val skipped = shared.imageUris.size - images.size
+            runOnUiThread {
+                if (skipped > 0) toast(getString(R.string.share_images_skipped, skipped))
+                pendingShareScript = ShareIntent.pageScript(mode, shared.text, images)
+                flushShare()
+            }
+        }
+    }
+
+    private fun readImage(uri: Uri): ShareIntent.Image? = try {
+        val type = contentResolver.getType(uri)
+        if (!ShareIntent.isImageType(type)) null
+        else {
+            val name = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+            contentResolver.openInputStream(uri)?.use { input ->
+                val bytes = input.readNBytesCompat(ShareIntent.MAX_IMAGE_BYTES + 1)
+                if (bytes.size > ShareIntent.MAX_IMAGE_BYTES) null else ShareIntent.Image(ShareIntent.safeName(name, type!!), type, bytes)
+            }
+        }
+    } catch (_: Exception) { null }
+
+    /** Runs the share in the page once a page from the server has loaded (never in another site's page). */
+    private fun flushShare() {
+        val script = pendingShareScript ?: return
+        val view = webView ?: return
+        if (!pageReady || serverOrigin == null || StudioBridge.originRule(view.url ?: "") != serverOrigin) return
+        pendingShareScript = null
+        view.evaluateJavascript(script, null)
+    }
+
+    private fun openInBrowser(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
+        } catch (_: Exception) { toast(getString(R.string.download_unsupported)) }
     }
 
     override fun onResume() {
@@ -124,6 +221,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     prefs.edit().putString(KEY_SERVER_URL, url).apply()
                     showWebView(url)
+                    pendingShared?.let { pendingShared = null; askWhereToShare(it) }
                 }
             }
         }
@@ -141,7 +239,16 @@ class MainActivity : AppCompatActivity() {
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            webViewClient = WebViewClient()
+            webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                    pageReady = false
+                }
+
+                override fun onPageFinished(view: WebView, url: String?) {
+                    pageReady = true
+                    flushShare()
+                }
+            }
             webChromeClient = WebChromeClient()
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, true)
@@ -291,6 +398,18 @@ class MainActivity : AppCompatActivity() {
         private const val ACTION_TERMUX_RESULT = "com.ekkostudio.own.TERMUX_RESULT"
         private const val EXTRA_REQUEST_ID = "request_id"
         private const val REQUEST_TERMUX_PERMISSION = 41
+
+        /** Up to [limit] bytes (InputStream.readNBytes needs Android 13). */
+        fun InputStream.readNBytesCompat(limit: Int): ByteArray {
+            val out = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(64 * 1024)
+            while (out.size() < limit) {
+                val read = read(buffer, 0, minOf(buffer.size, limit - out.size()))
+                if (read < 0) break
+                out.write(buffer, 0, read)
+            }
+            return out.toByteArray()
+        }
 
         /** Accepts only absolute http(s) URLs; returns null for anything else. */
         fun normalizeUrl(raw: String): String? {
