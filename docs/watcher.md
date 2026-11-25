@@ -66,7 +66,10 @@ They feed the approval paths that already exist; nothing else reads them:
   agent's mode and "for this chat" answers;
 - Ekko: `waitForEkkoToolApproval`;
 - Hermes chats: when the bridge sends `approval.requested`, Studio answers
-  "once" through the bridge, as the Approve button would.
+  "once" through the bridge, as the Approve button would. Home Assistant
+  actions in Hermes chats ask the same way; their rule is a `tool` rule on the
+  service (`light.*`, `light.turn_on`), see
+  [hermes-integrations.md](hermes-integrations.md#home-assistant-actions-ask-first).
 
 A match is answered once and noted as "Allowed by a trust rule".
 

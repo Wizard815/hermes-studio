@@ -176,6 +176,28 @@ These act and stay out: HassTurnOn, HassTurnOff, HassCancelAllTimers, HassBroadc
 HassListAddItem / CompleteItem / RemoveItem, reload_config_entry, call_action. Older Home
 Assistant versions name tools without the `domain__` prefix; the globs cover both.
 
+### Home Assistant actions ask first
+
+In Studio's Hermes chats, a tool call that changes something in Home Assistant asks
+before it runs, like a risky command: the `homeassistant` plugin's `ha_call_service`
+(turn a light on, set the heating), and every tool of Home Assistant's MCP server that is
+not one of its read tools above (when "Read-only" is off). Reads go ahead: `ha_list_entities`,
+`ha_get_state`, `ha_list_services` and the MCP read tools.
+
+- The card says what would happen: `Home Assistant: light.turn_on on light.bed_light`.
+- Approve once, for this chat, or always (Hermes keeps "always" per service:
+  `light.turn_on`), or deny.
+- In auto mode (`/yolo`, or an Agent work task set to auto) Studio answers for you and the
+  call runs.
+- **Trust this** in the watcher's bell offers a `tool` rule on the service. A pattern
+  like `light.*` (every light service) or `light.turn_on`, for this chat, an Agent work
+  task or every Hermes chat (agent `hermes`), lets the next call run without asking. See
+  [watcher.md](watcher.md).
+
+The Hermes bridge does this with a `pre_tool_call` hook that sends the call to Hermes's
+own approval gate (`bridge_home_assistant.py`). Hermes's gateway chats (Telegram, the
+Hermes API server) do not go through the bridge and do not ask.
+
 ### Making Home Assistant do things: Hermes builds, Home Assistant runs
 
 Hermes does not control devices over MCP. When you want something done, Hermes writes a

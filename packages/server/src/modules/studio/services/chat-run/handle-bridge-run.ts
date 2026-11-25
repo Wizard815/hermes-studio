@@ -16,7 +16,7 @@ import { getFirstSessionMessageByRole, getSession, getSessionMessageCountByRole,
 import { logger, bridgeLogger } from '../../public/logging'
 import { scheduleSessionTitle } from './session-title'
 import { recordBridgeModelUsage } from '../usage/bridge-model-usage'
-import { chatAutoApproves, watcherTrusts } from '../watcher'
+import { chatAutoApproves, givenTrustAction as bridgeTrustAction, watcherTrusts } from '../watcher'
 import type {
   PrimaryAgentBridgeClient as AgentBridgeClient,
   PrimaryAgentBridgeContextEstimate as AgentBridgeContextEstimate,
@@ -1531,8 +1531,11 @@ async function applyBridgeChunkAsync(
       // The chat's own mode is auto (a task set to run unattended), or a "Trust this" rule
       // allows the command (docs/watcher.md): answer once for you, as the Approve button would.
       const command = typeof ev.command === 'string' ? ev.command : ''
+      // A Home Assistant action names what a trust rule matches (`light.turn_on`), not a command line.
+      const trustAction = bridgeTrustAction((ev as any).trust_action)
+      const trustRequest = trustAction ? { kind: trustAction.kind, values: [trustAction.value] } : command ? { kind: 'command' as const, values: [command] } : null
       if (ev.approval_id && (chatAutoApproves(sessionId)
-        || watcherTrusts({ sessionId, agentId: 'hermes', folder: workspace || undefined }, command ? { kind: 'command', values: [command] } : null, command))) {
+        || watcherTrusts({ sessionId, agentId: 'hermes', folder: workspace || undefined }, trustRequest, command))) {
         try {
           const answer = await bridge.approvalRespond(String(ev.approval_id), 'once')
           if (answer?.resolved) continue
@@ -1547,6 +1550,7 @@ async function applyBridgeChunkAsync(
         approval_id: ev.approval_id,
         command: ev.command,
         description: ev.description,
+        ...(trustAction ? { trust_action: trustAction } : {}),
         choices: ev.choices,
         allow_permanent: ev.allow_permanent,
         timeout_ms: ev.timeout_ms,

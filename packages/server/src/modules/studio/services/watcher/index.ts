@@ -66,12 +66,19 @@ function text(value: unknown, max = 300): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : ''
 }
 
+/** An approval's own `trust_action` (e.g. a Home Assistant service from the Hermes bridge), when valid. */
+export function givenTrustAction(given: unknown): WatcherAction | undefined {
+  const action = given as { kind?: unknown; value?: unknown } | null
+  if (action && typeof action === 'object' && ['command', 'write', 'tool'].includes(String(action.kind)) && typeof action.value === 'string' && action.value) {
+    return { kind: action.kind as WatcherAction['kind'], value: action.value.slice(0, 2000) }
+  }
+  return undefined
+}
+
 /** What an approval event is about, as a trust action. */
 export function approvalAction(payload: Record<string, any>): WatcherAction | undefined {
-  const given = payload.trust_action
-  if (given && typeof given === 'object' && ['command', 'write', 'tool'].includes(given.kind) && typeof given.value === 'string' && given.value) {
-    return { kind: given.kind, value: given.value.slice(0, 2000) }
-  }
+  const given = givenTrustAction(payload.trust_action)
+  if (given) return given
   if (typeof payload.command === 'string' && payload.command.trim()) return { kind: 'command', value: payload.command.trim().slice(0, 2000) }
   const tool = text(payload.tool, 200)
   return tool ? { kind: 'tool', value: tool } : undefined

@@ -213,6 +213,8 @@ class AgentPool:
         self._mcp_generation = 0
         self._pending_mcp_refresh: Callable[[], None] | None = None
         self._retired_mcp_tools: set[str] = set()
+        # Home Assistant actions waiting for their approval: what a trust rule matches.
+        self._trust_actions: dict[str, dict[str, str]] = {}
         # First streamed text or reasoning of each session's current model request
         # (epoch seconds): Studio measures model speed from here, as llama.cpp does.
         self._first_output_at: dict[str, float] = {}
@@ -271,6 +273,64 @@ class AgentPool:
                 file=sys.stderr,
                 flush=True,
             )
+
+    def _install_home_assistant_hook(self) -> None:
+        """Home Assistant service calls go through Hermes's approval gate (bridge_home_assistant)."""
+        try:
+            from hermes_cli.plugins import get_plugin_manager
+
+            manager = get_plugin_manager()
+            hooks = getattr(manager, "_hooks", None)
+            if not isinstance(hooks, dict):
+                raise RuntimeError("Hermes plugin manager does not expose its hook registry")
+            callbacks = hooks.setdefault("pre_tool_call", [])
+            callback = self._home_assistant_pre_tool_call
+            if callback not in callbacks:
+                callbacks.append(callback)
+        except Exception as exc:
+            print(f"[hermes_bridge] failed to install the Home Assistant approval hook: {exc}", file=sys.stderr, flush=True)
+
+    def _home_assistant_pre_tool_call(self, tool_name: str = "", args: Any = None, session_id: str = "", **_: Any) -> dict[str, Any] | None:
+        from bridge_home_assistant import home_assistant_action, home_assistant_servers
+
+        try:
+            servers = home_assistant_servers((_load_cfg() or {}).get("mcp_servers"))
+        except Exception:
+            servers = []
+        action = home_assistant_action(tool_name, args, servers)
+        if action is None:
+            return None
+        with self._lock:
+            self._trust_actions[f"{session_id}\0{action['text']}"] = {"kind": action["kind"], "value": action["value"], "text": action["text"]}
+            while len(self._trust_actions) > 200:
+                self._trust_actions.pop(next(iter(self._trust_actions)))
+        # Hermes asks its approval gate with this text; "session"/"always" answers are kept per service.
+        return {"action": "approve", "message": action["text"], "rule_key": f"homeassistant:{action['value']}"}
+
+    def _take_trust_action(self, session_id: str, description: str) -> dict[str, str] | None:
+        """The Home Assistant action an approval is about (matched by the text the hook gave Hermes)."""
+        with self._lock:
+            for key in (f"{session_id}\0{description}", f"\0{description}"):
+                found = self._trust_actions.pop(key, None)
+                if found:
+                    return found
+            # Hermes may frame the text (a gateway card); it is still in there.
+            for key in list(self._trust_actions):
+                text = key.split("\0", 1)[1]
+                if text and text in description:
+                    return self._trust_actions.pop(key)
+        return None
+
+    def _approval_event_fields(self, session_id: str, command: str, description: str) -> dict[str, Any]:
+        """``command``/``description`` for an approval card, plus ``trust_action`` for Home Assistant."""
+        action = self._take_trust_action(session_id, str(description or "")) if description else None
+        if not action:
+            return {"command": str(command or ""), "description": str(description or "")}
+        return {
+            "command": action["text"],
+            "description": "Home Assistant will act on this. Approve to run it, or deny to block it.",
+            "trust_action": {"kind": action["kind"], "value": action["value"]},
+        }
 
     def _note_model_output(self, session_id: str) -> None:
         if session_id and session_id not in self._first_output_at:
@@ -1527,8 +1587,7 @@ class AgentPool:
                 "event": "approval.requested",
                 "run_id": run_id,
                 "approval_id": approval_id,
-                "command": str(command or ""),
-                "description": str(description or ""),
+                **self._approval_event_fields(session_id, command, description),
                 "choices": choices,
                 "allow_permanent": bool(allow_permanent),
                 "timeout_ms": APPROVAL_TIMEOUT_MS,
@@ -1709,8 +1768,7 @@ class AgentPool:
                 "event": "approval.requested",
                 "run_id": run_id,
                 "approval_id": approval_id,
-                "command": str(approval_data.get("command") or ""),
-                "description": str(approval_data.get("description") or ""),
+                **self._approval_event_fields(session_id, str(approval_data.get("command") or ""), str(approval_data.get("description") or "")),
                 "pattern_keys": pattern_keys,
                 "choices": choices,
                 "allow_permanent": True,
@@ -1890,6 +1948,7 @@ class AgentPool:
         # has completed. Rechecking on every run also recovers from a forced
         # plugin reload that clears the manager's callback registry.
         self._install_usage_hook()
+        self._install_home_assistant_hook()
         self._install_boundary_interrupt(session)
         session.config["boundary_interrupt_supported"] = session.boundary_supported
         if session.boundary_error:
