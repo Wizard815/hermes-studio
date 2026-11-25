@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { NPopover } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useWatcher } from '@/composables/useWatcher'
@@ -11,18 +12,21 @@ import WatcherAlertList from './WatcherAlertList.vue'
  * or tab bar; `menu` is a full-width row for a phone's menu that opens the
  * list in a dialog (WatcherModal). Hidden for people who cannot see the feed.
  */
-const props = withDefaults(defineProps<{ variant?: 'icon' | 'menu'; placement?: 'bottom-end' | 'bottom-start' | 'right-end' }>(), { variant: 'icon', placement: 'bottom-end' })
+const props = withDefaults(defineProps<{ variant?: 'icon' | 'menu'; dialog?: boolean; placement?: 'bottom-end' | 'bottom-start' | 'right-end' }>(), { variant: 'icon', placement: 'bottom-end' })
 const emit = defineEmits<{ opened: [] }>()
 const { t } = useI18n()
 const watcher = useWatcher()
 const open = ref(false)
+const route = useRoute()
+// A new page closes the list (the bell itself stays in the top bar).
+watch(() => route?.fullPath, () => { open.value = false })
 
 const count = computed(() => watcher.unread.value)
 const badge = computed(() => count.value > 99 ? '99+' : String(count.value))
 const label = computed(() => count.value ? t('watcher.bellUnread', { n: count.value }) : t('watcher.bell'))
 
 function show() {
-  if (props.variant === 'menu') watcher.dialogOpen.value = true
+  if (props.variant === 'menu' || props.dialog) watcher.dialogOpen.value = true
   else open.value = true
   emit('opened')
   void watcher.refresh()
@@ -31,7 +35,22 @@ function show() {
 
 <template>
   <template v-if="watcher.available.value">
-    <NPopover v-if="props.variant === 'icon'" v-model:show="open" trigger="click" :placement="props.placement" :show-arrow="false" class="watcher-popover" @update:show="(value: boolean) => { if (value) show() }">
+    <template v-if="props.variant === 'icon' && props.dialog">
+      <button
+        type="button"
+        class="watcher-bell"
+        :class="{ 'has-unread': count > 0 }"
+        :aria-label="label"
+        :title="label"
+        aria-haspopup="dialog"
+        data-testid="watcher-bell"
+        @click="show"
+      >
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16zM10 20.5a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <span v-if="count" class="watcher-bell__badge" data-testid="watcher-bell-count">{{ badge }}</span>
+      </button>
+    </template>
+    <NPopover v-else-if="props.variant === 'icon'" v-model:show="open" trigger="click" :placement="props.placement" :show-arrow="false" class="watcher-popover" @update:show="(value: boolean) => { if (value) show() }">
       <template #trigger>
         <button
           type="button"

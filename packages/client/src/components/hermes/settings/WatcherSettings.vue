@@ -226,7 +226,7 @@ function expires(rule: TrustRule): string {
 }
 
 .watcher-number { width: 160px; }
-.watcher-select { width: 220px; }
+.watcher-select { width: 280px; }
 
 .watcher-rules {
   margin: 0 0 10px;

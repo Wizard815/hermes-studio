@@ -7824,6 +7824,71 @@
         }
       }
     },
+    "/api/hermes/jobs/approval-mode": {
+      "get": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Get approval-mode",
+        "description": "GET /api/hermes/jobs/approval-mode",
+        "operationId": "approvalMode",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Jobs"
+        ],
+        "summary": "Update approval-mode",
+        "description": "PUT /api/hermes/jobs/approval-mode",
+        "operationId": "setApprovalMode",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/hermes/jobs/delivery-targets": {
       "get": {
         "tags": [

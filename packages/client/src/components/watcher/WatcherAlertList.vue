@@ -8,6 +8,8 @@ import TrustRuleDialog from './TrustRuleDialog.vue'
 import type { WatcherEvent } from '../../../../shared/watcher'
 
 /** The bell's list (docs/watcher.md): newest first, with read, clear, open and "Trust this". */
+/** `inDialog`: inside WatcherModal, which has its own title and width. */
+const props = defineProps<{ inDialog?: boolean }>()
 const emit = defineEmits<{ navigate: [] }>()
 const { t, locale } = useI18n()
 const router = useRouter()
@@ -39,9 +41,9 @@ function open(event: WatcherEvent) {
 </script>
 
 <template>
-  <div class="watcher-list" data-testid="watcher-list">
+  <div class="watcher-list" :class="{ 'in-dialog': props.inDialog }" data-testid="watcher-list">
     <div class="watcher-list__head">
-      <strong class="watcher-list__title">{{ t('watcher.title') }}</strong>
+      <strong v-if="!props.inDialog" class="watcher-list__title">{{ t('watcher.title') }}</strong>
       <span class="watcher-list__count" role="status" aria-live="polite" data-testid="watcher-unread-text">{{ unread ? t('watcher.unread', { n: unread }) : t('watcher.allRead') }}</span>
       <div class="watcher-list__actions">
         <NButton size="tiny" quaternary :disabled="!unread" data-testid="watcher-mark-all" @click="act(watcher.markAll)">{{ t('watcher.markAllRead') }}</NButton>
@@ -100,6 +102,8 @@ function open(event: WatcherEvent) {
   width: min(420px, calc(100vw - 32px));
   max-height: min(70vh, 560px);
   min-height: 0;
+
+  &.in-dialog { width: 100%; }
 }
 
 .watcher-list__head {

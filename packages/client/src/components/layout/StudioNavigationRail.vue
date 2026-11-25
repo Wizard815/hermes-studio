@@ -62,7 +62,7 @@ function handleNavigate(entry: NavigationEntry) {
       </NTooltip>
     </nav>
     <div class="studio-navigation-rail__bottom">
-      <div v-if="mobile" class="studio-navigation-rail__watcher"><WatcherBell placement="right-end" /></div>
+      <div v-if="mobile" class="studio-navigation-rail__watcher"><WatcherBell dialog /></div>
       <NTooltip placement="right" trigger="hover">
         <template #trigger>
           <RouteLinkItem class="studio-navigation-rail__item" :to="{ name: 'hermes.settings' }" :active="activeKey === 'settings'" :aria-label="t('sidebar.settings')">

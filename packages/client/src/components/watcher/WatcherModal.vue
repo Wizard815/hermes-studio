@@ -17,6 +17,6 @@ const watcher = useWatcher()
     :style="{ width: 'min(460px, calc(100vw - 16px))' }"
     data-testid="watcher-modal"
   >
-    <WatcherAlertList @navigate="watcher.dialogOpen.value = false" />
+    <WatcherAlertList in-dialog @navigate="watcher.dialogOpen.value = false" />
   </NModal>
 </template>

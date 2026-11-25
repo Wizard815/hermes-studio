@@ -253,6 +253,7 @@ your own services:
 - [ ] A new chat stays in Studio: no herdr space appears for it
 - [ ] herdr: elevate a Hermes chat (`/herdr`), send a message, restart the container, and check the pane is still linked
 - [ ] herdr: `/studio` on that chat closes its herdr space and the chat keeps its messages
+- [ ] Watcher: a denied approval shows in the bell; Trust this lets the next run through without asking ([docs/watcher.md](docs/watcher.md))
 
 Known issues on this branch:
 
