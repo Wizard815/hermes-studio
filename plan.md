@@ -180,13 +180,25 @@ bubblewrap (optional). Full per-plugin table: `ideas/hermes-official-plugins.md`
 | [jakubkrehel/skills](https://github.com/jakubkrehel/skills) | Done | Ten UI skills bundled for every agent (`docs/ui-skills.md`). |
 | [hermes-speech](https://hermes-agent.nousresearch.com/marketplace/hermes-speech) | Skip | Paid middleman; Studio already has TTS/STT. |
 
-### Test Lab (proposed)
+### Test Lab (built, `docs/test-lab.md`)
 
-A Studio page that starts a throwaway multi-container demo (Vikunja, Mealie,
-Mattermost, Home Assistant demo, Pondering Orb, ALLGlance, Studio) with test
-data, runs one agent in a clean room on a model the user picks (OpenRouter,
-pinned, with a spending cap per run), and reports results, screenshots, logs
-and cost, then cleans up. Waiting on the user's answers.
+The Test Lab page (super admins) starts throwaway app containers on a private
+Docker network with test data, runs one agent in a locked-down runner
+container with a browser on one pinned model with a spending cap, and shows
+the report, screenshots, logs and cost, then removes everything with the
+run's label. Templates: Vikunja, Mealie, Mattermost preview, Home Assistant
+demo, Pondering Orb and another Studio (built from git), ALLGlance (git URL),
+nginx.
+
+Left:
+
+- A real-model run (OpenRouter `tencent/hy4-flash`) with the big apps: tried
+  live here only with nginx, the browser and a stub model.
+- The Mealie, Mattermost and Home Assistant seed steps and the Orb, Studio and
+  ALLGlance builds were not run (image sizes); ALLGlance's port and health
+  check are a guess.
+- The agent is Test Lab's own tool loop, not a coding agent in a clean-room
+  chat: clean rooms have no browser and no way onto the lab network.
 
 ### Decisions (2026-11-21)
 
