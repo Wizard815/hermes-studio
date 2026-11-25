@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
 import { folderFor } from '../modules/coding-agents/services/herdr/folders'
+import { getChatRunServer } from '../modules/studio/services/chat-run/server-registry'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Server } from 'socket.io'
@@ -229,6 +230,8 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
         timestamp: message.timestamp,
       })))
       updateSessionStats(sessionId)
+      // Reopening the chat must show the mirrored turns, not the history cached before them.
+      getChatRunServer()?.forgetIdleSessionState?.(sessionId)
     },
     setLink: (sessionId, link) => {
       setSessionHerdrLink(sessionId, link)

@@ -3484,6 +3484,18 @@ export class ChatRunSocket {
     }
   }
 
+  /**
+   * Messages were written to this chat outside a Studio run (herdr's transcript
+   * mirror). Drop its cached state while idle, so the next resume reads them
+   * from the database instead of the history cached before they were written.
+   */
+  forgetIdleSessionState(sessionId: string): boolean {
+    const state = this.sessionMap.get(sessionId)
+    if (!state || state.isWorking || state.isAborting || state.isCompressing || state.queue?.length) return false
+    this.sessionMap.delete(sessionId)
+    return true
+  }
+
   private assertSessionMessageEditIdle(sessionId: string) {
     const state = this.sessionMap.get(sessionId)
     if (hasChatEkkoBackgroundTasks(sessionId)
