@@ -19,6 +19,7 @@ import { approvalAlertMessages } from '../approval-alerts-messages'
 import { agentWorkMessages } from '../agent-work-messages'
 import { systemMessages } from '../system-messages'
 import { chatImportMessages } from '../chat-import-messages'
+import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
 import { gadgetMessages } from '../gadget-messages'
@@ -57,6 +58,7 @@ export default {
   ...agentWorkMessages.en,
   ...systemMessages['en'],
   ...chatImportMessages['en'],
+  ...testLabMessages['en'],
   ...recommendedPluginsMessages['en'],
   ...uiSkillsMessages['en'],
   ...gadgetMessages['en'],

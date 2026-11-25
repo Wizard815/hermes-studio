@@ -1,0 +1,22 @@
+{
+  "id": "home-assistant",
+  "name": "Home Assistant (demo)",
+  "description": "Home Assistant with its demo devices (lights, sensors, media players); onboarding is done for you.",
+  "image": "homeassistant/home-assistant:2026.11.1",
+  "port": 8123,
+  "sizeMb": 690,
+  "memory": "1g",
+  "entrypoint": ["/bin/sh", "-c"],
+  "cmd": ["mkdir -p /config && printf 'default_config:\\ndemo:\\n' > /config/configuration.yaml && exec python3 -m homeassistant --config /config"],
+  "env": { "TZ": "UTC" },
+  "health": { "path": "/manifest.json", "timeoutSeconds": 300 },
+  "logins": [{ "username": "testadmin", "password": "lab-pass-123", "role": "owner" }],
+  "seed": [
+    { "name": "Create the owner", "method": "POST", "path": "/api/onboarding/users", "json": { "client_id": "http://home-assistant:8123/", "name": "Test Admin", "username": "testadmin", "password": "lab-pass-123", "language": "en" }, "save": { "code": "auth_code" } },
+    { "name": "Owner's token", "method": "POST", "path": "/auth/token", "form": { "grant_type": "authorization_code", "code": "{{code}}", "client_id": "http://home-assistant:8123/" }, "save": { "token": "access_token" } },
+    { "name": "Location and units", "method": "POST", "path": "/api/onboarding/core_config", "headers": { "Authorization": "Bearer {{token}}" }, "json": {}, "optional": true },
+    { "name": "Analytics off", "method": "POST", "path": "/api/onboarding/analytics", "headers": { "Authorization": "Bearer {{token}}" }, "json": {}, "optional": true },
+    { "name": "Finish onboarding", "method": "POST", "path": "/api/onboarding/integration", "headers": { "Authorization": "Bearer {{token}}" }, "json": { "client_id": "http://home-assistant:8123/", "redirect_uri": "http://home-assistant:8123/?auth_callback=1" }, "optional": true }
+  ],
+  "notes": "Demo entities such as light.bed_light and light.kitchen_lights."
+}

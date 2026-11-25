@@ -229,6 +229,13 @@ const router = createRouter({
       meta: { requiresSuperAdmin: true },
     },
     {
+      // Throwaway app containers and one agent test against them (docs/test-lab.md).
+      path: '/test-lab',
+      name: 'testLab',
+      component: () => import('@/views/hermes/TestLabView.vue'),
+      meta: { requiresSuperAdmin: true },
+    },
+    {
       path: '/hermes/connections',
       name: 'hermes.connections',
       component: () => import('@/views/hermes/ChatView.vue'),

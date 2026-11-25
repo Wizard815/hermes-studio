@@ -104,6 +104,7 @@ import { browserPublicRoutes } from '../modules/studio/routes/browser-public'
 import { androidDeviceRoutes } from '../modules/studio/routes/android-devices'
 import { systemRoutes } from '../modules/studio/routes/system'
 import { chatImportRoutes } from '../modules/studio/routes/chat-import'
+import { testLabRoutes } from '../modules/studio/routes/test-lab'
 
 /**
  * Register all routes on the Koa app.
@@ -153,6 +154,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(androidDeviceRoutes.routes())
   app.use(systemRoutes.routes())
   app.use(chatImportRoutes.routes())
+  app.use(testLabRoutes.routes())
   app.use(codingAgentRoutes.routes())
   app.use(agentStatusRoutes.routes())
   app.use(themeRoutes.routes())

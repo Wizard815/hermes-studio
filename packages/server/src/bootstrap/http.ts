@@ -69,6 +69,7 @@ import {
 import { ensureAppRelayHostClient } from '../modules/studio/services/app-relay/connection'
 import { setupGlobalEkkoAgent } from './ekko'
 import { codingAgentUiSkillTargets, registerUiSkillTargetProvider, scheduleUiSkillsInstall } from '../modules/studio/public/ui-skills'
+import { closeTestLab, sweepTestLab } from '../modules/studio/public/test-lab'
 import { hermesUiSkillTargets } from '../modules/hermes/services/skills/ui-skill-targets'
 import { ekkoUiSkillTargets } from '../modules/ekko/services/ui-skill-targets'
 import { injectManagedEkkoMcpServers } from '../modules/ekko/services/mcp'
@@ -630,6 +631,10 @@ export async function bootstrap() {
   registerUiSkillTargetProvider('coding-agents', () => codingAgentUiSkillTargets())
   const uiSkillsTimer = setTimeout(() => { void scheduleUiSkillsInstall() }, Number(process.env.STUDIO_UI_SKILLS_DELAY_MS || 5_000))
   uiSkillsTimer.unref()
+  // Test Lab (docs/test-lab.md): runs left behind on Docker (older than a day, or cut short by a restart).
+  const testLabTimer = setTimeout(() => { void sweepTestLab() }, 10_000)
+  testLabTimer.unref()
+  additionalShutdownSteps.push({ name: 'Test Lab', close: () => closeTestLab() })
   const closeScreenGateway = screenGateway.attach(servers)
   additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })
   // A screen installed before this container was rebuilt is installed again.

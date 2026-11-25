@@ -1,0 +1,21 @@
+{
+  "id": "mealie",
+  "name": "Mealie",
+  "description": "Recipes and meal plans. The default admin adds a test recipe and a second user.",
+  "image": "hkotel/mealie:v3.29.0",
+  "port": 9000,
+  "sizeMb": 370,
+  "memory": "768m",
+  "env": { "BASE_URL": "http://mealie:9000", "ALLOW_SIGNUP": "false", "TZ": "UTC" },
+  "health": { "path": "/api/app/about", "timeoutSeconds": 180 },
+  "logins": [
+    { "username": "changeme@example.com", "password": "MyPassword", "role": "admin (Mealie's default)" },
+    { "username": "alice", "password": "lab-pass-123", "role": "user" }
+  ],
+  "seed": [
+    { "name": "Log in as the admin", "method": "POST", "path": "/api/auth/token", "form": { "username": "changeme@example.com", "password": "MyPassword" }, "save": { "token": "access_token" } },
+    { "name": "Add alice", "method": "POST", "path": "/api/admin/users", "headers": { "Authorization": "Bearer {{token}}" }, "json": { "username": "alice", "fullName": "Alice", "email": "alice@lab.test", "password": "lab-pass-123", "admin": false }, "expect": [200, 201], "optional": true },
+    { "name": "A test recipe", "method": "POST", "path": "/api/recipes", "headers": { "Authorization": "Bearer {{token}}" }, "json": { "name": "Lab tomato soup" }, "expect": [200, 201], "optional": true }
+  ],
+  "notes": "Recipe \"Lab tomato soup\" exists."
+}

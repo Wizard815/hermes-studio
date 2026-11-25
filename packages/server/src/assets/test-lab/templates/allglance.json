@@ -1,0 +1,11 @@
+{
+  "id": "allglance",
+  "name": "ALLGlance",
+  "description": "The ALLGlance gateway. No image is published: give its git URL to build it, or it is skipped. Its port and health check were not checked; change them in a copy of this template if they differ.",
+  "build": { "git": "" },
+  "port": 8080,
+  "sizeMb": 300,
+  "memory": "512m",
+  "health": { "path": "/", "timeoutSeconds": 120 },
+  "logins": []
+}
