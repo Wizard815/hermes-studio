@@ -190,3 +190,92 @@ $0.098 + $0.0755 = **$0.174**, under the $1.10 stop.
 - D: ![](r2-d-claude-elevated.png) ![](r2-d-hermes-elevated.png)
 - E: ![](r2-e-orb-agents.png)
 - G, H: ![](r2-g-yolo-first.png) ![](r2-h-bell.png)
+
+## Round 3 (new features)
+
+Run on `studio-herder` 0a14249, Pondering Orb and milaclone-mcp `studio-herder`, herdr 0.9.5
+(Studio's own "Install herdr", same version as Wizard815/herdr), Hermes 0.23.4 from source.
+Fresh test home, fake data only, `tencent/hy4-flash` only (Hermes goes through Studio's model
+gateway to `openrouter/tencent/hy4-flash`), run limits $0.10 and 10 min. Studio ran with
+`env -i` and a short variable list, so none of this cloud session's Claude/Anthropic variables
+reached it; a search of the test home and logs found no account data.
+
+| # | Check | Result | Notes |
+|---|---|---|---|
+| 1 | UI skills | Pass | 10 skills in Hermes `skills/ui-skills`, Ekko, `~/.claude/skills`, `~/.agents/skills`; each Skills page shows the card. A Hermes chat building `signup.html` loaded skills with `skill_view` and named six (an Ekko chat did the same). `better-motion` deleted from Claude Code and Hermes stayed deleted after a restart ("Removed by you", 9 of 10); Hermes then got "not found" for it, and a new clean room mounted 9. |
+| 2 | Paper card | Pass | MCP → Catalog → Design: "Paper (paper.design)", Sign-in, `https://mcp.paper.design`, "Add and sign in" (not clicked). |
+| 3 | Orb whiteboard | Pass after fixes | A Hermes chat laid out "Garden plan" (2 columns, 3 cards), added "Water daily", marked "Build raised bed" doing, turned 2 cards into Orb tasks, asked to remove "Water daily". Orb's Ideas tab shows the board, the activity strip and the request with Approve/Reject; the agent's token gets 403 on approving it. Before the fixes hy4-flash never reached the tool (below). |
+| 4 | Too many tools | Pass, one nit | With rea connected: "This chat has 243 tools… Tool search hides 227". Turn off tool search wrote `tools.tool_search.enabled: off`; the next message carried every tool (input 13.5K → 250.1K). Watcher: Info `tool_load`. Nit: after a reload the notice offers "Turn off tool search" again although it is off. |
+| 5 | Context blocks in herdr | Pass, with a gap | Claude Code's session file and the elevated pane (`claude --resume`) show only the typed message; Studio's context came as a `UserPromptSubmit` hook attachment and the model used its `context_id`. Gap: a message sent from Studio's chat box after elevating is typed into the pane and gets no context, so the agent reused the old `context_id` and the task card refused it (the work itself was done). |
+| 6 | Phone tools | Pass after fix | Fake adb (`FAKE0001`, a notes app with Save and Send). Closed by default (the chat got "No device is open to agents"). After "Agents can use Fake Phone": screen and screenshot ran without a question, tap Save asked, tap Send asked "Why it asks: presses "Send"" and was denied (never reached adb). Trust this offered `android:FAKE0001:com.example.notes:tap`; the next Save tap ran without asking, but so did Send: fixed (below), re-run: Save trusted, Send asked. |
+| 7 | Gadget from a Studio Hermes chat | Pass | Simulated device on the gateway's port 8765; `gadget_devices`, `gadget_display` ("Dinner") and `gadget_action` (`led on`) reached it. |
+| 8 | Regression | Pass | Hermes, Ekko and Claude Code chats; loop detector stopped a run (5 identical calls); `/limits tokens 2k` gave the "Run stopped by a limit" card; bell shows approvals, denials, tool load, clean-room blocks; clean room (self-check, `example.com` blocked, UI skills mounted); Elevate, pane turn mirrored back, Return to Studio. |
+
+### Fixed in round 3
+
+- `fed5b32` fix(hermes): Studio tools called by their own name reach their toolset.
+  In Hermes, Studio's `use` tools sit behind `ekko_studio_use_toolset`; hy4-flash called
+  `ekko_studio_use_orb_board` directly (also when told the exact toolset call) and Hermes ended
+  the run after three unknown names. The bridge now extends Hermes's deferred-tool routing so a
+  catalog tool called by its name becomes the toolset's `action=call`. Test:
+  `tests/server/hermes-bridge-studio-toolsets.test.ts`.
+- `93b25b9` fix(studio-mcp): a toolset call with bad arguments gets the tool's schema. After the
+  routing fix, hy4-flash sent empty arguments five times (the error said "call describe first")
+  until the loop detector stopped it. The error now carries the schema; the next run did all
+  five board steps. Test: `tests/server/studio-mcp-arguments.test.ts`.
+- `d3eb7bd` fix(android): a trust rule for ordinary taps no longer passes a Send tap. Dangerous
+  actions now have their own trust value (`…:<action>:danger`); `android:<device>:*` and a rule
+  made from a dangerous question still cover them. Test: `tests/server/android-phone-tools.test.ts`.
+- `0d6ed6f` docs: the routing above in `docs/pondering-orb.md`.
+
+Checks: `npm run build` passes. The tests above and the related suites pass (35 tests).
+Full Vitest: 5 failures in 4 files, the same 5 on `studio-herder` (ekko-agent tools, session
+titles, a plugin dev-host test, a permission test that fails as root). `npm run harness:check`:
+the same 29 findings as `studio-herder`, plus this report folder.
+
+### Broken or open, not fixed
+
+1. **Elevated chats: no Studio context for messages sent from the chat box** (check 5). The
+   task card cannot be updated in those turns. Needs a decision on how Studio hands the context
+   to a pane turn it typed.
+2. **Claude Code's "We're changing auto mode…" notice** held the elevated pane until Enter was
+   pressed. A first-run style prompt that `first-run.ts` does not pre-answer (Claude Code
+   2.1.332, this container's build). The pane's "Both CCR_OAUTH_TOKEN_FILE and
+   ANTHROPIC_API_KEY set" warning also comes from this container's build, not from Studio
+   (the pane's environment has no `CCR_*` variable).
+3. **Tool notice after reload** offers "Turn off tool search" when it is already off (the saved
+   notice keeps `toolSearch: auto`).
+4. **Bell noise:** "Recommended plugin print3d was not installed" is added again on every start.
+5. **hy4-flash behaviour:** in the first board attempt (before Studio's MCP was set up, see
+   setup notes) the chat searched the filesystem for the tool, read Studio's database and Orb's
+   address, and said it would turn tool search back on; it was stopped. It often answers or
+   writes task cards in Chinese.
+6. **Milaclone (not Studio):** the board's tile on Home says "2 cards" for a board with two
+   columns and four cards (it counts top-level items).
+
+Setup notes (not Studio bugs): Hermes 0.23.4 needs Python 3.14 (on 3.13 `hermes dashboard` fails
+on `ruamel`, so the recommended plugins could not install); Studio finds the Hermes source from
+the venv's location, so `/opt/hermes/hermes-agent` links to the source; the artifacts tool puts
+test homes in `/tmp`, where Studio skips adding its MCP servers to Hermes
+(`HERMES_WEB_UI_ALLOW_TRANSIENT_MCP_AUTOINJECT=1` turns that on) and the clean room's socket
+path is too long (a short symlink for `HERMES_WEB_UI_HOME` fixed it; Studio's error said so
+clearly); rea needs the docs' `config.yaml` entry behind a proxy and was switched off after
+check 4 to keep each call small; Orb and Milaclone ran with `node` (no Docker); the clean-room
+image came from `mirror.gcr.io`.
+
+### Cost
+
+OpenRouter usage: **$7.4911 before, $7.6008 after: $0.1097** for round 3 (under the $0.90 stop).
+The biggest single call was the first message after turning tool search off (~$0.009 with 243
+tools). Total for this session's three rounds: $0.098 + $0.0755 + $0.1097 = **$0.283**.
+
+### Screenshots
+
+- 1: ![](r3-1-hermes-skills.png) ![](r3-1-hermes-html.png) ![](r3-1-signup-page-hermes.png) ![](r3-1-claude-removed.png)
+- 2: ![](r3-2-paper-card.png)
+- 3: ![](r3-3-board-chat.png) ![](r3-3-orb-ideas-board.png)
+- 4: ![](r3-4-notice.png) ![](r3-4-next-msg.png)
+- 5: ![](r3-5-elevated.png) ![](r3-5-pane-turn2-done.png)
+- 6: ![](r3-6-open-to-agents.png) ![](r3-6-question-1.png) ![](r3-6-bell.png) ![](r3-6-trust-dialog.png) ![](r3-6-after.png)
+- 7: ![](r3-7-gadget.png)
+- 8: ![](r3-8-claude.png) ![](r3-8-cleanroom-egress.png) ![](r3-8-limit-hit.png) ![](r3-8-returned.png)
