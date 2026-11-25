@@ -1,0 +1,7 @@
+name: llm_wiki
+version: 1.0.0
+description: "LLM wiki: the family's Obsidian memory (LLM-will-remember-this) through its family MCP server, with this profile's own wiki token."
+requires_env:
+  - LLM_WIKI_TOKEN
+config_keys:
+  - memory.llm_wiki  # url / recall / remember / person, set by Hermes Studio (Connections -> LLM wiki)

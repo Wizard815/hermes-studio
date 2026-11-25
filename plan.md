@@ -57,8 +57,15 @@ Open:
   folder with the chat beside it; it follows the agent's edits. See
   `docs/vscode.md`.
 - Clean rooms (done): `/cleanroom` runs a chat's agent in its own container.
-- Next: LLM wiki memory provider (Wizard815/LLM-will-remember-this on Unraid),
-  once its container is ready.
+- LLM wiki memory provider (done): Wizard815/LLM-will-remember-this as a
+  Hermes memory provider per profile (Connections → LLM wiki), a wiki token
+  per profile in its `.env`, plus an MCP card. See `docs/llm-wiki.md`. Built
+  on the parked `llmwiki-wip` branch (its MCP client and wording); its
+  Studio-side recall in every chat type was replaced by the Hermes provider.
+  Left: try it against the real wiki on Unraid (tested here with the vault's
+  own plugin run outside Obsidian, and Hermes's loader, no real chat turn);
+  Ekko and coding agents only through the MCP card; `llmwiki-wip` can be
+  deleted.
 
 ## Omi (omi-local)
 
@@ -162,7 +169,7 @@ bubblewrap (optional). Full per-plugin table: `ideas/hermes-official-plugins.md`
 | Project | Verdict | Why |
 |---|---|---|
 | [rea](https://github.com/morluto/rea) ([marketplace](https://hermes-agent.nousresearch.com/marketplace/rea)) | Maybe | Reverse-engineering MCP tools, official plugin; run it in a clean room. |
-| [autorag](https://hermes-agent.nousresearch.com/marketplace/autorag) | Maybe | Local file and chat-archive search; overlaps the parked LLM-wiki idea; not proven on Linux. |
+| [autorag](https://hermes-agent.nousresearch.com/marketplace/autorag) | Maybe | Local file and chat-archive search; overlaps the LLM wiki provider (docs/llm-wiki.md); not proven on Linux. |
 | [phone-harness](https://hermes-agent.nousresearch.com/marketplace/phone-harness) | Maybe | Agents drive Android over adb; try it before building on Studio's Android page. |
 | [whiteboard](https://hermes-agent.nousresearch.com/marketplace/whiteboard) | Maybe | Chat tools work; the board page is Hermes Desktop only. |
 | [data](https://hermes-agent.nousresearch.com/marketplace/data) | Maybe | 4 report tools install easily; the report page needs a port. |

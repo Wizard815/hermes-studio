@@ -39,6 +39,7 @@ import { mcuDevicePublicRoutes, mcuDeviceRoutes } from '../modules/studio/routes
 import { sessionRoutes } from '../modules/studio/routes/sessions'
 import { orbRoutes } from '../modules/studio/routes/orb'
 import { omiRoutes } from '../modules/studio/routes/omi'
+import { llmWikiRoutes } from '../modules/studio/routes/llm-wiki'
 import { androidAppLinkRoutes } from '../modules/studio/routes/android-app-links'
 import { agentWorkPublicRoutes, agentWorkRoutes } from '../modules/studio/routes/agent-work'
 import { commandCenterRoutes } from '../modules/studio/routes/command-center'
@@ -162,6 +163,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(sessionRoutes.routes())
   app.use(orbRoutes.routes())
   app.use(omiRoutes.routes())
+  app.use(llmWikiRoutes.routes())
   app.use(agentWorkRoutes.routes())
   app.use(commandCenterRoutes.routes())
   app.use(runLimitRoutes.routes())

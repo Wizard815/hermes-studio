@@ -29,18 +29,20 @@ const installBusy = ref(false)
 const connectServer = ref('')
 const showConnect = ref(false)
 
-// "Your home": Home Assistant, Unraid and Omi, added with a short form instead of the catalog's install.
-type HomeKind = 'home-assistant' | 'unraid' | 'omi'
+// "Your home": Home Assistant, Unraid, Omi and the LLM wiki, added with a short form instead of the catalog's install.
+type HomeKind = 'home-assistant' | 'unraid' | 'omi' | 'llm-wiki'
 const homeForm = ref<HomeKind | 'omi-skill' | null>(null)
 const serverConfigs = ref<Array<{ name: string; url: string }>>([])
 const homeEntries = computed(() => [
   { kind: 'home-assistant' as HomeKind, title: t('hermesExtensions.home.ha.title'), description: t('hermesExtensions.home.ha.description'), docs: 'https://www.home-assistant.io/integrations/mcp_server/' },
   { kind: 'unraid' as HomeKind, title: t('hermesExtensions.home.unraid.title'), description: t('hermesExtensions.home.unraid.description'), docs: 'https://github.com/tinkerologie/unraid-management-agent' },
   { kind: 'omi' as HomeKind, title: t('omi.mcp.title'), description: t('omi.mcp.description'), docs: 'https://github.com/Wizard815/omi-local/tree/main/omi-host/examples/hermes' },
+  { kind: 'llm-wiki' as HomeKind, title: t('llmWiki.mcp.title'), description: t('llmWiki.mcp.description'), docs: 'https://github.com/Wizard815/LLM-will-remember-this' },
 ].filter(entry => !query.value.trim() || `${entry.title} ${entry.description}`.toLowerCase().includes(query.value.trim().toLowerCase())))
 
-/** The servers already added for it: Home Assistant by its /api/mcp address, Unraid by name or the agent's port, Omi by /v1/mcp. */
+/** The servers already added for it: Home Assistant by its /api/mcp address, Unraid by name or the agent's port, Omi by /v1/mcp, the wiki by /family-mcp. */
 function homeAdded(kind: HomeKind) {
+  if (kind === 'llm-wiki') return serverConfigs.value.filter(server => /\/family-mcp$/.test(server.url) || server.name.includes('llm-wiki')).map(server => server.name)
   return serverConfigs.value.filter(server => kind === 'home-assistant'
     ? /\/api\/mcp$/.test(server.url) || server.name.includes('home-assistant')
     : kind === 'omi'
@@ -48,7 +50,7 @@ function homeAdded(kind: HomeKind) {
       : server.name.includes('unraid') || /:8043\/mcp/.test(server.url)).map(server => server.name)
 }
 
-const homeTag = (kind: HomeKind) => kind === 'home-assistant' ? t('hermesExtensions.home.readOnlyTag') : kind === 'omi' ? t('omi.mcp.tag') : t('hermesExtensions.home.tokenTag')
+const homeTag = (kind: HomeKind) => kind === 'home-assistant' ? t('hermesExtensions.home.readOnlyTag') : kind === 'omi' ? t('omi.mcp.tag') : kind === 'llm-wiki' ? t('llmWiki.mcp.tag') : t('hermesExtensions.home.tokenTag')
 
 async function loadServerConfigs() {
   try {

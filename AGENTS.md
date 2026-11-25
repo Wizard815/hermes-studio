@@ -20,6 +20,7 @@ and keep this file small enough to fit into every task context.
 - `docs/vscode.md` - VS Code (code-server) inside Studio: the Code view on a chat's folder.
 - `docs/agent-screen.md` - the agents' screen (Hermes Bot Screen) in Studio: watch, take over, hand back.
 - `docs/android-devices.md` - Android page: adb devices, emulator stream, BlueStacks, phones, Termux bridge in the Android app.
+- `docs/llm-wiki.md` - LLM wiki: the family's Obsidian wiki as a Hermes memory provider per profile (Connections → LLM wiki), token per profile, MCP card.
 - `docs/pondering-orb.md` - Pondering Orb: Connections tab, Orb tools for Studio agents, and Orb sending work to Studio chats.
 - `docs/omi.md` - Omi (omi-local): Connections tab, the scoped Studio key for Omi, results webhook, approvals from Omi, MCP card and Hermes skill.
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.

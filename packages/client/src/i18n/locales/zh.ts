@@ -14,6 +14,7 @@ import { watcherMessages } from '../watcher-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { omiMessages } from '../omi-messages'
+import { llmWikiMessages } from '../llm-wiki-messages'
 import { approvalAlertMessages } from '../approval-alerts-messages'
 import { systemMessages } from '../system-messages'
 import { chatImportMessages } from '../chat-import-messages'
@@ -50,6 +51,7 @@ export default {
   ...androidMessages['zh'],
   ...orbMessages['zh'],
   ...omiMessages['zh'],
+  ...llmWikiMessages['zh'],
   ...approvalAlertMessages['zh'],
   ...systemMessages['zh'],
   ...chatImportMessages['zh'],

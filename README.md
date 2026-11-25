@@ -271,6 +271,7 @@ your own services:
 - [ ] Connections → Pondering Orb connects, and Orb work starts a Studio chat
 - [ ] Agent work: approve one item from each of Studio, Mattermost and Orb; the Vikunja task is marked done
 - [ ] Omi: Connections → Omi → Test connection answers; make a key, paste it in Omi as the Studio token, and "Send to agent → Studio" starts a chat listed under Work from Omi; register the webhook and the result reaches Omi ([docs/omi.md](docs/omi.md))
+- [ ] LLM wiki: Connections → LLM wiki → pick your profile, paste the wiki's address and your token, Test connection names you; turn it on, ask a new Hermes chat about something only your wiki knows, and check today's daily note gets "Chat with Hermes: …"; the household profile's token cannot find your private notes ([docs/llm-wiki.md](docs/llm-wiki.md))
 - [ ] A new chat stays in Studio: no herdr space appears for it
 - [ ] herdr: elevate a Hermes chat (`/herdr`), send a message, restart the container, and check the pane is still linked
 - [ ] herdr: `/studio` on that chat closes its herdr space and the chat keeps its messages
