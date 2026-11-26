@@ -92,7 +92,7 @@ test('the herdr page docks Mission: herdr on the left, its tools on the right', 
   const terminalBox = (await page.locator('.herdr-terminal').boundingBox())!
   const dockBox = (await dock.boundingBox())!
   expect(dockBox.x).toBeGreaterThan(terminalBox.x + terminalBox.width - 1)
-  await expect(page.getByRole('tab')).toHaveText(['Studio chats', 'Tasks & plans', 'Projects', 'Ideas', 'Upkeep', 'Control'])
+  await expect(dock.getByRole('tab')).toHaveText(['Inbox', 'Agents', 'Files', 'Board', 'Skills', 'Studio chats', 'Tasks & plans', 'Projects', 'Ideas', 'Upkeep', 'Control'])
   // Every chat is listed, with Open in herdr and Open in Studio.
   await expect(page.getByTestId('mission-source-chats').locator('article')).toHaveCount(2)
   // The dock remembers being hidden.

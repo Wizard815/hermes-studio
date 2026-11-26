@@ -386,7 +386,6 @@ useStudioOwnShare();
             />
             <div
               v-show="showNavigationRail"
-              ref="pageHeaderHost"
               class="studio-page-header"
               :class="{ 'studio-page-header--shell-sidebar': usesShellSidebar }"
             >
@@ -401,6 +400,8 @@ useStudioOwnShare();
                 :expanded="!appStore.sidebarCollapsed"
                 @toggle="appStore.toggleSidebarCollapsed()"
               />
+              <!-- Pages teleport their headers here, so keyboard focus goes toggle, page header, then the bell. -->
+              <div ref="pageHeaderHost" class="studio-page-header-slot" />
               <!-- The watcher's bell (docs/watcher.md): always at the end of the top bar. -->
               <div v-if="showNavigationRail" class="studio-header-watcher">
                 <WatcherBell />
@@ -639,7 +640,7 @@ useStudioOwnShare();
     background: transparent;
     -webkit-app-region: drag;
 
-    > :deep(:not(.header-sidebar-control):not(.desktop-titlebar):not(.studio-header-watcher)) {
+    > .studio-page-header-slot > :deep(*) {
       box-sizing: border-box;
       display: flex;
       align-items: center;
@@ -668,6 +669,8 @@ useStudioOwnShare();
       }
     }
 
+    .studio-page-header-slot { display: contents; }
+
     .studio-header-watcher {
       order: 10;
       display: flex;
@@ -679,7 +682,7 @@ useStudioOwnShare();
     }
 
     &--shell-sidebar {
-      > :deep(:not(.header-sidebar-control):not(.desktop-titlebar):not(.studio-header-watcher)) {
+      > .studio-page-header-slot > :deep(*) {
         padding-inline-start: 0;
       }
 

@@ -13,8 +13,9 @@ createApp({setup(){
   const states=useSessionStateStore();states.start()
   const update=(working:boolean,backgroundPending=0)=>(window as any).presenceTransport.update({sessionId:id,profile:'default',working,backgroundPending,lastMessageId:0,readMessageId:0,unread:false})
   return()=>h('main',{},[
-    // Deliberately stale chat-store fallback: an authoritative snapshot wins.
-    h(SessionListItem,{session,active:false,pinned:false,canDelete:false,showProfile:false,showTime:false,streaming:states.isWorking(id,true)}),
+    // The row follows the session-state snapshot. A chat's own live run still wins over a
+    // stale finished flag (isWorking(id, true)), so no local run is passed here.
+    h(SessionListItem,{session,active:false,pinned:false,canDelete:false,showProfile:false,showTime:false,streaming:states.isWorking(id)}),
     h('button',{onClick:()=>update(false)},'停止后的状态'),
     h('button',{onClick:()=>update(true)},'真实新运行'),
     h('button',{onClick:()=>update(true,1)},'后台仍有任务'),
