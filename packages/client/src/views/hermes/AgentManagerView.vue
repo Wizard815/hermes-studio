@@ -124,10 +124,14 @@ async function refreshPolicies() {
       if (tool) replaceTool(tool)
     }
   } catch { /* unavailable to non-admin/old server */ }
-  try { approvalModes.value = (await getAgentApprovals()).agents; approvalsLoaded.value = true } catch { /* unavailable to non-admin/old server */ }
+  try {
+    const agents = (await getAgentApprovals())?.agents
+    // An older server answers without approvals: leave the picker hidden.
+    if (agents && typeof agents === 'object') { approvalModes.value = agents; approvalsLoaded.value = true }
+  } catch { /* unavailable to non-admin/old server */ }
 }
 async function changeApproval(id: CodingAgentId, mode: AgentApprovalMode) {
-  try { approvalModes.value = (await setAgentApproval(id, mode)).agents } catch (error) { message.error(String(error)) }
+  try { approvalModes.value = (await setAgentApproval(id, mode))?.agents ?? approvalModes.value } catch (error) { message.error(String(error)) }
 }
 function availableUpdateVersion(id: CodingAgentId): string {
   const policy = updatePolicies.value[id]

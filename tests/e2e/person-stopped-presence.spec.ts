@@ -18,8 +18,9 @@ test('stopped Bot breathing stays off after refresh, while real new work still l
   const entry='/@fs/'+resolve('tests/e2e/fixtures/person-stopped-presence.ts').replaceAll('\\','/').replace(/^\//,'')
   await page.route('**/__stopped_presence__',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html lang="zh"><head><meta charset="utf-8"></head><body><div id="app"></div><script type="module" src="${entry}"></script></body></html>`}))
   await page.goto('/__stopped_presence__')
-  const row=page.locator('.session-item-agent-logo-wrap'),breathing=page.locator('.session-item-agent-logo-wrap.streaming')
-  const animation=()=>row.evaluate(el=>getComputedStyle(el,'::before').animationName)
+  // The row's status icon shows a running chat (AgentStatusIcon, spinning while working).
+  const row=page.locator('.session-item-agent-logo-wrap'),breathing=page.locator('.session-item-status[data-status="working"]')
+  const animation=async()=>await breathing.count()?breathing.evaluate(el=>getComputedStyle(el).animationName):'none'
   await expect(breathing).toHaveCount(1)
   await expect.poll(animation).not.toBe('none')
   await page.getByRole('button',{name:'停止后的状态'}).click()

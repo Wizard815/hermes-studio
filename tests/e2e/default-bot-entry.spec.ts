@@ -110,10 +110,10 @@ for (const authenticated of [true, false]) {
     await page.getByRole('button', { name: '导航栏设置', exact: true }).click()
     const modal = page.locator('.navigation-settings-modal')
     await expect(modal.locator('.navigation-settings-footer')).toContainText('所有更改已保存')
-    await modal.getByRole('button', { name: '上移插件中心', exact: true }).click()
+    await modal.getByRole('button', { name: '上移Studio 插件', exact: true }).click()
     await expect.poll(() => startup.items[1]).toBe('studioPlugins')
     await expect(modal.locator('.navigation-settings-footer')).toContainText('所有更改已保存')
-    await modal.getByRole('button', { name: '上移插件中心', exact: true }).click()
+    await modal.getByRole('button', { name: '上移Studio 插件', exact: true }).click()
     await expect.poll(() => startup.items[0]).toBe('studioPlugins')
     await page.keyboard.press('Escape')
     // Reordering changes the next launch, not the already open page.

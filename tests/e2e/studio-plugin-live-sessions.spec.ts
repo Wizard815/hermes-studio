@@ -75,7 +75,7 @@ test('keeps the plugin center accessible when an installed manifest lacks curren
   const entry = '/@fs/' + resolve('tests/e2e/fixtures/studio-plugins.ts').replace(/^\//, '')
   await page.route('**/__plugin_invalid__', route => route.fulfill({ contentType: 'text/html', body: `<div id="app"></div><script type="module" src="${entry}"></script>` }))
   await page.goto('/__plugin_invalid__#/studio/plugins')
-  await expect(page.getByRole('heading', { name: '插件中心', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Studio 插件', exact: true })).toBeVisible()
   await expect(page.locator('.plugin-card')).toContainText('Invalid package')
   await page.getByRole('button', { name: 'Agent 0', exact: true }).click()
   await expect(page.locator('.plugin-card')).toHaveCount(0)
