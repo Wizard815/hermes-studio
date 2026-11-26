@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import ProjectBoard from './ProjectBoard.vue'
-import { getProject, messageProjectThread, readProjectThread, type Project, type ProjectThread, type ThreadMessage } from '@/api/studio/projects'
+import { forgetInProject, rememberInProject, getProject, messageProjectThread, readProjectThread, type Project, type ProjectThread, type ThreadMessage } from '@/api/studio/projects'
 import { THREAD_GROUPS, groupThreads, threadDisplayStatus, threadGroup } from './project-groups'
 
 // A project's threads beside its coordinator: one thread's latest messages (read
@@ -154,6 +154,36 @@ function ago(ms: number): string {
   return new Intl.NumberFormat(lang, { style: 'unit', unit, unitDisplay: 'narrow' }).format(value)
 }
 
+const memoryDraft = ref('')
+
+/** Who saved a memory, in words. */
+function memoryBy(by: string): string {
+  if (by === 'coordinator') return t('projects.memory.byCoordinator')
+  if (by.startsWith('thread ')) return t('projects.memory.byThread', { id: by.slice(7) })
+  return t('projects.memory.byPerson')
+}
+
+async function remember() {
+  const text = memoryDraft.value.trim()
+  if (!text) return
+  try {
+    await rememberInProject(props.projectId, text)
+    memoryDraft.value = ''
+    await load()
+  } catch (err: any) {
+    error.value = t('projects.failed', { error: err?.message || String(err) })
+  }
+}
+
+async function forget(id: string) {
+  try {
+    await forgetInProject(props.projectId, id)
+    await load()
+  } catch (err: any) {
+    error.value = t('projects.failed', { error: err?.message || String(err) })
+  }
+}
+
 function pick(value: string) {
   emit('select', value === ALL ? null : value)
 }
@@ -283,7 +313,26 @@ onUnmounted(() => {
         <dd>{{ t(project.worktrees !== false ? 'projects.context.on' : 'projects.context.off') }}</dd>
         <dt>{{ t('projects.context.wake') }}</dt>
         <dd>{{ t(project.wakeCoordinator !== false ? 'projects.context.on' : 'projects.context.off') }}</dd>
+        <template v-if="project.defaultModel">
+          <dt>{{ t('projects.form.defaultModel') }}</dt>
+          <dd>{{ project.defaultModel }}</dd>
+        </template>
       </dl>
+      <section class="thread-pane-memory" data-testid="thread-pane-memory" :aria-label="t('projects.memory.title')">
+        <h3>{{ t('projects.memory.title') }}</h3>
+        <p v-if="!project.memory?.length" class="thread-pane-note">{{ t('projects.memory.empty') }}</p>
+        <ul v-else>
+          <li v-for="item in project.memory" :key="item.id" :data-testid="`thread-pane-memory-${item.id}`">
+            <span class="thread-pane-memory-text">{{ item.text }}</span>
+            <span class="thread-pane-memory-by">{{ memoryBy(item.by) }}</span>
+            <button type="button" class="thread-pane-memory-forget" :aria-label="`${t('projects.memory.forget')}: ${item.text}`" :title="t('projects.memory.forget')" @click="forget(item.id)">✕</button>
+          </li>
+        </ul>
+        <form class="thread-pane-memory-add" @submit.prevent="remember">
+          <NInput v-model:value="memoryDraft" size="small" :placeholder="t('projects.memory.placeholder')" :input-props="{ 'aria-label': t('projects.memory.placeholder') }" data-testid="thread-pane-memory-input" />
+          <NButton size="small" attr-type="submit" :disabled="!memoryDraft.trim()" data-testid="thread-pane-memory-add">{{ t('projects.memory.add') }}</NButton>
+        </form>
+      </section>
     </div>
     </template>
 
@@ -524,6 +573,28 @@ onUnmounted(() => {
   dd { margin: 2px 0 0; color: $text-primary; }
   code { font-size: 12px; word-break: break-all; }
 }
+.thread-pane-memory {
+  margin-top: 16px;
+
+  h3 { margin: 0 0 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; color: $text-muted; }
+  ul { margin: 0 0 8px; padding: 0; list-style: none; }
+  li { display: flex; align-items: flex-start; gap: 6px; padding: 6px 0; border-bottom: var(--border-width, 1px) solid $border-light; }
+}
+.thread-pane-memory-text { flex: 1; min-width: 0; overflow-wrap: anywhere; color: $text-primary; }
+.thread-pane-memory-by { font-size: 11px; color: $text-muted; white-space: nowrap; }
+.thread-pane-memory-forget {
+  border: 0;
+  background: none;
+  font: inherit;
+  min-width: 24px;
+  min-height: 24px;
+  color: $text-muted;
+  cursor: pointer;
+
+  &:hover { color: $text-primary; }
+  &:focus-visible { outline: 2px solid $accent-primary; outline-offset: 1px; }
+}
+.thread-pane-memory-add { display: flex; gap: 6px; }
 
 .thread-pane-context-text {
   white-space: pre-wrap;

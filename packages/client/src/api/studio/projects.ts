@@ -41,6 +41,8 @@ export interface ProjectTask {
   updatedAt: number
 }
 
+export interface ProjectMemory { id: string; text: string; by: string; createdAt: number }
+
 export interface Project {
   id: string
   name: string
@@ -56,6 +58,7 @@ export interface Project {
   wakeCoordinator: boolean
   threads: ProjectThread[]
   tasks: ProjectTask[]
+  memory?: ProjectMemory[]
   counts: { needsYou: number; working: number; done: number; resolved: number }
   createdAt: number
   updatedAt: number
@@ -123,3 +126,9 @@ export const startProjectTask = (id: string, taskId: string, agent?: string) =>
 
 export const setProjectThreadPr = async (id: string, threadId: string, pr: string) =>
   (await request<{ thread: ProjectThread }>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}/pr`, json('PUT', { pr }))).thread
+
+export const rememberInProject = async (id: string, text: string) =>
+  (await request<{ memory: ProjectMemory }>(`${base}/${encodeURIComponent(id)}/memory`, json('POST', { text }))).memory
+
+export const forgetInProject = (id: string, memoryId: string) =>
+  request<{ removed: true }>(`${base}/${encodeURIComponent(id)}/memory/${encodeURIComponent(memoryId)}`, { method: 'DELETE' })

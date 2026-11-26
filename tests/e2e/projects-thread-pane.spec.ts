@@ -11,7 +11,7 @@ const sessions = [
 const thread = { id: 't1', title: 'Fix Safari export button', agent: 'claude-code', brief: 'Fix it', paneId: 'w1:p1', sessionId: 'herdr-a', status: 'working', liveStatus: 'working', resolved: false, createdAt: 1, updatedAt: 1 }
 const waiting = { ...thread, id: 't2', title: 'Add Overseer Docker collector', agent: 'codex', sessionId: 'herdr-b', branch: 'studio/add-overseer-docker-collector-t2', status: 'blocked', liveStatus: 'blocked', updatedAt: 2 }
 const finished = { ...thread, id: 't3', title: 'Write the Omi setup guide', agent: 'hermes', sessionId: 'herdr-c', status: 'done', liveStatus: 'done', updatedAt: 3 }
-const project = { id: 'p1', name: 'Homelab', folder: '/srv/homelab', instructions: '', profile: 'default', categoryId: 4, coordinatorSessionId: 'coord-1', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true, threads: [thread, waiting, finished], counts: { needsYou: 1, working: 1, done: 1, resolved: 0 }, createdAt: 1, updatedAt: 1 }
+const project = { id: 'p1', name: 'Homelab', folder: '/srv/homelab', instructions: '', profile: 'default', categoryId: 4, coordinatorSessionId: 'coord-1', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true, memory: [] as any[], threads: [thread, waiting, finished], counts: { needsYou: 1, working: 1, done: 1, resolved: 0 }, createdAt: 1, updatedAt: 1 }
 const history: Record<string, any[]> = {
   'coord-1': [{ id: 1, role: 'assistant', content: 'Coordinator says the Safari thread is working.', timestamp: 1 }],
   'herdr-a': [{ id: 2, role: 'assistant', content: 'Full thread chat transcript.', timestamp: 1 }],
@@ -52,6 +52,7 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
       json = { groups, allProviders: groups, profiles: [], default: 'fixture-model', default_provider: 'fixture' }
     }
     else if (path === '/api/studio/projects') json = { projects: [project] }
+    else if (path === '/api/studio/projects/p1/memory') { const item = { id: 'm1', text: request.postDataJSON().text, by: 'person', createdAt: 1 }; project.memory.push(item); json = { memory: item } }
     else if (path === '/api/studio/projects/p1') json = { project: { ...project, threads: project.threads.filter(item => !removed.has(item.id)) } }
     else if (removed.has(path.split('/')[6] || '')) return route.fulfill({ status: 404, json: { error: 'Thread not found in this project' } })
     else if (path === '/api/studio/projects/p1/threads/t2') json = { thread: waiting, messages: [{ role: 'assistant', text: 'Waiting for approval to restart the overseer container.' }] }
@@ -101,6 +102,11 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
   // Context shows the project's folder and settings.
   await pane.getByTestId('thread-pane-tab-context').click()
   await expect(pane.getByTestId('thread-pane-context')).toContainText('/srv/homelab')
+  // Memory: facts every thread and the coordinator get.
+  await pane.getByTestId('thread-pane-memory-input').locator('input').fill('Unraid is at 192.168.1.10')
+  await pane.getByTestId('thread-pane-memory-add').click()
+  await expect(pane.getByTestId('thread-pane-memory-m1')).toContainText('Unraid is at 192.168.1.10')
+  await expect(pane.getByTestId('thread-pane-memory-m1')).toContainText('You')
   await pane.getByTestId('thread-pane-tab-threads').click()
   await all.getByTestId('thread-pane-card-t2').click()
   await expect(pane).toContainText('Waiting on you. Answer it in the full chat.')

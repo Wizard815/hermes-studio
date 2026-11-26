@@ -40,6 +40,15 @@ export interface ProjectThread {
   updatedAt: number
 }
 
+/** A fact the project keeps: every thread and the coordinator get it (docs/projects.md#memory). */
+export interface ProjectMemory {
+  id: string
+  text: string
+  /** 'person', 'coordinator' or 'thread <id>'. */
+  by: string
+  createdAt: number
+}
+
 /** A board column for a task. Threads take theirs from their status (docs/projects.md#board). */
 export type ProjectTaskColumn = 'todo' | 'doing' | 'review' | 'done'
 export const TASK_COLUMNS: ProjectTaskColumn[] = ['todo', 'doing', 'review', 'done']
@@ -79,6 +88,7 @@ export interface Project {
   wakeCoordinator: boolean
   threads: ProjectThread[]
   tasks: ProjectTask[]
+  memory: ProjectMemory[]
   createdAt: number
   updatedAt: number
 }
@@ -91,6 +101,8 @@ export const THREADS_MAX = 200
 export const TASKS_MAX = 500
 export const TASK_NOTES_MAX = 4000
 export const PR_MAX = 500
+export const MEMORY_MAX = 200
+export const MEMORY_TEXT_MAX = 1000
 
 const STATUSES = new Set<ProjectThreadStatus>(['starting', 'working', 'blocked', 'done', 'idle', 'unknown', 'gone'])
 
@@ -131,6 +143,14 @@ export function normalizeThread(raw: any, now = Date.now()): ProjectThread | nul
     createdAt: time(raw.createdAt, now),
     updatedAt: time(raw.updatedAt, now),
   }
+}
+
+export function normalizeMemory(raw: any, now = Date.now()): ProjectMemory | null {
+  if (!raw || typeof raw !== 'object') return null
+  const id = text(raw.id, 64)
+  const body = text(raw.text, MEMORY_TEXT_MAX)
+  if (!id || !body) return null
+  return { id, text: body, by: text(raw.by, 80) || 'person', createdAt: time(raw.createdAt, now) }
 }
 
 export function normalizeTask(raw: any, now = Date.now()): ProjectTask | null {
@@ -176,6 +196,10 @@ export function normalizeProject(raw: any, now = Date.now()): Project | null {
       .map((task: unknown) => normalizeTask(task, now))
       .filter((task: ProjectTask | null): task is ProjectTask => !!task)
       .slice(-TASKS_MAX),
+    memory: (Array.isArray(raw.memory) ? raw.memory : [])
+      .map((item: unknown) => normalizeMemory(item, now))
+      .filter((item: ProjectMemory | null): item is ProjectMemory => !!item)
+      .slice(-MEMORY_MAX),
     createdAt: time(raw.createdAt, now),
     updatedAt: time(raw.updatedAt, now),
   }
@@ -229,9 +253,9 @@ export class ProjectStore {
     return null
   }
 
-  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel'>>): Promise<Project> {
+  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'memory' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel'>>): Promise<Project> {
     const now = Date.now()
-    const project = normalizeProject({ ...input, id: randomUUID(), threads: [], tasks: [], createdAt: now, updatedAt: now }, now)
+    const project = normalizeProject({ ...input, id: randomUUID(), threads: [], tasks: [], memory: [], createdAt: now, updatedAt: now }, now)
     if (!project) throw Object.assign(new Error('A project needs a name'), { status: 400 })
     const list = await this.list()
     if (list.some(item => item.name.toLowerCase() === project.name.toLowerCase())) {

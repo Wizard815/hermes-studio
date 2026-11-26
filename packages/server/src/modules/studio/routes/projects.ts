@@ -24,6 +24,8 @@ projectRoutes.put('/api/studio/projects/:id/threads/:threadId/resolved', require
 projectRoutes.delete('/api/studio/projects/:id/threads/:threadId', requireSuperAdmin, ctrl.releaseThread)
 projectRoutes.put('/api/studio/projects/:id/threads/:threadId/pr', requireSuperAdmin, ctrl.setThreadPr)
 projectRoutes.post('/api/studio/projects/:id/tasks', requireSuperAdmin, ctrl.addTask)
+projectRoutes.post('/api/studio/projects/:id/memory', requireSuperAdmin, ctrl.remember)
+projectRoutes.delete('/api/studio/projects/:id/memory/:memoryId', requireSuperAdmin, ctrl.forget)
 projectRoutes.put('/api/studio/projects/:id/tasks/:taskId', requireSuperAdmin, ctrl.updateTask)
 projectRoutes.delete('/api/studio/projects/:id/tasks/:taskId', requireSuperAdmin, ctrl.removeTask)
 projectRoutes.post('/api/studio/projects/:id/tasks/:taskId/start', requireSuperAdmin, ctrl.startTask)

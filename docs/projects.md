@@ -96,6 +96,19 @@ progress, Needs you, Review and Done. The pane widens while it shows.
 - The coordinator sees board tasks that are not threads in its context block,
   and can `add_task`, `update_task` and `start_task`.
 
+## Memory
+
+A project keeps short facts every thread and the coordinator should know: a
+decision, a path, a preference. They are in the coordinator's context block,
+in each new thread's brief, and in a thread chat's context block (the newest
+fit in about 4000 characters).
+
+- You add or forget one in the pane's **Context** tab, under Memory.
+- The coordinator saves with `remember` (`text`) and removes with `forget`
+  (`memory` id). Threads can `remember` too; only the coordinator forgets.
+- Each memory says who saved it. A repeated fact is saved once. A memory is
+  at most 1000 characters, and a project keeps 200.
+
 ## Models
 
 Each thread can run its own model. In **New thread**, **Model** names it (empty:
@@ -168,6 +181,8 @@ All routes need a super admin.
 | `PUT /api/studio/projects/:id/threads/:threadId/resolved` | `{ resolved }` |
 | `DELETE /api/studio/projects/:id/threads/:threadId` | Thread leaves the project, chat stays |
 | `PUT /api/studio/projects/:id/threads/:threadId/pr` | `{ pr }`: the thread's PR link, `''` clears it |
+| `POST /api/studio/projects/:id/memory` | Remember `{ text }` |
+| `DELETE /api/studio/projects/:id/memory/:memoryId` | Forget one |
 | `POST /api/studio/projects/:id/tasks` | New board task `{ title, notes?, column?, pr? }` |
 | `PUT/DELETE /api/studio/projects/:id/tasks/:taskId` | Change `{ title?, notes?, column?, pr? }` or remove a task |
 | `POST /api/studio/projects/:id/tasks/:taskId/start` | Start a thread from a task `{ agent? }` |

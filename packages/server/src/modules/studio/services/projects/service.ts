@@ -22,11 +22,14 @@ import {
   THREAD_BRIEF_MAX,
   THREAD_TITLE_MAX,
   TASKS_MAX,
+  MEMORY_MAX,
+  MEMORY_TEXT_MAX,
   TASK_COLUMNS,
   TASK_NOTES_MAX,
   ProjectStore,
   prLink,
   type Project,
+  type ProjectMemory,
   type ProjectTask,
   type ProjectTaskColumn,
   type ProjectThread,
@@ -161,12 +164,27 @@ export function isWorking(status: ProjectThreadStatus): boolean {
 }
 
 /** The first prompt a thread's agent gets: the project's rules, then the brief. */
-export function threadPrompt(project: Pick<Project, 'name' | 'instructions'> & { id?: string }, thread: Pick<ProjectThread, 'title' | 'brief'> & { branch?: string; id?: string }): string {
+/** The project's memory as context lines, newest kept when it is long. */
+export function memoryLines(memory: ProjectMemory[] = [], budget = 4000): string[] {
+  const lines: string[] = []
+  let used = 0
+  for (const item of [...memory].reverse()) {
+    const line = `- ${item.text} (${item.id}, ${item.by})`
+    if (used + line.length > budget) break
+    used += line.length
+    lines.unshift(line)
+  }
+  return lines.length ? ['Project memory (facts the person, coordinator and threads saved; the newest last):', ...lines] : []
+}
+
+export function threadPrompt(project: Pick<Project, 'name' | 'instructions'> & { id?: string; memory?: ProjectMemory[] }, thread: Pick<ProjectThread, 'title' | 'brief'> & { branch?: string; id?: string }): string {
   return [
     `You are working on one thread of the Studio project "${project.name}": ${thread.title}.`,
     project.id && thread.id ? `You are thread ${thread.id} of project ${project.id}. To ask the project's coordinator something or report a finding early, call ekko_studio_use_project with action message_coordinator and arguments {"project": "${project.id}", "from": "${thread.id}", "text": "..."}. To tell another thread something, use action message_thread with {"project": "${project.id}", "from": "${thread.id}", "thread": "<its id>", "text": "..."}; action list shows the other threads. Keep these messages short and only when they help.` : '',
     thread.branch ? `You work in your own git worktree on the branch ${thread.branch}; other threads have their own. Commit your work on this branch. Push it and open a pull request only when the task or the project instructions ask for one.` : '',
     project.instructions ? `Project instructions (they apply to every thread):\n${project.instructions}` : '',
+    memoryLines(project.memory).join('\n'),
+    project.id && thread.id ? `When you learn something every thread should know (a decision, a path, a gotcha), save it with action remember and {"project": "${project.id}", "from": "${thread.id}", "text": "..."}.` : '',
     `Your task:\n${thread.brief}`,
     'Work only on this task. When you finish, end with a short summary of what you did and anything left open; the project\'s coordinator reads it.',
   ].filter(Boolean).join('\n\n')
@@ -186,6 +204,8 @@ export function projectContextBlock(project: ProjectView | Project, role: 'coord
     if (project.worktrees) lines.push('In a git repo each thread works in its own worktree on its own branch, so threads do not see each other\'s uncommitted changes. To combine their work, start a thread that merges the branches or opens pull requests.')
     if (project.wakeCoordinator) lines.push('You get a <studio_project_event> turn when a thread finishes or needs the person; act on it then, rather than waiting to be asked.')
     if (project.instructions) lines.push(`Project instructions:\n${project.instructions}`)
+    lines.push(...memoryLines(project.memory))
+    lines.push('Save lasting facts about this project (decisions, paths, preferences) with remember (text); forget (memory id) removes a wrong one. Threads see the memory too.')
     const open = project.threads.filter(thread => !thread.resolved)
     if (open.length) {
       lines.push('Open threads (id · title · agent/model · status · branch · PR):')
@@ -204,6 +224,7 @@ export function projectContextBlock(project: ProjectView | Project, role: 'coord
   } else {
     lines.push(`This chat is ${threadId ? `thread ${threadId}` : 'a thread'} of the Studio project "${project.name}" (project id ${project.id}).`)
     if (project.instructions) lines.push(`Project instructions:\n${project.instructions}`)
+    lines.push(...memoryLines(project.memory))
     if (threadId) lines.push(`To reach the coordinator, call ekko_studio_use_project with action message_coordinator and {"project": "${project.id}", "from": "${threadId}", "text": "..."}; to reach another thread, message_thread with "thread" set to its id.`)
   }
   return `<studio_project_context>\n${lines.join('\n')}\n</studio_project_context>`
@@ -458,6 +479,28 @@ export class ProjectService {
   }
 
   /** The thread's latest messages, for the coordinator (it sees results, not every step). */
+  /** Save a fact to the project's memory. */
+  async remember(idOrName: string, text: unknown, by = 'person'): Promise<ProjectMemory> {
+    const project = await this.store.find(idOrName)
+    if (!project) fail('Project not found', 404)
+    const body = clean(text, MEMORY_TEXT_MAX + 1)
+    if (!body) fail('Nothing to remember', 400)
+    if (body.length > MEMORY_TEXT_MAX) fail(`Keep a memory under ${MEMORY_TEXT_MAX} characters`, 400)
+    if (project.memory.some(item => item.text.toLowerCase() === body.toLowerCase())) return project.memory.find(item => item.text.toLowerCase() === body.toLowerCase())!
+    if (project.memory.length >= MEMORY_MAX) fail(`This project remembers ${MEMORY_MAX} things. Forget old ones first.`, 409)
+    const item: ProjectMemory = { id: `m${randomUUID().slice(0, 6)}`, text: body, by: clean(by, 80) || 'person', createdAt: this.now() }
+    await this.store.update(project.id, current => ({ ...current, memory: [...current.memory, item] }))
+    return item
+  }
+
+  async forget(idOrName: string, memoryId: string): Promise<{ removed: true }> {
+    const project = await this.store.find(idOrName)
+    if (!project) fail('Project not found', 404)
+    if (!project.memory.some(item => item.id === memoryId)) fail('No such memory in this project', 404)
+    await this.store.update(project.id, current => ({ ...current, memory: current.memory.filter(item => item.id !== memoryId) }))
+    return { removed: true }
+  }
+
   /** The project's board: to-dos and PRs that are not threads (threads are cards by themselves). */
   async addTask(idOrName: string, input: { title?: unknown; notes?: unknown; column?: unknown; pr?: unknown }): Promise<ProjectTask> {
     const project = await this.store.find(idOrName)
