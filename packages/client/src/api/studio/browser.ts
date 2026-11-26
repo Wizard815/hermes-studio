@@ -287,3 +287,12 @@ export async function releaseLease(tabId: string): Promise<void> {
     body: JSON.stringify({ tab_id: tabId }),
   })
 }
+
+/** The element under a normalized point (0..1) of the live view, for pin comments. */
+export async function fetchElementAt(tabId: string, x: number, y: number): Promise<import('@/utils/pin-comment').PinElement | null> {
+  const result = await fetchJson(`${getBaseUrlValue()}/api/studio/browser/element-at`, {
+    method: 'POST',
+    body: JSON.stringify({ tab_id: tabId, x, y }),
+  })
+  return (result as any)?.element ?? null
+}

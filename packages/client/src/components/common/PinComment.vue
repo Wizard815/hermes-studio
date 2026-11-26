@@ -2,18 +2,21 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { NButton, NInput } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { pinCommentTarget, pinCommentText, pinPercent } from '@/utils/pin-comment'
+import { pinCommentContext, pinCommentTarget, pinCommentText, pinnedPictures, pinPercent, type PinAttachment, type PinElement } from '@/utils/pin-comment'
 
 // Wraps a screenshot or the browser view. While `active`, a click pins a spot
 // and opens "Comment on this spot…"; Send posts
 // "Comment on <name> (pinned at x% from the left, y% from the top): text" to the
-// open chat. Sent pins stay as numbered marks.
-const props = defineProps<{ name: string; active: boolean }>()
+// open chat. Sent pins stay as numbered marks. So the model knows what is
+// pinned and where, the comment carries the picture with the pin drawn on it,
+// a close-up around the pin, and (with `inspect`, for web pages) the element
+// under the pin.
+const props = defineProps<{ name: string; active: boolean; inspect?: (fx: number, fy: number) => Promise<PinElement | null> }>()
 const emit = defineEmits<{ sent: [text: string]; error: [message: string] }>()
 const { t } = useI18n()
 
 const layer = ref<HTMLElement | null>(null)
-const pending = ref<{ x: number; y: number } | null>(null)
+const pending = ref<{ x: number; y: number; fx: number; fy: number } | null>(null)
 const draft = ref('')
 const sending = ref(false)
 const pins = ref<Array<{ x: number; y: number; text: string }>>([])
@@ -31,7 +34,9 @@ const popoverStyle = computed(() => {
 function place(event: MouseEvent) {
   if (!props.active || !layer.value || sending.value) return
   const box = layer.value.getBoundingClientRect()
-  pending.value = { x: pinPercent(event.clientX - box.left, box.width), y: pinPercent(event.clientY - box.top, box.height) }
+  const fx = box.width ? Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)) : 0
+  const fy = box.height ? Math.min(1, Math.max(0, (event.clientY - box.top) / box.height)) : 0
+  pending.value = { x: pinPercent(event.clientX - box.left, box.width), y: pinPercent(event.clientY - box.top, box.height), fx, fy }
   draft.value = ''
   void nextTick(() => input.value?.focus())
 }
@@ -45,10 +50,19 @@ async function send() {
   const spot = pending.value
   const send = pinCommentTarget.value
   if (!spot || !draft.value.trim() || !send) return
-  const text = pinCommentText(props.name, spot.x, spot.y, draft.value)
+  let text = pinCommentText(props.name, spot.x, spot.y, draft.value)
   sending.value = true
   try {
-    await send(text)
+    const n = pins.value.length + 1
+    const image = layer.value?.parentElement?.querySelector('img') ?? null
+    const [pictures, element] = await Promise.all([
+      image ? pinnedPictures(image, spot.fx, spot.fy, n, fileBase(props.name)).catch(() => null) : Promise.resolve(null),
+      props.inspect ? props.inspect(spot.fx, spot.fy).catch(() => null) : Promise.resolve(null),
+    ])
+    const context = pinCommentContext({ name: props.name, n, x: spot.x, y: spot.y, width: pictures?.width, height: pictures?.height, element, pictures: !!pictures })
+    const attachments: PinAttachment[] = pictures ? [{ file: pictures.marked, context }, { file: pictures.closeUp }] : []
+    if (!pictures) text = `${text}\n\n${context}`
+    await send(text, attachments)
     pins.value.push({ ...spot, text: draft.value.trim() })
     emit('sent', text)
     cancel()
@@ -57,6 +71,11 @@ async function send() {
   } finally {
     sending.value = false
   }
+}
+
+/** A file-name-safe stem for the attached pictures. */
+function fileBase(name: string): string {
+  return name.replace(/^https?:\/\//, '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'pin'
 }
 
 function onKeydown(event: KeyboardEvent) {

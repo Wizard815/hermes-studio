@@ -29,6 +29,7 @@ import {
   storeScreenshot,
   storedScreenshotUrl,
   deleteStoredScreenshot,
+  fetchElementAt,
   type BrowserTabInfo,
   type ViewportInfo,
 } from '@/api/studio/browser'
@@ -90,6 +91,10 @@ const currentTab = computed(() => tabs.value.find(t => t.id === activeTabId.valu
 // Comment mode: a click pins a comment on the page for the chat instead of clicking in it.
 const commenting = ref(false)
 const canComment = computed(() => !!pinCommentTarget.value)
+/** The element under a pinned spot, so the comment says what was pinned. */
+function inspectAt(x: number, y: number) {
+  return activeTabId.value ? fetchElementAt(activeTabId.value, x, y) : Promise.resolve(null)
+}
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -677,7 +682,7 @@ onUnmounted(() => {
             @keydown="handleViewportKeydown"
             tabindex="0"
           >
-            <PinComment :name="currentTab?.url || currentTab?.title || 'the browser'" :active="commenting" @sent="message.success(t('pinComment.sent'))" @error="text => message.error(text)">
+            <PinComment :name="currentTab?.url || currentTab?.title || 'the browser'" :active="commenting" :inspect="inspectAt" @sent="message.success(t('pinComment.sent'))" @error="text => message.error(text)">
               <img
                 ref="imageRef"
                 :src="'data:image/jpeg;base64,' + currentScreenshot"

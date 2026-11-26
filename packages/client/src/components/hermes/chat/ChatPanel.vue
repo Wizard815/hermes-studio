@@ -211,7 +211,7 @@ onMounted(() => {
   void refreshProjectAttention();
   projectAttentionTimer = setInterval(() => { void refreshProjectAttention() }, 10_000);
   // Pin comments on screenshots and the browser go to this chat.
-  setPinCommentTarget(text => chatStore.sendMessage(text));
+  setPinCommentTarget((text, pictures) => chatStore.sendMessage(text, pictures.map(picture => createBrowserAnnotationAttachment({ file: picture.file, context: picture.context || "" }))));
 });
 onUnmounted(() => {
   if (projectAttentionTimer) clearInterval(projectAttentionTimer);

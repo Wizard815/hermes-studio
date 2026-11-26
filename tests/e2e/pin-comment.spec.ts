@@ -12,6 +12,7 @@ const png = readFileSync(resolve('packages/client/public/logo-original.png'))
 test('Pin comments: a spot on a chat screenshot becomes a comment in the chat', async ({ page }) => {
   const errors: string[] = []
   const frames: string[] = []
+  const uploads: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.setViewportSize({ width: 1400, height: 900 })
   await page.addInitScript(tok => {
@@ -33,6 +34,11 @@ test('Pin comments: a spot on a chat screenshot becomes a comment in the chat', 
   await page.route(url => url.pathname.startsWith('/api/') || url.pathname === '/health', async route => {
     const url = new URL(route.request().url())
     const path = url.pathname
+    if (path === '/api/studio/uploads') {
+      const names = [...(route.request().postData() || '').matchAll(/filename="([^"]+)"/g)].map(match => match[1])
+      uploads.push(...names)
+      return route.fulfill({ json: { files: names.map(name => ({ name, path: `/srv/uploads/${name}` })) } })
+    }
     if (path === '/api/studio/files/download') return route.fulfill({ contentType: 'image/png', body: png })
     let json: unknown = {}
     if (path === '/health') json = { status: 'ok' }
@@ -68,6 +74,12 @@ test('Pin comments: a spot on a chat screenshot becomes a comment in the chat', 
   await popover.getByTestId('pin-comment-send').click()
 
   await expect.poll(() => frames.some(frame => frame.includes('Comment on 17-projects-marked-in-chats.png (pinned at 9% from the left, 25% from the top): test'))).toBe(true)
+  // The model also gets the picture with the pin drawn on it, a close-up, and where the pin is.
+  expect(uploads).toEqual(['17-projects-marked-in-chats-pin-1.png', '17-projects-marked-in-chats-pin-1-close-up.png'])
+  const sent = frames.find(frame => frame.includes('Comment on 17-projects'))!
+  expect(sent).toContain('/srv/uploads/17-projects-marked-in-chats-pin-1.png')
+  expect(sent).toContain('Pin 1 on 17-projects-marked-in-chats.png: upper left, 9% from the left and 25% from the top.')
+  expect(sent).toContain('pixel 113 × 314 of a 1254 × 1254 picture')
   await expect(popover).toHaveCount(0)
   await expect(page.locator('.pin-comment-mark--sent')).toHaveText('1')
   await expect(page.locator('.image-preview-status')).toHaveText('Comment sent to the chat')

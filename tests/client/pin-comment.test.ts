@@ -4,7 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import naive from 'naive-ui'
 import PinComment from '@/components/common/PinComment.vue'
-import { imageName, pinCommentText, pinPercent, setPinCommentTarget } from '@/utils/pin-comment'
+import { describePinElement, imageName, pinCommentContext, pinCommentText, pinPercent, pinPlace, setPinCommentTarget } from '@/utils/pin-comment'
 import { pinCommentMessages } from '@/i18n/pin-comment-messages'
 
 const i18n = () => createI18n({ legacy: false, locale: 'en', messages: { en: pinCommentMessages.en as any } })
@@ -24,6 +24,17 @@ describe('TestPinComment_text', () => {
     expect(imageName('/api/studio/files/download?path=%2Fsrv%2Fshots%2F17-projects-marked-in-chats.png&token=x')).toBe('17-projects-marked-in-chats.png')
     expect(imageName('data:image/png;base64,AAAA', 'Browser screenshot')).toBe('Browser screenshot')
     expect(imageName('blob:http://h/123')).toBe('this image')
+  })
+
+  it('says where the pin is in words and pixels, what is on the page there, and what the pictures show', () => {
+    expect([pinPlace(9, 25), pinPlace(50, 50), pinPlace(50, 10), pinPlace(90, 50), pinPlace(70, 90)]).toEqual(['upper left', 'center', 'top center', 'middle right', 'lower right'])
+    const element = { tag: 'button', name: 'Save', role: 'button', selector: '#save' }
+    expect(describePinElement(element)).toBe('<button> · "Save" · role button · selector #save')
+    const context = pinCommentContext({ name: 'https://h/settings', n: 2, x: 9, y: 25, width: 1000, height: 800, element, pictures: true })
+    expect(context).toContain('Pin 2 on https://h/settings: upper left, 9% from the left and 25% from the top.')
+    expect(context).toContain('pixel 90 × 200 of a 1000 × 800 picture')
+    expect(context).toContain('On the page, the spot is on <button> · "Save"')
+    expect(context).toContain('pin 2 drawn at the spot')
   })
 
   it('every locale has every string', () => {
@@ -48,10 +59,27 @@ describe('TestPinComment_component', () => {
     await wrapper.get('[data-testid="pin-comment-input"] textarea').setValue('test')
     await wrapper.get('[data-testid="pin-comment-popover"]').trigger('submit')
     await flushPromises()
-    expect(send).toHaveBeenCalledWith('Comment on shot.png (pinned at 9% from the left, 25% from the top): test')
+    // jsdom can't draw the picture, so the spot is described in the text instead.
+    expect(send).toHaveBeenCalledWith(expect.stringMatching(/^Comment on shot\.png \(pinned at 9% from the left, 25% from the top\): test\n\nPin 1 on shot\.png: upper left, 9% from the left and 25% from the top\./), [])
     expect(wrapper.find('[data-testid="pin-comment-popover"]').exists()).toBe(false)
     expect(wrapper.findAll('.pin-comment-mark--sent').map(mark => mark.text())).toEqual(['1'])
-    expect(wrapper.emitted('sent')?.[0]).toEqual(['Comment on shot.png (pinned at 9% from the left, 25% from the top): test'])
+    expect(String(wrapper.emitted('sent')?.[0]?.[0])).toContain('No picture is attached')
+    wrapper.unmount()
+  })
+
+  it('asks the page what is under the pin when it can', async () => {
+    const send = vi.fn(async () => {})
+    setPinCommentTarget(send)
+    const inspect = vi.fn(async () => ({ tag: 'a', text: 'Docs', href: 'https://h/docs' }))
+    const wrapper = mount(PinComment, { props: { name: 'https://h', active: true, inspect }, slots: { default: '<img src="x.png" alt="">' }, global: { plugins: [i18n(), naive] }, attachTo: document.body })
+    const layer = wrapper.get('[data-testid="pin-comment-layer"]')
+    layer.element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100, x: 0, y: 0, toJSON: () => ({}) })
+    await layer.trigger('click', { clientX: 50, clientY: 50 })
+    await wrapper.get('[data-testid="pin-comment-input"] textarea').setValue('broken link')
+    await wrapper.get('[data-testid="pin-comment-popover"]').trigger('submit')
+    await flushPromises()
+    expect(inspect).toHaveBeenCalledWith(0.25, 0.5)
+    expect(send.mock.calls[0][0]).toContain('On the page, the spot is on <a> · "Docs" · link https://h/docs.')
     wrapper.unmount()
   })
 
