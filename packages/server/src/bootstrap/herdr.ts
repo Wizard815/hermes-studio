@@ -678,6 +678,8 @@ export function projectRuntime(manager: Pick<typeof herdrManager, 'getBridge' | 
     canRun: agentId => !!herdrKindForStudioAgent(agentId),
     launch: async input => {
       const link = await manager.requireBridge().launchAgent(input.agentId, {
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.provider ? { provider: input.provider } : {}),
         workspace: input.workspace || undefined,
         title: input.title,
         prompt: input.prompt,

@@ -7,6 +7,9 @@ export interface ProjectThread {
   id: string
   title: string
   agent: string
+  /** Its model, '' for the agent's own default. */
+  model?: string
+  provider?: string
   brief: string
   paneId: string
   /** '' until herdr reports the agent's session (agents herdr detects). */
@@ -47,6 +50,8 @@ export interface Project {
   categoryId: number | null
   coordinatorSessionId: string
   defaultAgent: string
+  /** Model for the default agent's threads, '' for its own default. */
+  defaultModel?: string
   worktrees: boolean
   wakeCoordinator: boolean
   threads: ProjectThread[]
@@ -61,6 +66,7 @@ export interface ProjectInput {
   folder?: string
   instructions?: string
   defaultAgent?: string
+  defaultModel?: string
   profile?: string
   worktrees?: boolean
   wakeCoordinator?: boolean
@@ -80,7 +86,7 @@ export const updateProject = async (id: string, input: ProjectInput) =>
 export const removeProject = (id: string) =>
   request<{ removed: boolean }>(`${base}/${encodeURIComponent(id)}`, { method: 'DELETE' })
 
-export const startProjectThread = async (id: string, input: { title?: string; brief: string; agent?: string }) =>
+export const startProjectThread = async (id: string, input: { title?: string; brief: string; agent?: string; model?: string }) =>
   (await request<{ thread: ProjectThread }>(`${base}/${encodeURIComponent(id)}/threads`, json('POST', input))).thread
 
 export const addChatToProject = async (id: string, sessionId: string) =>

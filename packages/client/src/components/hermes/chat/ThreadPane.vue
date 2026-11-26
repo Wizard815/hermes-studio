@@ -194,7 +194,7 @@ onUnmounted(() => {
           data-testid="thread-pane-switcher"
           @update:value="pick"
         />
-        <span v-if="live" class="thread-pane-meta" :title="live.workspace">{{ live.agent }}<template v-if="live.branch"> · {{ live.branch }}</template> · {{ statusLabel(live) }}</span>
+        <span v-if="live" class="thread-pane-meta" :title="live.workspace">{{ live.agent }}<template v-if="live.model"> · {{ live.model }}</template><template v-if="live.branch"> · {{ live.branch }}</template> · {{ statusLabel(live) }}</span>
       </div>
       <NButton v-if="live" size="small" quaternary :disabled="!hasChat" data-testid="thread-pane-open" @click="emit('open', live.sessionId)">
         {{ t('projects.pane.openChat') }}
@@ -249,7 +249,7 @@ onUnmounted(() => {
                 </span>
                 <span v-if="latestLine(item)" class="thread-pane-row-last" :title="lastWords[item.id] || item.brief">{{ latestLine(item) }}</span>
                 <span class="thread-pane-row-chips">
-                  <span class="thread-pane-chip">{{ item.agent }}</span>
+                  <span class="thread-pane-chip">{{ item.model ? `${item.agent} · ${item.model}` : item.agent }}</span>
                   <span v-if="item.liveStatus === 'blocked'" class="thread-pane-chip thread-pane-chip--needs">{{ t('projects.groups.needsYou') }}</span>
                   <span v-if="item.branch" class="thread-pane-chip" :title="item.workspace">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="8" r="2" /><path d="M6 7v10M18 10c0 4-6 3-11 7" /></svg>

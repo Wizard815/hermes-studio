@@ -96,6 +96,17 @@ progress, Needs you, Review and Done. The pane widens while it shows.
 - The coordinator sees board tasks that are not threads in its context block,
   and can `add_task`, `update_task` and `start_task`.
 
+## Models
+
+Each thread can run its own model. In **New thread**, **Model** names it (empty:
+the agent's own default); the coordinator passes `model` (and `provider`) to
+`start_thread` or `start_task`. A project's **Default model** goes to threads
+of its default agent only, since a model for one agent rarely fits another.
+The model shows next to the agent in the list, the pane and the board. herdr
+starts the agent with it, the same as picking a model when launching an agent
+in herdr; an agent that doesn't know the model fails to start, and the error
+shows.
+
 ## Threads talking to each other
 
 A thread's brief tells it its thread id and project id. With

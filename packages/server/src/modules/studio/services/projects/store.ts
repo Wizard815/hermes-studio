@@ -17,6 +17,10 @@ export interface ProjectThread {
   title: string
   /** Studio agent id (claude-code, codex, hermes, ...). */
   agent: string
+  /** The model its agent runs, '' for the agent's own default. */
+  model: string
+  /** The provider for that model, '' for the agent's own. */
+  provider: string
   /** The brief the thread started with. */
   brief: string
   /** The herdr pane its agent was launched in. */
@@ -67,6 +71,8 @@ export interface Project {
   coordinatorSessionId: string
   /** Agent new threads use when none is named. */
   defaultAgent: string
+  /** Model new threads use when none is named, '' for each agent's own default. */
+  defaultModel: string
   /** When the folder is a git repo, each thread works in its own worktree and branch. */
   worktrees: boolean
   /** The coordinator gets a turn when a thread finishes or needs the person. */
@@ -112,6 +118,8 @@ export function normalizeThread(raw: any, now = Date.now()): ProjectThread | nul
     id,
     title: text(raw.title, THREAD_TITLE_MAX) || 'Thread',
     agent: text(raw.agent, 80),
+    model: text(raw.model, 200),
+    provider: text(raw.provider, 120),
     brief: text(raw.brief, THREAD_BRIEF_MAX),
     paneId: text(raw.paneId, 80),
     sessionId: text(raw.sessionId, 200),
@@ -157,6 +165,7 @@ export function normalizeProject(raw: any, now = Date.now()): Project | null {
     categoryId: Number.isInteger(categoryId) && categoryId > 0 ? categoryId : null,
     coordinatorSessionId: text(raw.coordinatorSessionId, 200),
     defaultAgent: text(raw.defaultAgent, 80) || 'claude-code',
+    defaultModel: text(raw.defaultModel, 200),
     worktrees: raw.worktrees !== false,
     wakeCoordinator: raw.wakeCoordinator !== false,
     threads: (Array.isArray(raw.threads) ? raw.threads : [])
@@ -220,7 +229,7 @@ export class ProjectStore {
     return null
   }
 
-  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator'>>): Promise<Project> {
+  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel'>>): Promise<Project> {
     const now = Date.now()
     const project = normalizeProject({ ...input, id: randomUUID(), threads: [], tasks: [], createdAt: now, updatedAt: now }, now)
     if (!project) throw Object.assign(new Error('A project needs a name'), { status: 400 })

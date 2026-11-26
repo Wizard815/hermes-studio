@@ -495,3 +495,21 @@ describe('TestProjects_threadMessages', () => {
     expect((await callTool('start_thread', { project: project.id, brief: 'More' })).status).toBe(200)
   })
 })
+
+describe('TestProjects_models', () => {
+  it('a thread runs the model it names; the project default goes only to its default agent', async () => {
+    const fake = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => fake.runtime })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab', defaultAgent: 'claude-code', defaultModel: 'claude-haiku-5-5' })
+    expect(project.defaultModel).toBe('claude-haiku-5-5')
+    const one = await service.startThread(project.id, { brief: 'Fix it' })
+    const two = await service.startThread(project.id, { brief: 'Review it', agent: 'codex' })
+    const three = await service.startThread(project.id, { brief: 'Docs', agent: 'hermes', model: 'qwen/qwen3.6-35b-a3b', provider: 'openrouter' })
+    expect([one.model, two.model, three.model]).toEqual(['claude-haiku-5-5', '', 'qwen/qwen3.6-35b-a3b'])
+    expect(fake.launches.map(launch => [launch.model, launch.provider])).toEqual([['claude-haiku-5-5', undefined], [undefined, undefined], ['qwen/qwen3.6-35b-a3b', 'openrouter']])
+    expect(await service.contextFor(project.coordinatorSessionId)).toContain(`${three.id} · Docs · hermes/qwen/qwen3.6-35b-a3b`)
+    expect((await service.update(project.id, { defaultModel: '' })).defaultModel).toBe('')
+    const task = await service.addTask(project.id, { title: 'Bench' })
+    expect((await service.startTask(project.id, task.id, { agent: 'codex', model: 'gpt-5.1-codex-mini' })).thread.model).toBe('gpt-5.1-codex-mini')
+  })
+})

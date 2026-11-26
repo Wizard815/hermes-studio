@@ -169,7 +169,7 @@ function prLabel(link: string): string {
           </div>
           <p v-if="card.kind === 'task' && card.task.notes" class="project-board-notes">{{ card.task.notes }}</p>
           <div class="project-board-chips">
-            <span class="project-board-chip">{{ card.kind === 'thread' ? `${t('projects.board.thread')} · ${card.thread.agent}` : t('projects.board.task') }}</span>
+            <span class="project-board-chip">{{ card.kind === 'thread' ? `${t('projects.board.thread')} · ${card.thread.agent}${card.thread.model ? ` · ${card.thread.model}` : ''}` : t('projects.board.task') }}</span>
             <a v-if="card.pr" class="project-board-chip project-board-chip--pr" :href="card.pr" target="_blank" rel="noopener noreferrer" :title="card.pr" :aria-label="`${t('projects.board.openPr')} ${prLabel(card.pr)}`" data-testid="project-board-pr-link">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="2" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" /><path d="M6 8v8M18 16V9a3 3 0 0 0-3-3h-4M13 4l-2 2 2 2" /></svg>
               {{ prLabel(card.pr) }}

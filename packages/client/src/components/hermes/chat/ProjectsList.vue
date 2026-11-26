@@ -89,16 +89,16 @@ function threadActive(thread: ProjectThread): boolean {
 }
 
 // --- New / edit project ---
-const projectForm = reactive({ show: false, editing: '' as string, name: '', folder: '', instructions: '', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true, saving: false })
+const projectForm = reactive({ show: false, editing: '' as string, name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', worktrees: true, wakeCoordinator: true, saving: false })
 
 function openNewProject() {
-  Object.assign(projectForm, { show: true, editing: '', name: '', folder: '', instructions: '', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true, saving: false })
+  Object.assign(projectForm, { show: true, editing: '', name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', worktrees: true, wakeCoordinator: true, saving: false })
 }
 
 function openEditProject(project: Project) {
   Object.assign(projectForm, {
     show: true, editing: project.id, name: project.name, folder: project.folder,
-    instructions: project.instructions, defaultAgent: project.defaultAgent,
+    instructions: project.instructions, defaultAgent: project.defaultAgent, defaultModel: project.defaultModel || '',
     worktrees: project.worktrees !== false, wakeCoordinator: project.wakeCoordinator !== false, saving: false,
   })
 }
@@ -107,7 +107,7 @@ async function saveProject() {
   if (!projectForm.name.trim()) return
   projectForm.saving = true
   try {
-    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, defaultAgent: projectForm.defaultAgent, worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator }
+    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, defaultAgent: projectForm.defaultAgent, defaultModel: projectForm.defaultModel.trim(), worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator }
     const saved = projectForm.editing ? await updateProject(projectForm.editing, input) : await createProject(input)
     projectForm.show = false
     await refresh()
@@ -132,17 +132,17 @@ async function stopProject(project: Project) {
 }
 
 // --- New thread ---
-const threadForm = reactive({ show: false, projectId: '', title: '', brief: '', agent: 'claude-code', saving: false })
+const threadForm = reactive({ show: false, projectId: '', title: '', brief: '', agent: 'claude-code', model: '', saving: false })
 
 function openNewThread(project: Project) {
-  Object.assign(threadForm, { show: true, projectId: project.id, title: '', brief: '', agent: project.defaultAgent, saving: false })
+  Object.assign(threadForm, { show: true, projectId: project.id, title: '', brief: '', agent: project.defaultAgent, model: project.defaultModel || '', saving: false })
 }
 
 async function saveThread() {
   if (!threadForm.brief.trim()) return
   threadForm.saving = true
   try {
-    await startProjectThread(threadForm.projectId, { title: threadForm.title, brief: threadForm.brief, agent: threadForm.agent })
+    await startProjectThread(threadForm.projectId, { title: threadForm.title, brief: threadForm.brief, agent: threadForm.agent, model: threadForm.model.trim() || undefined })
     threadForm.show = false
     message.success(t('projects.threadStarted'))
     await refresh()
@@ -247,7 +247,7 @@ defineExpose({ refresh })
                 <AgentStatusIcon :status="threadDisplayStatus(thread.liveStatus)" :live="thread.liveStatus !== 'idle' && thread.liveStatus !== 'gone'" />
                 <span class="project-thread-text">
                   <span class="project-item-title">{{ thread.title }}</span>
-                  <span class="project-item-meta">{{ thread.liveStatus === 'starting' ? t('projects.starting') : thread.agent }}</span>
+                  <span class="project-item-meta">{{ thread.liveStatus === 'starting' ? t('projects.starting') : thread.model ? `${thread.agent} · ${thread.model}` : thread.agent }}</span>
                 </span>
               </button>
               <button
@@ -277,6 +277,9 @@ defineExpose({ refresh })
         <NFormItem :label="t('projects.form.defaultAgent')">
           <NSelect v-model:value="projectForm.defaultAgent" :options="agentOptions" filterable tag />
         </NFormItem>
+        <NFormItem :label="t('projects.form.defaultModel')" :feedback="t('projects.form.defaultModelHint')">
+          <NInput v-model:value="projectForm.defaultModel" data-testid="project-form-model" />
+        </NFormItem>
         <NFormItem :show-label="false" :feedback="t('projects.form.worktreesHint')">
           <NCheckbox v-model:checked="projectForm.worktrees" data-testid="project-form-worktrees">{{ t('projects.form.worktrees') }}</NCheckbox>
         </NFormItem>
@@ -304,6 +307,9 @@ defineExpose({ refresh })
         </NFormItem>
         <NFormItem :label="t('projects.form.agent')">
           <NSelect v-model:value="threadForm.agent" :options="agentOptions" filterable tag />
+        </NFormItem>
+        <NFormItem :label="t('projects.form.model')" :feedback="t('projects.form.modelHint')">
+          <NInput v-model:value="threadForm.model" data-testid="thread-form-model" />
         </NFormItem>
       </NForm>
       <template #footer>

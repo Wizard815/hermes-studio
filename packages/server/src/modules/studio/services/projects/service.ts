@@ -44,6 +44,9 @@ export interface ProjectRuntime {
   canRun(agentId: string): boolean
   launch(input: {
     agentId: string
+    /** The model and provider to run, when the thread names them. */
+    model?: string
+    provider?: string
     title: string
     prompt: string
     workspace: string
@@ -185,10 +188,10 @@ export function projectContextBlock(project: ProjectView | Project, role: 'coord
     if (project.instructions) lines.push(`Project instructions:\n${project.instructions}`)
     const open = project.threads.filter(thread => !thread.resolved)
     if (open.length) {
-      lines.push('Open threads (id · title · agent · status · branch · PR):')
+      lines.push('Open threads (id · title · agent/model · status · branch · PR):')
       for (const thread of open.slice(-30)) {
         const status = 'liveStatus' in thread ? thread.liveStatus : thread.status
-        lines.push(`- ${thread.id} · ${thread.title} · ${thread.agent} · ${status}${thread.branch ? ` · ${thread.branch}` : ''}${thread.pr ? ` · ${thread.pr}` : ''}`)
+        lines.push(`- ${thread.id} · ${thread.title} · ${thread.agent}${thread.model ? `/${thread.model}` : ''} · ${status}${thread.branch ? ` · ${thread.branch}` : ''}${thread.pr ? ` · ${thread.pr}` : ''}`)
       }
     } else {
       lines.push('No open threads.')
@@ -283,7 +286,7 @@ export class ProjectService {
    * New project: a Studio chat folder named after it (an existing folder of the
    * same name is reused, so a folder can become a project) and its coordinator chat.
    */
-  async create(input: { name?: unknown; folder?: unknown; instructions?: unknown; profile?: unknown; defaultAgent?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; userId?: string | number | null }): Promise<ProjectView> {
+  async create(input: { name?: unknown; folder?: unknown; instructions?: unknown; profile?: unknown; defaultAgent?: unknown; defaultModel?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; userId?: string | number | null }): Promise<ProjectView> {
     const name = clean(input.name, PROJECT_NAME_MAX)
     if (!name) fail('Give the project a name', 400)
     const profile = clean(input.profile, 128) || 'default'
@@ -309,6 +312,7 @@ export class ProjectService {
         categoryId: category?.id ?? null,
         coordinatorSessionId: coordinatorId,
         defaultAgent: clean(input.defaultAgent, 80) || 'claude-code',
+        defaultModel: clean(input.defaultModel, 200),
         worktrees: input.worktrees !== false,
         wakeCoordinator: input.wakeCoordinator !== false,
       })
@@ -320,13 +324,14 @@ export class ProjectService {
     }
   }
 
-  async update(id: string, change: { name?: unknown; folder?: unknown; instructions?: unknown; defaultAgent?: unknown; worktrees?: unknown; wakeCoordinator?: unknown }): Promise<ProjectView> {
+  async update(id: string, change: { name?: unknown; folder?: unknown; instructions?: unknown; defaultAgent?: unknown; defaultModel?: unknown; worktrees?: unknown; wakeCoordinator?: unknown }): Promise<ProjectView> {
     const project = await this.store.update(id, current => ({
       ...current,
       ...(change.name !== undefined ? { name: clean(change.name, PROJECT_NAME_MAX) || current.name } : {}),
       ...(change.folder !== undefined ? { folder: clean(change.folder, 1024) } : {}),
       ...(change.instructions !== undefined ? { instructions: clean(change.instructions, PROJECT_INSTRUCTIONS_MAX) } : {}),
       ...(change.defaultAgent !== undefined ? { defaultAgent: clean(change.defaultAgent, 80) || current.defaultAgent } : {}),
+      ...(change.defaultModel !== undefined ? { defaultModel: clean(change.defaultModel, 200) } : {}),
       ...(typeof change.worktrees === 'boolean' ? { worktrees: change.worktrees } : {}),
       ...(typeof change.wakeCoordinator === 'boolean' ? { wakeCoordinator: change.wakeCoordinator } : {}),
     }))
@@ -342,13 +347,16 @@ export class ProjectService {
   }
 
   /** Start a thread: an agent launched in herdr with the project's rules and the brief. */
-  async startThread(idOrName: string, input: { title?: unknown; brief?: unknown; agent?: unknown }): Promise<ThreadView> {
+  async startThread(idOrName: string, input: { title?: unknown; brief?: unknown; agent?: unknown; model?: unknown; provider?: unknown }): Promise<ThreadView> {
     const project = await this.store.find(idOrName)
     if (!project) fail('Project not found', 404)
     const brief = clean(input.brief, THREAD_BRIEF_MAX)
     if (!brief) fail('A thread needs a brief: what should it do?', 400)
     const title = clean(input.title, THREAD_TITLE_MAX) || brief.split('\n')[0].slice(0, 60)
     const agent = clean(input.agent, 80) || project.defaultAgent
+    // The project's default model is for its default agent; other agents use their own.
+    const model = clean(input.model, 200) || (agent === project.defaultAgent ? project.defaultModel : '')
+    const provider = clean(input.provider, 120)
     const rt = this.requireRuntime()
     if (!rt.canRun(agent)) fail(`${agent} cannot run in herdr. Pick an agent installed on this Studio.`, 400)
     if (project.threads.length >= 200) fail('This project has 200 threads. Remove resolved ones before starting more.', 409)
@@ -357,7 +365,7 @@ export class ProjectService {
     // Saved before launch so herdr's first reports (and folderFor) find the thread.
     const now = this.now()
     const thread: ProjectThread = {
-      id: threadId, title, agent, brief,
+      id: threadId, title, agent, model, provider, brief,
       paneId: '',
       sessionId: '',
       workspace,
@@ -369,6 +377,8 @@ export class ProjectService {
     try {
       launched = await rt.launch({
         agentId: agent,
+        ...(model ? { model } : {}),
+        ...(provider ? { provider } : {}),
         title,
         prompt: threadPrompt(project, { title, brief, branch, id: threadId }),
         workspace,
@@ -480,11 +490,11 @@ export class ProjectService {
   }
 
   /** Start a thread from a task: its title and notes are the brief; the board then shows the thread. */
-  async startTask(idOrName: string, taskId: string, input: { agent?: unknown; brief?: unknown } = {}): Promise<{ task: ProjectTask; thread: ThreadView }> {
+  async startTask(idOrName: string, taskId: string, input: { agent?: unknown; model?: unknown; provider?: unknown; brief?: unknown } = {}): Promise<{ task: ProjectTask; thread: ThreadView }> {
     const { project, task } = await this.task(idOrName, taskId)
     if (task.threadId && project.threads.some(item => item.id === task.threadId)) fail('This task already has a thread', 409)
     const brief = clean(input.brief, THREAD_BRIEF_MAX) || [task.title, task.notes, task.pr ? `Pull request: ${task.pr}` : ''].filter(Boolean).join('\n\n')
-    const thread = await this.startThread(project.id, { title: task.title, brief, agent: input.agent })
+    const thread = await this.startThread(project.id, { title: task.title, brief, agent: input.agent, model: input.model, provider: input.provider })
     if (task.pr) await this.setThreadPr(project.id, thread.id, task.pr)
     const next = { ...task, threadId: thread.id, column: 'doing' as const, updatedAt: this.now() }
     await this.store.update(project.id, current => ({ ...current, tasks: current.tasks.map(item => item.id === task.id ? next : item) }))
@@ -554,6 +564,8 @@ export class ProjectService {
       id: randomUUID().slice(0, 8),
       title: clean(row.title, THREAD_TITLE_MAX) || 'Chat',
       agent: row.agent || 'hermes',
+      model: String(row.model || ''),
+      provider: String(row.provider || ''),
       brief: '',
       paneId: '',
       sessionId,
