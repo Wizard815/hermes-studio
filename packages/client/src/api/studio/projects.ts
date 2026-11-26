@@ -18,6 +18,22 @@ export interface ProjectThread {
   status: ProjectThreadStatus
   liveStatus: ProjectThreadStatus
   resolved: boolean
+  /** Its pull request link, '' when none. */
+  pr: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type ProjectTaskColumn = 'todo' | 'doing' | 'review' | 'done'
+
+/** A board card that is not a thread (yet). */
+export interface ProjectTask {
+  id: string
+  title: string
+  notes: string
+  column: ProjectTaskColumn
+  pr: string
+  threadId: string
   createdAt: number
   updatedAt: number
 }
@@ -34,6 +50,7 @@ export interface Project {
   worktrees: boolean
   wakeCoordinator: boolean
   threads: ProjectThread[]
+  tasks: ProjectTask[]
   counts: { needsYou: number; working: number; done: number; resolved: number }
   createdAt: number
   updatedAt: number
@@ -85,3 +102,18 @@ export const messageProjectThread = (id: string, threadId: string, text: string)
 
 export const getProject = async (id: string) =>
   (await request<{ project: Project }>(`${base}/${encodeURIComponent(id)}`)).project
+
+export const addProjectTask = async (id: string, input: { title: string; notes?: string; column?: ProjectTaskColumn; pr?: string }) =>
+  (await request<{ task: ProjectTask }>(`${base}/${encodeURIComponent(id)}/tasks`, json('POST', input))).task
+
+export const updateProjectTask = async (id: string, taskId: string, change: Partial<Pick<ProjectTask, 'title' | 'notes' | 'column' | 'pr'>>) =>
+  (await request<{ task: ProjectTask }>(`${base}/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}`, json('PUT', change))).task
+
+export const removeProjectTask = (id: string, taskId: string) =>
+  request<{ removed: true }>(`${base}/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' })
+
+export const startProjectTask = (id: string, taskId: string, agent?: string) =>
+  request<{ task: ProjectTask; thread: ProjectThread }>(`${base}/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}/start`, json('POST', { agent }))
+
+export const setProjectThreadPr = async (id: string, threadId: string, pr: string) =>
+  (await request<{ thread: ProjectThread }>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}/pr`, json('PUT', { pr }))).thread

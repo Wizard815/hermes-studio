@@ -7,6 +7,8 @@ function fail(ctx: Context, error: unknown) {
   ctx.body = { error: error instanceof Error ? error.message : String(error) }
 }
 
+export const PROJECT_ACTIONS = ['list', 'start_thread', 'message_thread', 'read_thread', 'resolve_thread', 'set_pr', 'add_task', 'update_task', 'start_task']
+
 const body = (ctx: Context) => ((ctx.request as any).body || {}) as Record<string, any>
 const param = (ctx: Context, name: string) => String((ctx.params as Record<string, string>)[name] || '')
 
@@ -68,6 +70,32 @@ export async function adoptChat(ctx: Context) {
   } catch (error) { fail(ctx, error) }
 }
 
+export async function addTask(ctx: Context) {
+  try {
+    ctx.status = 201
+    ctx.body = { task: await projectService().addTask(param(ctx, 'id'), body(ctx)) }
+  } catch (error) { fail(ctx, error) }
+}
+
+export async function updateTask(ctx: Context) {
+  try { ctx.body = { task: await projectService().updateTask(param(ctx, 'id'), param(ctx, 'taskId'), body(ctx)) } } catch (error) { fail(ctx, error) }
+}
+
+export async function removeTask(ctx: Context) {
+  try { ctx.body = await projectService().removeTask(param(ctx, 'id'), param(ctx, 'taskId')) } catch (error) { fail(ctx, error) }
+}
+
+export async function startTask(ctx: Context) {
+  try {
+    ctx.status = 201
+    ctx.body = await projectService().startTask(param(ctx, 'id'), param(ctx, 'taskId'), body(ctx))
+  } catch (error) { fail(ctx, error) }
+}
+
+export async function setThreadPr(ctx: Context) {
+  try { ctx.body = { thread: await projectService().setThreadPr(param(ctx, 'id'), param(ctx, 'threadId'), body(ctx).pr) } } catch (error) { fail(ctx, error) }
+}
+
 /**
  * One entry point for the coordinator's agent tool (ekko_studio_use_project).
  * The project is named, or found from the calling chat (HERMES_STUDIO_SESSION_ID).
@@ -98,8 +126,20 @@ export async function tool(ctx: Context) {
       case 'resolve_thread':
         ctx.body = { thread: await service.setResolved(project.id, threadId, input.resolved !== false) }
         return
+      case 'set_pr':
+        ctx.body = { thread: await service.setThreadPr(project.id, threadId, input.pr) }
+        return
+      case 'add_task':
+        ctx.body = { task: await service.addTask(project.id, input) }
+        return
+      case 'update_task':
+        ctx.body = { task: await service.updateTask(project.id, String(input.task || ''), input) }
+        return
+      case 'start_task':
+        ctx.body = await service.startTask(project.id, String(input.task || ''), input)
+        return
       default:
-        throw Object.assign(new Error(`Unknown project action: ${action}. Use list, start_thread, message_thread, read_thread or resolve_thread.`), { status: 400 })
+        throw Object.assign(new Error(`Unknown project action: ${action}. Use ${PROJECT_ACTIONS.join(', ')}.`), { status: 400 })
     }
   } catch (error) { fail(ctx, error) }
 }

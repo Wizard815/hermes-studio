@@ -30,6 +30,25 @@ export interface ProjectThread {
   status: ProjectThreadStatus
   /** The person or the coordinator marked the thread finished; it moves to Resolved. */
   resolved: boolean
+  /** The pull request (or merge request) its work went to, '' when none yet. */
+  pr: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** A board column for a task. Threads take theirs from their status (docs/projects.md#board). */
+export type ProjectTaskColumn = 'todo' | 'doing' | 'review' | 'done'
+export const TASK_COLUMNS: ProjectTaskColumn[] = ['todo', 'doing', 'review', 'done']
+
+/** A card on the project's board that is not (yet) a thread: a to-do, or a PR to follow. */
+export interface ProjectTask {
+  id: string
+  title: string
+  notes: string
+  column: ProjectTaskColumn
+  pr: string
+  /** The thread started from this task; the board then shows the thread instead. */
+  threadId: string
   createdAt: number
   updatedAt: number
 }
@@ -53,6 +72,7 @@ export interface Project {
   /** The coordinator gets a turn when a thread finishes or needs the person. */
   wakeCoordinator: boolean
   threads: ProjectThread[]
+  tasks: ProjectTask[]
   createdAt: number
   updatedAt: number
 }
@@ -62,11 +82,20 @@ export const PROJECT_INSTRUCTIONS_MAX = 8000
 export const THREAD_BRIEF_MAX = 20000
 export const THREAD_TITLE_MAX = 120
 export const THREADS_MAX = 200
+export const TASKS_MAX = 500
+export const TASK_NOTES_MAX = 4000
+export const PR_MAX = 500
 
 const STATUSES = new Set<ProjectThreadStatus>(['starting', 'working', 'blocked', 'done', 'idle', 'unknown', 'gone'])
 
 function text(value: unknown, max: number): string {
   return String(value ?? '').trim().slice(0, max)
+}
+
+/** A link to a pull request: an http(s) URL with no spaces, else ''. */
+export function prLink(value: unknown): string {
+  const link = text(value, PR_MAX)
+  return /^https?:\/\/[^\s<>"]+$/i.test(link) ? link : ''
 }
 
 function time(value: unknown, fallback: number): number {
@@ -90,6 +119,24 @@ export function normalizeThread(raw: any, now = Date.now()): ProjectThread | nul
     branch: text(raw.branch, 200),
     status,
     resolved: raw.resolved === true,
+    pr: prLink(raw.pr),
+    createdAt: time(raw.createdAt, now),
+    updatedAt: time(raw.updatedAt, now),
+  }
+}
+
+export function normalizeTask(raw: any, now = Date.now()): ProjectTask | null {
+  if (!raw || typeof raw !== 'object') return null
+  const id = text(raw.id, 64)
+  const title = text(raw.title, THREAD_TITLE_MAX)
+  if (!id || !title) return null
+  return {
+    id,
+    title,
+    notes: text(raw.notes, TASK_NOTES_MAX),
+    column: TASK_COLUMNS.includes(raw.column) ? raw.column : 'todo',
+    pr: prLink(raw.pr),
+    threadId: text(raw.threadId, 64),
     createdAt: time(raw.createdAt, now),
     updatedAt: time(raw.updatedAt, now),
   }
@@ -116,6 +163,10 @@ export function normalizeProject(raw: any, now = Date.now()): Project | null {
       .map((thread: unknown) => normalizeThread(thread, now))
       .filter((thread: ProjectThread | null): thread is ProjectThread => !!thread)
       .slice(-THREADS_MAX),
+    tasks: (Array.isArray(raw.tasks) ? raw.tasks : [])
+      .map((task: unknown) => normalizeTask(task, now))
+      .filter((task: ProjectTask | null): task is ProjectTask => !!task)
+      .slice(-TASKS_MAX),
     createdAt: time(raw.createdAt, now),
     updatedAt: time(raw.updatedAt, now),
   }
@@ -169,9 +220,9 @@ export class ProjectStore {
     return null
   }
 
-  async create(input: Omit<Project, 'id' | 'threads' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator'>>): Promise<Project> {
+  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator'>>): Promise<Project> {
     const now = Date.now()
-    const project = normalizeProject({ ...input, id: randomUUID(), threads: [], createdAt: now, updatedAt: now }, now)
+    const project = normalizeProject({ ...input, id: randomUUID(), threads: [], tasks: [], createdAt: now, updatedAt: now }, now)
     if (!project) throw Object.assign(new Error('A project needs a name'), { status: 400 })
     const list = await this.list()
     if (list.some(item => item.name.toLowerCase() === project.name.toLowerCase())) {

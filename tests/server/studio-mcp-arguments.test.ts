@@ -105,6 +105,8 @@ describe('Studio MCP: arguments are checked before Studio is called', () => {
     const out = await mcp.call('ekko_studio_use_project', { action: 'start_thread', arguments: { brief: 'Fix the flaky login test', agent: 'codex' } })
     expect(out.error).toBe('')
     expect(out.hits).toEqual(['POST /api/studio/projects/tool/start_thread {"brief":"Fix the flaky login test","agent":"codex","sessionId":""}'])
+    const task = await mcp.call('ekko_studio_use_project', { action: 'add_task', arguments: { title: 'Review PR 12', pr: 'https://github.com/o/r/pull/12' } })
+    expect(task.hits).toEqual(['POST /api/studio/projects/tool/add_task {"title":"Review PR 12","pr":"https://github.com/o/r/pull/12","sessionId":""}'])
     const bad = await mcp.call('ekko_studio_use_project', { action: 'delete_everything' })
     expect(bad.error).toMatch(/action must be one of: list, start_thread/)
     expect(bad.hits).toEqual([])

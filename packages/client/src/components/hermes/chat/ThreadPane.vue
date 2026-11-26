@@ -4,6 +4,7 @@ import { NButton, NInput, NSelect, type SelectOption, type SelectGroupOption } f
 import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import MarkdownRenderer from './MarkdownRenderer.vue'
+import ProjectBoard from './ProjectBoard.vue'
 import { getProject, messageProjectThread, readProjectThread, type Project, type ProjectThread, type ThreadMessage } from '@/api/studio/projects'
 import { THREAD_GROUPS, groupThreads, threadDisplayStatus, threadGroup } from './project-groups'
 
@@ -129,7 +130,7 @@ function onKeydown(event: KeyboardEvent) {
 
 // The overview, laid out like Claude's project threads: Threads | Context tabs and
 // collapsible groups; Resolved starts collapsed.
-const tab = ref<'threads' | 'context'>('threads')
+const tab = ref<'threads' | 'board' | 'context'>('threads')
 const collapsed = ref(new Set<string>(['resolved']))
 function toggleGroup(group: string) {
   const next = new Set(collapsed.value)
@@ -179,7 +180,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <aside class="thread-pane" :aria-label="t('projects.pane.label')" data-testid="thread-pane">
+  <aside class="thread-pane" :class="{ 'thread-pane--wide': !threadId && tab === 'board' }" :aria-label="t('projects.pane.label')" data-testid="thread-pane">
     <header class="thread-pane-head">
       <AgentStatusIcon v-if="live" :status="threadDisplayStatus(status)" :live="status !== 'idle' && status !== 'gone'" />
       <div class="thread-pane-title">
@@ -204,7 +205,7 @@ onUnmounted(() => {
     <template v-if="!threadId">
     <div class="thread-pane-tabs" role="tablist">
       <button
-        v-for="key in (['threads', 'context'] as const)"
+        v-for="key in (['threads', 'board', 'context'] as const)"
         :key="key"
         type="button"
         role="tab"
@@ -261,6 +262,14 @@ onUnmounted(() => {
         </section>
       </template>
     </div>
+
+    <ProjectBoard
+      v-else-if="tab === 'board' && project"
+      :project="project"
+      @select="id => { tab = 'threads'; emit('select', id) }"
+      @changed="load"
+      @error="message => error = message"
+    />
 
     <div v-else-if="project" class="thread-pane-context" data-testid="thread-pane-context" role="tabpanel">
       <dl>
@@ -324,6 +333,8 @@ onUnmounted(() => {
 .thread-pane {
   display: flex;
   flex: 0 0 clamp(320px, 42%, 640px);
+
+  &--wide { flex-basis: clamp(520px, 72%, 1400px); }
   flex-direction: column;
   min-width: 0;
   border-inline-start: var(--border-width, 1px) solid $border-light;

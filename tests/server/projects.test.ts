@@ -388,3 +388,43 @@ describe('TestProjects_edgeCases', () => {
     expect(fake.messages).toHaveLength(1)
   })
 })
+
+describe('TestProjects_board', () => {
+  it('tasks move across columns, start as threads, and PR links are checked', async () => {
+    const fake = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => fake.runtime })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    const task = await service.addTask(project.id, { title: 'Add a Grafana panel', notes: 'GPU temps per card.' })
+    expect(task).toMatchObject({ column: 'todo', pr: '', threadId: '' })
+    await expect(service.addTask(project.id, { title: '  ' })).rejects.toMatchObject({ status: 400 })
+    await expect(service.updateTask(project.id, task.id, { column: 'someday' })).rejects.toMatchObject({ status: 400 })
+    await expect(service.updateTask(project.id, task.id, { pr: 'javascript:alert(1)' })).rejects.toMatchObject({ status: 400 })
+    expect(await service.updateTask(project.id, task.id, { column: 'Doing', pr: 'https://github.com/o/r/pull/7' })).toMatchObject({ column: 'doing', pr: 'https://github.com/o/r/pull/7' })
+
+    const started = await service.startTask(project.id, task.id, { agent: 'codex' })
+    expect(started.task).toMatchObject({ threadId: started.thread.id, column: 'doing' })
+    expect(started.thread).toMatchObject({ title: 'Add a Grafana panel', agent: 'codex', pr: 'https://github.com/o/r/pull/7' })
+    expect(fake.launches[0].prompt).toContain('GPU temps per card.')
+    await expect(service.startTask(project.id, task.id)).rejects.toMatchObject({ status: 409 })
+    // Tasks started as threads leave the coordinator's to-do list.
+    const loose = await service.addTask(project.id, { title: 'Follow PR 9', column: 'review', pr: 'https://gitlab.example/g/r/-/merge_requests/9' })
+    const context = await service.contextFor(project.coordinatorSessionId)
+    expect(context).toContain(`${loose.id} · review · Follow PR 9`)
+    expect(context).not.toContain(`${task.id} · doing`)
+    expect(await service.removeTask(project.id, loose.id)).toEqual({ removed: true })
+    await expect(service.removeTask(project.id, loose.id)).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('a thread that finishes naming a pull request gets it linked, and set_pr can change it', async () => {
+    const fake = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => fake.runtime })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    const thread = await service.startThread(project.id, { brief: 'Fix it' })
+    db.sessions.set('chat-9', { id: 'chat-9' })
+    db.messages.set('chat-9', [{ role: 'assistant', content: 'Opened https://github.com/Wizard815/argos/pull/41. Done.' }])
+    await service.threadStatusChanged({ id: project.id, thread: thread.id }, thread.paneId, 'done', 'chat-9')
+    expect((await service.get(project.id)).threads[0].pr).toBe('https://github.com/Wizard815/argos/pull/41')
+    expect((await service.setThreadPr(project.id, thread.id, '')).pr).toBe('')
+    await expect(service.setThreadPr(project.id, thread.id, 'not a link')).rejects.toMatchObject({ status: 400 })
+  })
+})

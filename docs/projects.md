@@ -77,6 +77,25 @@ project's threads together (see `docs/harness/herdr.md`).
    agent reports its session. Until then the thread shows "starting…" and
    cannot be opened.
 
+## Board
+
+The pane's **Board** tab is the project's kanban, with columns To do, In
+progress, Needs you, Review and Done. The pane widens while it shows.
+
+- **Threads** are cards by themselves, placed by status: working in In
+  progress, blocked in Needs you, finished or idle in Review, resolved in Done.
+  A thread moves only in or out of Done, which resolves or reopens it.
+- **Tasks** are cards that are not threads yet: a to-do, or a pull request to
+  follow. Add one with **Add task**; move it by dragging or with its **Move to**
+  menu. **Start as thread** starts a thread on the project's default agent with
+  the task's title and notes as the brief; the board then shows that thread.
+- **PRs.** A card can carry a pull request (or merge request) link, shown as
+  `#41`. A thread that finishes and names a PR link in its last messages gets it
+  linked by itself. Add or change one with **+ PR link**, or the coordinator's
+  `set_pr`.
+- The coordinator sees board tasks that are not threads in its context block,
+  and can `add_task`, `update_task` and `start_task`.
+
 ## The coordinator
 
 Each turn of a chat in a project gets a `<studio_project_context>` block
@@ -86,7 +105,7 @@ the open threads with their status, and how to use its tool.
 
 The coordinator's tool is `ekko_studio_use_project` in Studio's `use` MCP
 toolset. Actions: `list`, `start_thread`, `message_thread`, `read_thread`,
-`resolve_thread`. The project is the calling chat's project
+`resolve_thread`, `set_pr`, `add_task`, `update_task`, `start_task`. The project is the calling chat's project
 (`HERMES_STUDIO_SESSION_ID`) unless `arguments.project` names one.
 
 - `message_thread` types into the thread's herdr pane. A thread whose agent
@@ -119,6 +138,10 @@ All routes need a super admin.
 | `POST /api/studio/projects/:id/threads/:threadId/message` | `{ text }` to the thread's agent |
 | `PUT /api/studio/projects/:id/threads/:threadId/resolved` | `{ resolved }` |
 | `DELETE /api/studio/projects/:id/threads/:threadId` | Thread leaves the project, chat stays |
+| `PUT /api/studio/projects/:id/threads/:threadId/pr` | `{ pr }`: the thread's PR link, `''` clears it |
+| `POST /api/studio/projects/:id/tasks` | New board task `{ title, notes?, column?, pr? }` |
+| `PUT/DELETE /api/studio/projects/:id/tasks/:taskId` | Change `{ title?, notes?, column?, pr? }` or remove a task |
+| `POST /api/studio/projects/:id/tasks/:taskId/start` | Start a thread from a task `{ agent? }` |
 | `GET /api/studio/projects/for-session/:sessionId` | The project and role of a chat |
 | `POST /api/studio/projects/tool/:action` | The coordinator tool's entry point |
 
@@ -148,6 +171,10 @@ All routes need a super admin.
   the same subfolder of its own checkout.
 - **A message to a resolved thread** reopens it, so its next report reaches
   the coordinator.
+- **"A PR is a link that starts with https://":** PR links must be http(s)
+  URLs. Paste the PR's address, not its number.
+- **A thread card won't move to To do or Review:** threads follow their status.
+  Only Done (resolve) and back can be chosen.
 - **A thread removed while it is open in the pane:** the pane shows all
   threads instead. If the whole project is removed, the pane closes.
 
@@ -161,12 +188,13 @@ All routes need a super admin.
   through the herdr bridge.
 - `modules/studio/routes/projects.ts`, `controllers/projects.ts`.
 - `bin/ekko-studio-mcp.mjs`: `ekko_studio_use_project`.
-- Client: `components/hermes/chat/ProjectsList.vue`, `ThreadPane.vue`, `ProjectAttentionBadges.vue`, `ProjectIcon.vue`, `project-groups.ts`,
+- Client: `components/hermes/chat/ProjectsList.vue`, `ThreadPane.vue`, `ProjectBoard.vue`, `ProjectAttentionBadges.vue`, `ProjectIcon.vue`, `project-groups.ts`,
   `api/studio/projects.ts`; Projects button in `PageSidebarNav.vue`.
 
 Tests: `tests/server/projects.test.ts`, `tests/client/project-groups.test.ts`,
 the project case in `tests/server/studio-mcp-arguments.test.ts`, and
-`tests/e2e/projects-list.spec.ts`, `tests/e2e/projects-thread-pane.spec.ts`.
+`tests/e2e/projects-list.spec.ts`, `tests/e2e/projects-thread-pane.spec.ts`,
+`tests/e2e/projects-board.spec.ts`.
 
 Live check with real models (opt-in, uses OpenRouter):
 `LIVE_PROJECTS=1 NODE_USE_ENV_PROXY=1 npx vitest run tests/live/projects-coordinator.live.test.ts`.

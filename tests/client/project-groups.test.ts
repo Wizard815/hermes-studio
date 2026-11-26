@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { groupThreads, projectOfSession, projectSummary, threadDisplayStatus } from '../../packages/client/src/components/hermes/chat/project-groups'
-import type { Project, ProjectThread } from '../../packages/client/src/api/studio/projects'
+import { boardCards, boardTargets, groupThreads, projectOfSession, projectSummary, threadDisplayStatus } from '../../packages/client/src/components/hermes/chat/project-groups'
+import type { Project, ProjectTask, ProjectThread } from '../../packages/client/src/api/studio/projects'
 
 const thread = (id: string, liveStatus: ProjectThread['liveStatus'], extra: Partial<ProjectThread> = {}): ProjectThread => ({
-  id, title: id, agent: 'codex', brief: '', paneId: '', sessionId: `chat-${id}`, status: liveStatus, liveStatus, resolved: false, createdAt: 1, updatedAt: 1, ...extra,
+  id, title: id, agent: 'codex', brief: '', paneId: '', sessionId: `chat-${id}`, status: liveStatus, liveStatus, resolved: false, pr: '', workspace: '', branch: '', createdAt: 1, updatedAt: 1, ...extra,
 })
 
 describe('TestProjects_groups', () => {
@@ -26,5 +26,26 @@ describe('TestProjects_groups', () => {
     expect(projectOfSession([project], 'coord')?.role).toBe('coordinator')
     expect(projectOfSession([project], 'chat-a')?.role).toBe('thread')
     expect(projectOfSession([project], 'x')).toBeNull()
+  })
+})
+
+describe('TestProjects_board', () => {
+  const task = (id: string, column: ProjectTask['column'], extra: Partial<ProjectTask> = {}): ProjectTask => ({ id, title: id, notes: '', column, pr: '', threadId: '', createdAt: 1, updatedAt: 1, ...extra })
+
+  it('threads go by status, tasks by column, and a started task shows only as its thread', () => {
+    const cards = boardCards({
+      threads: [thread('w', 'working'), thread('b', 'blocked'), thread('d', 'idle', { pr: 'https://x/pull/1' }), thread('r', 'done', { resolved: true })],
+      tasks: [task('k1', 'todo'), task('k2', 'review'), task('k3', 'doing', { threadId: 'w' }), task('k4', 'doing', { threadId: 'gone-thread' })],
+    })
+    const ids = Object.fromEntries(Object.entries(cards).map(([column, list]) => [column, list.map(card => card.id)]))
+    expect(ids).toEqual({ todo: ['k1'], doing: ['w', 'k4'], needsYou: ['b'], review: ['d', 'k2'], done: ['r'] })
+    expect(cards.review[0].pr).toBe('https://x/pull/1')
+  })
+
+  it('tasks move anywhere but Needs you; threads only in or out of Done', () => {
+    const cards = boardCards({ threads: [thread('b', 'blocked'), thread('r', 'done', { resolved: true })], tasks: [task('k1', 'todo')] })
+    expect(boardTargets(cards.todo[0])).toEqual(['todo', 'doing', 'review', 'done'])
+    expect(boardTargets(cards.needsYou[0])).toEqual(['done'])
+    expect(boardTargets(cards.done[0])).toEqual(['review'])
   })
 })
