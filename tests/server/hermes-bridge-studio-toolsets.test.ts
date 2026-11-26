@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
@@ -11,3 +12,8 @@ it('routes Studio catalog tools called by name to their toolset in Hermes chats'
   })
   expect(stdout).toContain('Hermes bridge Studio toolsets verified')
 }, 30_000)
+
+it('builds each Hermes agent after keeping Studio\'s toolsets out of tool search', () => {
+  const pool = readFileSync(resolve('packages/server/src/modules/hermes/services/bridge/python/bridge_pool.py'), 'utf8')
+  expect(pool).toMatch(/keep_studio_tools_visible\(\)\n\s+agent = AIAgent\(/)
+})

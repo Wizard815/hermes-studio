@@ -17,5 +17,5 @@ it('applies the guard to every agent the bridge builds', () => {
   const pool = readFileSync(resolve('packages/server/src/modules/hermes/services/bridge/python/bridge_pool.py'), 'utf8')
   const built = pool.split('agent = AIAgent(').length - 1
   expect(built).toBe(1)
-  expect(pool).toMatch(/agent = AIAgent\([\s\S]*?\n\s+\)\n[\s\S]{0,600}apply_turn_guards\(agent, cfg\)/)
+  expect(pool).toMatch(/agent = AIAgent\([\s\S]*?\n\s+\)\n[\s\S]{0,600}apply_turn_guards\(agent, cfg\)\n\s+install_stall_tail_detector\(\)/)
 })

@@ -26,6 +26,9 @@ TOOLSETS = (
     ("ekko_studio_browser_", "ekko_studio_browser"),
 )
 PATCH_FLAG = "_studio_toolset_routing"
+VISIBLE_FLAG = "_studio_tools_visible"
+# Hermes's names for the tools of Studio's own MCP servers (ekko-studio-api, -use, -interaction...).
+STUDIO_TOOL_PREFIX = "mcp__ekko_studio_"
 
 
 def _bare_name(name: str) -> str:
@@ -115,4 +118,36 @@ def install_studio_toolset_routing() -> bool:
     setattr(routed, PATCH_FLAG, True)
     setattr(routed, "_studio_original", original)
     validation._route_deferred_call = routed
+    return True
+
+
+def keep_studio_tools_visible() -> bool:
+    """Studio's own MCP tools stay visible in Studio's Hermes chats (once per process).
+
+    Hermes's tool search defers every MCP tool, so Studio's toolsets (already one compact
+    ``list`` / ``describe`` / ``call`` tool per server) end up behind a second layer:
+    ``tool_search`` -> ``tool_describe`` -> ``tool_call`` -> the toolset. Small models
+    (hy4-flash in the OpenRouter E2E run, round 4) announced "I'll find the Studio phone
+    tool" and never reached it; with the toolsets visible the same model read the phone in
+    one turn. Other MCP servers and plugins still go behind tool search, and a profile that
+    names a Studio tool in ``tools.tool_search.defer`` keeps it deferred.
+    """
+    try:
+        import tools.tool_search as tool_search
+    except Exception:
+        return False
+    original = getattr(tool_search, "is_deferrable_tool_name", None)
+    if not callable(original):
+        return False
+    if getattr(original, VISIBLE_FLAG, False):
+        return True
+
+    def deferrable(name: str, defer_tools: Any = None) -> bool:
+        if isinstance(name, str) and name.startswith(STUDIO_TOOL_PREFIX) and not (defer_tools and name in defer_tools):
+            return False
+        return original(name, defer_tools)
+
+    setattr(deferrable, VISIBLE_FLAG, True)
+    setattr(deferrable, "_studio_original", original)
+    tool_search.is_deferrable_tool_name = deferrable
     return True

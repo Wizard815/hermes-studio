@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'packages/server/src/modules/hermes/services/bridge/python'))
-from bridge_studio_toolsets import install_studio_toolset_routing, route_studio_toolset_call, toolset_target
+from bridge_studio_toolsets import install_studio_toolset_routing, keep_studio_tools_visible, route_studio_toolset_call, toolset_target
 
 USE = 'mcp__ekko_studio_use__ekko_studio_use_toolset'
 BROWSER = 'mcp__ekko_studio_browser__ekko_studio_browser_toolset'
@@ -84,6 +84,46 @@ class RoutingTests(unittest.TestCase):
         finally:
             sys.modules.pop('agent', None)
             sys.modules.pop('agent.turn_tool_validation', None)
+
+
+class KeepStudioToolsVisible(unittest.TestCase):
+    """Hermes's tool search defers every MCP tool; Studio's own toolsets stay visible."""
+
+    def test_studio_tools_leave_tool_search_other_mcp_tools_stay(self):
+        tool_search = types.ModuleType('tools.tool_search')
+        asked = []
+
+        def is_deferrable_tool_name(name, defer_tools=None):  # Hermes 0.23: every MCP tool defers
+            asked.append(name)
+            return name.startswith('mcp__') or bool(defer_tools and name in defer_tools)
+
+        tool_search.is_deferrable_tool_name = is_deferrable_tool_name
+        package = types.ModuleType('tools')
+        package.tool_search = tool_search
+        sys.modules['tools'], sys.modules['tools.tool_search'] = package, tool_search
+        try:
+            self.assertTrue(keep_studio_tools_visible())
+            self.assertTrue(keep_studio_tools_visible())  # once per process
+            deferrable = tool_search.is_deferrable_tool_name
+            self.assertIs(deferrable._studio_original, is_deferrable_tool_name)
+            self.assertFalse(deferrable(USE))
+            self.assertFalse(deferrable('mcp__ekko_studio_interaction__ekko_studio_update_plan'))
+            self.assertTrue(deferrable('mcp__rea__search'))
+            self.assertFalse(deferrable('read_file'))
+            # A profile that names a Studio tool in tools.tool_search.defer keeps it deferred.
+            self.assertTrue(deferrable(USE, frozenset({USE})))
+        finally:
+            sys.modules.pop('tools', None)
+            sys.modules.pop('tools.tool_search', None)
+
+    def test_without_hermes_tool_search_nothing_changes(self):
+        sys.modules['tools'] = types.ModuleType('tools')
+        sys.modules['tools.tool_search'] = types.ModuleType('tools.tool_search')
+        try:
+            self.assertFalse(keep_studio_tools_visible())
+        finally:
+            sys.modules.pop('tools', None)
+            sys.modules.pop('tools.tool_search', None)
 
 
 if __name__ == '__main__':

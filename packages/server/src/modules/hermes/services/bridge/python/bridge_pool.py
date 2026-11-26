@@ -671,6 +671,9 @@ class AgentPool:
                 agent_cfg = cfg.get("agent") or {}
                 prompt = str(agent_cfg.get("system_prompt", "") or "").strip() or None
 
+                # Studio's own toolsets stay out of tool search, so small models reach them (bridge_studio_toolsets).
+                from bridge_studio_toolsets import keep_studio_tools_visible
+                keep_studio_tools_visible()
                 agent = AIAgent(
                     model=resolved_model,
                     fallback_model=_load_fallback_model(cfg),
@@ -706,8 +709,9 @@ class AgentPool:
                 # Never advertise those retired names in a newly built model tool snapshot.
                 self._filter_retired_mcp_tools(agent)
                 # "I'll read the screen." with no tool call is re-prompted, not the answer (bridge_turn_guards).
-                from bridge_turn_guards import apply_turn_guards
+                from bridge_turn_guards import apply_turn_guards, install_stall_tail_detector
                 apply_turn_guards(agent, cfg)
+                install_stall_tail_detector()
                 agent.compression_enabled = False
                 self._install_compression_hook(agent, session_id)
                 self._install_prepersist_dedup_hook(agent)

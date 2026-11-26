@@ -54,21 +54,39 @@ all, and with it off they get lost in the list.
   `components/hermes/settings/HermesToolSearchSettings.vue`,
   `stores/hermes/tool-load.ts`, strings in `i18n/tool-load-messages.ts`.
 
-## "I'll do it" and then nothing
+## Small models and Studio's own tools
 
-Small models often end a turn on an announcement with no tool call ("I'll find
-the Studio phone tool and read the screen."), and the chat stops there. Hermes
-has a bounded re-prompt for this, `agent.intent_ack_continuation`: at most two
-"Continue now. Execute the required tool calls…" nudges per turn, only before
-the turn's first tool result and only for a short reply that promises an
-action. Its default (`auto`) keeps it to Codex-style providers. Studio's
-bridge turns it on for Studio's Hermes chats
-(`bridge/python/bridge_turn_guards.py`); a profile that sets
-`agent.intent_ack_continuation` in its `config.yaml` (true, false or model
-names) keeps its own choice. A false positive costs one extra model call.
+Two things in Studio's bridge help small models (hy4-flash in the OpenRouter
+E2E run, round 4: the phone prompt went from 0 of 3 to 4 of 4 runs):
 
-It does not cover a model that stops after a tool result ("Now let me look up
-the tool."), or one that returns only reasoning (Hermes retries that itself).
+- **Studio's toolsets stay out of tool search.** Hermes's tool search hides
+  every MCP tool, so Studio's toolsets (already one compact `list` /
+  `describe` / `call` tool per server) sat behind a second layer:
+  `tool_search` → `tool_describe` → `tool_call` → the toolset. The bridge keeps
+  tools named `mcp__ekko_studio_*` visible
+  (`bridge_studio_toolsets.keep_studio_tools_visible`). Other MCP servers and
+  plugins still go behind tool search. A profile that lists a Studio tool in
+  `tools.tool_search.defer` keeps it deferred.
+- **"I'll do it" and then nothing is re-prompted** (`bridge_turn_guards.py`).
+  Hermes has a bounded re-prompt for a reply that only announces a tool call:
+  at most two "Continue now. Execute the required tool calls…" nudges per turn.
+  - Before the turn's first tool result: `agent.intent_ack_continuation`, off by
+    default outside Codex-style providers. The bridge turns it on unless the
+    profile's `config.yaml` sets it (true, false or model names).
+  - After a tool result: Hermes's stall guard only knows "let me now", "I'll
+    now", "now I'll". The bridge adds a short reply whose last sentence is a
+    plan to act ("Now let me find the tool.", "I'll call it.") or a "-ing … now"
+    clause ("…; locating it now."). "Let me know…" and statements such as "The
+    build is running now." stay answers.
+  A false positive costs one extra model call.
+
+Not covered: a model that returns only reasoning (Hermes retries that itself,
+then gives up), and a model that calls no tool after two nudges.
+
+Hermes's own self-improvement can write a skill from an earlier run that
+describes the old `tool_search` path for Studio tools (seen in a test home as
+`skills/studio-device-interaction`). Delete such a skill if a chat keeps going
+through `tool_search` for Studio tools.
 
 ## Limits
 
@@ -83,5 +101,6 @@ the tool."), or one that returns only reasoning (Hermes retries that itself).
 
 `tests/server/tool-load.test.ts` (store, threshold, watcher kind, and the
 bridge's counting via `tests/server/fixtures/hermes-bridge-tool-load.py`),
-`tests/server/hermes-bridge-turn-guards.test.ts` (the re-prompt switch),
+`tests/server/hermes-bridge-turn-guards.test.ts` (the re-prompts),
+`tests/server/hermes-bridge-studio-toolsets.test.ts` (Studio's toolsets stay visible),
 `tests/e2e/tool-load.spec.ts` (the notice's buttons and Settings → Tools).
