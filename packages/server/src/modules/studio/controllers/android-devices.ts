@@ -82,11 +82,14 @@ export async function screenshot(ctx: Context) {
 /** One phone tool call from an agent (Studio MCP `ekko_studio_use_phone`). */
 export async function agentAction(ctx: Context) {
   const input = body(ctx)
+  // A chat's run credential names its chat (Ekko's tools send no sessionId): that one wins,
+  // so the question, the trust rules and the bell's alert belong to the chat that asked.
+  const bound = text((ctx.state as { runBinding?: { sessionId?: unknown } }).runBinding?.sessionId)
   try {
     ctx.body = await phoneAgent.run({
       action: text(input.action),
       arguments: input.arguments && typeof input.arguments === 'object' ? input.arguments as Record<string, unknown> : {},
-      sessionId: text(input.sessionId),
+      sessionId: bound || text(input.sessionId),
       agent: text(input.agent) || 'agent',
     })
   } catch (error) { fail(ctx, error, 'The phone action failed') }
