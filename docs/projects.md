@@ -18,6 +18,13 @@ change: Projects is a second view of the same chat list.
   every 3 seconds, and a box that sends through `message_thread`. **Open full
   chat** swaps the thread into the main chat. On a phone a thread opens as the
   main chat. A thread waiting on you is answered in its full chat.
+- The pane's header is a switcher: **All threads (n open)** or any thread,
+  grouped by Needs you, Working, Done and Resolved. **All threads** (also a
+  link under each project) lists every thread with its status, agent, branch
+  and last message; picking one opens it.
+- **Counts.** The Projects button, and each project's folder in the normal chat
+  list, carry two numbers: threads that need you (warning colour) and threads
+  that are done or idle (success colour). They refresh every 10 seconds.
 - A project row shows what needs you first ("1 need you", "2 working").
   Expanded, it lists the coordinator, then threads grouped as Needs you,
   Working, Done and Resolved, with herdr's status glyphs.
@@ -136,7 +143,7 @@ All routes need a super admin.
   through the herdr bridge.
 - `modules/studio/routes/projects.ts`, `controllers/projects.ts`.
 - `bin/ekko-studio-mcp.mjs`: `ekko_studio_use_project`.
-- Client: `components/hermes/chat/ProjectsList.vue`, `ThreadPane.vue`, `project-groups.ts`,
+- Client: `components/hermes/chat/ProjectsList.vue`, `ThreadPane.vue`, `ProjectAttentionBadges.vue`, `project-groups.ts`,
   `api/studio/projects.ts`; Projects button in `PageSidebarNav.vue`.
 
 Tests: `tests/server/projects.test.ts`, `tests/client/project-groups.test.ts`,

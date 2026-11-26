@@ -82,3 +82,6 @@ export const readProjectThread = (id: string, threadId: string, limit = 20) =>
 
 export const messageProjectThread = (id: string, threadId: string, text: string) =>
   request<unknown>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}/message`, json('POST', { text }))
+
+export const getProject = async (id: string) =>
+  (await request<{ project: Project }>(`${base}/${encodeURIComponent(id)}`)).project

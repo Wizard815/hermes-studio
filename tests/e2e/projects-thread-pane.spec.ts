@@ -9,7 +9,9 @@ const sessions = [
   s('herdr-a', 'Fix Safari export button', { source: 'coding_agent', agent: 'claude-code', category_id: 4 }),
 ]
 const thread = { id: 't1', title: 'Fix Safari export button', agent: 'claude-code', brief: 'Fix it', paneId: 'w1:p1', sessionId: 'herdr-a', status: 'working', liveStatus: 'working', resolved: false, createdAt: 1, updatedAt: 1 }
-const project = { id: 'p1', name: 'Homelab', folder: '/srv/homelab', instructions: '', profile: 'default', categoryId: 4, coordinatorSessionId: 'coord-1', defaultAgent: 'claude-code', threads: [thread], counts: { needsYou: 0, working: 1, done: 0, resolved: 0 }, createdAt: 1, updatedAt: 1 }
+const waiting = { ...thread, id: 't2', title: 'Add Overseer Docker collector', agent: 'codex', sessionId: 'herdr-b', branch: 'studio/add-overseer-docker-collector-t2', status: 'blocked', liveStatus: 'blocked', updatedAt: 2 }
+const finished = { ...thread, id: 't3', title: 'Write the Omi setup guide', agent: 'hermes', sessionId: 'herdr-c', status: 'done', liveStatus: 'done', updatedAt: 3 }
+const project = { id: 'p1', name: 'Homelab', folder: '/srv/homelab', instructions: '', profile: 'default', categoryId: 4, coordinatorSessionId: 'coord-1', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true, threads: [thread, waiting, finished], counts: { needsYou: 1, working: 1, done: 1, resolved: 0 }, createdAt: 1, updatedAt: 1 }
 const history: Record<string, any[]> = {
   'coord-1': [{ id: 1, role: 'assistant', content: 'Coordinator says the Safari thread is working.', timestamp: 1 }],
   'herdr-a': [{ id: 2, role: 'assistant', content: 'Full thread chat transcript.', timestamp: 1 }],
@@ -49,6 +51,9 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
       json = { groups, allProviders: groups, profiles: [], default: 'fixture-model', default_provider: 'fixture' }
     }
     else if (path === '/api/studio/projects') json = { projects: [project] }
+    else if (path === '/api/studio/projects/p1') json = { project }
+    else if (path === '/api/studio/projects/p1/threads/t2') json = { thread: waiting, messages: [{ role: 'assistant', text: 'Waiting for approval to restart the overseer container.' }] }
+    else if (path === '/api/studio/projects/p1/threads/t3') json = { thread: finished, messages: [{ role: 'assistant', text: 'The guide is in docs/omi-setup.md.' }] }
     else if (path === '/api/studio/projects/p1/threads/t1') json = { thread, messages: [{ role: 'user', text: 'Fix the Safari export button.' }, { role: 'assistant', text: 'Found it: Safari has no showSaveFilePicker.' }] }
     else if (path === '/api/studio/projects/p1/threads/t1/message') { sent.push(request.postDataJSON()); json = { ok: true } }
     else if (path.startsWith('/api/studio/projects/for-session/')) json = { project: null }
@@ -66,6 +71,10 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
   })
 
   await page.goto('/#/hermes/chat?view=projects')
+  await expect(page.getByTestId('project-thread-t1')).toBeVisible({ timeout: 30_000 })
+  // The Projects button counts threads that need the person and threads that are done.
+  await expect(page.getByTestId('sidebar-projects').getByTestId('project-attention-needs')).toHaveText('1')
+  await expect(page.getByTestId('sidebar-projects').getByTestId('project-attention-idle')).toHaveText('1')
   await page.getByTestId('project-thread-t1').getByRole('button', { name: /Fix Safari/ }).click()
 
   // The coordinator is the main chat and the thread sits beside it.
@@ -80,6 +89,19 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
   await expect.poll(() => sent).toEqual([{ text: 'Also check Firefox.' }])
   await expect(pane).toContainText('Also check Firefox.')
 
+  // The switcher moves to all threads, and a card opens that thread.
+  await pane.getByTestId('thread-pane-switcher').click()
+  await page.locator('.n-base-select-option', { hasText: 'All threads (3 open)' }).click()
+  const all = pane.getByTestId('thread-pane-all')
+  await expect(all.getByTestId('thread-pane-card-t2')).toContainText('Waiting for approval to restart the overseer container.')
+  await expect(all.getByTestId('thread-pane-card-t2')).toContainText('studio/add-overseer-docker-collector-t2')
+  await expect(all.getByTestId('thread-pane-card-t3')).toContainText('The guide is in docs/omi-setup.md.')
+  await all.getByTestId('thread-pane-card-t2').click()
+  await expect(pane).toContainText('Waiting on you. Answer it in the full chat.')
+  await pane.getByTestId('thread-pane-switcher').click()
+  await page.locator('.n-base-select-option', { hasText: 'Fix Safari export button' }).click()
+  await expect(pane).toContainText('Found it: Safari has no showSaveFilePicker.')
+
   // Opening the full chat replaces the coordinator and closes the pane.
   await pane.getByTestId('thread-pane-open').click()
   await expect(page.getByText('Full thread chat transcript.')).toBeVisible()
@@ -87,7 +109,14 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
 
   // Back on the coordinator, the pane opens again and closes with its button.
   await page.getByTestId('project-coordinator').click()
-  await page.getByTestId('project-thread-t1').getByRole('button', { name: /Fix Safari/ }).click()
+  await page.getByTestId('project-all-threads').click()
+  await expect(pane.getByTestId('thread-pane-all')).toBeVisible()
+
+  // Back in the chat list, the project's folder carries the same counts.
+  await page.getByTestId('projects-back').click()
+  const folder = page.locator('.session-group-header', { hasText: 'Homelab' }).first()
+  await expect(folder.getByTestId('project-attention-needs')).toHaveText('1')
+  await page.getByTestId('sidebar-projects').click()
   await expect(pane).toBeVisible()
   await pane.getByTestId('thread-pane-close').click()
   await expect(pane).toHaveCount(0)

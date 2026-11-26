@@ -72,6 +72,7 @@ import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import ProjectsList from "./ProjectsList.vue";
 import ThreadPane from "./ThreadPane.vue";
+import ProjectAttentionBadges from "./ProjectAttentionBadges.vue";
 import { addChatToProject, listProjects, type Project, type ProjectThread } from "@/api/studio/projects";
 import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
@@ -169,14 +170,42 @@ function setProjectsView(on: boolean) {
 watch(() => route.query.view, view => { if (view === "projects") setProjectsView(true) }, { immediate: true });
 const projectsListRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const knownProjects = ref<Project[]>([]);
-// On wide screens a thread opens in a pane beside its project's coordinator chat.
-const paneThread = ref<{ project: Project; thread: ProjectThread } | null>(null);
+// On wide screens a thread opens in a pane beside its project's coordinator chat;
+// with no thread picked the pane lists all the project's threads.
+const paneThread = ref<{ project: Project; threadId: string | null; initial: ProjectThread | null } | null>(null);
 const threadsInPane = computed(() => projectsShown.value && !isMobile.value);
 const threadPaneShown = computed(() => threadsInPane.value && !!paneThread.value
   && chatStore.activeSessionId === paneThread.value.project.coordinatorSessionId);
-async function openProjectThread(project: Project, thread: ProjectThread) {
-  paneThread.value = { project, thread };
+async function openProjectThread(project: Project, thread: ProjectThread | null) {
+  paneThread.value = { project, threadId: thread?.id ?? null, initial: thread };
   if (chatStore.activeSessionId !== project.coordinatorSessionId) await handleSessionClick(project.coordinatorSessionId);
+}
+// Needs-you and done/idle counts for the Projects button and each project's chat folder.
+const projectAttention = ref<{ needsYou: number; idle: number } | null>(null);
+const projectAttentionByFolder = ref<Map<string, { needsYou: number; idle: number }>>(new Map());
+let projectAttentionTimer: ReturnType<typeof setInterval> | null = null;
+async function refreshProjectAttention() {
+  if (!isSuperAdmin.value || document.visibilityState !== "visible") return;
+  try {
+    const projects = await listProjects();
+    const byFolder = new Map<string, { needsYou: number; idle: number }>();
+    let needsYou = 0, idle = 0;
+    for (const project of projects) {
+      needsYou += project.counts.needsYou;
+      idle += project.counts.done;
+      if (project.categoryId != null) byFolder.set(`category-${project.categoryId}`, { needsYou: project.counts.needsYou, idle: project.counts.done });
+    }
+    projectAttention.value = { needsYou, idle };
+    projectAttentionByFolder.value = byFolder;
+  } catch { /* the counts are a hint; keep the last ones */ }
+}
+onMounted(() => {
+  void refreshProjectAttention();
+  projectAttentionTimer = setInterval(() => { void refreshProjectAttention() }, 10_000);
+});
+onUnmounted(() => { if (projectAttentionTimer) clearInterval(projectAttentionTimer) });
+function selectPaneThread(threadId: string | null) {
+  if (paneThread.value) paneThread.value = { ...paneThread.value, threadId, initial: null };
 }
 function openFromProjects(sessionId: string) {
   if (paneThread.value?.project.coordinatorSessionId !== sessionId) paneThread.value = null;
@@ -2860,6 +2889,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           :active="contentMode === 'connections' ? 'connections' : contentMode === 'agents' ? 'agents' : contentMode === 'models' ? 'models' : chatStore.runtimeMode === 'global_agent' ? 'global' : 'chat'"
           :primary-label="t('chat.newChat')"
           :projects-active="projectsShown"
+          :projects-attention="projectAttention"
           @primary="openNewChatPage"
           @projects="setProjectsView(!projectsShown)"
         >
@@ -2904,9 +2934,10 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           ref="projectsListRef"
           :active-session-id="chatStore.activeSessionId"
           :threads-in-pane="threadsInPane"
-          :pane-thread-id="threadPaneShown ? paneThread?.thread.id : null"
+          :pane-thread-id="threadPaneShown ? paneThread?.threadId : null"
           @open="openFromProjects"
           @thread="openProjectThread"
+          @all-threads="openProjectThread($event, null)"
           @back="setProjectsView(false)"
         />
         <template v-else>
@@ -3061,6 +3092,11 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               <path v-else d="M3 17.5V6.5A1.5 1.5 0 0 1 4.5 5h4.2l2 2.2h7.8A1.5 1.5 0 0 1 20 8.7V10M3.2 18.2l2.3-7.4a1.5 1.5 0 0 1 1.4-1h14.2a1 1 0 0 1 1 1.3l-2 6.6a1.5 1.5 0 0 1-1.4 1.1H4.5a1.5 1.5 0 0 1-1.3-.6Z" />
             </svg>
             <span class="session-group-label">{{ group.label }}</span>
+            <ProjectAttentionBadges
+              v-if="projectAttentionByFolder.get(group.key)"
+              :needs-you="projectAttentionByFolder.get(group.key)!.needsYou"
+              :idle="projectAttentionByFolder.get(group.key)!.idle"
+            />
             <span class="session-group-count">{{ group.totalCount ?? group.sessions.length }}</span>
             <button
               v-if="group.key !== 'category-none'"
@@ -3697,8 +3733,10 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           <ThreadPane
             v-if="threadPaneShown && paneThread"
             :project-id="paneThread.project.id"
-            :thread="paneThread.thread"
+            :thread-id="paneThread.threadId"
+            :initial-thread="paneThread.initial"
             @open="openFromProjects"
+            @select="selectPaneThread"
             @close="paneThread = null"
           />
           <Transition

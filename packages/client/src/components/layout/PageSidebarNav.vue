@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProjectAttentionBadges from '@/components/hermes/chat/ProjectAttentionBadges.vue'
 import { deploymentUrl } from '@/utils/deployment-url'
 import { computed } from 'vue'
 import { NTooltip } from 'naive-ui'
@@ -17,6 +18,8 @@ const props = defineProps<{
   primaryLabel?: string
   /** The chat page shows its Projects list instead of the chats. */
   projectsActive?: boolean
+  /** Threads across all projects that need the person, and that are done or idle. */
+  projectsAttention?: { needsYou: number; idle: number } | null
 }>()
 
 const emit = defineEmits<{
@@ -157,6 +160,7 @@ function openUpstream() {
           <path d="M8 13h8M12 9v8" />
         </svg>
         <span>{{ t('projects.nav') }}</span>
+        <ProjectAttentionBadges v-if="projectsAttention" :needs-you="projectsAttention.needsYou" :idle="projectsAttention.idle" />
       </button>
       <button
         v-if="!hasNavigationRail"

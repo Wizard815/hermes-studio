@@ -33,6 +33,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   open: [sessionId: string]
   thread: [project: Project, thread: ProjectThread]
+  allThreads: [project: Project]
   back: []
 }>()
 
@@ -215,6 +216,7 @@ defineExpose({ refresh })
         </button>
         <div class="project-actions">
           <button type="button" class="projects-link" data-testid="project-new-thread" @click="openNewThread(project)">+ {{ t('projects.newThread') }}</button>
+          <button v-if="props.threadsInPane && project.threads.length" type="button" class="projects-link" data-testid="project-all-threads" @click="emit('allThreads', project)">{{ t('projects.allThreadsLink') }}</button>
           <button type="button" class="projects-link" @click="openEditProject(project)">{{ t('projects.edit') }}</button>
           <NPopconfirm @positive-click="stopProject(project)">
             <template #trigger>
