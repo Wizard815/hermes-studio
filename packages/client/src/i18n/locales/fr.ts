@@ -9,6 +9,7 @@ import { herdrMessages } from '../herdr-messages'
 import { spaceFoldersMessages } from '../space-folders-messages'
 import { projectsMessages } from '../projects-messages'
 import { pinCommentMessages } from '../pin-comment-messages'
+import { studiosMessages } from '../studios-messages'
 import { herdrAppMessages } from '../herdr-app-messages'
 import { commandCenterMessages } from '../command-center-messages'
 import { runLimitsMessages } from '../run-limits-messages'
@@ -39,6 +40,7 @@ export default {
   ...spaceFoldersMessages['fr'],
   ...projectsMessages['fr'],
   ...pinCommentMessages['fr'],
+  ...studiosMessages['fr'],
   ...herdrAppMessages['fr'],
   ...commandCenterMessages['fr'],
   ...runLimitsMessages['fr'],

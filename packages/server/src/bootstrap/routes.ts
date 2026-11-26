@@ -43,6 +43,7 @@ import { androidAppLinkRoutes } from '../modules/studio/routes/android-app-links
 import { agentWorkPublicRoutes, agentWorkRoutes } from '../modules/studio/routes/agent-work'
 import { commandCenterRoutes } from '../modules/studio/routes/command-center'
 import { projectRoutes } from '../modules/studio/routes/projects'
+import { federationPublicRoutes, peerRoutes } from '../modules/studio/routes/peers'
 import { runLimitRoutes } from '../modules/studio/routes/run-limits'
 import { toolLoadRoutes } from '../modules/studio/routes/tool-load'
 import { uiSkillsRoutes } from '../modules/studio/routes/ui-skills'
@@ -125,6 +126,8 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(sessionSharePublicRoutes.routes())
   app.use(chatWebhookPublicRoutes.routes())
   app.use(browserPublicRoutes.routes())
+  // Other Studios: each request carries the sender's device signature (docs/projects.md#federation).
+  app.use(federationPublicRoutes.routes())
   // Mattermost's Approve / Reject buttons carry their own per-item secret.
   app.use(agentWorkPublicRoutes.routes())
   // A phone trades its one-use pairing code for its key (docs/approval-alerts.md).
@@ -164,6 +167,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(agentWorkRoutes.routes())
   app.use(commandCenterRoutes.routes())
   app.use(projectRoutes.routes())
+  app.use(peerRoutes.routes())
   app.use(runLimitRoutes.routes())
   app.use(toolLoadRoutes.routes())
   app.use(uiSkillsRoutes.routes())

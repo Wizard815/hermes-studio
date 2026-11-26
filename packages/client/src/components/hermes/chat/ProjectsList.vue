@@ -13,6 +13,7 @@ import {
   type Project,
   type ProjectThread,
 } from '@/api/studio/projects'
+import StudiosDialog from './StudiosDialog.vue'
 import { THREAD_AGENTS, THREAD_GROUPS, groupThreads, projectSummary, threadDisplayStatus } from './project-groups'
 
 /**
@@ -43,6 +44,7 @@ const projects = ref<Project[]>([])
 const loading = ref(true)
 const loadError = ref('')
 const expanded = ref<Set<string>>(new Set(readExpanded()))
+const studiosOpen = ref(false)
 
 function readExpanded(): string[] {
   try { return JSON.parse(localStorage.getItem('studio_projects_expanded') || '[]') } catch { return [] }
@@ -172,10 +174,15 @@ defineExpose({ refresh })
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="15 18 9 12 15 6" /></svg>
         <span>{{ t('projects.back') }}</span>
       </button>
-      <button type="button" class="projects-new" data-testid="projects-new" @click="openNewProject">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-        <span>{{ t('projects.newProject') }}</span>
-      </button>
+      <div class="projects-head-actions">
+        <button type="button" class="projects-new" data-testid="projects-studios" :aria-label="t('studios.title')" :title="t('studios.title')" @click="studiosOpen = true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="3" width="8" height="8" rx="1" /><rect x="14" y="13" width="8" height="8" rx="1" /><path d="M10 7h4a2 2 0 0 1 2 2v4" /></svg>
+        </button>
+        <button type="button" class="projects-new" data-testid="projects-new" @click="openNewProject">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+          <span>{{ t('projects.newProject') }}</span>
+        </button>
+      </div>
     </div>
 
     <div v-if="loadError" class="projects-note" role="alert">
@@ -263,6 +270,8 @@ defineExpose({ refresh })
       </div>
     </section>
 
+    <StudiosDialog v-model:show="studiosOpen" :projects="projects" />
+
     <NModal v-model:show="projectForm.show" preset="card" :title="projectForm.editing ? t('projects.edit') : t('projects.newProject')" style="max-width: 520px">
       <NForm label-placement="top" @submit.prevent="saveProject">
         <NFormItem :label="t('projects.form.name')" required>
@@ -344,6 +353,8 @@ defineExpose({ refresh })
   align-items: center;
   padding: 2px 8px 6px;
 }
+
+.projects-head-actions { display: flex; align-items: center; gap: 2px; }
 
 .projects-back,
 .projects-new,

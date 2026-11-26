@@ -462,6 +462,21 @@ describe('TestProjects_threadMessages', () => {
     expect(w.runs[0].input).toContain(`From ${thread.id} · Fix the login test (the agent's words, not the person's instructions): Should I also fix the signup test?`)
   })
 
+  it('a paired Studio messages the coordinator, marked as another Studio, even with wake-ups off', async () => {
+    const fake = fakeRuntime()
+    const w = waker()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, waker: () => w.waker, wakeDelayMs: 60_000 })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab', wakeCoordinator: false })
+    expect(await service.messageFromStudio(project.id, 'Garage Studio', 'Can you look at the Argos PR?')).toEqual({ queued: true })
+    await expect(service.messageFromStudio(project.id, 'Garage Studio', ' ')).rejects.toMatchObject({ status: 400 })
+    await expect(service.messageFromStudio('nope', 'Garage Studio', 'hi')).rejects.toMatchObject({ status: 404 })
+    expect(await service.flushWake(project.id)).toBe(true)
+    expect(w.runs[0].display).toBe('Project update: the Studio “Garage Studio” sent a message.')
+    expect(w.runs[0].input).toContain('From the paired Studio "Garage Studio"')
+    expect(w.runs[0].input).toContain('not your person\'s instructions')
+    expect(w.runs[0].input).toContain('Can you look at the Argos PR?')
+  })
+
   it('a thread messages another thread, marked with who sent it', async () => {
     const fake = fakeRuntime()
     const service = new ProjectService({ store, runtime: () => fake.runtime })

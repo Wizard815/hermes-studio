@@ -172,6 +172,46 @@ resolving and board changes are refused with a 403, so a thread asks the
 coordinator instead. Messages are capped at 4000 characters and 50 waiting per
 coordinator.
 
+## Federation
+
+Two Studios on your LAN or Tailscale can pair and share projects. Open
+**Projects → Studios** (the two-squares button next to New project).
+
+1. On Studio A, **Make a pairing code**. It lasts 5 minutes and works once;
+   only its hash is stored.
+2. On Studio B, type A's address (like `http://studio-a.tailnet.ts.net:8648`),
+   the code, and B's own address as A reaches it. **Connect**.
+3. A shows B as "Waiting for your approval". A's super admin approves it.
+4. Each side picks, per paired Studio, which of its projects that Studio may
+   see. Nothing is shared until you pick one.
+
+Under **Show its projects**, B sees each project A shares: open threads with
+their agent, status and PR, and board tasks. B can message A's coordinator
+(it arrives as a project turn marked "From the paired Studio …", and the
+coordinator is told to check with its person before anything risky) or add a
+task to A's board (its notes say which Studio added it).
+
+What crosses: project name, counts, thread titles, agents, status and PR links,
+task titles and columns, and link artifacts. What never crosses: provider keys,
+chats and briefs, instructions, project memory, files, the folder, approvals,
+and every project you did not share.
+
+How it is secured:
+
+- Each Studio has its own Ed25519 device key (the one the app relay uses).
+  Pairing swaps public keys; the code proves the person typed it.
+- Every request between Studios is signed over the method, path, body hash,
+  a nonce and the time. Requests more than 5 minutes off, replayed nonces,
+  unknown keys and changed bodies get a 401.
+- **Unpair** removes the Studio here and tells the other side to forget this
+  one too.
+- Starting threads on another Studio's herdr ("remote herdr") is not built:
+  a paired Studio can only message the coordinator, which decides.
+
+The coordinator tool has no federation actions; the person uses the Studios
+dialog. Paired Studios are kept in `projects/peers.json` under the Web UI home
+(mode 600).
+
 ## The coordinator
 
 Each turn of a chat in a project gets a `<studio_project_context>` block
@@ -227,6 +267,26 @@ All routes need a super admin.
 | `GET /api/studio/projects/for-session/:sessionId` | The project and role of a chat |
 | `POST /api/studio/projects/tool/:action` | The coordinator tool's entry point |
 
+Paired Studios (super admin):
+
+| Method and path | Does |
+| --- | --- |
+| `GET /api/studio/peers` | This Studio's id and label, and paired Studios |
+| `POST /api/studio/peers/code` | A one-time pairing code `{ code, expiresAt }` |
+| `POST /api/studio/peers/pair` | Pair `{ url, code, selfUrl, label? }` |
+| `PUT /api/studio/peers/:peerId` | `{ approved?, label?, url?, projects? }`: approve, rename, or pick shared projects |
+| `DELETE /api/studio/peers/:peerId` | Unpair on both sides |
+| `GET /api/studio/peers/:peerId/projects` | The projects that Studio shares with this one |
+| `POST /api/studio/peers/:peerId/projects/:projectId/message` | `{ text }` to its coordinator |
+| `POST /api/studio/peers/:peerId/projects/:projectId/tasks` | `{ title, notes? }` on its board |
+
+Between Studios (no login; signed with the sender's device key, headers
+`x-studio-peer`, `x-studio-nonce`, `x-studio-timestamp`, `x-studio-signature`):
+`POST /api/studio/federation/pair`, `GET /api/studio/federation/projects`,
+`POST /api/studio/federation/projects/:id/message`,
+`POST /api/studio/federation/projects/:id/tasks`,
+`DELETE /api/studio/federation/peer`.
+
 ## What goes wrong
 
 - **herdr off:** starting or messaging a thread fails with "Projects run their
@@ -237,7 +297,16 @@ All routes need a super admin.
 - **A thread never shows a chat:** herdr did not detect the agent. Open the
   herdr page to see its pane.
 - **Status looks stale:** the list refreshes every 5 seconds while visible.
-- Projects are not shared between Studios yet. See the federation plan.
+- **"That pairing code is wrong or expired":** codes last 5 minutes and work
+  once. Make a new one on the other Studio.
+- **"The other Studio at … isn't answering":** check that it runs and that
+  this Studio can reach the address over the LAN or Tailscale.
+- **"Waiting for approval":** the other Studio has not approved this one yet.
+- **401 between Studios:** the clocks are more than 5 minutes apart, or a
+  reverse proxy changes the path or body. Sync the clocks (NTP), and serve
+  Studio at the root of its address.
+- **A shared project shows nothing:** the other side shared no projects with
+  this Studio yet.
 
 - **"Could not make a git worktree for the thread":** git refused, usually
   because the repo has no commit yet or a branch of that name exists. Commit
@@ -269,8 +338,10 @@ All routes need a super admin.
 - `bootstrap/herdr.ts` `projectRuntime()`: launches, status and messages
   through the herdr bridge.
 - `modules/studio/routes/projects.ts`, `controllers/projects.ts`.
+- `modules/studio/services/projects/peers.ts`, `routes/peers.ts`,
+  `controllers/peers.ts`: paired Studios and the federation API.
 - `bin/ekko-studio-mcp.mjs`: `ekko_studio_use_project`.
-- Client: `components/hermes/chat/ProjectsList.vue`, `ThreadPane.vue`, `ProjectBoard.vue`, `ProjectAttentionBadges.vue`, `ProjectIcon.vue`, `project-groups.ts`,
+- Client: `components/hermes/chat/ProjectsList.vue`, `ThreadPane.vue`, `ProjectBoard.vue`, `StudiosDialog.vue`, `ProjectAttentionBadges.vue`, `ProjectIcon.vue`, `project-groups.ts`,
   `api/studio/projects.ts`; Projects button in `PageSidebarNav.vue`.
 
 Tests: `tests/server/projects.test.ts`, `tests/client/project-groups.test.ts`,
