@@ -325,20 +325,56 @@ Checks: `npm run build` passes. The touched suites pass (7 files, 73 tests: herd
 bridge, LLM wiki provider and settings, Test Lab templates and service). `npm run harness:check`: the
 same 29 findings as `studio-herder`, plus this report folder.
 
-### Broken or open, not fixed
+### Broken or open
 
-1. **hy4-flash stops before tool calls.** Several Hermes turns ended with "I'll call the tool"
-   and no call, or with empty "thinking-only" answers (Omi's Agent work item, the elevated Hermes
-   pane, the phone screen). Ekko and Claude Code with the same model did call their tools. A model
-   limit; Studio's side worked when the tool was reached.
-2. **Phone questions from Ekko are not linked to the chat.** The phone approval had
-   `sessionId: ""`, so the bell's alert opens the Android page, not the chat.
-3. **Coding agents that are not installed say "Node/npm environment was not detected"** although
-   npm is on Studio's PATH. `isNodeEnvironmentMissingError` treats any `ENOENT` (such as the agent's
-   own missing binary) as a missing Node.
+The first three were fixed afterwards (next section).
+
+1. ~~**hy4-flash stops before tool calls.**~~ Fixed in Studio (`2a82c54`, `409a419`).
+2. ~~**Phone questions from Ekko are not linked to the chat.**~~ Fixed (`4d60d9e`).
+3. ~~**Coding agents that are not installed say "Node/npm environment was not detected"**~~ Fixed (`71651b5`).
 4. **Codex's web switch can't be seen through Studio's provider**: Codex offers no `web_search` on a
    chat-completions provider, with the switch on or off.
 5. Clean rooms ran as root (Studio ran as root here), as in round 1.
+6. **Hermes's Agent work and phone calls carry no chat id** (found while re-testing): Hermes's
+   Studio MCP process is shared by its chats, so an item a Hermes chat creates has an empty
+   `sessionId` (already listed under Limits in `docs/android-devices.md`). Ekko's are linked.
+
+### Follow-up fixes (2026-11-26)
+
+Re-tested live on a fresh Studio (same rules: hy4-flash only, $0.05 per run, fake adb).
+
+- `71651b5` fix(coding-agents): a missing agent says it is not installed, not that Node is missing.
+  `isNodeEnvironmentMissingError` read any `ENOENT` (`spawn kimi ENOENT`) as a missing Node. Now only
+  a missing `node`/`npm` counts. Test: `tests/server/coding-agent-status-missing.test.ts` (fails
+  without the fix). Live: "Kimi Code is not installed", "CodeBuddy is not installed", ...
+- `4d60d9e` fix(android): a phone question belongs to the chat that asked. Ekko's phone tool sends
+  no `sessionId`; the agent route now takes the chat from the run's credential (`runBinding`, as
+  Agent work does). Test: `tests/server/android-agent-run-binding.test.ts`. Live: the Ekko tap
+  question and its bell alert carry the Ekko chat's id.
+- `2a82c54` and `409a419` fix(hermes): small models reach Studio's tools in Studio's Hermes chats.
+  Three causes, each confirmed live:
+  - Hermes's tool search hides every MCP tool (a stock chat: 29 tools, 13 hidden, under the 80-tool
+    notice threshold), so Studio's toolsets sat behind `tool_search` → `tool_describe` →
+    `tool_call`. With tool search off by hand the same prompt worked. The bridge now keeps
+    `mcp__ekko_studio_*` tools visible; other MCP servers stay behind tool search.
+  - Hermes's re-prompt for "I'll find the tool…" with no tool call
+    (`agent.intent_ack_continuation`) is off outside Codex providers; the bridge turns it on unless
+    the profile sets it. Live it fired twice ("[System: Continue now…]") on the old toolset layout.
+  - Hermes's stall guard misses "Now let me discover the tool." and "…; locating it now." after a
+    tool result; the bridge widens it, within Hermes's 400-character and two-nudge limits.
+  Tests: `tests/server/hermes-bridge-turn-guards.test.ts`, `hermes-bridge-studio-toolsets.test.ts`
+  (both checked against Hermes 0.23.4's own `classify_tools` and `trailing_continue_intent`).
+  Live, the round-4 phone prompt in a Hermes chat: **0 of 3 runs with the two patches switched off,
+  4 of 4 with them** (each read "Save" and "Send" from the fake phone). The Omi prompt (write a file,
+  then create Agent work) worked 2 of 2 (round 4: 0 of 1).
+  Note: Hermes's self-improvement had written a skill in the test home from the earlier runs
+  (`skills/studio-device-interaction`) describing the old `tool_search` path; it was deleted before
+  the comparison runs, since a fresh install doesn't have it. `docs/hermes-tool-load.md` says so.
+
+Checks: `npm run build` passes; the touched and related suites pass (9 files, 47 tests);
+`npm run harness:check` has the same 30 findings as before (29 on `studio-herder` plus this report
+folder). Cost of the follow-up: $12.1018 before, $12.1399 after: **$0.0381** (the key had gone up
+about $0.67 overnight from other use). Round 4 in total: $0.0423 + $0.0381 = **$0.080**.
 
 Setup notes (not Studio bugs): Node 22 made the client warn "upgrade to version 23", so Studio
 ran on Node 24 (`npm rebuild node-pty`); npm 11 skips install scripts unless allowed, so Claude Code
@@ -351,7 +387,7 @@ showed the (fake, revoked) Omi key and webhook secret were left out.
 
 OpenRouter key usage: **$11.3885 before, $11.4308 after: $0.0423** for round 4 (stop at $0.45,
 budget $0.50). The key had gone up about $3.79 between rounds 3 and 4, not from this session.
-Total for this session's four rounds: $0.098 + $0.0755 + $0.1097 + $0.0423 = **$0.325**.
+Total for this session's four rounds: $0.098 + $0.0755 + $0.1097 + $0.0423 = **$0.325** (plus $0.0381 for the follow-up fixes: **$0.363**).
 
 ### Screenshots
 
