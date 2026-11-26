@@ -547,8 +547,12 @@ function isNodeEnvironmentMissingError(err: any): boolean {
     typeof err?.stderr === 'string' ? err.stderr : '',
     typeof err?.stdout === 'string' ? err.stdout : '',
   ].filter(Boolean).join('\n').toLowerCase()
-  return text.includes('enoent') ||
+  // ENOENT only means Node is missing when the program that was not found is node or npm:
+  // `spawn kimi ENOENT` is an agent that is not installed, not a missing Node.
+  const missing = String(err?.path || err?.spawnfile || '').split(/[\\/]/).pop()?.toLowerCase().replace(/\.(exe|cmd)$/, '') || ''
+  return (err?.code === 'ENOENT' && (missing === 'node' || missing === 'npm')) ||
     text.includes('spawn npm') ||
+    text.includes('spawn node') ||
     text.includes('npm: command not found') ||
     text.includes('npm not found') ||
     text.includes('node: command not found') ||
@@ -2705,7 +2709,7 @@ export async function getCodingAgentStatus(definition: CodingAgentDefinition): P
       rawVersion: '',
       source: commandLocated ? 'user-cli' : 'not-installed',
       path: commandLocated ? resolvedCommand : '',
-      error: normalizeError(err),
+      error: !commandLocated && err?.code === 'ENOENT' ? `${definition.name} is not installed` : normalizeError(err),
       ...(compatibility ? { compatibility } : {}),
     }
     recordCodingAgentStatus(status)
