@@ -343,6 +343,23 @@ describe('herdr bridge', () => {
     expect(ended).toBe('')
   })
 
+  it("hands the typed text to the pane turn, and leaves Studio's chat client (its lines are Studio runs) alone", async () => {
+    const nativeId = '59595959-2222-3333-4444-555555555555'
+    const { deps, sessions } = makeDeps(dir)
+    sessions.set('chat-h', { id: 'chat-h', agent: 'hermes', title: 'H', workspace: null, agent_native_session_id: nativeId })
+    herdr.panes = [{ pane_id: 'w1:p5', workspace_id: 'w1', agent: 'hermes', agent_status: 'idle', agent_session: { kind: 'id', value: nativeId } }]
+    const typed: string[] = []
+    deps.paneTurn = async (_sessionId, _paneId, _isCurrent, text) => { typed.push(text); return { end: () => {} } }
+    await startBridge(deps)
+    await bridge!.promptSession('chat-h', 'plan the release')
+    expect(typed).toEqual(['plan the release'])
+    // The same pane now runs Studio's chat client (Ekko, or Hermes without its CLI).
+    herdr.processes['w1:p5'] = [{ argv: ['node', '/opt/studio/bin/herdr-plugin/studio-herdr.mjs', 'chat', 'chat-h'] }]
+    await bridge!.promptSession('chat-h', 'and the notes')
+    expect(typed).toEqual(['plan the release'])
+    expect(herdr.requests.filter(r => r.method === 'agent.prompt').at(-1)?.params).toEqual({ target: 'w1:p5', text: 'and the notes' })
+  })
+
   it('opens a Studio chat as a herdr pane with the routed launch command and env', async () => {
     const nativeId = '78787878-2222-3333-4444-555555555555'
     const { deps, sessions, links } = makeDeps(dir)
@@ -702,6 +719,22 @@ describe('herdr bridge', () => {
     expect(herdr.requests.find(r => r.method === 'agent.prompt')?.params).toEqual({ target: 'w1:p3', text: 'The chat so far: fix the login' })
     // An agent that never starts gives up instead of waiting forever.
     await expect(bridge!.followCleanRoom('w1:p9', launch, { sessionId: 'chat-1', nativeId, recap: false }, { startMs: 600 })).resolves.toBe(false)
+  })
+
+  it('gives an imported Hermes chat the chat so far when Hermes has no session for it', async () => {
+    const { deps, sessions } = makeDeps(dir)
+    deps.chatRecap = async () => 'The chat so far'
+    deps.hermesNeedsRecap = async id => id === 'import-hermes'
+    deps.prepareSessionLaunch = async () => ({ agentId: 'hermes', command: 'hermes', args: [], env: {}, workspaceDir: dir, provider: '', model: '', cleanRoom: true })
+    for (const id of ['import-hermes', 'studio-hermes']) sessions.set(id, { id, agent: 'hermes', title: id, workspace: null, agent_native_session_id: '', profile: 'default' })
+    await startBridge(deps)
+    herdr.panes.push({ pane_id: 'w1:p7', workspace_id: 'w1', agent_status: 'unknown' })
+    await bridge!.refresh()
+    const follow: Array<{ sessionId: string; recap: boolean }> = []
+    ;(bridge as any).followCleanRoom = async (_pane: string, _launch: unknown, chat: { sessionId: string; recap: boolean }) => { follow.push({ sessionId: chat.sessionId, recap: chat.recap }); return true }
+    await bridge!.prepareResume('import-hermes', 'w1:p7')
+    await bridge!.prepareResume('studio-hermes', 'w1:p7')
+    expect(follow).toEqual([{ sessionId: 'import-hermes', recap: true }, { sessionId: 'studio-hermes', recap: false }])
   })
 
   it('records a fresh clean-room session from its transcript in the room\'s home, and tells herdr', async () => {

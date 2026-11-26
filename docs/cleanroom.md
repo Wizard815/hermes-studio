@@ -56,7 +56,7 @@ The walls and checks are settings too. Each default is the safe one:
 | `leakCheck` | `true` | Look for secret-looking files in the chat's folder before mounting it. |
 | `egressLog` | `true` | Log every outside connection attempt. |
 | `auditChain` | `true` | Link each egress line to the one before by hash. |
-| `allowWebTools` | `false` | Let agents use their own web search and fetch. Off: Claude Code's `WebSearch` and `WebFetch` are denied, Codex's `web_search` is disabled. |
+| `allowWebTools` | `false` | Let agents use their own web search and fetch. Off: each agent's own switch turns them off (see [Web tools](#web-tools)). |
 
 Changing a wall (image, network, user, capabilities, read-only root, web
 tools, limits) makes the room again on its next turn. The chat's folder and
@@ -67,6 +67,45 @@ often wants to write somewhere outside `/root`, `/tmp` or the chat's folder.
 Turn `readOnlyRoot` off for that room only as a last resort. Agents on Studio's providers (scoped mode) reach
 their model through Studio; agents on their own logins need their API host in
 `allowHosts` and their login inside the container.
+
+## Web tools
+
+With `allowWebTools` off (the default), Studio turns each agent's own web
+search and fetch off with the agent's own switch
+(`services/cleanroom/web-tools.ts`). Policy files are mounted read-only in
+every room; each agent reads only its own. Turning `allowWebTools` on makes
+the room again without them.
+
+| Agent | How | Tools turned off | Where the switch is documented |
+| --- | --- | --- | --- |
+| Claude Code | `/etc/claude-code/managed-settings.json` (`permissions.deny`) | `WebSearch`, `WebFetch` | Claude Code managed settings |
+| Codex | `/etc/codex/managed_config.toml` (`web_search = "disabled"`) | `web_search` | Codex managed config |
+| Qwen Code | `/etc/qwen-code/settings.json` (system settings: `permissions.deny` and `tools.disabled`) | `web_fetch`, `web_search` | Qwen Code `docs/users/configuration/settings.md` |
+| Gemini CLI | `/etc/gemini-cli/settings.json` (system settings: `tools.exclude`) | `google_web_search`, `web_fetch` | Gemini CLI `docs/reference/configuration.md`. Studio does not run Gemini CLI as a chat agent; the file covers it if it runs inside a room. |
+| OpenCode | `/etc/opencode/opencode.json` (managed config, read last: `permission` `deny`) | `webfetch`, `websearch` | opencode 1.19.6 (`opencode-linux-x64`): managed config folder `/etc/opencode`; a `deny` permission removes the tool |
+| Grok | `/etc/grok/requirements.toml` (always enforced: `disable_web_search`, `[features] web_fetch`, `backend_tools`) | `web_search`, `web_fetch`, xAI's server-side search | Grok 1.0.92 built-in user guide (config reference) |
+| DSH | a patch turning the `tool-web` plugin off, `--patch /etc/studio-cleanroom/dsh-no-web-tools.patch.yml` | `web_search`, `web_fetch` | `@deepseek-ai/dsh-base` `cordis.patch.yml` (plugin id `tool-web`), `dsh-tool-web` README |
+| Copilot | flags `--excluded-tools=web_fetch --disable-mcp-server=github-mcp-server` | `web_fetch`; `web_search` (from the built-in GitHub MCP server) | Copilot CLI changelog (`--excluded-tools` works in ACP mode) |
+| Qoder | flags `--disallowed-tools WebSearch`, `WebFetch`, `ImageSearch` | `WebSearch`, `WebFetch`, `ImageSearch` | `@qoder-ai/qodercli` 1.1.98 (`--disallowed-tools <tool>`) |
+| CodeBuddy | flag `--disallowedTools=WebSearch,WebFetch` | `WebSearch`, `WebFetch` | `@tencent-ai/codebuddy-code` 2.187.0 (`--disallowedTools`) |
+| Kimi Code | `[tools] disabled` in its `config.toml` | `WebSearch`, `FetchURL` | Kimi Code `docs/en/configuration/config-files.md` |
+| Pi | nothing to turn off | none: Pi has no web tools | `@earendil-works/pi-coding-agent` 1.6.1 (read, bash, edit, write, grep, find, ls) |
+| Cursor, Antigravity, ZCode | can't be turned off | their web tools stay on | no switch Studio can rely on (Cursor's CLI and docs could not be read; Antigravity and ZCode document none) |
+
+What goes wrong:
+
+- Kimi Code has no system or managed settings file. Studio writes the switch
+  into the `config.toml` Kimi reads: Studio's own (`KIMI_CODE_HOME`, written
+  again every turn) or, on the agent's own login, `/root/.kimi-code/config.toml`
+  in the room's home, between two marker comments it takes out again when
+  web tools are allowed. The agent can edit that file inside the room; the
+  change counts from its next start.
+- Flags only reach turns Studio starts and herdr panes Studio opens. A
+  command the agent runs inside the room (another copy of itself) does not
+  get them.
+- For Cursor, Antigravity and ZCode the web tools stay on. The network
+  allowlist still blocks other sites, but an agent whose provider searches on
+  its own servers (outside the room) is not stopped by the room.
 
 ## Self-check
 
@@ -83,7 +122,10 @@ plain node). It reports, and Studio judges against the settings:
   proxy must be refused, an allowed host (`registry.npmjs.org`) should answer,
   Studio's API must be refused;
 - no Docker socket;
-- the web-tool policy files, when web tools are off.
+- web tools, for the room's agent: off (and how), "has no web tools" (Pi),
+  missing (a policy file is not there, or Kimi's `config.toml` does not name
+  its web tools: a failure), or "can't be turned off for <agent>; the
+  network allowlist still blocks other sites" (a warning).
 
 The chat shows a short line above the messages ("Self-check passed", or what
 failed); click it to see each item. The result is kept per room

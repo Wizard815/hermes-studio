@@ -256,6 +256,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** Studio's message, or the translated one when its code says Node/npm itself is missing. */
+function mutationMessage(result: { message?: string; code?: string }, fallback: string): string {
+  if (result.code === 'node_environment_missing') return t('codingAgents.nodeEnvironmentMissing')
+  return result.message || fallback
+}
+
 type AgentManagementOperation = 'install' | 'delete'
 
 function operationLabel(operation: AgentManagementOperation): string {
@@ -500,7 +506,7 @@ async function handleInstall(id: CodingAgentId, options: { version?: string; rol
       message.info(result.message || t('agentManager.codingAgentDescription'))
       return
     }
-    if (!result.success) throw new Error(result.message || t('codingAgents.installFailed'))
+    if (!result.success) throw new Error(mutationMessage(result, t('codingAgents.installFailed')))
     updateInfo.value[id] = null
     if (id === 'dsh' && !result.updateState) await refreshPolicies()
     message.success(t('codingAgents.installSuccess'))
@@ -523,7 +529,7 @@ async function handleDelete(id: CodingAgentId) {
   try {
     const result = await deleteCodingAgent(id)
     tools.value = result.tools
-    if (!result.success) throw new Error(result.message || t('codingAgents.deleteFailed'))
+    if (!result.success) throw new Error(mutationMessage(result, t('codingAgents.deleteFailed')))
     updateInfo.value[id] = null
     message.success(t('codingAgents.deleteSuccess'))
   } catch (error) {

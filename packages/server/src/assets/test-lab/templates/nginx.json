@@ -1,0 +1,11 @@
+{
+  "id": "nginx",
+  "name": "Static page (nginx)",
+  "description": "nginx's welcome page: a small, quick run to check the lab itself.",
+  "image": "nginx:1.29.8-alpine",
+  "port": 80,
+  "sizeMb": 25,
+  "memory": "128m",
+  "health": { "path": "/", "timeoutSeconds": 60 },
+  "logins": []
+}

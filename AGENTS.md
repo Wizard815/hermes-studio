@@ -20,6 +20,7 @@ and keep this file small enough to fit into every task context.
 - `docs/vscode.md` - VS Code (code-server) inside Studio: the Code view on a chat's folder.
 - `docs/agent-screen.md` - the agents' screen (Hermes Bot Screen) in Studio: watch, take over, hand back.
 - `docs/android-devices.md` - Android page: adb devices, emulator stream, BlueStacks, phones, Termux bridge in the Android app.
+- `docs/llm-wiki.md` - LLM wiki: the family's Obsidian wiki as a Hermes memory provider per profile (Connections → LLM wiki), token per profile, MCP card.
 - `docs/pondering-orb.md` - Pondering Orb: Connections tab, Orb tools for Studio agents, and Orb sending work to Studio chats.
 - `docs/omi.md` - Omi (omi-local): Connections tab, the scoped Studio key for Omi, results webhook, approvals from Omi, MCP card and Hermes skill.
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.
@@ -29,6 +30,8 @@ and keep this file small enough to fit into every task context.
 - `docs/approval-alerts.md` - where approvals reach you: Mattermost, the Studio Own Android app (paired phone key, live stream, notifications with Approve / Reject), both or off.
 - `docs/hermes-tool-load.md` - too many tools for a small model: the chat notice, the tool search switch per profile.
 - `docs/ui-skills.md` - UI skills (bundled): design skills copied once into Hermes, Ekko and every coding agent; removal, edits, switch.
+- `docs/test-lab.md` - Test Lab: throwaway app containers, one agent test on a pinned, capped model, report and cleanup by label.
+- `docs/chat-import.md` - Import chats: Hermes, Claude Code, Codex, OpenClaw sessions into Studio chats; preview, dedupe, never credentials.
 
 ## Common Commands
 

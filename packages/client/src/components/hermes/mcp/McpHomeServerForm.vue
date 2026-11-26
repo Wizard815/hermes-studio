@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { NAlert, NButton, NCheckbox, NInput, NModal, NRadioButton, NRadioGroup, NSelect, NTag } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import {
-  buildHomeAssistantServer, buildOmiServer, buildUnraidServer, homeAssistantBuilderEnv, HomeServerFormError, saveHermesEnvValue, toolIncluded,
+  buildHomeAssistantServer, buildLlmWikiServer, buildOmiServer, buildUnraidServer, homeAssistantBuilderEnv, HomeServerFormError, saveHermesEnvValue, toolIncluded,
   type McpServerDraft, type UnraidAuth,
 } from '@/api/hermes/extensions'
 import { homeAssistantSshKey, mcpServerAddWithSecrets, mcpServerTest, type McpServerConfig } from '@/api/hermes/mcp'
@@ -13,10 +13,10 @@ import { copyToClipboard } from '@/utils/clipboard'
 
 /**
  * Short forms that add Home Assistant's, Unraid's or Omi's MCP server, then
- * test the connection. Omi's form also installs Omi's Hermes skill into a
+ * test the connection (the LLM wiki's form too, docs/llm-wiki.md). Omi's form also installs Omi's Hermes skill into a
  * profile ('omi-skill' shows only that part).
  */
-const props = defineProps<{ kind: 'home-assistant' | 'unraid' | 'omi' | 'omi-skill' | null }>()
+const props = defineProps<{ kind: 'home-assistant' | 'unraid' | 'omi' | 'omi-skill' | 'llm-wiki' | null }>()
 const emit = defineEmits<{ close: []; added: [server: string] }>()
 
 const { t } = useI18n()
@@ -52,6 +52,7 @@ async function copyPublicKey() {
 watch(() => builder.enabled, (on) => { if (on && !builder.sshKey && !studioKey.value) void useStudioKey() })
 const unraid = reactive({ name: 'unraid', address: '', auth: 'token' as UnraidAuth, token: '', connectUrl: '' })
 const omi = reactive({ name: 'omi', address: '', key: '' })
+const wiki = reactive({ name: 'llm-wiki', address: '', token: '' })
 
 // Omi's Hermes skill: copied into the chosen profile (the one this MCP page edits by default).
 const profilesStore = useProfilesStore()
@@ -89,23 +90,27 @@ watch(() => props.kind, () => {
   unraid.token = ''
   unraid.connectUrl = ''
   omi.key = ''
+  wiki.token = ''
   error.value = ''
   result.value = null
 })
 
 const title = computed(() => props.kind === 'unraid' ? t('hermesExtensions.home.unraid.title')
   : props.kind === 'omi' ? t('omi.mcp.title')
+    : props.kind === 'llm-wiki' ? t('llmWiki.mcp.title')
     : props.kind === 'omi-skill' ? t('omi.mcp.skillTitle')
       : t('hermesExtensions.home.ha.title'))
 
 function draft(): McpServerDraft {
   if (props.kind === 'home-assistant') return buildHomeAssistantServer(ha)
   if (props.kind === 'omi') return buildOmiServer(omi)
+  if (props.kind === 'llm-wiki') return buildLlmWikiServer(wiki)
   return buildUnraidServer(unraid)
 }
 
 function formError(err: HomeServerFormError): string {
   if (props.kind === 'omi' && err.code === 'token') return t('omi.mcp.keyError')
+  if (props.kind === 'llm-wiki' && err.code === 'token') return t('llmWiki.mcp.tokenError')
   return t(`hermesExtensions.home.errors.${err.code}`)
 }
 
@@ -128,6 +133,7 @@ async function submit() {
     for (const [key, value] of Object.entries(builderEnv)) await saveHermesEnvValue(key, value)
     ha.token = ''
     omi.key = ''
+    wiki.token = ''
     unraid.token = ''
     unraid.connectUrl = ''
     emit('added', server.name)
@@ -288,6 +294,29 @@ function close() {
         </div>
       </template>
 
+      <template v-else-if="kind === 'llm-wiki'">
+        <div class="steps">
+          <strong>{{ t('llmWiki.mcp.stepsTitle') }}</strong>
+          <ol>
+            <li>{{ t('llmWiki.mcp.step1') }}</li>
+            <li>{{ t('llmWiki.mcp.step2') }}</li>
+          </ol>
+        </div>
+        <div class="field">
+          <label for="llm-wiki-mcp-address">{{ t('llmWiki.mcp.address') }} <span class="required">*</span></label>
+          <NInput v-model:value="wiki.address" size="small" placeholder="http://wiki.lan:27123" :input-props="{ id: 'llm-wiki-mcp-address' }" data-testid="llm-wiki-mcp-address" />
+        </div>
+        <div class="field">
+          <label for="llm-wiki-mcp-token">{{ t('llmWiki.mcp.token') }} <span class="required">*</span></label>
+          <NInput v-model:value="wiki.token" size="small" type="password" show-password-on="click" placeholder="llmw_…" :input-props="{ id: 'llm-wiki-mcp-token', autocomplete: 'off' }" data-testid="llm-wiki-mcp-token" />
+        </div>
+        <span class="hint">{{ t('llmWiki.mcp.privacyHint') }}</span>
+        <div class="field">
+          <label for="llm-wiki-mcp-name">{{ t('hermesExtensions.home.name') }}</label>
+          <NInput v-model:value="wiki.name" size="small" :input-props="{ id: 'llm-wiki-mcp-name' }" />
+        </div>
+      </template>
+
       <div v-if="isOmi" class="steps skill-box" data-testid="omi-skill-box">
         <strong>{{ t('omi.mcp.skillTitle') }}</strong>
         <span class="hint">{{ t('omi.mcp.skillHint') }}</span>
@@ -303,7 +332,7 @@ function close() {
       <NAlert v-if="result" :type="result.ok ? 'success' : 'warning'" :bordered="false">
         <template v-if="result.ok">
           {{ t('hermesExtensions.home.testOk', { name: result.name, count: result.tools.length }) }}
-          <template v-if="result.allowed">{{ kind === 'omi' ? t('omi.mcp.excludeHint') : t('hermesExtensions.home.readOnlyAllowed', { count: result.allowed.length }) }}</template>
+          <template v-if="result.allowed">{{ kind === 'omi' ? t('omi.mcp.excludeHint') : kind === 'llm-wiki' ? t('llmWiki.mcp.excludeHint') : t('hermesExtensions.home.readOnlyAllowed', { count: result.allowed.length }) }}</template>
           <div class="tools">
             <NTag v-for="tool in result.tools" :key="tool" size="small" round :type="!result.allowed || result.allowed.includes(tool) ? 'success' : 'default'" :class="{ off: result.allowed && !result.allowed.includes(tool) }">{{ tool }}</NTag>
           </div>

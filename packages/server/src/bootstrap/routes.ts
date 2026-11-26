@@ -39,6 +39,7 @@ import { mcuDevicePublicRoutes, mcuDeviceRoutes } from '../modules/studio/routes
 import { sessionRoutes } from '../modules/studio/routes/sessions'
 import { orbRoutes } from '../modules/studio/routes/orb'
 import { omiRoutes } from '../modules/studio/routes/omi'
+import { llmWikiRoutes } from '../modules/studio/routes/llm-wiki'
 import { androidAppLinkRoutes } from '../modules/studio/routes/android-app-links'
 import { agentWorkPublicRoutes, agentWorkRoutes } from '../modules/studio/routes/agent-work'
 import { commandCenterRoutes } from '../modules/studio/routes/command-center'
@@ -104,6 +105,8 @@ import { browserRoutes } from '../modules/studio/routes/browser'
 import { browserPublicRoutes } from '../modules/studio/routes/browser-public'
 import { androidDeviceRoutes } from '../modules/studio/routes/android-devices'
 import { systemRoutes } from '../modules/studio/routes/system'
+import { chatImportRoutes } from '../modules/studio/routes/chat-import'
+import { testLabRoutes } from '../modules/studio/routes/test-lab'
 
 /**
  * Register all routes on the Koa app.
@@ -154,6 +157,8 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(herdrRoutes.routes())           // Before codingAgentRoutes' /:id patterns
   app.use(androidDeviceRoutes.routes())
   app.use(systemRoutes.routes())
+  app.use(chatImportRoutes.routes())
+  app.use(testLabRoutes.routes())
   app.use(codingAgentRoutes.routes())
   app.use(agentStatusRoutes.routes())
   app.use(themeRoutes.routes())
@@ -164,6 +169,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(sessionRoutes.routes())
   app.use(orbRoutes.routes())
   app.use(omiRoutes.routes())
+  app.use(llmWikiRoutes.routes())
   app.use(agentWorkRoutes.routes())
   app.use(commandCenterRoutes.routes())
   app.use(projectRoutes.routes())

@@ -50,7 +50,7 @@ describe('clean room walls', () => {
     expect(managedClaudeSettings(false)).toEqual({ permissions: { deny: ['WebSearch', 'WebFetch'] } })
     expect(managedClaudeSettings(true)).toEqual({})
     const files = webToolPolicyFiles(false)
-    expect(files.map(file => file.inside)).toEqual(['/etc/claude-code/managed-settings.json', '/etc/codex/managed_config.toml'])
+    expect(files.map(file => file.inside).slice(0, 2)).toEqual(['/etc/claude-code/managed-settings.json', '/etc/codex/managed_config.toml'])
     expect(JSON.parse(files[0].content)).toEqual({ permissions: { deny: ['WebSearch', 'WebFetch'] } })
     expect(files[1].content).toMatch(/^web_search = "disabled"$/m)
     expect(webToolPolicyFiles(true)).toEqual([])
@@ -160,7 +160,7 @@ describe('clean room self-check', () => {
       { path: '/tmp', readOnly: false, writable: true, type: 'tmpfs' },
     ],
     envNames: ['ANTHROPIC_API_KEY', 'HOME'], dockerSocket: [],
-    webPolicy: ['/etc/claude-code/managed-settings.json', '/etc/codex/managed_config.toml'],
+    webPolicy: webToolPolicyFiles(false).map(file => file.inside),
     network: [
       { target: '1.1.1.1:443', via: 'direct', reached: false, error: 'ENETUNREACH' },
       { target: 'example.com:443', via: 'direct', reached: false, error: 'EAI_AGAIN' },

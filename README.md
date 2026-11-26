@@ -271,6 +271,7 @@ your own services:
 - [ ] Connections → Pondering Orb connects, and Orb work starts a Studio chat
 - [ ] Agent work: approve one item from each of Studio, Mattermost and Orb; the Vikunja task is marked done
 - [ ] Omi: Connections → Omi → Test connection answers; make a key, paste it in Omi as the Studio token, and "Send to agent → Studio" starts a chat listed under Work from Omi; register the webhook and the result reaches Omi ([docs/omi.md](docs/omi.md))
+- [ ] LLM wiki: Connections → LLM wiki → pick your profile, paste the wiki's address and your token, Test connection names you; turn it on, ask a new Hermes chat about something only your wiki knows, and check today's daily note gets "Chat with Hermes: …"; the household profile's token cannot find your private notes ([docs/llm-wiki.md](docs/llm-wiki.md))
 - [ ] A new chat stays in Studio: no herdr space appears for it
 - [ ] herdr: elevate a Hermes chat (`/herdr`), send a message, restart the container, and check the pane is still linked
 - [ ] herdr: `/studio` on that chat closes its herdr space and the chat keeps its messages
@@ -281,6 +282,8 @@ your own services:
 - [ ] Gadget: from a Studio Hermes chat, "show 'hello' on my gadget" shows a card on the device
 - [ ] herdr: on a new install, elevating a Claude Code chat opens the chat, not Claude Code's theme or API key questions
 - [ ] UI skills: the Skills page shows **UI skills (bundled)**, and `~/.claude/skills/better-interface` exists in the container; asking Claude Code to review a page uses it ([docs/ui-skills.md](docs/ui-skills.md))
+- [ ] Test Lab: `/test-lab` with the Docker socket mounted, pick a model and Static page (nginx), Start run; the steps go to Report, the report and screenshots show, and `docker ps` lists no `studio-testlab-` containers afterwards ([docs/test-lab.md](docs/test-lab.md))
+- [ ] Import chats: chat list ⋯ → Import chats…, point it at a backup of `~/.claude` or a Hermes home; the preview lists the chats, Import adds them, running it again skips them all ([docs/chat-import.md](docs/chat-import.md))
 - [ ] Paper (optional, needs a Paper account): MCP → Catalog → Paper → Add and sign in; a Hermes chat can read a frame
 
 Known issues on this branch:

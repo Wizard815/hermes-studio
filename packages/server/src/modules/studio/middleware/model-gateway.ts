@@ -4,6 +4,7 @@ import { withProviderAccount } from '../public/provider-account'
 import { findUserById, userCanAccessProfile } from '../public/users'
 import { toAuthenticatedUser } from './auth'
 import { checkGatewayRunLimits } from '../services/run-limits'
+import { checkModelPin } from '../services/test-lab/pin'
 
 /** The error each protocol's clients understand; 400 so agents show it and end the turn instead of retrying. */
 export function gatewayRefusalBody(protocol: ModelGatewayProtocol, message: string): Record<string, unknown> {
@@ -29,6 +30,9 @@ export async function modelGatewayMiddleware(ctx: Context, next: Next): Promise<
     ctx.body = { object: 'list', data: [{ id: binding.model, object: 'model', owned_by: 'ekkostudio', type: 'model', display_name: binding.model, created_at: '1970-01-01T00:00:00Z' }], has_more: false, first_id: binding.model, last_id: binding.model }
     return
   }
+  // Test Lab (docs/test-lab.md): a run's credential only reaches the one model picked for it.
+  const pinRefusal = checkModelPin(binding, ctx.request.body)
+  if (pinRefusal) { ctx.status = 400; ctx.body = gatewayRefusalBody(protocol!, pinRefusal); return }
   // Run limits (docs/agent-limits.md): a loop, the time limit or a limit already hit ends the agent's turn here.
   if (!ctx.path.endsWith('/count_tokens')) {
     const refusal = checkGatewayRunLimits({ sessionId: binding.sessionId, runId: binding.runId, protocol: protocol!, body: ctx.request.body })

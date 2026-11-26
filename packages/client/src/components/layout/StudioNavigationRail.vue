@@ -43,7 +43,7 @@ function active(entry: NavigationEntry) {
 }
 const mobileNavigation = useMobileNavigation()
 function handleNavigate(entry: NavigationEntry) {
-  if (mobileNavigation && (entry.plugin || ['studioPlugins', 'connections', 'android', 'system', 'agents', 'models', 'usage', 'upstream'].includes(entry.id))) mobileNavigation.open.value = false
+  if (mobileNavigation && (entry.plugin || ['studioPlugins', 'connections', 'android', 'system', 'testLab', 'agents', 'models', 'usage', 'upstream'].includes(entry.id))) mobileNavigation.open.value = false
 }
 </script>
 

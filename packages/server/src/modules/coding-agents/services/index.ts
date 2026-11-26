@@ -34,7 +34,7 @@ import { promisify } from 'util'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { getWebUiHome } from '../../studio/public/config'
 import { agentAsksBeforeActing, withApprovals, withApprovalsEnv } from './approvals'
-import { cleanRoomCommand, cleanRoomExec, cleanRoomHome, cleanRoomTerminalDocker, ensureCleanRoom, isCleanRoom, studioConfigMounts } from './cleanroom'
+import { cleanRoomCommand, cleanRoomExec, cleanRoomHome, cleanRoomTerminalDocker, cleanRoomWebTools, ensureCleanRoom, isCleanRoom, studioConfigMounts } from './cleanroom'
 import { herdrKindForStudioAgent } from './herdr/protocol'
 import { answerClaudeFirstRun } from './herdr/first-run'
 export { withApprovals, withApprovalsEnv } from './approvals'
@@ -78,13 +78,13 @@ import { getCodingAgentGlobalHome } from '../../studio/public/coding-agent-globa
 import { codingAgentContextPolicy, compactionPercent, claudeCompactionPercent, piCompactionSettings, type CodingAgentContextPolicy } from './context-policy'
 import { createCodingAgentModelDiscovery } from './models'
 import { nativeModelVariant } from './models/variants'
+import { classifySpawnError, codingAgentNotInstalledMessage, NODE_ENVIRONMENT_MISSING_CODE, NODE_ENVIRONMENT_MISSING_MESSAGE, spawnFailureCode, spawnFailureMessage } from './spawn-errors'
 
 const execFileAsync = promisify(execFile)
 const LAUNCH_API_MODES = new Set<ApiMode>(['chat_completions', 'codex_responses', 'anthropic_messages'])
 const CODING_AGENT_HOME_DIR = 'coding-agent'
 const CODEX_MODEL_CATALOG_FILE = 'codex-model-catalog.json'
 const CODEX_CATALOG_BASE_INSTRUCTIONS = 'You are Codex, a coding agent. Be precise, safe, and helpful.'
-const NODE_ENVIRONMENT_MISSING_CODE = 'node_environment_missing'
 const POSIX_LAUNCHER_FILE = 'launch.sh'
 const WINDOWS_LAUNCHER_FILE = 'launch.ps1'
 const CLAUDE_CODE_SKIP_PERMISSIONS_ARGS = ['--dangerously-skip-permissions']
@@ -140,6 +140,8 @@ const LEGACY_HERMES_MCP_COMMANDS = new Set([
 ])
 const HERMES_MCP_MANAGED_ENV_KEY = 'HERMES_WEB_UI_MANAGED_MCP'
 const HERMES_STUDIO_SESSION_ENV_KEY = 'HERMES_STUDIO_SESSION_ID'
+/** Codex hands its MCP servers only a short list of variables; this one says which chat a Studio tool call is from. */
+const CODEX_MCP_FORWARDED_ENV = [HERMES_STUDIO_SESSION_ENV_KEY]
 const GLOBAL_CODEX_SHADOW_LINK_DIRS = new Set(['memories', 'plugins', 'rules', 'skills', 'vendor_imports', 'visualizations'])
 
 /** Native agents have no skills folder Studio fills: they get a pointer to the UI skills (docs/ui-skills.md). */
@@ -535,24 +537,9 @@ function prependPathEntries(env: NodeJS.ProcessEnv, entries: Array<string | null
 }
 
 function nodeEnvironmentMissingError(): Error {
-  const err = new Error('Node/npm environment was not detected. Please install Node.js and try again.')
+  const err = new Error(NODE_ENVIRONMENT_MISSING_MESSAGE)
   ;(err as any).code = NODE_ENVIRONMENT_MISSING_CODE
   return err
-}
-
-function isNodeEnvironmentMissingError(err: any): boolean {
-  const text = [
-    err?.code,
-    err?.message,
-    typeof err?.stderr === 'string' ? err.stderr : '',
-    typeof err?.stdout === 'string' ? err.stdout : '',
-  ].filter(Boolean).join('\n').toLowerCase()
-  return text.includes('enoent') ||
-    text.includes('spawn npm') ||
-    text.includes('npm: command not found') ||
-    text.includes('npm not found') ||
-    text.includes('node: command not found') ||
-    text.includes('node not found')
 }
 
 function npmCliFromNpmBin(npmBin: string): { node: string; npmCli: string } | null {
@@ -1471,6 +1458,7 @@ function codexMcpConfigToml(
     if (server.env && typeof server.env === 'object' && !Array.isArray(server.env)) {
       lines.push(`env = ${tomlInlineStringTable(server.env as Record<string, string>)}`)
     }
+    if (agentId === 'codex' && typeof server.command === 'string' && server.command) lines.push(`env_vars = ${tomlStringArray(CODEX_MCP_FORWARDED_ENV)}`)
     lines.push('')
     blocks.push(lines.join('\n'))
   }
@@ -1706,6 +1694,7 @@ export function getCodingAgentManagedMcpServerConfigs(
     if (id === 'codex' || id === 'grok') {
       return [item.name, {
         ...server,
+        ...(id === 'codex' && typeof server.command === 'string' && server.command ? { env_vars: CODEX_MCP_FORWARDED_ENV } : {}),
         startup_timeout_sec: 120,
         ...((item.toolset === 'use' || item.toolset === 'plan') ? { tool_timeout_sec: Math.max(360, Number(server.tool_timeout_sec) || 0) } : {}),
         ...(disabledManaged.has(item.name) ? { enabled: false } : {}),
@@ -2408,8 +2397,10 @@ async function runNpm(args: string[], options: { timeout?: number; env?: NodeJS.
   })
 }
 
-function normalizeError(err: any): string {
-  if (isNodeEnvironmentMissingError(err)) return nodeEnvironmentMissingError().message
+/** `agentName` only where the program that ran was the agent's own CLI (its status check). */
+function normalizeError(err: any, agentName?: string): string {
+  const missing = spawnFailureMessage(classifySpawnError(err), agentName)
+  if (missing) return missing
   const stderr = typeof err?.stderr === 'string' ? err.stderr.trim() : ''
   const stdout = typeof err?.stdout === 'string' ? err.stdout.trim() : ''
   const message = stderr || stdout || err?.message || String(err)
@@ -2417,8 +2408,8 @@ function normalizeError(err: any): string {
 }
 
 function normalizeErrorCode(err: any): string | undefined {
-  return isNodeEnvironmentMissingError(err) ? NODE_ENVIRONMENT_MISSING_CODE
-    : err?.code === 'coding_agent_environment_unavailable' || String(err?.code || '').startsWith('DSH_') ? err.code : undefined
+  return spawnFailureCode(classifySpawnError(err))
+    || err?.code === 'coding_agent_environment_unavailable' || String(err?.code || '').startsWith('DSH_') ? err.code : undefined
 }
 
 async function findCommandPaths(command: string, env: NodeJS.ProcessEnv): Promise<string[]> {
@@ -2705,7 +2696,7 @@ export async function getCodingAgentStatus(definition: CodingAgentDefinition): P
       rawVersion: '',
       source: commandLocated ? 'user-cli' : 'not-installed',
       path: commandLocated ? resolvedCommand : '',
-      error: normalizeError(err),
+      error: normalizeError(err, definition.name),
       ...(compatibility ? { compatibility } : {}),
     }
     recordCodingAgentStatus(status)
@@ -2740,6 +2731,7 @@ export interface CodingAgentUpdateResult {
   latestVersion: string
   updateAvailable: boolean
   message?: string
+  code?: string
 }
 
 export function versionGte(a: string, b: string, includePrerelease = false): boolean {
@@ -2825,7 +2817,7 @@ export async function checkUpdateAgent(id: string): Promise<CodingAgentUpdateRes
     return { success: true, tool: status, latestVersion, updateAvailable }
   } catch (err: any) {
     const status = await getCodingAgentStatus(tool)
-    return { success: false, tool: status, latestVersion: '', updateAvailable: false, message: normalizeError(err) }
+    return { success: false, tool: status, latestVersion: '', updateAvailable: false, message: normalizeError(err), code: normalizeErrorCode(err) }
   }
 }
 
@@ -2883,7 +2875,7 @@ export async function installCodingAgent(id: string, options: DshInstallOptions 
           ? `Install the Antigravity CLI from ${ANTIGRAVITY_INSTALL_URL}`
         : tool.id === 'cursor'
           ? `Install the Cursor CLI from ${CURSOR_CLI_INSTALL_URL}`
-          : status.error || 'Install completed but the command was not found',
+          : (status.error && status.error !== codingAgentNotInstalledMessage(tool.name) ? status.error : 'Install completed but the command was not found'),
       code: !status.installed && !codingAgentUsesNpm(tool.id) ? 'MANUAL_INSTALL' : undefined,
     }
   } catch (err: any) {
@@ -3987,13 +3979,16 @@ async function startCodingAgentRunInternal(
   // The container runs the program by its full path (the same path is shared with it).
   const roomProgram = isCleanRoom(sessionId) ? cleanRoomProgram(await resolveInteractiveCommand(runtimeCommand)) : null
   const roomCommand = roomProgram?.command || runtimeCommand
+  // The agent's own web tools stay off in the room unless its settings allow them (cleanroom/web-tools.ts).
+  const roomWeb = roomProgram ? cleanRoomWebTools(sessionId, launch.agentId, launch.env) : null
   const cleanRoom = roomProgram
     ? await ensureCleanRoom(sessionId, {
         workspace: launch.workspaceDir,
         ...studioConfigMounts([...launch.args, ...(launch.rootDir ? [launch.rootDir] : [])], launch.env),
         program: roomProgram.dir,
-      }, { env: launch.env })
+      }, { env: launch.env, agent: launch.agentId, webConfigFile: roomWeb?.configFile })
     : ''
+  if (cleanRoom) roomWeb?.apply()
   const started = codingAgentRunManager.start({
     ownerUserId: providerAccountId(launch.profile),
     agentSessionId,
@@ -4007,7 +4002,7 @@ async function startCodingAgentRunInternal(
     agentNativeSessionId,
     nativeResume: Boolean(existingNativeSessionId),
     command: cleanRoom ? cleanRoomCommand(cleanRoom, roomCommand) : runtimeCommand,
-    args: launch.args,
+    args: cleanRoom && roomWeb ? [...launch.args, ...roomWeb.args] : launch.args,
     shellCommand: launch.shellCommand,
     workspaceDir: launch.workspaceDir,
     env: cleanRoom ? launch.env : runtimeEnv,
@@ -4296,11 +4291,13 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
   if (!cleanRoom) return launch
   // A clean-room chat in a terminal (herdr): the agent runs in the chat's container.
   const program = cleanRoomProgram(launch.command)
+  const roomWeb = cleanRoomWebTools(sessionId, launch.agentId, launch.env)
   const container = await ensureCleanRoom(sessionId, {
     workspace: launch.workspaceDir,
     ...studioConfigMounts(launch.args, launch.env),
     program: program.dir,
-  }, { env: launch.env })
+  }, { env: launch.env, agent: launch.agentId, webConfigFile: roomWeb.configFile })
+  roomWeb.apply()
   if (launch.agentId === 'claude-code') {
     // The clean room's own home (`/root` inside) needs the same first-run answers.
     try {
@@ -4309,7 +4306,7 @@ export async function prepareCodingAgentSessionLaunch(sessionId: string, profile
       logger.warn({ err: error, sessionId }, '[herdr] could not pre-answer Claude Code first-run questions in the clean room')
     }
   }
-  const exec = cleanRoomExec(container, program.command, launch.args, launch.workspaceDir, launch.env, { tty: true })
+  const exec = cleanRoomExec(container, program.command, [...launch.args, ...roomWeb.args], launch.workspaceDir, launch.env, { tty: true })
   // The docker client under the agent's name, so herdr sees which agent runs in the pane.
   const agentName = herdrKindForStudioAgent(launch.agentId)
   const command = agentName ? cleanRoomTerminalDocker(agentName, String((await commandEnv()).PATH || process.env.PATH || '')) : exec.command

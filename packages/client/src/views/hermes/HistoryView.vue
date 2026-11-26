@@ -22,6 +22,7 @@ import SessionListItem from '@/components/hermes/chat/SessionListItem.vue'
 import OutlinePanel from '@/components/hermes/chat/OutlinePanel.vue'
 import PageSidebarNav from '@/components/layout/PageSidebarNav.vue'
 import ListActionsMenu from '@/components/layout/ListActionsMenu.vue'
+import { isStoredSuperAdmin } from '@/api/client'
 import PageSidebarFooter from '@/components/layout/PageSidebarFooter.vue'
 import { setSessionPinned, batchDeleteSessions, deleteSession, fetchHermesSessionGroups, fetchHermesSessionPage, fetchHermesSession, fetchSessionMessagesPage, importHermesSession, unarchiveSession, type HermesMessage, type SessionSummary } from '@/api/studio/sessions'
 
@@ -31,6 +32,7 @@ const message = useMessage()
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const canImportChats = isStoredSuperAdmin()
 
 const routeSessionId = computed(() => {
   const value = route.params.sessionId
@@ -884,7 +886,9 @@ function handleBatchDeleteConfirm() {
               :label="t('chat.sessionListActions')"
               :batch-mode="isBatchMode"
               :batch-disabled="hermesSessions.length === 0"
+              :import-chats="canImportChats"
               @batch="toggleBatchMode"
+              @import="router.push({ name: 'hermes.chatImport' })"
             />
             <button
               v-if="isMobile"

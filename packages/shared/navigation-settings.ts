@@ -1,6 +1,6 @@
 // 'apiRelay' stays a valid id so lists saved by upstream Studio still load, but
 // this fork has no API Relay page: it is not a default and the rail skips it.
-export const BUILTIN_NAVIGATION_IDS = ['person', 'chat', 'group', 'workflow', 'history', 'connections', 'android', 'system', 'agents', 'models', 'usage', 'studioPlugins', 'upstream', 'apiRelay'] as const
+export const BUILTIN_NAVIGATION_IDS = ['person', 'chat', 'group', 'workflow', 'history', 'connections', 'android', 'system', 'testLab', 'agents', 'models', 'usage', 'studioPlugins', 'upstream', 'apiRelay'] as const
 export type BuiltinNavigationId = typeof BUILTIN_NAVIGATION_IDS[number]
 export interface NavigationSettings { items: string[] }
 

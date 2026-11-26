@@ -116,6 +116,9 @@ describe('Studio MCP: arguments are checked before Studio is called', () => {
     const out = await mcp.call('ekko_studio_use_phone', { action: 'tap', arguments: { id: 'e3' }, agent: 'hermes' })
     expect(out.error).toBe('')
     expect(out.hits).toEqual(['POST /api/studio/android/agent {"action":"tap","arguments":{"id":"e3"},"sessionId":"","agent":"hermes"}'])
+    // Hermes names its chat with the turn's context id; Studio resolves it.
+    const withContext = await mcp.call('ekko_studio_use_phone', { action: 'screen', agent: 'hermes', context_id: ' ctx-1 ' })
+    expect(withContext.hits).toEqual(['POST /api/studio/android/agent {"action":"screen","arguments":{},"sessionId":"","contextId":"ctx-1","agent":"hermes"}'])
     const bad = await mcp.call('ekko_studio_use_phone', { action: 'factory_reset' })
     expect(bad.error).toMatch(/action must be one of: devices, screen/)
     expect(bad.hits).toEqual([])

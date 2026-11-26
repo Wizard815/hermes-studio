@@ -33,6 +33,17 @@ async function act(work: () => Promise<unknown>) {
   try { await work() } catch { message.error(t('watcher.actionFailed')) }
 }
 
+/** The chat an alert came from, when its own link goes elsewhere (a phone question opens the Android page). */
+function chatLink(event: WatcherEvent): string {
+  return event.sessionId && !event.link.startsWith('/hermes/session/') ? `/hermes/session/${encodeURIComponent(event.sessionId)}` : ''
+}
+
+function openChat(event: WatcherEvent) {
+  void act(() => watcher.markRead([event.id]))
+  void router.push(chatLink(event))
+  emit('navigate')
+}
+
 function open(event: WatcherEvent) {
   void act(() => watcher.markRead([event.id]))
   if (/^https?:\/\//.test(event.link)) { window.open(event.link, '_blank', 'noopener'); return }
@@ -81,6 +92,7 @@ function open(event: WatcherEvent) {
           <p class="watcher-item__text">{{ event.text }}</p>
           <div class="watcher-item__buttons">
             <NButton v-if="event.link" size="tiny" secondary data-testid="watcher-open" @click="open(event)">{{ event.link.startsWith('/hermes/session/') ? t('watcher.openChat') : event.link.startsWith('/hermes/connections') ? t('watcher.openTask') : t('watcher.open') }}</NButton>
+            <NButton v-if="chatLink(event)" size="tiny" secondary data-testid="watcher-open-chat" @click="openChat(event)">{{ t('watcher.openChat') }}</NButton>
             <NButton v-if="event.action" size="tiny" secondary type="primary" data-testid="watcher-trust" @click="trusting = event">{{ t('watcher.trustThis') }}</NButton>
             <NButton v-if="event.trace" size="tiny" quaternary tag="a" :href="event.trace" target="_blank" rel="noopener">{{ t('watcher.langfuse') }}</NButton>
             <NButton v-if="!event.read" size="tiny" quaternary data-testid="watcher-mark-read" @click="act(() => watcher.markRead([event.id]))">{{ t('watcher.markRead') }}</NButton>

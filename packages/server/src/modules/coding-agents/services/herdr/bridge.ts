@@ -126,6 +126,11 @@ export interface HerdrBridgeDeps {
    * (no saved agent session to resume). Empty when there is nothing to tell.
    */
   chatRecap?: (sessionId: string) => Promise<string>
+  /**
+   * A Hermes chat Hermes itself has no session for (an imported chat, see
+   * docs/chat-import.md): it starts fresh, so it gets the chat so far too.
+   */
+  hermesNeedsRecap?: (sessionId: string, profile: string) => Promise<boolean>
   /** A chat's newest messages for its card in herdr. */
   chatPreview?: (sessionId: string) => Promise<Array<{ role: string; text: string }>>
   /**
@@ -149,7 +154,7 @@ export interface HerdrBridgeDeps {
    * add after the typed text when the pane cannot read it otherwise. `isCurrent` says
    * whether the pane turn still runs; `end` is called once when it is over.
    */
-  paneTurn?: (sessionId: string, paneId: string, isCurrent: () => boolean) => Promise<HerdrPaneTurn | null>
+  paneTurn?: (sessionId: string, paneId: string, isCurrent: () => boolean, text: string) => Promise<HerdrPaneTurn | null>
 }
 
 /** Studio's context for one pane turn typed from Studio's chat box. */
@@ -1176,8 +1181,11 @@ export class HerdrBridge {
     else this.afterRetryInputs.delete(paneId)
     this.scheduleRefresh(500)
     // No agent session to resume (an old chat): the fresh session starts from the chat so far.
-    // Hermes resumes the whole conversation by Studio's session id, so it needs no recap.
-    const needsRecap = !row.agent_native_session_id && launch.agentId !== 'hermes' && row.agent !== 'hermes' && !!this.deps.chatRecap
+    // Hermes resumes the whole conversation by Studio's session id, so it needs no recap,
+    // unless Hermes has no session under that id (a chat imported from elsewhere).
+    const hermesChat = launch.agentId === 'hermes' || row.agent === 'hermes'
+    const needsRecap = !row.agent_native_session_id && !!this.deps.chatRecap
+      && (!hermesChat || await this.deps.hermesNeedsRecap?.(sessionId, row.profile || 'default').catch(() => false) === true)
     if (launch.cleanRoom) {
       // The agent's own herdr hooks cannot reach herdr from inside its container.
       void this.followCleanRoom(paneId, launch, { sessionId, nativeId: row.agent_native_session_id || '', recap: needsRecap })
@@ -1696,7 +1704,9 @@ export class HerdrBridge {
     let turn: HerdrPaneTurn | null = null
     let current = true
     try {
-      turn = await this.deps.paneTurn?.(sessionId, paneId, () => current) ?? null
+      // Studio's chat client (Ekko, Hermes without its CLI) runs each line as a Studio run,
+      // which carries Studio's context itself: nothing to add.
+      if (!await this.paneRunsStudioClient(paneId)) turn = await this.deps.paneTurn?.(sessionId, paneId, () => current, body) ?? null
     } catch (error) {
       this.log('warn', '[herdr] could not prepare Studio\'s context for the pane turn', { sessionId, error: String(error) })
     }
@@ -1715,6 +1725,17 @@ export class HerdrBridge {
       entry.timer.unref?.()
     }
     return { paneId }
+  }
+
+  /** Whether the pane runs Studio's chat client (`studio-herdr.mjs chat`), whose lines are Studio runs. */
+  private async paneRunsStudioClient(paneId: string): Promise<boolean> {
+    const info = await this.requireClient().request<any>('pane.process_info', { pane_id: paneId }).catch(() => null)
+    const processes: Array<{ argv?: string[] }> = info?.process_info?.foreground_processes || []
+    return processes.some(item => {
+      const argv = item.argv || []
+      const script = argv.findIndex(arg => arg.endsWith('studio-herdr.mjs'))
+      return script >= 0 && argv[script + 1] === 'chat'
+    })
   }
 
   /** The pane's agent status for a turn Studio typed: working starts it, idle or done after that ends it. */

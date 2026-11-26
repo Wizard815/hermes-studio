@@ -10,10 +10,13 @@ const props = defineProps<{
   loading?: boolean
   batchMode: boolean
   batchDisabled?: boolean
+  /** Offer "Import chats…" (super admins; docs/chat-import.md). */
+  importChats?: boolean
 }>()
 const emit = defineEmits<{
   filter: [profile: string | null]
   batch: []
+  import: []
 }>()
 const { t } = useI18n()
 const show = ref(false)
@@ -40,12 +43,14 @@ const options = computed<DropdownOption[]>(() => {
     )
   }
   items.push({ key: 'batch', label: t('chat.toggleBatchMode'), disabled: props.batchMode || props.batchDisabled })
+  if (props.importChats) items.push({ key: 'import', label: t('chatImport.menu'), disabled: props.batchMode })
   return items
 })
 
 function select(key: string) {
   show.value = false
   if (key === 'batch') emit('batch')
+  else if (key === 'import') emit('import')
   else if (key === 'all') emit('filter', null)
   else if (key.startsWith('profile:')) emit('filter', key.slice('profile:'.length))
 }

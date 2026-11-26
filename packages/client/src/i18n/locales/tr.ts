@@ -17,8 +17,11 @@ import { watcherMessages } from '../watcher-messages'
 import { androidMessages } from '../android-messages'
 import { orbMessages } from '../orb-messages'
 import { omiMessages } from '../omi-messages'
+import { llmWikiMessages } from '../llm-wiki-messages'
 import { approvalAlertMessages } from '../approval-alerts-messages'
 import { systemMessages } from '../system-messages'
+import { chatImportMessages } from '../chat-import-messages'
+import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
 import { gadgetMessages } from '../gadget-messages'
@@ -81,8 +84,11 @@ export default {
   ...androidMessages['tr'],
   ...orbMessages['tr'],
   ...omiMessages['tr'],
+  ...llmWikiMessages['tr'],
   ...approvalAlertMessages['tr'],
   ...systemMessages['tr'],
+  ...chatImportMessages['tr'],
+  ...testLabMessages['tr'],
   ...recommendedPluginsMessages['tr'],
   ...uiSkillsMessages['tr'],
   ...gadgetMessages['tr'],

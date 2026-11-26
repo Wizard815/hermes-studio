@@ -12,6 +12,7 @@ import { cleanRoomUiSkillMounts } from '../../../studio/public/ui-skills'
 import { appendEgress, forgetEgressLog, readEgress, verifyEgressChain, type EgressEntry } from './egress-log'
 import { scanForLeaks, type LeakReport } from './leaks'
 import { judgeProbe, normalizeProbe, overallState, PROBE_SCRIPT, type SelfCheckExpectations, type SelfCheckResult } from './probe'
+import { applyKimiWebToolConfig, webConfigNeedles, webToolLaunchArgs, webToolPolicyFiles } from './web-tools'
 
 /**
  * Clean rooms: a chat whose coding agent runs inside its own container.
@@ -57,7 +58,7 @@ export interface CleanRoomSettings {
   egressLog: boolean
   /** Link each egress line to the one before by hash (tamper evidence). */
   auditChain: boolean
-  /** Let agents use their own web tools (Claude Code WebSearch/WebFetch). Off: denied by managed settings. */
+  /** Let agents use their own web search and fetch. Off: each agent's own switch turns them off (web-tools.ts). */
   allowWebTools: boolean
 }
 
@@ -220,6 +221,22 @@ function socketDir(sessionId: string): string {
  * and any login made inside outlive the container, and Studio reads the
  * transcripts from here (herdr's transcript mirror, the agent's session id).
  */
+/**
+ * How a clean room turns the chat's agent's own web tools off besides the
+ * policy files: flags to add to its command line, and its config file (Kimi
+ * Code, written by `apply` once the room is up). Nothing when the room allows
+ * web tools (Kimi's config then loses Studio's block again).
+ */
+export function cleanRoomWebTools(sessionId: string, agent: string, env: Record<string, string | undefined> = {}): { args: string[]; configFile?: string; apply(): void } {
+  const allow = readCleanRoomSettings().allowWebTools
+  const args = webToolLaunchArgs(agent, allow)
+  if (agent !== 'kimi') return { args, apply() {} }
+  // Studio's own KIMI_CODE_HOME (scoped) is mounted at the same path; otherwise Kimi uses ~/.kimi-code, the room's home.
+  const home = String(env.KIMI_CODE_HOME || '').trim()
+  const hostFile = home ? join(home, 'config.toml') : join(cleanRoomHome(sessionId), '.kimi-code', 'config.toml')
+  return { args, configFile: home ? hostFile : '/root/.kimi-code/config.toml', apply: () => applyKimiWebToolConfig(hostFile, allow) }
+}
+
 export function cleanRoomHome(sessionId: string): string {
   return join(home(), 'homes', createHash('sha1').update(sessionId).digest('hex').slice(0, 12))
 }
@@ -483,19 +500,7 @@ export function managedClaudeSettings(allowWebTools: boolean): Record<string, un
   return allowWebTools ? {} : { permissions: { deny: ['WebSearch', 'WebFetch'] } }
 }
 
-/**
- * Files that turn the agents' own web tools off, mounted read-only at the
- * agents' managed-settings paths (they win over the agent's own settings):
- * Claude Code's managed settings and Codex's managed config. None when the
- * room allows web tools.
- */
-export function webToolPolicyFiles(allowWebTools: boolean): Array<{ name: string; inside: string; content: string }> {
-  if (allowWebTools) return []
-  return [
-    { name: 'claude-managed-settings.json', inside: '/etc/claude-code/managed-settings.json', content: `${JSON.stringify(managedClaudeSettings(false), null, 2)}\n` },
-    { name: 'codex-managed-config.toml', inside: '/etc/codex/managed_config.toml', content: '# Studio clean room: web search off (cleanroom settings: allowWebTools)\nweb_search = "disabled"\n' },
-  ]
-}
+export { webToolPolicyFiles } from './web-tools'
 
 /** Give a folder Studio made to the room's user (Studio runs as root; links are not followed). */
 function chownTree(path: string, uid: number, gid: number, budget = { left: 200000 }): void {
@@ -542,7 +547,13 @@ export function cleanRoomNeedsRestart(sessionId: string): boolean {
 }
 
 /** Start (or reuse) the chat's container. `env` is the agent's launch environment (only its names reach the self-check). */
-export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts, options: { env?: Record<string, string | undefined> } = {}): Promise<string> {
+export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts, options: {
+  env?: Record<string, string | undefined>
+  /** The chat's agent (its web-tool switch is shown by the self-check). */
+  agent?: string
+  /** The agent's config file inside the room, when its web tools are turned off there (Kimi Code). */
+  webConfigFile?: string
+} = {}): Promise<string> {
   const settings = readCleanRoomSettings()
   const name = containerName(sessionId)
   listenSockets(sessionId)
@@ -561,6 +572,8 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
   const hardening = [
     `u=${user.uid}:${user.gid}`, `rofs=${settings.readOnlyRoot ? 1 : 0}`,
     `caps=${settings.dropAllCaps ? ['none', ...settings.capAdd].join('+') : 'default'}`, `web=${settings.allowWebTools ? 1 : 0}`,
+    // Version of the web-tool policy files: a room from before more agents were covered is made again.
+    'webv=2',
   ].join(',')
   // UI skills (docs/ui-skills.md), read-only at /root/.claude/skills and /root/.agents/skills.
   // Left out when their folder is not on a volume Docker can see.
@@ -656,6 +669,8 @@ export async function ensureCleanRoom(sessionId: string, mounts: CleanRoomMounts
     readOnlyPaths: [mounts.program, ...readOnlyConfigs].filter((path): path is string => !!path),
     blockedHost: 'example.com',
     allowWebTools: settings.allowWebTools,
+    ...(options.agent ? { agent: options.agent } : {}),
+    ...(options.webConfigFile && webConfigNeedles(options.agent).length ? { webConfig: { path: options.webConfigFile, needles: webConfigNeedles(options.agent) } } : {}),
     allowedHost: settings.network === 'studio' ? undefined : settings.allowHosts.includes('registry.npmjs.org') ? 'registry.npmjs.org' : settings.allowHosts[0],
   }
   const envNames = Object.keys(cleanRoomEnv(options.env || {}))
@@ -680,7 +695,7 @@ export function runCleanRoomSelfCheck(sessionId: string): Promise<SelfCheckResul
     await sockets.get(sessionId)?.ready
     let result: SelfCheckResult
     try {
-      const probeConfig = JSON.stringify({ studioPort: config.port, proxyPort: CLEANROOM_PROXY_PORT, blockedHost: expect.blockedHost, allowedHost: expect.allowedHost })
+      const probeConfig = JSON.stringify({ studioPort: config.port, proxyPort: CLEANROOM_PROXY_PORT, blockedHost: expect.blockedHost, allowedHost: expect.allowedHost, webConfig: expect.webConfig })
       // The agent's variable names with empty values: the probe reports names only.
       // PATH and HOME keep the container's own values (an empty PATH would not find node).
       const env = envNames.filter(key => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && key !== 'PATH' && key !== 'HOME').flatMap(key => ['-e', `${key}=`])

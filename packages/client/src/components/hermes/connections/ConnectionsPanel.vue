@@ -10,11 +10,12 @@ import GadgetStatusPanel from '@/components/hermes/connections/GadgetStatusPanel
 import RemoteDevicesPanel from '@/components/hermes/connections/RemoteDevicesPanel.vue'
 import OrbConnectionPanel from '@/components/hermes/connections/OrbConnectionPanel.vue'
 import OmiConnectionPanel from '@/components/hermes/connections/OmiConnectionPanel.vue'
+import LlmWikiConnectionPanel from '@/components/hermes/connections/LlmWikiConnectionPanel.vue'
 import AgentWorkPanel from '@/components/hermes/connections/AgentWorkPanel.vue'
 import { useAgentWorkBadge } from '@/composables/useAgentWorkBadge'
 import { desktopBridge } from '@/utils/desktop-bridge'
 
-type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb' | 'omi' | 'agent-work'
+type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb' | 'omi' | 'llm-wiki' | 'agent-work'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,7 +24,7 @@ const hasRemoteDevices = desktopBridge()?.isDesktop === true && !!desktopBridge(
 
 function normalizeTab(value: unknown): ConnectionTab {
   if (value === 'remote' && hasRemoteDevices) return value
-  if (value === 'mcu' || value === 'orb' || value === 'omi' || value === 'agent-work') return value
+  if (value === 'mcu' || value === 'orb' || value === 'omi' || value === 'llm-wiki' || value === 'agent-work') return value
   return 'app'
 }
 
@@ -81,6 +82,9 @@ function updateTab(value: string | number) {
       </NTabPane>
       <NTabPane name="omi" :tab="t('omi.tab')" display-directive="if">
         <OmiConnectionPanel />
+      </NTabPane>
+      <NTabPane name="llm-wiki" :tab="t('llmWiki.tab')" display-directive="if">
+        <LlmWikiConnectionPanel />
       </NTabPane>
       <NTabPane name="agent-work" display-directive="if">
         <template #tab>

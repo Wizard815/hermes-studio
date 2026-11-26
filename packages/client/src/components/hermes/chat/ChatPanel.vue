@@ -2914,8 +2914,10 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :profile="sessionProfileFilter"
               :loading="profilesStore.loading"
               :batch-mode="isBatchMode"
+              :import-chats="isSuperAdmin && !props.standalone"
               @filter="handleProfileFilterChange"
               @batch="toggleBatchMode"
+              @import="router.push({ name: 'hermes.chatImport' })"
             />
             <button
               v-if="isMobile"

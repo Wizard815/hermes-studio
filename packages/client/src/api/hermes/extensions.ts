@@ -352,6 +352,41 @@ export function buildOmiServer(form: OmiForm): McpServerDraft {
   }
 }
 
+export interface LlmWikiForm { name?: string; address: string; token: string }
+
+/** The Obsidian Local REST API's port, where the LLMWIKI MCP Bridge serves /family-mcp. */
+export const LLM_WIKI_DEFAULT_PORT = 27123
+/** The admin's daily job (files everyone's open daily notes); not for an agent. */
+export const LLM_WIKI_EXCLUDED_TOOLS = ['memory_rollover'] as const
+
+/**
+ * The LLM wiki (Wizard815/LLM-will-remember-this) serves a stateless MCP server
+ * at <wiki>/family-mcp with a family token as a Bearer header. The token decides
+ * whose notes the agent sees (docs/llm-wiki.md).
+ */
+export function buildLlmWikiServer(form: LlmWikiForm): McpServerDraft {
+  const name = normalizeServerName(form.name || 'llm-wiki')
+  if (!name) throw new HomeServerFormError('name')
+  const typed = (form.address || '').trim()
+  const bare = !!typed && !/^https?:\/\//i.test(typed) && !/:\d+(\/|$)/.test(typed)
+  const base = normalizeAddress(bare ? `${typed.replace(/\/.*$/, '')}:${LLM_WIKI_DEFAULT_PORT}` : typed).replace(/\/family-mcp$/i, '')
+  if (!base) throw new HomeServerFormError('address')
+  const token = stripBearer(form.token || '')
+  if (!token || /\s/.test(token)) throw new HomeServerFormError('token')
+  const key = mcpSecretKey(name)
+  return {
+    name,
+    config: {
+      url: `${base}/family-mcp`,
+      headers: { Authorization: `Bearer ${envRef(key)}` },
+      timeout: 120,
+      connect_timeout: 30,
+      tools: { exclude: [...LLM_WIKI_EXCLUDED_TOOLS], resources: false, prompts: false },
+    },
+    secrets: { [key]: token },
+  }
+}
+
 // ---- Plugins hub ----------------------------------------------------------
 
 export interface PluginCatalogEntry {

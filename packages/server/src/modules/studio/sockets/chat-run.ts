@@ -579,6 +579,11 @@ export class ChatRunSocket {
     return typeof started === 'number' && Number.isFinite(started) && started > 0 ? started / 1000 : undefined
   }
 
+  /** The chat a live turn's context id belongs to ('' when it is not live): tools that are not run-bound name their chat with it. */
+  chatForTurnContext(contextId: string, profile: string): string {
+    return this.taskPlanRuns.chatForContext(contextId, profile)
+  }
+
   updateTaskPlan(contextId: string, profile: string, input: Record<string, unknown>) {
     return this.taskPlanRuns.update(contextId, profile, input)
   }

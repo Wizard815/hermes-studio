@@ -1556,6 +1556,7 @@ const tools = [
           description: 'The fields for that action, as listed in the description, e.g. {"id": "e3"} or {"device": "emulator-5554", "text": "hello"}.',
         },
         agent: { type: 'string', description: 'Your name or agent id (hermes, ekko, claude-code, codex, ...), shown to the person and used by their trust rules.' },
+        context_id: { type: 'string', description: 'The current turn context_id from Studio\'s context, when you have one. It tells Studio which chat is asking, so its question links to your chat and follows that chat\'s approval mode.' },
       }, ['action']),
   },
   {
@@ -2548,6 +2549,8 @@ async function callToolInner(name, args = {}, signal) {
           action: args.action,
           arguments: args.arguments && typeof args.arguments === 'object' ? args.arguments : {},
           sessionId: String(process.env.HERMES_STUDIO_SESSION_ID || args.session_id || ''),
+          // Studio resolves the chat from the run credential first, then this live turn's context id.
+          ...(typeof args.context_id === 'string' && args.context_id.trim() ? { contextId: args.context_id.trim() } : {}),
           agent: String(args.agent || SERVER_NAME || 'agent'),
         },
       }))

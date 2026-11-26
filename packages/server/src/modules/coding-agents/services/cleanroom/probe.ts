@@ -5,6 +5,8 @@
  * the room's settings. Values of environment variables never leave the room.
  */
 
+import { AGENT_WEB_TOOL_POLICIES, agentWebToolPolicy, WEB_POLICY_FILES as POLICY_FILES } from './web-tools'
+
 export interface ProbeMount { path: string; readOnly: boolean; writable: boolean; type: string }
 export interface ProbeNet { target: string; via: 'direct' | 'proxy' | 'studio'; reached: boolean; status?: number; error?: string }
 
@@ -22,10 +24,12 @@ export interface ProbeOutput {
   network: ProbeNet[]
   /** The agents' managed-settings files that turn their web tools off (present in the room). */
   webPolicy: string[]
+  /** The agent's own config file, when its web tools are turned off there: whether it says so. */
+  webConfig?: { path: string; found: boolean }
 }
 
-/** Where the web-tool policy files go (see webToolPolicyFiles in index.ts). */
-export const WEB_POLICY_FILES = ['/etc/claude-code/managed-settings.json', '/etc/codex/managed_config.toml']
+/** Where the web-tool policy files go (see web-tools.ts). */
+export const WEB_POLICY_FILES = POLICY_FILES.map(file => file.inside)
 
 export type CheckState = 'pass' | 'warn' | 'fail' | 'info'
 
@@ -98,13 +102,20 @@ if (cfg.studioPort) {
   const r = await tcp('127.0.0.1', cfg.studioPort, 'GET /api/auth/status HTTP/1.1\\r\\nHost: studio\\r\\nConnection: close\\r\\n\\r\\n')
   network.push({ target: 'studio:/api/auth/status', via: 'studio', ...r, reached: r.status > 0 && r.status !== 403 })
 }
-const webPolicy = ['/etc/claude-code/managed-settings.json', '/etc/codex/managed_config.toml'].filter(p => existsSync(p))
+const webPolicy = ${JSON.stringify(POLICY_FILES.map(file => file.inside))}.filter(p => existsSync(p))
+// The agent's own config file (Kimi Code): only whether it names the web tools, never its contents.
+let webConfig
+if (cfg.webConfig && cfg.webConfig.path) {
+  let text = ''
+  try { text = readFileSync(cfg.webConfig.path, 'utf8') } catch {}
+  webConfig = { path: cfg.webConfig.path, found: !!text && (cfg.webConfig.needles || []).every(needle => text.includes(needle)) }
+}
 const dockerSocket = ['/var/run/docker.sock', '/run/docker.sock', '/var/run/docker', '/run/containerd/containerd.sock'].filter(p => existsSync(p))
 console.log(JSON.stringify({
   uid, gid, user,
   noNewPrivs: String(status.NoNewPrivs || '').trim() === '1',
   capEff: caps(status.CapEff), capBnd: caps(status.CapBnd),
-  mounts, envNames: Object.keys(process.env).sort(), dockerSocket, network, webPolicy,
+  mounts, envNames: Object.keys(process.env).sort(), dockerSocket, network, webPolicy, webConfig,
 }))
 `
 
@@ -122,6 +133,10 @@ export interface SelfCheckExpectations {
   blockedHost: string
   /** Web tools allowed (no policy files expected). */
   allowWebTools?: boolean
+  /** The chat's agent: the web-tools item says how its web tools are off. */
+  agent?: string
+  /** The agent's config file that turns its web tools off, and what it must name. */
+  webConfig?: { path: string; needles: string[] }
 }
 
 /** Raw probe output (capability numbers) to names. */
@@ -136,6 +151,7 @@ export function normalizeProbe(raw: any): ProbeOutput {
     dockerSocket: Array.isArray(raw?.dockerSocket) ? raw.dockerSocket.map(String) : [],
     network: Array.isArray(raw?.network) ? raw.network : [],
     webPolicy: Array.isArray(raw?.webPolicy) ? raw.webPolicy.map(String) : [],
+    ...(raw?.webConfig && typeof raw.webConfig === 'object' ? { webConfig: { path: String(raw.webConfig.path || ''), found: !!raw.webConfig.found } } : {}),
   }
 }
 
@@ -162,11 +178,8 @@ export function judgeProbe(probe: ProbeOutput, expect: SelfCheckExpectations): C
   }
   add('mounts', 'info', probe.mounts.map(entry => `${entry.path} ${entry.writable ? 'rw' : 'ro'}`).join(', '))
   add('environment', 'info', probe.envNames.join(', '))
-  if (expect.allowWebTools) add('web-tools', 'info', 'allowed')
-  else {
-    const missing = WEB_POLICY_FILES.filter(path => !probe.webPolicy.includes(path))
-    add('web-tools', missing.length ? 'fail' : 'pass', missing.length ? `policy missing: ${missing.join(', ')}` : 'off (Claude Code, Codex)')
-  }
+  const webTools = judgeWebTools(probe, expect)
+  add('web-tools', webTools.state, webTools.detail)
 
   const net = (via: ProbeNet['via'], target?: string) => probe.network.find(entry => entry.via === via && (!target || entry.target.startsWith(target)))
   const directHit = probe.network.filter(entry => entry.via === 'direct' && entry.reached)
@@ -184,6 +197,31 @@ export function judgeProbe(probe: ProbeOutput, expect: SelfCheckExpectations): C
   const studio = net('studio')
   if (studio) add('studio-api', studio.reached ? 'fail' : 'pass', studio.reached ? `Studio's API answered (${studio.status})` : 'only the model proxies')
   return checks
+}
+
+/** Whether the room's agent can use its own web search and fetch. */
+export function judgeWebTools(probe: ProbeOutput, expect: SelfCheckExpectations): { state: CheckState; detail: string } {
+  const policy = agentWebToolPolicy(expect.agent)
+  if (expect.allowWebTools) return { state: 'info', detail: `allowed${policy ? ` (${policy.name})` : ''}` }
+  const missing = (files: string[]) => files.filter(path => !probe.webPolicy.includes(path))
+  if (!policy) {
+    // An agent Studio does not know (or a room from before the agent was recorded): every policy file must be there.
+    const absent = missing(WEB_POLICY_FILES)
+    const covered = AGENT_WEB_TOOL_POLICIES.filter(entry => entry.method !== 'cannot' && entry.method !== 'none-needed').map(entry => entry.name)
+    return absent.length ? { state: 'fail', detail: `policy missing: ${absent.join(', ')}` } : { state: 'pass', detail: `off (${covered.join(', ')})` }
+  }
+  const tools = policy.tools.join(', ')
+  if (policy.method === 'none-needed') return { state: 'pass', detail: `${policy.name} has no web tools` }
+  if (policy.method === 'cannot') return { state: 'warn', detail: `can't be turned off for ${policy.name}; the network allowlist still blocks other sites` }
+  if (policy.method === 'launch-flags') return { state: 'pass', detail: `off for ${policy.name} (${tools}): Studio starts it with ${policy.args!.join(' ')}` }
+  if (policy.method === 'config-file') {
+    if (!expect.webConfig) return { state: 'warn', detail: `${policy.name}: its config file was not checked` }
+    if (!probe.webConfig?.found) return { state: 'fail', detail: `${policy.name}: ${expect.webConfig.path} does not turn ${tools} off` }
+    return { state: 'pass', detail: `off for ${policy.name} (${tools}): ${expect.webConfig.path}` }
+  }
+  const absent = missing(policy.files || [])
+  if (absent.length) return { state: 'fail', detail: `${policy.name}: policy missing: ${absent.join(', ')}` }
+  return { state: 'pass', detail: `off for ${policy.name} (${tools}): ${(policy.files || []).join(', ')}` }
 }
 
 export function overallState(checks: CheckItem[]): SelfCheckResult['state'] {

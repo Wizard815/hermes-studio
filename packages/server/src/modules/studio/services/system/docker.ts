@@ -28,9 +28,13 @@ export function dockerSocket(env: NodeJS.ProcessEnv = process.env, platform = pr
   return existsSync('/var/run/docker.sock') ? '/var/run/docker.sock' : null
 }
 
-function call(socketPath: string, method: string, path: string, timeoutMs = 15_000): Promise<{ status: number; body: Buffer }> {
+/** One Engine API request over the socket; `body` is sent as JSON. Exported for Test Lab (docs/test-lab.md). */
+export function dockerEngine(socketPath: string, method: string, path: string, body?: unknown, timeoutMs = 15_000): Promise<{ status: number; body: Buffer }> {
   return new Promise((resolve, reject) => {
-    const req = request({ socketPath, method, path: `${API}${path}`, headers: { host: 'docker' }, timeout: timeoutMs }, res => {
+    const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body))
+    const headers: Record<string, string | number> = { host: 'docker' }
+    if (payload) { headers['content-type'] = 'application/json'; headers['content-length'] = payload.length }
+    const req = request({ socketPath, method, path: `${API}${path}`, headers, timeout: timeoutMs }, res => {
       const chunks: Buffer[] = []
       res.on('data', chunk => chunks.push(chunk))
       res.on('end', () => resolve({ status: res.statusCode || 0, body: Buffer.concat(chunks) }))
@@ -38,11 +42,15 @@ function call(socketPath: string, method: string, path: string, timeoutMs = 15_0
     })
     req.on('timeout', () => req.destroy(new Error('Docker did not answer in time')))
     req.on('error', reject)
-    req.end()
+    req.end(payload)
   })
 }
 
-function engineError(status: number, body: Buffer): Error {
+function call(socketPath: string, method: string, path: string, timeoutMs = 15_000): Promise<{ status: number; body: Buffer }> {
+  return dockerEngine(socketPath, method, path, undefined, timeoutMs)
+}
+
+export function engineError(status: number, body: Buffer): Error {
   let message = body.toString('utf8').trim()
   try { message = JSON.parse(message).message || message } catch { /* plain text */ }
   return Object.assign(new Error(message || `Docker answered ${status}`), { status: status >= 400 && status < 600 ? status : 502 })
