@@ -7,7 +7,9 @@ function fail(ctx: Context, error: unknown) {
   ctx.body = { error: error instanceof Error ? error.message : String(error) }
 }
 
-export const PROJECT_ACTIONS = ['list', 'start_thread', 'message_thread', 'read_thread', 'resolve_thread', 'set_pr', 'add_task', 'update_task', 'start_task']
+export const PROJECT_ACTIONS = ['list', 'start_thread', 'message_thread', 'read_thread', 'resolve_thread', 'set_pr', 'add_task', 'update_task', 'start_task', 'message_coordinator']
+/** What a thread may do through the tool; the rest is the coordinator's. */
+export const THREAD_ACTIONS = ['list', 'read_thread', 'message_thread', 'message_coordinator', 'set_pr']
 
 const body = (ctx: Context) => ((ctx.request as any).body || {}) as Record<string, any>
 const param = (ctx: Context, name: string) => String((ctx.params as Record<string, string>)[name] || '')
@@ -106,11 +108,24 @@ export async function tool(ctx: Context) {
     const service = projectService()
     const sessionId = String(input.sessionId || '')
     const named = String(input.project || '')
-    const project = named ? await service.get(named) : (await service.forSession(sessionId))?.project
+    const own = sessionId ? await service.forSession(sessionId) : null
+    const project = named ? await service.get(named) : own?.project
     if (!project) throw Object.assign(new Error('Name the project (arguments.project): this chat is not in a project'), { status: 400 })
     const action = param(ctx, 'action')
     const threadId = String(input.thread || '')
+    // A thread calls as itself: from its own chat, or naming itself with `from`.
+    // Claiming to be a thread only narrows what the caller can do.
+    const fromChat = own?.project.id === project.id && own.role === 'thread' ? project.threads.find(item => item.sessionId === sessionId)?.id : undefined
+    const from = fromChat || String(input.from || '')
+    if (from) {
+      if (!project.threads.some(item => item.id === from)) throw Object.assign(new Error(`No thread ${from} in this project (arguments.from is your own thread id)`), { status: 404 })
+      if (!THREAD_ACTIONS.includes(action)) throw Object.assign(new Error(`A thread can use ${THREAD_ACTIONS.join(', ')}. Ask the coordinator with message_coordinator for anything else.`), { status: 403 })
+    }
     switch (action) {
+      case 'message_coordinator':
+        if (!from) throw Object.assign(new Error('message_coordinator is for threads: pass arguments.from with your thread id'), { status: 400 })
+        ctx.body = await service.messageCoordinator(project.id, from, input.text)
+        return
       case 'list':
         ctx.body = { project }
         return
@@ -118,7 +133,7 @@ export async function tool(ctx: Context) {
         ctx.body = { thread: await service.startThread(project.id, input) }
         return
       case 'message_thread':
-        ctx.body = await service.messageThread(project.id, threadId, input.text)
+        ctx.body = from ? await service.relayToThread(project.id, from, threadId, input.text) : await service.messageThread(project.id, threadId, input.text)
         return
       case 'read_thread':
         ctx.body = await service.readThread(project.id, threadId, Number(input.limit) || 6)
@@ -127,7 +142,8 @@ export async function tool(ctx: Context) {
         ctx.body = { thread: await service.setResolved(project.id, threadId, input.resolved !== false) }
         return
       case 'set_pr':
-        ctx.body = { thread: await service.setThreadPr(project.id, threadId, input.pr) }
+        if (from && threadId && threadId !== from) throw Object.assign(new Error('A thread can set only its own PR'), { status: 403 })
+        ctx.body = { thread: await service.setThreadPr(project.id, threadId || from, input.pr) }
         return
       case 'add_task':
         ctx.body = { task: await service.addTask(project.id, input) }

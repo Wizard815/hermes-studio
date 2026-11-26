@@ -96,6 +96,23 @@ progress, Needs you, Review and Done. The pane widens while it shows.
 - The coordinator sees board tasks that are not threads in its context block,
   and can `add_task`, `update_task` and `start_task`.
 
+## Threads talking to each other
+
+A thread's brief tells it its thread id and project id. With
+`ekko_studio_use_project` a thread can:
+
+- `message_coordinator` (`from`, `text`): a question or an early finding. It
+  reaches the coordinator as its next project turn ("Project update: “Fix the
+  login test” sent a message"), even with wake-ups off.
+- `message_thread` (`from`, `thread`, `text`): typed into the other thread,
+  marked with who sent it and how to answer.
+- `list`, `read_thread`, and `set_pr` for its own thread.
+
+A call with `from` (or from a thread's own chat) is a thread's call: starting,
+resolving and board changes are refused with a 403, so a thread asks the
+coordinator instead. Messages are capped at 4000 characters and 50 waiting per
+coordinator.
+
 ## The coordinator
 
 Each turn of a chat in a project gets a `<studio_project_context>` block
@@ -105,7 +122,8 @@ the open threads with their status, and how to use its tool.
 
 The coordinator's tool is `ekko_studio_use_project` in Studio's `use` MCP
 toolset. Actions: `list`, `start_thread`, `message_thread`, `read_thread`,
-`resolve_thread`, `set_pr`, `add_task`, `update_task`, `start_task`. The project is the calling chat's project
+`resolve_thread`, `set_pr`, `add_task`, `update_task`, `start_task`, and
+`message_coordinator` for threads. The project is the calling chat's project
 (`HERMES_STUDIO_SESSION_ID`) unless `arguments.project` names one.
 
 - `message_thread` types into the thread's herdr pane. A thread whose agent

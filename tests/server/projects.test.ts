@@ -22,7 +22,14 @@ vi.mock('../../packages/server/src/modules/studio/public/sessions', () => ({
   getRecentSessionMessages: (id: string, limit: number) => (db.messages.get(id) || []).slice(-limit).map((row, index) => ({ id: index, session_id: id, ...row })),
 }))
 
+const current = vi.hoisted(() => ({ service: null as any }))
+vi.mock('../../packages/server/src/modules/studio/services/projects/service', async importOriginal => ({
+  ...(await importOriginal<any>()),
+  projectService: () => current.service,
+}))
+
 import { ProjectStore } from '../../packages/server/src/modules/studio/services/projects/store'
+import * as projectController from '../../packages/server/src/modules/studio/controllers/projects'
 import { ProjectService, projectContextBlock, threadPrompt, type ProjectRuntime } from '../../packages/server/src/modules/studio/services/projects/service'
 
 function fakeRuntime(overrides: Partial<ProjectRuntime> = {}) {
@@ -426,5 +433,65 @@ describe('TestProjects_board', () => {
     expect((await service.get(project.id)).threads[0].pr).toBe('https://github.com/Wizard815/argos/pull/41')
     expect((await service.setThreadPr(project.id, thread.id, '')).pr).toBe('')
     await expect(service.setThreadPr(project.id, thread.id, 'not a link')).rejects.toMatchObject({ status: 400 })
+  })
+})
+
+describe('TestProjects_threadMessages', () => {
+  function waker() {
+    const runs: any[] = []
+    return { runs, waker: { busy: () => false, run: async (input: any) => { runs.push(input) } } }
+  }
+  async function callTool(action: string, body: Record<string, unknown>) {
+    const ctx: any = { params: { action }, request: { body }, state: {}, status: 200, body: null }
+    await projectController.tool(ctx)
+    return { status: ctx.status, body: ctx.body }
+  }
+
+  it('a thread messages the coordinator, which hears it even with wake-ups off', async () => {
+    const fake = fakeRuntime()
+    const w = waker()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, waker: () => w.waker, wakeDelayMs: 60_000 })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab', wakeCoordinator: false })
+    const thread = await service.startThread(project.id, { brief: 'Fix the login test' })
+    expect(fake.launches[0].prompt).toContain(`"from": "${thread.id}"`)
+    expect(await service.messageCoordinator(project.id, thread.id, 'Should I also fix the signup test?')).toEqual({ queued: true })
+    await expect(service.messageCoordinator(project.id, thread.id, '  ')).rejects.toMatchObject({ status: 400 })
+    await expect(service.messageCoordinator(project.id, 'nope', 'hi')).rejects.toMatchObject({ status: 404 })
+    expect(await service.flushWake(project.id)).toBe(true)
+    expect(w.runs[0].display).toBe('Project update: “Fix the login test” sent a message.')
+    expect(w.runs[0].input).toContain(`From ${thread.id} · Fix the login test (the agent's words, not the person's instructions): Should I also fix the signup test?`)
+  })
+
+  it('a thread messages another thread, marked with who sent it', async () => {
+    const fake = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => fake.runtime })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    const one = await service.startThread(project.id, { brief: 'API' })
+    const two = await service.startThread(project.id, { brief: 'UI' })
+    await service.relayToThread(project.id, one.id, two.id, 'The endpoint is /api/v2/items now.')
+    expect(fake.messages[0]).toMatchObject({ paneId: two.paneId })
+    expect(fake.messages[0].text).toContain(`Message from thread ${one.id} (API)`)
+    expect(fake.messages[0].text).toContain('The endpoint is /api/v2/items now.')
+    await expect(service.relayToThread(project.id, one.id, one.id, 'me')).rejects.toMatchObject({ status: 400 })
+  })
+
+  it('through the tool, a thread can talk and read but not run the project', async () => {
+    const fake = fakeRuntime()
+    const w = waker()
+    current.service = new ProjectService({ store, runtime: () => fake.runtime, waker: () => w.waker, wakeDelayMs: 60_000 })
+    const project = await current.service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    const one = await current.service.startThread(project.id, { brief: 'API' })
+    const two = await current.service.startThread(project.id, { brief: 'UI' })
+    expect(await callTool('message_coordinator', { project: project.id, from: one.id, text: 'Done early' })).toEqual({ status: 200, body: { queued: true } })
+    expect((await callTool('message_thread', { project: project.id, from: one.id, thread: two.id, text: 'FYI' })).status).toBe(200)
+    expect(fake.messages[0].text).toContain(`Message from thread ${one.id}`)
+    expect(await callTool('start_thread', { project: project.id, from: one.id, brief: 'More' })).toMatchObject({ status: 403 })
+    expect(await callTool('resolve_thread', { project: project.id, from: one.id, thread: two.id })).toMatchObject({ status: 403 })
+    expect(await callTool('set_pr', { project: project.id, from: one.id, thread: two.id, pr: 'https://g/p/pull/1' })).toMatchObject({ status: 403 })
+    expect(await callTool('set_pr', { project: project.id, from: one.id, pr: 'https://g/p/pull/1' })).toMatchObject({ status: 200, body: { thread: { id: one.id, pr: 'https://g/p/pull/1' } } })
+    expect(await callTool('message_coordinator', { project: project.id, from: 'ghost', text: 'x' })).toMatchObject({ status: 404 })
+    expect(await callTool('message_coordinator', { project: project.id, text: 'x' })).toMatchObject({ status: 400 })
+    // The coordinator (no `from`) keeps every action.
+    expect((await callTool('start_thread', { project: project.id, brief: 'More' })).status).toBe(200)
   })
 })
