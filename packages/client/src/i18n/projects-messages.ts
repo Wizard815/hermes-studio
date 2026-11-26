@@ -46,6 +46,7 @@ const en = {
   pick: 'Project',
   pane: { openChat: 'Open full chat', close: 'Close thread', send: 'Send', placeholder: 'Message this thread…', blocked: 'Waiting on you. Answer it in the full chat.', starting: 'Starting in herdr. Messages show up once the agent reports its chat.', empty: 'No messages yet.', you: 'You', label: 'Thread', allThreads: 'All threads ({n} open)', switch: 'Switch thread', noThreads: 'No threads yet.' },
   allThreadsLink: 'All threads', attention: { needsYou: '{n} need you', idle: '{n} done or idle' },
+  tabs: { threads: 'Threads', context: 'Context' }, context: { noInstructions: 'No instructions yet.', on: 'On', off: 'Off', worktrees: 'Worktree per thread', wake: 'Coordinator wake-ups' },
 }
 
 type Messages = typeof en
@@ -63,6 +64,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: '创建', start: '启动线程', save: '保存', cancel: '取消', failed: '操作失败：{error}', moveToProject: '移到项目…', moveTitle: '移到项目', moved: '已移到 {name}', pick: '项目',
     pane: { openChat: '打开完整聊天', close: '关闭线程', send: '发送', placeholder: '给这个线程发消息…', blocked: '正在等你。请在完整聊天中回答。', starting: '正在 herdr 中启动。智能体报告聊天后会显示消息。', empty: '还没有消息。', you: '你', label: '线程', allThreads: '全部线程（{n} 个进行中）', switch: '切换线程', noThreads: '还没有线程。' },
     allThreadsLink: '全部线程', attention: { needsYou: '{n} 个需要你', idle: '{n} 个已完成或空闲' },
+    tabs: { threads: '线程', context: '上下文' }, context: { noInstructions: '还没有说明。', on: '开', off: '关', worktrees: '每个线程一个工作树', wake: '协调者唤醒' },
   } },
   'zh-TW': { projects: {
     nav: '專案', title: '專案', back: '聊天', newProject: '新增專案', newThread: '新增執行緒', coordinator: '協調者',
@@ -75,6 +77,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: '建立', start: '啟動執行緒', save: '儲存', cancel: '取消', failed: '操作失敗：{error}', moveToProject: '移到專案…', moveTitle: '移到專案', moved: '已移到 {name}', pick: '專案',
     pane: { openChat: '開啟完整聊天', close: '關閉執行緒', send: '傳送', placeholder: '傳訊息給這個執行緒…', blocked: '正在等你。請在完整聊天中回答。', starting: '正在 herdr 中啟動。智能體回報聊天後會顯示訊息。', empty: '還沒有訊息。', you: '你', label: '執行緒', allThreads: '全部執行緒（{n} 個進行中）', switch: '切換執行緒', noThreads: '還沒有執行緒。' },
     allThreadsLink: '全部執行緒', attention: { needsYou: '{n} 個需要你', idle: '{n} 個已完成或閒置' },
+    tabs: { threads: '執行緒', context: '脈絡' }, context: { noInstructions: '還沒有說明。', on: '開', off: '關', worktrees: '每個執行緒一個工作樹', wake: '協調者喚醒' },
   } },
   ja: { projects: {
     nav: 'プロジェクト', title: 'プロジェクト', back: 'チャット', newProject: '新規プロジェクト', newThread: '新規スレッド', coordinator: 'コーディネーター',
@@ -87,6 +90,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: '作成', start: 'スレッドを開始', save: '保存', cancel: 'キャンセル', failed: 'うまくいきませんでした：{error}', moveToProject: 'プロジェクトへ移動…', moveTitle: 'プロジェクトへ移動', moved: '{name} に移動しました', pick: 'プロジェクト',
     pane: { openChat: 'チャット全体を開く', close: 'スレッドを閉じる', send: '送信', placeholder: 'このスレッドにメッセージ…', blocked: 'あなたを待っています。チャット全体で答えてください。', starting: 'herdr で起動中です。エージェントがチャットを報告するとメッセージが表示されます。', empty: 'まだメッセージはありません。', you: 'あなた', label: 'スレッド', allThreads: 'すべてのスレッド（{n} 件進行中）', switch: 'スレッドを切り替え', noThreads: 'まだスレッドはありません。' },
     allThreadsLink: 'すべてのスレッド', attention: { needsYou: '{n} 件があなたを待っています', idle: '{n} 件が完了または待機中' },
+    tabs: { threads: 'スレッド', context: 'コンテキスト' }, context: { noInstructions: 'まだ指示はありません。', on: 'オン', off: 'オフ', worktrees: 'スレッドごとの worktree', wake: 'コーディネーターへの通知' },
   } },
   ko: { projects: {
     nav: '프로젝트', title: '프로젝트', back: '채팅', newProject: '새 프로젝트', newThread: '새 스레드', coordinator: '코디네이터',
@@ -99,6 +103,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: '만들기', start: '스레드 시작', save: '저장', cancel: '취소', failed: '실패했습니다: {error}', moveToProject: '프로젝트로 이동…', moveTitle: '프로젝트로 이동', moved: '{name}(으)로 이동했습니다', pick: '프로젝트',
     pane: { openChat: '전체 채팅 열기', close: '스레드 닫기', send: '보내기', placeholder: '이 스레드에 메시지…', blocked: '당신을 기다리고 있습니다. 전체 채팅에서 답하세요.', starting: 'herdr에서 시작하는 중입니다. 에이전트가 채팅을 알리면 메시지가 표시됩니다.', empty: '아직 메시지가 없습니다.', you: '나', label: '스레드', allThreads: '모든 스레드 ({n}개 진행 중)', switch: '스레드 전환', noThreads: '아직 스레드가 없습니다.' },
     allThreadsLink: '모든 스레드', attention: { needsYou: '{n}개가 당신을 기다림', idle: '{n}개 완료 또는 유휴' },
+    tabs: { threads: '스레드', context: '컨텍스트' }, context: { noInstructions: '아직 지침이 없습니다.', on: '켜짐', off: '꺼짐', worktrees: '스레드별 워크트리', wake: '코디네이터 깨우기' },
   } },
   de: { projects: {
     nav: 'Projekte', title: 'Projekte', back: 'Chats', newProject: 'Neues Projekt', newThread: 'Neuer Thread', coordinator: 'Koordinator',
@@ -111,6 +116,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: 'Erstellen', start: 'Thread starten', save: 'Speichern', cancel: 'Abbrechen', failed: 'Das hat nicht geklappt: {error}', moveToProject: 'In Projekt verschieben…', moveTitle: 'In Projekt verschieben', moved: 'Nach {name} verschoben', pick: 'Projekt',
     pane: { openChat: 'Ganzen Chat öffnen', close: 'Thread schließen', send: 'Senden', placeholder: 'Nachricht an diesen Thread…', blocked: 'Wartet auf dich. Antworte im ganzen Chat.', starting: 'Startet in herdr. Nachrichten erscheinen, sobald der Agent seinen Chat meldet.', empty: 'Noch keine Nachrichten.', you: 'Du', label: 'Thread', allThreads: 'Alle Threads ({n} offen)', switch: 'Thread wechseln', noThreads: 'Noch keine Threads.' },
     allThreadsLink: 'Alle Threads', attention: { needsYou: '{n} brauchen dich', idle: '{n} fertig oder untätig' },
+    tabs: { threads: 'Threads', context: 'Kontext' }, context: { noInstructions: 'Noch keine Anweisungen.', on: 'An', off: 'Aus', worktrees: 'Worktree pro Thread', wake: 'Koordinator wecken' },
   } },
   es: { projects: {
     nav: 'Proyectos', title: 'Proyectos', back: 'Chats', newProject: 'Nuevo proyecto', newThread: 'Nuevo hilo', coordinator: 'Coordinador',
@@ -123,6 +129,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: 'Crear', start: 'Iniciar hilo', save: 'Guardar', cancel: 'Cancelar', failed: 'No funcionó: {error}', moveToProject: 'Mover a proyecto…', moveTitle: 'Mover a proyecto', moved: 'Movido a {name}', pick: 'Proyecto',
     pane: { openChat: 'Abrir chat completo', close: 'Cerrar hilo', send: 'Enviar', placeholder: 'Mensaje para este hilo…', blocked: 'Te está esperando. Responde en el chat completo.', starting: 'Iniciando en herdr. Los mensajes aparecen cuando el agente informa su chat.', empty: 'Aún no hay mensajes.', you: 'Tú', label: 'Hilo', allThreads: 'Todos los hilos ({n} abiertos)', switch: 'Cambiar de hilo', noThreads: 'Aún no hay hilos.' },
     allThreadsLink: 'Todos los hilos', attention: { needsYou: '{n} te necesitan', idle: '{n} terminados o inactivos' },
+    tabs: { threads: 'Hilos', context: 'Contexto' }, context: { noInstructions: 'Aún no hay instrucciones.', on: 'Sí', off: 'No', worktrees: 'Worktree por hilo', wake: 'Avisos al coordinador' },
   } },
   fr: { projects: {
     nav: 'Projets', title: 'Projets', back: 'Discussions', newProject: 'Nouveau projet', newThread: 'Nouveau fil', coordinator: 'Coordinateur',
@@ -135,6 +142,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: 'Créer', start: 'Lancer le fil', save: 'Enregistrer', cancel: 'Annuler', failed: 'Cela n’a pas marché : {error}', moveToProject: 'Déplacer vers un projet…', moveTitle: 'Déplacer vers un projet', moved: 'Déplacé vers {name}', pick: 'Projet',
     pane: { openChat: 'Ouvrir le chat complet', close: 'Fermer le fil', send: 'Envoyer', placeholder: 'Message pour ce fil…', blocked: 'Il vous attend. Répondez dans le chat complet.', starting: 'Démarrage dans herdr. Les messages s’affichent quand l’agent signale son chat.', empty: 'Pas encore de messages.', you: 'Vous', label: 'Fil', allThreads: 'Tous les fils ({n} ouverts)', switch: 'Changer de fil', noThreads: 'Pas encore de fils.' },
     allThreadsLink: 'Tous les fils', attention: { needsYou: '{n} ont besoin de vous', idle: '{n} terminés ou inactifs' },
+    tabs: { threads: 'Fils', context: 'Contexte' }, context: { noInstructions: 'Pas encore d’instructions.', on: 'Oui', off: 'Non', worktrees: 'Worktree par fil', wake: 'Réveil du coordinateur' },
   } },
   pt: { projects: {
     nav: 'Projetos', title: 'Projetos', back: 'Conversas', newProject: 'Novo projeto', newThread: 'Nova thread', coordinator: 'Coordenador',
@@ -147,6 +155,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: 'Criar', start: 'Iniciar thread', save: 'Salvar', cancel: 'Cancelar', failed: 'Não deu certo: {error}', moveToProject: 'Mover para projeto…', moveTitle: 'Mover para projeto', moved: 'Movida para {name}', pick: 'Projeto',
     pane: { openChat: 'Abrir chat completo', close: 'Fechar thread', send: 'Enviar', placeholder: 'Mensagem para esta thread…', blocked: 'Esperando por você. Responda no chat completo.', starting: 'Iniciando no herdr. As mensagens aparecem quando o agente informar o chat.', empty: 'Ainda sem mensagens.', you: 'Você', label: 'Thread', allThreads: 'Todas as threads ({n} abertas)', switch: 'Trocar de thread', noThreads: 'Ainda não há threads.' },
     allThreadsLink: 'Todas as threads', attention: { needsYou: '{n} precisam de você', idle: '{n} concluídas ou ociosas' },
+    tabs: { threads: 'Threads', context: 'Contexto' }, context: { noInstructions: 'Ainda sem instruções.', on: 'Ligado', off: 'Desligado', worktrees: 'Worktree por thread', wake: 'Avisos ao coordenador' },
   } },
   ru: { projects: {
     nav: 'Проекты', title: 'Проекты', back: 'Чаты', newProject: 'Новый проект', newThread: 'Новая ветка', coordinator: 'Координатор',
@@ -159,6 +168,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: 'Создать', start: 'Запустить ветку', save: 'Сохранить', cancel: 'Отмена', failed: 'Не получилось: {error}', moveToProject: 'Перенести в проект…', moveTitle: 'Перенести в проект', moved: 'Перенесено в {name}', pick: 'Проект',
     pane: { openChat: 'Открыть весь чат', close: 'Закрыть ветку', send: 'Отправить', placeholder: 'Сообщение для этой ветки…', blocked: 'Ждёт вас. Ответьте во всём чате.', starting: 'Запускается в herdr. Сообщения появятся, когда агент сообщит свой чат.', empty: 'Пока нет сообщений.', you: 'Вы', label: 'Ветка', allThreads: 'Все ветки ({n} открыто)', switch: 'Переключить ветку', noThreads: 'Пока нет веток.' },
     allThreadsLink: 'Все ветки', attention: { needsYou: '{n} ждут вас', idle: '{n} готово или простаивает' },
+    tabs: { threads: 'Ветки', context: 'Контекст' }, context: { noInstructions: 'Инструкций пока нет.', on: 'Вкл', off: 'Выкл', worktrees: 'Worktree для каждой ветки', wake: 'Пробуждение координатора' },
   } },
   tr: { projects: {
     nav: 'Projeler', title: 'Projeler', back: 'Sohbetler', newProject: 'Yeni proje', newThread: 'Yeni iş parçacığı', coordinator: 'Koordinatör',
@@ -171,6 +181,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: 'Oluştur', start: 'Başlat', save: 'Kaydet', cancel: 'İptal', failed: 'Olmadı: {error}', moveToProject: 'Projeye taşı…', moveTitle: 'Projeye taşı', moved: '{name} projesine taşındı', pick: 'Proje',
     pane: { openChat: 'Tüm sohbeti aç', close: 'İş parçacığını kapat', send: 'Gönder', placeholder: 'Bu iş parçacığına mesaj…', blocked: 'Sizi bekliyor. Tüm sohbette yanıtlayın.', starting: 'herdr içinde başlıyor. Ajan sohbetini bildirince mesajlar görünür.', empty: 'Henüz mesaj yok.', you: 'Siz', label: 'İş parçacığı', allThreads: 'Tüm iş parçacıkları ({n} açık)', switch: 'İş parçacığı değiştir', noThreads: 'Henüz iş parçacığı yok.' },
     allThreadsLink: 'Tüm iş parçacıkları', attention: { needsYou: '{n} size ihtiyaç duyuyor', idle: '{n} bitti veya boşta' },
+    tabs: { threads: 'İş parçacıkları', context: 'Bağlam' }, context: { noInstructions: 'Henüz talimat yok.', on: 'Açık', off: 'Kapalı', worktrees: 'İş parçacığı başına worktree', wake: 'Koordinatörü uyandırma' },
   } },
   ar: { projects: {
     nav: 'المشاريع', title: 'المشاريع', back: 'المحادثات', newProject: 'مشروع جديد', newThread: 'سلسلة جديدة', coordinator: 'المنسّق',
@@ -183,5 +194,6 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     create: 'إنشاء', start: 'بدء السلسلة', save: 'حفظ', cancel: 'إلغاء', failed: 'لم ينجح ذلك: {error}', moveToProject: 'نقل إلى مشروع…', moveTitle: 'نقل إلى مشروع', moved: 'نُقلت إلى {name}', pick: 'المشروع',
     pane: { openChat: 'فتح المحادثة كاملة', close: 'إغلاق السلسلة', send: 'إرسال', placeholder: 'رسالة إلى هذه السلسلة…', blocked: 'ينتظرك. أجب في المحادثة الكاملة.', starting: 'يبدأ في herdr. تظهر الرسائل عندما يبلغ الوكيل عن محادثته.', empty: 'لا توجد رسائل بعد.', you: 'أنت', label: 'السلسلة', allThreads: 'كل السلاسل ({n} مفتوحة)', switch: 'تبديل السلسلة', noThreads: 'لا توجد سلاسل بعد.' },
     allThreadsLink: 'كل السلاسل', attention: { needsYou: '{n} تحتاجك', idle: '{n} انتهت أو خاملة' },
+    tabs: { threads: 'السلاسل', context: 'السياق' }, context: { noInstructions: 'لا توجد تعليمات بعد.', on: 'تشغيل', off: 'إيقاف', worktrees: 'worktree لكل سلسلة', wake: 'تنبيه المنسق' },
   } },
 }

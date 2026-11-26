@@ -22,6 +22,13 @@ change: Projects is a second view of the same chat list.
   grouped by Needs you, Working, Done and Resolved. **All threads** (also a
   link under each project) lists every thread with its status, agent, branch
   and last message; picking one opens it.
+- **All threads** has two tabs. Threads groups them like Claude's project
+  threads (Needs you · 1, Working · 2, ...; Resolved starts collapsed), each with
+  its latest line, how long ago it changed, its agent and its branch. Context
+  shows the project's folder, instructions, default agent and switches.
+- **Telling projects apart.** In the normal chat list a project's folder uses
+  the Projects mark instead of a folder icon, and its chats carry a tag with the
+  mark (the folder name in Recent; Coordinator or Thread inside the folder).
 - **Counts.** The Projects button, and each project's folder in the normal chat
   list, carry two numbers: threads that need you (warning colour) and threads
   that are done or idle (success colour). They refresh every 10 seconds.
@@ -143,7 +150,7 @@ All routes need a super admin.
   through the herdr bridge.
 - `modules/studio/routes/projects.ts`, `controllers/projects.ts`.
 - `bin/ekko-studio-mcp.mjs`: `ekko_studio_use_project`.
-- Client: `components/hermes/chat/ProjectsList.vue`, `ThreadPane.vue`, `ProjectAttentionBadges.vue`, `project-groups.ts`,
+- Client: `components/hermes/chat/ProjectsList.vue`, `ThreadPane.vue`, `ProjectAttentionBadges.vue`, `ProjectIcon.vue`, `project-groups.ts`,
   `api/studio/projects.ts`; Projects button in `PageSidebarNav.vue`.
 
 Tests: `tests/server/projects.test.ts`, `tests/client/project-groups.test.ts`,

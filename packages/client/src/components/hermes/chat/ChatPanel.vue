@@ -73,6 +73,7 @@ import SessionListItem from "./SessionListItem.vue";
 import ProjectsList from "./ProjectsList.vue";
 import ThreadPane from "./ThreadPane.vue";
 import ProjectAttentionBadges from "./ProjectAttentionBadges.vue";
+import ProjectIcon from "./ProjectIcon.vue";
 import { addChatToProject, listProjects, type Project, type ProjectThread } from "@/api/studio/projects";
 import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
@@ -183,20 +184,26 @@ async function openProjectThread(project: Project, thread: ProjectThread | null)
 // Needs-you and done/idle counts for the Projects button and each project's chat folder.
 const projectAttention = ref<{ needsYou: number; idle: number } | null>(null);
 const projectAttentionByFolder = ref<Map<string, { needsYou: number; idle: number }>>(new Map());
+// Which chats are a project's coordinator or thread, so the list can mark them.
+const projectRoles = ref<Map<string, "coordinator" | "thread">>(new Map());
 let projectAttentionTimer: ReturnType<typeof setInterval> | null = null;
 async function refreshProjectAttention() {
   if (!isSuperAdmin.value || document.visibilityState !== "visible") return;
   try {
     const projects = await listProjects();
     const byFolder = new Map<string, { needsYou: number; idle: number }>();
+    const roles = new Map<string, "coordinator" | "thread">();
     let needsYou = 0, idle = 0;
     for (const project of projects) {
+      if (project.coordinatorSessionId) roles.set(project.coordinatorSessionId, "coordinator");
+      for (const thread of project.threads) if (thread.sessionId) roles.set(thread.sessionId, "thread");
       needsYou += project.counts.needsYou;
       idle += project.counts.done;
       if (project.categoryId != null) byFolder.set(`category-${project.categoryId}`, { needsYou: project.counts.needsYou, idle: project.counts.done });
     }
     projectAttention.value = { needsYou, idle };
     projectAttentionByFolder.value = byFolder;
+    projectRoles.value = roles;
   } catch { /* the counts are a hint; keep the last ones */ }
 }
 onMounted(() => {
@@ -2960,6 +2967,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             v-for="s in pinnedSessions"
             :key="`pinned-${s.id}`"
             :session="s"
+              :project-role="projectRoles.get(s.id) ?? null"
             :active="s.id === chatStore.activeSessionId"
             :pinned="true"
             can-delete
@@ -3017,6 +3025,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               v-for="s in recentSessions.sessions"
               :key="`recent-${s.id}`"
               :session="s"
+              :project-role="projectRoles.get(s.id) ?? null"
               :active="s.id === chatStore.activeSessionId"
               :pinned="Boolean(s.isPinned)"
               can-delete
@@ -3075,8 +3084,13 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             >
               <polyline points="9 18 15 12 9 6" />
             </svg>
+            <ProjectIcon
+              v-if="projectAttentionByFolder.has(group.key)"
+              class="session-group-folder session-group-folder--project"
+              data-testid="session-group-project-icon"
+            />
             <svg
-              v-if="group.key !== 'category-none'"
+              v-else-if="group.key !== 'category-none'"
               class="session-group-folder"
               width="13"
               height="13"
@@ -3091,7 +3105,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               <path v-if="collapsedCategories.has(group.key)" d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.2l2 2.2h8.8A1.5 1.5 0 0 1 21 8.7v8.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5Z" />
               <path v-else d="M3 17.5V6.5A1.5 1.5 0 0 1 4.5 5h4.2l2 2.2h7.8A1.5 1.5 0 0 1 20 8.7V10M3.2 18.2l2.3-7.4a1.5 1.5 0 0 1 1.4-1h14.2a1 1 0 0 1 1 1.3l-2 6.6a1.5 1.5 0 0 1-1.4 1.1H4.5a1.5 1.5 0 0 1-1.3-.6Z" />
             </svg>
-            <span class="session-group-label">{{ group.label }}</span>
+            <span class="session-group-label" :class="{ 'session-group-label--project': projectAttentionByFolder.has(group.key) }">{{ group.label }}</span>
             <ProjectAttentionBadges
               v-if="projectAttentionByFolder.get(group.key)"
               :needs-you="projectAttentionByFolder.get(group.key)!.needsYou"
@@ -3129,6 +3143,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               v-for="s in group.sessions"
               :key="s.id"
               :session="s"
+              :project-role="projectRoles.get(s.id) ?? null"
               :active="s.id === chatStore.activeSessionId"
               :pinned="false"
               can-delete
@@ -4202,6 +4217,15 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
     border-radius: 0;
     box-shadow: none;
   }
+}
+
+// A project's folder in the chat list: the Projects mark and an accent label.
+.session-group-folder--project {
+  color: var(--accent-primary);
+}
+
+.session-group-label--project {
+  color: var(--text-primary);
 }
 
 .chat-content-wrapper {

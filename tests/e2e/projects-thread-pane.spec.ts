@@ -96,6 +96,10 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
   await expect(all.getByTestId('thread-pane-card-t2')).toContainText('Waiting for approval to restart the overseer container.')
   await expect(all.getByTestId('thread-pane-card-t2')).toContainText('studio/add-overseer-docker-collector-t2')
   await expect(all.getByTestId('thread-pane-card-t3')).toContainText('The guide is in docs/omi-setup.md.')
+  // Context shows the project's folder and settings.
+  await pane.getByTestId('thread-pane-tab-context').click()
+  await expect(pane.getByTestId('thread-pane-context')).toContainText('/srv/homelab')
+  await pane.getByTestId('thread-pane-tab-threads').click()
   await all.getByTestId('thread-pane-card-t2').click()
   await expect(pane).toContainText('Waiting on you. Answer it in the full chat.')
   await pane.getByTestId('thread-pane-switcher').click()
@@ -116,6 +120,9 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
   await page.getByTestId('projects-back').click()
   const folder = page.locator('.session-group-header', { hasText: 'Homelab' }).first()
   await expect(folder.getByTestId('project-attention-needs')).toHaveText('1')
+  // Project folders and the chats in them carry the Projects mark.
+  await expect(folder.getByTestId('session-group-project-icon')).toBeVisible()
+  await expect(page.getByTestId('session-project-tag').first()).toBeVisible()
   await page.getByTestId('sidebar-projects').click()
   await expect(pane).toBeVisible()
   await pane.getByTestId('thread-pane-close').click()

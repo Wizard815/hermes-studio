@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProjectIcon from './ProjectIcon.vue'
 import { computed, ref, onUnmounted } from 'vue'
 import { NPopconfirm, NCheckbox, NTooltip } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -34,6 +35,8 @@ const props = withDefaults(defineProps<{
   showTime?: boolean
   singleLine?: boolean
   categoryLabel?: string
+  /** The chat is a project's coordinator or one of its threads (docs/projects.md). */
+  projectRole?: 'coordinator' | 'thread' | null
   to?: string
   interceptModifiedNavigation?: boolean
 }>(), {
@@ -188,11 +191,14 @@ onUnmounted(() => {
           <span class="session-item-profile-name">{{ profileName }}</span>
         </span>
         <span
-          v-if="props.categoryLabel"
+          v-if="props.categoryLabel || props.projectRole"
           class="session-item-category-tag"
-          :title="props.categoryLabel"
+          :class="{ 'session-item-category-tag--project': !!props.projectRole }"
+          :title="props.projectRole ? `${props.categoryLabel ? `${props.categoryLabel} · ` : ''}${t(props.projectRole === 'coordinator' ? 'projects.coordinator' : 'projects.pane.label')}` : props.categoryLabel"
+          :data-testid="props.projectRole ? 'session-project-tag' : undefined"
         >
-          {{ props.categoryLabel }}
+          <ProjectIcon v-if="props.projectRole" :size="10" class="session-item-project-icon" />
+          {{ props.categoryLabel || t(props.projectRole === 'coordinator' ? 'projects.coordinator' : 'projects.pane.label') }}
         </span>
       </span>
     </div>
@@ -400,6 +406,18 @@ onUnmounted(() => {
   font-size: calc(var(--font-size-base, 14px) * 11 / 14);
   line-height: var(--line-height, calc(var(--font-size-base, 14px) * 16 / 14));
   color: var(--text-muted);
+}
+
+.session-item-category-tag--project {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+  color: var(--text-secondary);
+}
+
+.session-item-project-icon {
+  flex: none;
 }
 
 .session-item-category-tag {

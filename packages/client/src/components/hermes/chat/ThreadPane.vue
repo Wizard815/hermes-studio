@@ -12,7 +12,7 @@ import { THREAD_GROUPS, groupThreads, threadDisplayStatus, threadGroup } from '.
 // glance. The switcher in the header moves between them.
 const props = defineProps<{ projectId: string; threadId: string | null; initialThread?: ProjectThread | null }>()
 const emit = defineEmits<{ open: [sessionId: string]; close: []; select: [threadId: string | null] }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const POLL_MS = 3000
 const ALL = '__all'
@@ -84,7 +84,7 @@ async function loadLastWords(loaded: Project, id: number) {
   if (id !== request) return
   const next: Record<string, string> = {}
   threads.forEach((item, index) => {
-    const text = results[index]?.messages.filter(row => row.role !== 'user').at(-1)?.text
+    const text = results[index]?.messages?.filter(row => row.role !== 'user').at(-1)?.text
     if (text) next[item.id] = text
   })
   lastWords.value = next
@@ -117,6 +117,32 @@ function onKeydown(event: KeyboardEvent) {
     event.preventDefault()
     void send()
   }
+}
+
+// The overview, laid out like Claude's project threads: Threads | Context tabs and
+// collapsible groups; Resolved starts collapsed.
+const tab = ref<'threads' | 'context'>('threads')
+const collapsed = ref(new Set<string>(['resolved']))
+function toggleGroup(group: string) {
+  const next = new Set(collapsed.value)
+  if (next.has(group)) next.delete(group)
+  else next.add(group)
+  collapsed.value = next
+}
+
+/** The thread's latest line: its last agent message, else its brief. */
+function latestLine(item: ProjectThread): string {
+  const text = lastWords.value[item.id] || item.brief || ''
+  return text.replace(/[#*`>_]/g, '').split('\n').map(line => line.trim()).find(Boolean) || ''
+}
+
+/** "now", "5m", "18h", "3d" in the person's language. */
+function ago(ms: number): string {
+  const minutes = Math.floor((Date.now() - ms) / 60_000)
+  const lang = locale.value
+  if (minutes < 1) return new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }).format(0, 'second')
+  const [value, unit] = minutes < 60 ? [minutes, 'minute'] : minutes < 1440 ? [Math.floor(minutes / 60), 'hour'] : [Math.floor(minutes / 1440), 'day']
+  return new Intl.NumberFormat(lang, { style: 'unit', unit, unitDisplay: 'narrow' }).format(value)
 }
 
 function pick(value: string) {
@@ -167,31 +193,82 @@ onUnmounted(() => {
       <button type="button" class="thread-pane-close" :aria-label="t('projects.pane.close')" :title="t('projects.pane.close')" data-testid="thread-pane-close" @click="emit('close')">✕</button>
     </header>
 
-    <div v-if="!threadId" class="thread-pane-overview" data-testid="thread-pane-all">
+    <template v-if="!threadId">
+    <div class="thread-pane-tabs" role="tablist">
+      <button
+        v-for="key in (['threads', 'context'] as const)"
+        :key="key"
+        type="button"
+        role="tab"
+        class="thread-pane-tab"
+        :class="{ active: tab === key }"
+        :aria-selected="tab === key"
+        :data-testid="`thread-pane-tab-${key}`"
+        @click="tab = key"
+      >{{ t(`projects.tabs.${key}`) }}</button>
+    </div>
+
+    <div v-if="tab === 'threads'" class="thread-pane-overview" data-testid="thread-pane-all" role="tabpanel">
       <p v-if="project && !project.threads.length" class="thread-pane-note">{{ t('projects.pane.noThreads') }}</p>
       <template v-for="group in THREAD_GROUPS" :key="group">
         <section v-if="groups[group].length" class="thread-pane-group">
-          <h3 class="thread-pane-group-title">{{ t(`projects.groups.${group}`) }} · {{ groups[group].length }}</h3>
           <button
-            v-for="item in groups[group]"
-            :key="item.id"
             type="button"
-            class="thread-pane-card"
-            :class="{ 'thread-pane-card--resolved': item.resolved }"
-            :data-testid="`thread-pane-card-${item.id}`"
-            @click="emit('select', item.id)"
+            class="thread-pane-group-title"
+            :aria-expanded="!collapsed.has(group)"
+            :data-testid="`thread-pane-group-${group}`"
+            @click="toggleGroup(group)"
           >
-            <span class="thread-pane-card-head">
-              <AgentStatusIcon :status="threadDisplayStatus(item.liveStatus)" :live="item.liveStatus !== 'idle' && item.liveStatus !== 'gone'" />
-              <span class="thread-pane-card-title">{{ item.title }}</span>
-              <span class="thread-pane-card-state">{{ statusLabel(item) }}</span>
-            </span>
-            <span class="thread-pane-meta">{{ item.agent }}<template v-if="item.branch"> · {{ item.branch }}</template></span>
-            <span v-if="lastWords[item.id]" class="thread-pane-card-last">{{ lastWords[item.id] }}</span>
+            {{ t(`projects.groups.${group}`) }} · {{ groups[group].length }}
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="thread-pane-group-chevron" :class="{ open: !collapsed.has(group) }" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
           </button>
+          <template v-if="!collapsed.has(group)">
+            <button
+              v-for="item in groups[group]"
+              :key="item.id"
+              type="button"
+              class="thread-pane-row"
+              :class="{ 'thread-pane-row--resolved': item.resolved }"
+              :data-testid="`thread-pane-card-${item.id}`"
+              @click="emit('select', item.id)"
+            >
+              <AgentStatusIcon class="thread-pane-row-icon" :status="threadDisplayStatus(item.liveStatus)" :live="item.liveStatus !== 'idle' && item.liveStatus !== 'gone'" />
+              <span class="thread-pane-row-body">
+                <span class="thread-pane-row-head">
+                  <span class="thread-pane-row-title">{{ item.title }}</span>
+                  <span class="thread-pane-row-time">{{ ago(item.updatedAt) }}</span>
+                </span>
+                <span v-if="latestLine(item)" class="thread-pane-row-last" :title="lastWords[item.id] || item.brief">{{ latestLine(item) }}</span>
+                <span class="thread-pane-row-chips">
+                  <span class="thread-pane-chip">{{ item.agent }}</span>
+                  <span v-if="item.liveStatus === 'blocked'" class="thread-pane-chip thread-pane-chip--needs">{{ t('projects.groups.needsYou') }}</span>
+                  <span v-if="item.branch" class="thread-pane-chip" :title="item.workspace">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="8" r="2" /><path d="M6 7v10M18 10c0 4-6 3-11 7" /></svg>
+                    {{ item.branch }}
+                  </span>
+                </span>
+              </span>
+            </button>
+          </template>
         </section>
       </template>
     </div>
+
+    <div v-else-if="project" class="thread-pane-context" data-testid="thread-pane-context" role="tabpanel">
+      <dl>
+        <dt>{{ t('projects.form.folder') }}</dt>
+        <dd><code>{{ project.folder || '—' }}</code></dd>
+        <dt>{{ t('projects.form.instructions') }}</dt>
+        <dd class="thread-pane-context-text">{{ project.instructions || t('projects.context.noInstructions') }}</dd>
+        <dt>{{ t('projects.form.defaultAgent') }}</dt>
+        <dd>{{ project.defaultAgent }}</dd>
+        <dt>{{ t('projects.context.worktrees') }}</dt>
+        <dd>{{ t(project.worktrees !== false ? 'projects.context.on' : 'projects.context.off') }}</dd>
+        <dt>{{ t('projects.context.wake') }}</dt>
+        <dd>{{ t(project.wakeCoordinator !== false ? 'projects.context.on' : 'projects.context.off') }}</dd>
+      </dl>
+    </div>
+    </template>
 
     <template v-else>
 
@@ -274,37 +351,72 @@ onUnmounted(() => {
   max-width: 100%;
 }
 
+.thread-pane-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 0;
+}
+
+.thread-pane-tab {
+  border: 0;
+  background: none;
+  font: inherit;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-component, 6px);
+  font-size: 13px;
+  color: $text-secondary;
+
+  &.active { background-color: $bg-secondary; color: $text-primary; }
+  &:focus-visible { outline: 2px solid $accent-primary; outline-offset: -2px; }
+}
+
 .thread-pane-overview {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
   overflow-y: auto;
-  padding: 12px;
+  padding: 8px 12px 12px;
 }
 
 .thread-pane-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
 .thread-pane-group-title {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: $text-muted;
+  border: 0;
+  background: none;
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  min-height: 32px;
+  font-size: 13px;
+  color: $text-secondary;
+
+  &:focus-visible { outline: 2px solid $accent-primary; outline-offset: 2px; }
 }
 
-.thread-pane-card {
+.thread-pane-group-chevron {
+  transform: rotate(0deg);
+  transition: transform 0.15s ease;
+
+  &.open { transform: rotate(90deg); }
+}
+
+.thread-pane-row {
+  border: 0;
+  background: none;
+  font: inherit;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: 10px;
   min-height: 44px;
-  padding: 8px 10px;
-  border: var(--border-width, 1px) solid $border-light;
+  padding: 8px;
   border-radius: var(--radius-component, 8px);
   text-align: start;
 
@@ -313,35 +425,89 @@ onUnmounted(() => {
   &--resolved { opacity: 0.7; }
 }
 
-.thread-pane-card-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.thread-pane-row-icon {
+  flex: none;
+  margin-top: 3px;
 }
 
-.thread-pane-card-title {
+.thread-pane-row-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.thread-pane-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.thread-pane-row-title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: $text-primary;
+}
+
+.thread-pane-row-time {
+  flex: none;
+  font-size: 12px;
+  color: $text-muted;
+}
+
+.thread-pane-row-last {
+  overflow: hidden;
   font-size: 13px;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.thread-pane-card-state {
-  flex: none;
-  font-size: 11px;
   color: $text-secondary;
 }
 
-.thread-pane-card-last {
-  display: -webkit-box;
+.thread-pane-row-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.thread-pane-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
   overflow: hidden;
-  font-size: 12px;
+  padding: 0 6px;
+  border: var(--border-width, 1px) solid $border-light;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: $text-secondary;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+
+  &--needs { border-color: $warning; color: $text-primary; }
+}
+
+.thread-pane-context {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  font-size: 13px;
+
+  dl { margin: 0; }
+  dt { margin-top: 12px; font-size: 11px; letter-spacing: 0.02em; text-transform: uppercase; color: $text-muted; }
+  dt:first-child { margin-top: 0; }
+  dd { margin: 2px 0 0; color: $text-primary; }
+  code { font-size: 12px; word-break: break-all; }
+}
+
+.thread-pane-context-text {
+  white-space: pre-wrap;
 }
 
 .thread-pane-meta {
@@ -350,6 +516,9 @@ onUnmounted(() => {
 }
 
 .thread-pane-close {
+  border: 0;
+  background: none;
+  font: inherit;
   flex: none;
   width: 44px;
   height: 44px;
