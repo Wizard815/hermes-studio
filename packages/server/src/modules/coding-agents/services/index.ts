@@ -78,13 +78,13 @@ import { getCodingAgentGlobalHome } from '../../studio/public/coding-agent-globa
 import { codingAgentContextPolicy, compactionPercent, claudeCompactionPercent, piCompactionSettings, type CodingAgentContextPolicy } from './context-policy'
 import { createCodingAgentModelDiscovery } from './models'
 import { nativeModelVariant } from './models/variants'
+import { classifySpawnError, codingAgentNotInstalledMessage, NODE_ENVIRONMENT_MISSING_CODE, NODE_ENVIRONMENT_MISSING_MESSAGE, spawnFailureCode, spawnFailureMessage } from './spawn-errors'
 
 const execFileAsync = promisify(execFile)
 const LAUNCH_API_MODES = new Set<ApiMode>(['chat_completions', 'codex_responses', 'anthropic_messages'])
 const CODING_AGENT_HOME_DIR = 'coding-agent'
 const CODEX_MODEL_CATALOG_FILE = 'codex-model-catalog.json'
 const CODEX_CATALOG_BASE_INSTRUCTIONS = 'You are Codex, a coding agent. Be precise, safe, and helpful.'
-const NODE_ENVIRONMENT_MISSING_CODE = 'node_environment_missing'
 const POSIX_LAUNCHER_FILE = 'launch.sh'
 const WINDOWS_LAUNCHER_FILE = 'launch.ps1'
 const CLAUDE_CODE_SKIP_PERMISSIONS_ARGS = ['--dangerously-skip-permissions']
@@ -537,24 +537,9 @@ function prependPathEntries(env: NodeJS.ProcessEnv, entries: Array<string | null
 }
 
 function nodeEnvironmentMissingError(): Error {
-  const err = new Error('Node/npm environment was not detected. Please install Node.js and try again.')
+  const err = new Error(NODE_ENVIRONMENT_MISSING_MESSAGE)
   ;(err as any).code = NODE_ENVIRONMENT_MISSING_CODE
   return err
-}
-
-function isNodeEnvironmentMissingError(err: any): boolean {
-  const text = [
-    err?.code,
-    err?.message,
-    typeof err?.stderr === 'string' ? err.stderr : '',
-    typeof err?.stdout === 'string' ? err.stdout : '',
-  ].filter(Boolean).join('\n').toLowerCase()
-  return text.includes('enoent') ||
-    text.includes('spawn npm') ||
-    text.includes('npm: command not found') ||
-    text.includes('npm not found') ||
-    text.includes('node: command not found') ||
-    text.includes('node not found')
 }
 
 function npmCliFromNpmBin(npmBin: string): { node: string; npmCli: string } | null {
@@ -2412,8 +2397,10 @@ async function runNpm(args: string[], options: { timeout?: number; env?: NodeJS.
   })
 }
 
-function normalizeError(err: any): string {
-  if (isNodeEnvironmentMissingError(err)) return nodeEnvironmentMissingError().message
+/** `agentName` only where the program that ran was the agent's own CLI (its status check). */
+function normalizeError(err: any, agentName?: string): string {
+  const missing = spawnFailureMessage(classifySpawnError(err), agentName)
+  if (missing) return missing
   const stderr = typeof err?.stderr === 'string' ? err.stderr.trim() : ''
   const stdout = typeof err?.stdout === 'string' ? err.stdout.trim() : ''
   const message = stderr || stdout || err?.message || String(err)
@@ -2421,8 +2408,8 @@ function normalizeError(err: any): string {
 }
 
 function normalizeErrorCode(err: any): string | undefined {
-  return isNodeEnvironmentMissingError(err) ? NODE_ENVIRONMENT_MISSING_CODE
-    : err?.code === 'coding_agent_environment_unavailable' || String(err?.code || '').startsWith('DSH_') ? err.code : undefined
+  return spawnFailureCode(classifySpawnError(err))
+    || err?.code === 'coding_agent_environment_unavailable' || String(err?.code || '').startsWith('DSH_') ? err.code : undefined
 }
 
 async function findCommandPaths(command: string, env: NodeJS.ProcessEnv): Promise<string[]> {
@@ -2709,7 +2696,7 @@ export async function getCodingAgentStatus(definition: CodingAgentDefinition): P
       rawVersion: '',
       source: commandLocated ? 'user-cli' : 'not-installed',
       path: commandLocated ? resolvedCommand : '',
-      error: normalizeError(err),
+      error: normalizeError(err, definition.name),
       ...(compatibility ? { compatibility } : {}),
     }
     recordCodingAgentStatus(status)
@@ -2744,6 +2731,7 @@ export interface CodingAgentUpdateResult {
   latestVersion: string
   updateAvailable: boolean
   message?: string
+  code?: string
 }
 
 export function versionGte(a: string, b: string, includePrerelease = false): boolean {
@@ -2829,7 +2817,7 @@ export async function checkUpdateAgent(id: string): Promise<CodingAgentUpdateRes
     return { success: true, tool: status, latestVersion, updateAvailable }
   } catch (err: any) {
     const status = await getCodingAgentStatus(tool)
-    return { success: false, tool: status, latestVersion: '', updateAvailable: false, message: normalizeError(err) }
+    return { success: false, tool: status, latestVersion: '', updateAvailable: false, message: normalizeError(err), code: normalizeErrorCode(err) }
   }
 }
 
@@ -2887,7 +2875,7 @@ export async function installCodingAgent(id: string, options: DshInstallOptions 
           ? `Install the Antigravity CLI from ${ANTIGRAVITY_INSTALL_URL}`
         : tool.id === 'cursor'
           ? `Install the Cursor CLI from ${CURSOR_CLI_INSTALL_URL}`
-          : status.error || 'Install completed but the command was not found',
+          : (status.error && status.error !== codingAgentNotInstalledMessage(tool.name) ? status.error : 'Install completed but the command was not found'),
       code: !status.installed && !codingAgentUsesNpm(tool.id) ? 'MANUAL_INSTALL' : undefined,
     }
   } catch (err: any) {
