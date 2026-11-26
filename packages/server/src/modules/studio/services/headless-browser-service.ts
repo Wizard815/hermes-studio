@@ -1002,6 +1002,41 @@ export class HeadlessBrowserService {
     return tab
   }
 
+  /**
+   * What is at a normalized point of the viewport: the element a person pinned
+   * a comment on in the live view (docs/pin-comments.md). Read-only.
+   */
+  async elementAt(tabId: string, x: number, y: number): Promise<{ tag: string; role?: string; name?: string; text?: string; selector?: string; href?: string } | null> {
+    const tab = this.tabs.get(tabId)
+    if (!tab) throw new Error('Tab not found')
+    const viewport = tab.page.viewportSize() || { width: 1280, height: 720 }
+    const px = Math.round(Math.min(1, Math.max(0, x)) * viewport.width)
+    const py = Math.round(Math.min(1, Math.max(0, y)) * viewport.height)
+    return tab.page.evaluate(({ px, py }: { px: number; py: number }) => {
+      const hit = document.elementFromPoint(px, py)
+      if (!hit) return null
+      // The nearest thing a person means: a link, button, field or labelled element.
+      const el = (hit.closest('a,button,input,select,textarea,label,[role],[aria-label],h1,h2,h3,h4,img,svg') || hit) as HTMLElement
+      const clip = (value: string | null | undefined, max = 160) => (value || '').replace(/\s+/g, ' ').trim().slice(0, max)
+      const path: string[] = []
+      for (let node: Element | null = el; node && node !== document.body && path.length < 4; node = node.parentElement) {
+        if (node.id) { path.unshift(`#${CSS.escape(node.id)}`); break }
+        const parent: Element | null = node.parentElement
+        const same = parent ? Array.from(parent.children).filter(child => child.tagName === node!.tagName) : []
+        path.unshift(`${node.tagName.toLowerCase()}${same.length > 1 ? `:nth-of-type(${same.indexOf(node) + 1})` : ''}`)
+      }
+      const name = el.getAttribute('aria-label') || el.getAttribute('alt') || el.getAttribute('title') || (el as HTMLInputElement).placeholder || ''
+      return {
+        tag: el.tagName.toLowerCase(),
+        role: el.getAttribute('role') || undefined,
+        name: clip(name) || undefined,
+        text: clip(el.innerText || el.textContent) || undefined,
+        selector: path.join(' > ') || undefined,
+        href: (el as HTMLAnchorElement).href || undefined,
+      }
+    }, { px, py }).catch(() => null)
+  }
+
   /** Move the pointer and scroll the page by wheel delta. */
   async scrollAt(tabId: string, x: number, y: number, deltaX: number, deltaY: number): Promise<BrowserTab> {
     const tab = this.tabs.get(tabId)

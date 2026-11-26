@@ -24,7 +24,7 @@ export const useHerdrStore = defineStore('herdr', () => {
   let socket: Socket | null = null
   let users = 0
 
-  const enabled = computed(() => status.value?.settings.enabled === true)
+  const enabled = computed(() => status.value?.settings?.enabled === true)
   const connected = computed(() => bridge.value?.connected === true)
   /** Chats elevated to herdr; null until herdr's state is known (or from an older server). */
   const elevatedChats = computed<Set<string> | null>(() => (Array.isArray(bridge.value?.elevatedChats) ? new Set(bridge.value!.elevatedChats) : null))
@@ -43,8 +43,10 @@ export const useHerdrStore = defineStore('herdr', () => {
   async function refresh() {
     loading.value = true
     try {
-      status.value = await fetchHerdrStatus()
-      bridge.value = status.value.bridge
+      const next = await fetchHerdrStatus()
+      // An older or unrelated server may answer without herdr's settings: treat it as off.
+      status.value = next && typeof next === 'object' && next.settings ? next : null
+      bridge.value = status.value?.bridge ?? null
       error.value = ''
     } catch (err: any) {
       error.value = err?.message || String(err)

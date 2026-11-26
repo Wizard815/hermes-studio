@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProjectAttentionBadges from '@/components/hermes/chat/ProjectAttentionBadges.vue'
 import { deploymentUrl } from '@/utils/deployment-url'
 import { computed } from 'vue'
 import { NTooltip } from 'naive-ui'
@@ -15,10 +16,16 @@ type ActiveSection = 'person' | 'chat' | 'history' | 'connections' | 'agents' | 
 const props = defineProps<{
   active: ActiveSection
   primaryLabel?: string
+  /** The chat page shows its Projects list instead of the chats. */
+  projectsActive?: boolean
+  /** Threads across all projects that need the person, and that are done or idle. */
+  projectsAttention?: { needsYou: number; idle: number } | null
 }>()
 
 const emit = defineEmits<{
   primary: []
+  /** On the chat page: switch the list between chats and projects. */
+  projects: []
 }>()
 
 const { t } = useI18n()
@@ -33,6 +40,15 @@ const primaryText = computed(() => props.primaryLabel || t('chat.newChat'))
 function openChat() {
   if (props.active === 'chat') return
   void router.push({ name: 'hermes.chat' })
+}
+
+// Projects live in the chat page's list (docs/projects.md); elsewhere this opens the chat page on them.
+function openProjects() {
+  if (props.active === 'chat') {
+    emit('projects')
+    return
+  }
+  void router.push({ name: 'hermes.chat', query: { view: 'projects' } })
 }
 
 function openHistory() {
@@ -120,6 +136,32 @@ function openUpstream() {
           <slot name="actions" />
         </div>
       </div>
+      <button
+        v-if="canManageAgents"
+        class="page-sidebar-tab"
+        :class="{ active: active === 'chat' && projectsActive }"
+        type="button"
+        data-testid="sidebar-projects"
+        :aria-pressed="active === 'chat' ? !!projectsActive : undefined"
+        @click="openProjects"
+      >
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+          <path d="M8 13h8M12 9v8" />
+        </svg>
+        <span>{{ t('projects.nav') }}</span>
+        <ProjectAttentionBadges v-if="projectsAttention" :needs-you="projectsAttention.needsYou" :idle="projectsAttention.idle" />
+      </button>
       <button
         v-if="!hasNavigationRail"
         class="page-sidebar-tab"

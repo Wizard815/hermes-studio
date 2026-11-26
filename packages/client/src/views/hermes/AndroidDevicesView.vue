@@ -436,6 +436,9 @@ onBeforeUnmount(() => {
           <pre v-if="termuxResult" class="android-output">{{ termuxResult }}</pre>
         </template>
         <p class="android-muted">{{ t('android.phoneApkHint') }}</p>
+        <div v-if="phone.openOmiPanel" class="android-row">
+          <NButton size="small" data-testid="android-omi-panel" @click="phone.openOmiPanel()">{{ t('android.omiPanel') }}</NButton>
+        </div>
       </section>
     </aside>
 

@@ -11,6 +11,9 @@ import { useI18n } from 'vue-i18n'
 import type { Socket } from 'socket.io-client'
 import { io } from 'socket.io-client'
 import { getBaseUrlValue, getApiKey } from '@/api/client'
+import PinComment from '@/components/common/PinComment.vue'
+import ImagePreviewOverlay from './ImagePreviewOverlay.vue'
+import { pinCommentTarget } from '@/utils/pin-comment'
 import {
   fetchHeadlessBrowserStatus,
   fetchBrowserState,
@@ -26,6 +29,7 @@ import {
   storeScreenshot,
   storedScreenshotUrl,
   deleteStoredScreenshot,
+  fetchElementAt,
   type BrowserTabInfo,
   type ViewportInfo,
 } from '@/api/studio/browser'
@@ -84,6 +88,13 @@ let socketRef: Socket | null = null
 // ─── Computed ───────────────────────────────────────────────────
 
 const currentTab = computed(() => tabs.value.find(t => t.id === activeTabId.value) ?? null)
+// Comment mode: a click pins a comment on the page for the chat instead of clicking in it.
+const commenting = ref(false)
+const canComment = computed(() => !!pinCommentTarget.value)
+/** The element under a pinned spot, so the comment says what was pinned. */
+function inspectAt(x: number, y: number) {
+  return activeTabId.value ? fetchElementAt(activeTabId.value, x, y) : Promise.resolve(null)
+}
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -635,6 +646,16 @@ onUnmounted(() => {
             </template>
             {{ t('browser.capture', 'Capture screenshot') }}
           </NTooltip>
+          <NButton
+            v-if="canComment && currentScreenshot"
+            size="small"
+            :type="commenting ? 'primary' : 'default'"
+            :secondary="commenting"
+            quaternary
+            :aria-pressed="commenting"
+            data-testid="browser-pin-comment"
+            @click="commenting = !commenting"
+          >{{ commenting ? t('pinComment.commenting') : t('pinComment.comment') }}</NButton>
         </div>
       </div>
 
@@ -661,13 +682,15 @@ onUnmounted(() => {
             @keydown="handleViewportKeydown"
             tabindex="0"
           >
-            <img
-              ref="imageRef"
-              :src="'data:image/jpeg;base64,' + currentScreenshot"
-              class="browser-screenshot-image"
-              alt="Live browser view"
-              draggable="false"
-            />
+            <PinComment :name="currentTab?.url || currentTab?.title || 'the browser'" :active="commenting" :inspect="inspectAt" @sent="message.success(t('pinComment.sent'))" @error="text => message.error(text)">
+              <img
+                ref="imageRef"
+                :src="'data:image/jpeg;base64,' + currentScreenshot"
+                class="browser-screenshot-image"
+                alt="Live browser view"
+                draggable="false"
+              />
+            </PinComment>
           </div>
         </template>
 
@@ -721,10 +744,7 @@ onUnmounted(() => {
   <!-- Lightbox Overlay -->
   <Teleport to="body">
     <transition name="lightbox-fade">
-      <div v-if="lightboxImage" class="browser-lightbox" @click.self="lightboxImage = null">
-        <button class="browser-lightbox-close" type="button" @click="lightboxImage = null">×</button>
-        <img :src="lightboxImage" class="browser-lightbox-image" alt="Enlarged screenshot" />
-      </div>
+      <ImagePreviewOverlay v-if="lightboxImage" :src="lightboxImage" :alt="t('browser.capturedScreenshots', 'Captured Screenshots')" @close="lightboxImage = null" />
     </transition>
   </Teleport>
 </template>
@@ -959,6 +979,7 @@ onUnmounted(() => {
 
 .browser-viewport {
   position: relative;
+  container-type: size;
   width: 100%;
   height: 100%;
   display: flex;
@@ -978,8 +999,8 @@ onUnmounted(() => {
 }
 
 .browser-screenshot-image {
-  max-width: 100%;
-  max-height: 100%;
+  max-width: 100cqw;
+  max-height: 100cqh;
   object-fit: contain;
   display: block;
   user-select: none;
@@ -1130,46 +1151,8 @@ onUnmounted(() => {
 
 // ─── Lightbox ───────────────────────────────────────────────────
 
-.browser-lightbox {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.85);
-  padding: 24px;
-}
 
-.browser-lightbox-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  font-size: 20px;
-  line-height: 1;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: background-color $transition-fast;
 
-  &:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-}
-
-.browser-lightbox-image {
-  max-width: 90vw;
-  max-height: 90vh;
-  object-fit: contain;
-  border-radius: 4px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
 
 .lightbox-fade-enter-active,
 .lightbox-fade-leave-active {

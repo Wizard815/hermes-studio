@@ -180,6 +180,8 @@ export interface HerdrWorkRef {
   orb?: { task?: { title: string; list: string }; project?: string }
   /** An Upstream Manager task (Upstream started the agent through Studio; see services/upstream). */
   upstream?: { task: string; title?: string; repo?: string }
+  /** A thread of a Studio project (services/projects): its status goes to the project. */
+  project?: { id: string; thread: string }
 }
 
 export interface HerdrPaneView extends HerdrPane {

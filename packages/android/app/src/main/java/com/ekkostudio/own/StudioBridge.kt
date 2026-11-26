@@ -25,6 +25,7 @@ object StudioBridge {
     /**
      * Injected at document start into Studio frames only. Defines the API the
      * Studio client looks for (`window.StudioOwn`) on top of the message port,
+     * including `openOmiPanel()` for the native Omi and phone AI panel,
      * and turns replies into a `studio-own:termux-result` event.
      */
     fun documentStartScript(termuxInstalled: Boolean): String = """
@@ -49,7 +50,10 @@ object StudioBridge {
               setMode: function (mode) { send({ type: 'alerts.mode', mode: String(mode || '') }); },
               unpair: function () { send({ type: 'alerts.unpair' }); },
               openBatterySettings: function () { send({ type: 'alerts.battery' }); }
-            })
+            }),
+            openOmiPanel: function () {
+              send({ type: 'omi.panel' });
+            }
           });
         })();
     """.trimIndent()
@@ -62,6 +66,9 @@ object StudioBridge {
         data class AlertsMode(val mode: String) : Request
         data object AlertsUnpair : Request
         data object AlertsBattery : Request
+
+        /** Show the native Omi and phone AI panel (it asks before every Termux command itself). */
+        data object OmiPanel : Request
     }
 
     /** Parses a page message. Unknown or invalid messages are ignored (null). */
@@ -78,6 +85,7 @@ object StudioBridge {
             "alerts.mode" -> json.optString("mode").takeIf { it in ApprovalAlerts.MODES }?.let { Request.AlertsMode(it) }
             "alerts.unpair" -> Request.AlertsUnpair
             "alerts.battery" -> Request.AlertsBattery
+            "omi.panel" -> Request.OmiPanel
             else -> null
         }
     }

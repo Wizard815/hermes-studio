@@ -130,6 +130,8 @@ export interface StudioOwnBridge {
   isTermuxInstalled(): boolean
   /** Runs `command` with Termux's bash; `background` runs it without opening Termux. */
   runInTermux(command: string, workdir: string, background: boolean): void
+  /** Native panel: open Omi, start/stop the phone's AI servers. Missing in app versions before 0.3.0. */
+  openOmiPanel?(): void
 }
 
 export function studioOwnBridge(): StudioOwnBridge | null {

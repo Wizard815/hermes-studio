@@ -177,6 +177,9 @@ The bridge is offered only to pages from the server address you configured in
 the app (WebView origin rules), never to other sites or embedded frames from
 other origins.
 
+The same card has **Omi and phone AI**, a panel in the app that opens the Omi app
+and starts or stops the phone's own model servers in Termux; see [omi.md](omi.md).
+
 ## Share to Studio and links
 
 **Share → Studio** works from any app (a browser, Omi, the gallery):

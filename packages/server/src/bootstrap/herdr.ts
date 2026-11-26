@@ -81,6 +81,7 @@ import { chatAgentLabel } from '../modules/coding-agents/services/herdr/chat-spa
 import { SpaceFolderSync, spaceFoldersFile, type SpaceFolderChat } from '../modules/coding-agents/services/herdr/space-folder-sync'
 import { orderedCategories } from '../modules/coding-agents/services/herdr/space-folder-file'
 import { recordWatcherEvent } from '../modules/studio/public/watcher'
+import { projectService, setProjectRuntime, type ProjectRuntime, type ProjectThreadStatus } from '../modules/studio/public/projects'
 
 function toRef(row: HermesSessionRow | null): HerdrSessionRef | null {
   if (!row) return null
@@ -309,7 +310,11 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
     agentLabel: agentId => AGENT_LABELS[agentId] || getCodingAgentDefinition(agentId)?.name || agentId,
     log: (level, message, data) => logger[level](data || {}, message),
     workStatusChanged: async (data, paneId, status, agent) => {
-      await Promise.all([reportOrbAgentStatus(data.orb, status, agent), reportUpstreamAgentStatus(data.upstream, paneId, status)])
+      await Promise.all([
+        reportOrbAgentStatus(data.orb, status, agent),
+        reportUpstreamAgentStatus(data.upstream, paneId, status),
+        data.project ? projectService().threadStatusChanged(data.project, paneId, status, paneSession(paneId)) : undefined,
+      ])
     },
     folderForWork,
     categoryForSpace,
@@ -464,6 +469,8 @@ async function reportOrbAgentStatus(ref: HerdrWorkRef['orb'], status: string, ag
  * the start directory set for it in Mission.
  */
 async function folderForWork(ref: HerdrWorkRef): Promise<{ categoryId: number | null; workspace: string } | null> {
+  // A project thread starts in the project's folder and files its chat in the project's chat folder.
+  if (ref.project) return projectService().folderFor(ref.project)
   // An Upstream task's agent works in the task's own branch folder: only its chat is filed (in the
   // Studio folder named after the repo, if there is one), the folder's start directory is not used.
   if (ref.upstream && !ref.orb) {
@@ -730,6 +737,64 @@ function startSpaceFolders(): SpaceFolderSync {
 }
 
 /** Configure and (if enabled) connect the herdr bridge. Never blocks startup on herdr. */
+/** The Studio chat herdr linked to a pane (agents herdr detects report their session after launch). */
+function paneSession(paneId: string): string | null {
+  return herdrManager.getBridge()?.getState().panes.find(pane => pane.pane_id === paneId)?.studioSessionId ?? null
+}
+
+const THREAD_STATUSES = new Set<string>(['working', 'blocked', 'done', 'idle', 'unknown'])
+
+/**
+ * Project threads run in herdr: each is an agent launched in its own herdr
+ * space (bridge.launchAgent) with a work ref, so the bridge files its chat in
+ * the project's folder and reports its status (docs/projects.md).
+ */
+export function projectRuntime(manager: Pick<typeof herdrManager, 'getBridge' | 'requireBridge'> = herdrManager): ProjectRuntime {
+  return {
+    canRun: agentId => !!herdrKindForStudioAgent(agentId),
+    launch: async input => {
+      const link = await manager.requireBridge().launchAgent(input.agentId, {
+        ...(input.model ? { model: input.model } : {}),
+        ...(input.provider ? { provider: input.provider } : {}),
+        workspace: input.workspace || undefined,
+        title: input.title,
+        prompt: input.prompt,
+        onWorking: { project: input.project },
+      })
+      const sessionId = manager.getBridge()?.getState().panes.find(pane => pane.pane_id === link.paneId)?.studioSessionId
+      return { paneId: link.paneId, ...(sessionId ? { sessionId } : {}) }
+    },
+    sessionForPane: paneId => manager.getBridge()?.getState().panes.find(pane => pane.pane_id === paneId)?.studioSessionId ?? null,
+    statusForPane: paneId => {
+      const bridge = manager.getBridge()
+      if (!bridge?.getState().connected) return null
+      const pane = bridge.getState().panes.find(item => item.pane_id === paneId)
+      if (!pane) return 'gone'
+      const status = String(pane.agent_status || '')
+      return (THREAD_STATUSES.has(status) ? status : 'unknown') as ProjectThreadStatus
+    },
+    message: async ({ sessionId, paneId, text }) => {
+      const bridge = manager.requireBridge()
+      const link = sessionId ? bridge.linkFor(sessionId) : undefined
+      if (sessionId && link && !link.waiting) {
+        await bridge.promptSession(sessionId, text)
+        return
+      }
+      if (sessionId) {
+        // The thread's agent stopped: resume it in herdr (as Elevate does), then type the message.
+        const opened = await bridge.openSession(sessionId)
+        if (!await bridge.promptWhenReady(opened.paneId, text)) throw Object.assign(new Error('The thread\'s agent did not start in herdr. Open the thread to see why.'), { status: 409 })
+        return
+      }
+      if (paneId && bridge.getState().panes.some(pane => pane.pane_id === paneId)) {
+        if (!await bridge.promptWhenReady(paneId, text)) throw Object.assign(new Error('The thread\'s agent is not ready for a message yet'), { status: 409 })
+        return
+      }
+      throw Object.assign(new Error('The thread has no chat or herdr pane to send to'), { status: 409 })
+    },
+  }
+}
+
 export function startHerdrIntegration(io: Server, baseUrl: string): { close: () => void } {
   const home = getWebUiHome()
   herdrManager.configure(herdrBridgeDeps(), {
@@ -738,6 +803,7 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
   }, herdrPluginDeps(baseUrl))
   const socket = setupHerdrSocket(io)
   const folders = startSpaceFolders()
+  setProjectRuntime(projectRuntime())
   try {
     const repaired = repairHerdrChatModes()
     if (repaired) logger.info({ repaired }, '[herdr] chats started in herdr now resume with their agent\'s own configuration')
@@ -757,6 +823,7 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
       stopListChanges?.(); stopListChanges = null
       folders.stop()
       herdrManager.setSpaceFolders(null)
+      setProjectRuntime(null)
       socket.close()
       herdrManager.shutdown()
     },

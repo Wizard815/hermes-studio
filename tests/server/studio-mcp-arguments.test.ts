@@ -101,6 +101,17 @@ describe('Studio MCP: arguments are checked before Studio is called', () => {
     expect(bad.hits).toEqual([])
   })
 
+  it('project actions go to Studio\'s project tool route with the calling chat, and nothing else', async () => {
+    const out = await mcp.call('ekko_studio_use_project', { action: 'start_thread', arguments: { brief: 'Fix the flaky login test', agent: 'codex' } })
+    expect(out.error).toBe('')
+    expect(out.hits).toEqual(['POST /api/studio/projects/tool/start_thread {"brief":"Fix the flaky login test","agent":"codex","sessionId":""}'])
+    const task = await mcp.call('ekko_studio_use_project', { action: 'add_task', arguments: { title: 'Review PR 12', pr: 'https://github.com/o/r/pull/12' } })
+    expect(task.hits).toEqual(['POST /api/studio/projects/tool/add_task {"title":"Review PR 12","pr":"https://github.com/o/r/pull/12","sessionId":""}'])
+    const bad = await mcp.call('ekko_studio_use_project', { action: 'delete_everything' })
+    expect(bad.error).toMatch(/action must be one of: list, start_thread/)
+    expect(bad.hits).toEqual([])
+  })
+
   it('phone actions go to Studio\'s Android agent route with the chat and agent, and nothing else', async () => {
     const out = await mcp.call('ekko_studio_use_phone', { action: 'tap', arguments: { id: 'e3' }, agent: 'hermes' })
     expect(out.error).toBe('')

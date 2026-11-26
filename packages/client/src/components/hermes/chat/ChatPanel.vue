@@ -37,6 +37,7 @@ import { inferCodingAgentApiMode, normalizeCodingAgentApiMode, type ChatCodingAg
 import { nativeCatalogModel, nativeModelLabel, nativeModelFamilies, nativeModelPickerId, nativeModelEffortChoices, selectNativeModelEffort } from "@/utils/native-model-families";
 import { agentInstallationState, fetchAgentAvailabilitySnapshot, type AgentAvailabilitySnapshot } from "@/api/agent-status";
 import { useChatStore, type Session, type Attachment } from "@/stores/hermes/chat";
+import { setPinCommentTarget } from "@/utils/pin-comment";
 import { useAppStore } from "@/stores/hermes/app";
 import { useProfilesStore } from "@/stores/hermes/profiles";
 import { useFilesStore } from "@/stores/hermes/files";
@@ -70,6 +71,11 @@ import RealtimeVoiceStage from "./RealtimeVoiceStage.vue";
 import ConversationMonitorPane from "./ConversationMonitorPane.vue";
 import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
+import ProjectsList from "./ProjectsList.vue";
+import ThreadPane from "./ThreadPane.vue";
+import ProjectAttentionBadges from "./ProjectAttentionBadges.vue";
+import ProjectIcon from "./ProjectIcon.vue";
+import { addChatToProject, listProjects, type Project, type ProjectThread } from "@/api/studio/projects";
 import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
 import VsCodeCenter from "./VsCodeCenter.vue";
@@ -90,6 +96,7 @@ import RunLimitsModal from "../run-limits/RunLimitsModal.vue";
 import PageSidebarNav from "@/components/layout/PageSidebarNav.vue";
 import { getStoredUserId, isStoredSuperAdmin } from "@/api/client";
 import { loadNewChatFormPreferences, saveNewChatFormPreferences } from "@/utils/new-chat-form-preferences";
+import { COMPOSE_QUERY_KEY, composeQueryText, withoutComposeQuery } from "@/utils/compose-link";
 import { useDefaultWorkspace } from "@/composables/useDefaultWorkspace";
 import { useChatSurfaceReveal } from "@/composables/useChatSurfaceReveal";
 import ModelCascader from "@/components/hermes/models/ModelCascader.vue";
@@ -154,6 +161,102 @@ function updateSessionTasksVisibility(show: boolean) {
 const message = useMessage();
 const { t } = useI18n();
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
+
+// The chat menu's Projects view: the chat list shows projects (a coordinator chat and
+// threads that run in herdr) instead of the chats; picking one opens it here (docs/projects.md).
+const projectsView = ref((() => { try { return localStorage.getItem("studio_chat_list_view") === "projects" } catch { return false } })());
+const projectsShown = computed(() => projectsView.value && isSuperAdmin.value && props.contentMode === "chat");
+function setProjectsView(on: boolean) {
+  projectsView.value = on;
+  try { localStorage.setItem("studio_chat_list_view", on ? "projects" : "chats") } catch { /* private mode */ }
+}
+watch(() => route.query.view, view => { if (view === "projects") setProjectsView(true) }, { immediate: true });
+const projectsListRef = ref<{ refresh: () => Promise<void> } | null>(null);
+const knownProjects = ref<Project[]>([]);
+// On wide screens a thread opens in a pane beside its project's coordinator chat;
+// with no thread picked the pane lists all the project's threads.
+const paneThread = ref<{ project: Project; threadId: string | null; initial: ProjectThread | null } | null>(null);
+const threadsInPane = computed(() => projectsShown.value && !isMobile.value);
+const threadPaneShown = computed(() => threadsInPane.value && !!paneThread.value
+  && chatStore.activeSessionId === paneThread.value.project.coordinatorSessionId);
+async function openProjectThread(project: Project, thread: ProjectThread | null) {
+  paneThread.value = { project, threadId: thread?.id ?? null, initial: thread };
+  if (chatStore.activeSessionId !== project.coordinatorSessionId) await handleSessionClick(project.coordinatorSessionId);
+}
+// Needs-you and done/idle counts for the Projects button and each project's chat folder.
+const projectAttention = ref<{ needsYou: number; idle: number } | null>(null);
+const projectAttentionByFolder = ref<Map<string, { needsYou: number; idle: number }>>(new Map());
+// Which chats are a project's coordinator or thread, so the list can mark them.
+const projectRoles = ref<Map<string, "coordinator" | "thread">>(new Map());
+let projectAttentionTimer: ReturnType<typeof setInterval> | null = null;
+async function refreshProjectAttention() {
+  if (!isSuperAdmin.value || document.visibilityState !== "visible") return;
+  try {
+    const projects = await listProjects();
+    const byFolder = new Map<string, { needsYou: number; idle: number }>();
+    const roles = new Map<string, "coordinator" | "thread">();
+    let needsYou = 0, idle = 0;
+    for (const project of projects) {
+      if (project.coordinatorSessionId) roles.set(project.coordinatorSessionId, "coordinator");
+      for (const thread of project.threads) if (thread.sessionId) roles.set(thread.sessionId, "thread");
+      needsYou += project.counts.needsYou;
+      idle += project.counts.done;
+      if (project.categoryId != null) byFolder.set(`category-${project.categoryId}`, { needsYou: project.counts.needsYou, idle: project.counts.done });
+    }
+    projectAttention.value = { needsYou, idle };
+    projectAttentionByFolder.value = byFolder;
+    projectRoles.value = roles;
+  } catch { /* the counts are a hint; keep the last ones */ }
+}
+onMounted(() => {
+  void refreshProjectAttention();
+  projectAttentionTimer = setInterval(() => { void refreshProjectAttention() }, 10_000);
+  // Pin comments on screenshots and the browser go to this chat.
+  setPinCommentTarget((text, pictures) => chatStore.sendMessage(text, pictures.map(picture => createBrowserAnnotationAttachment({ file: picture.file, context: picture.context || "" }))));
+});
+onUnmounted(() => {
+  if (projectAttentionTimer) clearInterval(projectAttentionTimer);
+  setPinCommentTarget(null);
+});
+function selectPaneThread(threadId: string | null) {
+  if (paneThread.value) paneThread.value = { ...paneThread.value, threadId, initial: null };
+}
+function openFromProjects(sessionId: string) {
+  if (paneThread.value?.project.coordinatorSessionId !== sessionId) paneThread.value = null;
+  void handleSessionClick(sessionId);
+}
+const moveToProjectSessionId = ref("");
+const moveToProjectId = ref<string | null>(null);
+const showMoveToProject = ref(false);
+const movingToProject = ref(false);
+async function openMoveToProject(sessionId: string) {
+  moveToProjectSessionId.value = sessionId;
+  moveToProjectId.value = null;
+  try {
+    knownProjects.value = await listProjects();
+  } catch (error: any) {
+    message.error(t("projects.failed", { error: error?.message || String(error) }));
+    return;
+  }
+  showMoveToProject.value = true;
+}
+async function confirmMoveToProject() {
+  const project = knownProjects.value.find(item => item.id === moveToProjectId.value);
+  if (!project || !moveToProjectSessionId.value) return;
+  movingToProject.value = true;
+  try {
+    await addChatToProject(project.id, moveToProjectSessionId.value);
+    const session = chatStore.sessions.find(item => item.id === moveToProjectSessionId.value);
+    if (session && project.categoryId != null) session.categoryId = project.categoryId;
+    showMoveToProject.value = false;
+    message.success(t("projects.moved", { name: project.name }));
+    void projectsListRef.value?.refresh();
+  } catch (error: any) {
+    message.error(t("projects.failed", { error: error?.message || String(error) }));
+  } finally {
+    movingToProject.value = false;
+  }
+}
 // By id and the chat list too: while Studio switches chats the loaded chat lags
 // behind, and herdr mode must not flicker off (it would reconnect herdr).
 // 'unknown' while the chat is not loaded yet; 'other' for chats with no herdr space
@@ -2212,6 +2315,7 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
   // Same rule as the header's "Elevate to herdr" button, with herdr on.
   includeHerdr: isSuperAdmin.value && herdrStore.enabled && herdrCanOpenChat(contextSession.value),
   elevated: isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(contextSession.value?.id),
+  includeProject: isSuperAdmin.value && !!contextSession.value && !contextSession.value.isLocalOnly,
   categoryChildren: buildSessionCategoryMenuChildren({
     categories: [...sessionCategories.value].sort((a, b) =>
       categoryPathLabel(sessionCategories.value, a.id).localeCompare(categoryPathLabel(sessionCategories.value, b.id))),
@@ -2237,6 +2341,7 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
     open: t(desktopChatWindowAvailable
       ? "chat.openSessionInNewWindow"
       : "chat.openSessionInNewTab"),
+    moveToProject: t("projects.moveToProject"),
     copyLink: t("chat.copySessionLink"),
     copyId: t("chat.copySessionId"),
     openInHerdr: herdrStore.isElevated(contextSession.value?.id) ? t("herdr.openLive") : t("herdr.elevate"),
@@ -2279,6 +2384,10 @@ function parseExportKey(key: string): { mode: 'full' | 'compressed'; ext: 'json'
 async function handleContextMenuSelect(key: string) {
   showContextMenu.value = false;
   if (!contextSessionId.value) return;
+  if (key === "project") {
+    void openMoveToProject(contextSessionId.value);
+    return;
+  }
   if (key === "category:retry") {
     await retrySessionCategories();
     return;
@@ -2762,6 +2871,22 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
   else void selectSessionModel(selection.model, selection.provider);
 }
 
+// `#/hermes/chat?compose=...` (Studio Own shares, utils/compose-link.ts) opens a new
+// chat with the text in its composer. The query is dropped first, so a reload or
+// Back does not prefill again; the person still presses Send.
+const composeSeed = ref("");
+watch([() => route.query[COMPOSE_QUERY_KEY], () => chatStore.sessionsLoaded], async ([value, loaded]) => {
+  if (props.standalone || props.contentMode !== "chat" || route.name !== "hermes.chat" || !loaded) return;
+  const text = composeQueryText(value);
+  if (text === null) return;
+  await router.replace({ query: withoutComposeQuery(route.query) });
+  await nextTick();
+  composeSeed.value = text;
+  await openNewChatPage();
+}, { immediate: true });
+// The new-chat composer can remount while it is open; the text stays until the page closes.
+watch(showNewChatPage, (open) => { if (!open) composeSeed.value = ""; });
+
 // Wait for route cleanup and session loading before opening the empty state;
 // explicit session links may still be resolving outside the sidebar list.
 // The herdr page does not need a chat: with no chats yet it must still open.
@@ -2793,7 +2918,10 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
         <PageSidebarNav
           :active="contentMode === 'connections' ? 'connections' : contentMode === 'agents' ? 'agents' : contentMode === 'models' ? 'models' : chatStore.runtimeMode === 'global_agent' ? 'global' : 'chat'"
           :primary-label="t('chat.newChat')"
+          :projects-active="projectsShown"
+          :projects-attention="projectAttention"
           @primary="openNewChatPage"
+          @projects="setProjectsView(!projectsShown)"
         >
           <template #actions>
             <ListActionsMenu
@@ -2833,6 +2961,18 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
         />
       </template>
       <template #default>
+        <ProjectsList
+          v-if="projectsShown"
+          ref="projectsListRef"
+          :active-session-id="chatStore.activeSessionId"
+          :threads-in-pane="threadsInPane"
+          :pane-thread-id="threadPaneShown ? paneThread?.threadId : null"
+          @open="openFromProjects"
+          @thread="openProjectThread"
+          @all-threads="openProjectThread($event, null)"
+          @back="setProjectsView(false)"
+        />
+        <template v-else>
         <div
           v-if="chatStore.isLoadingSessions && chatStore.sessions.length === 0"
           class="session-loading"
@@ -2852,6 +2992,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             v-for="s in pinnedSessions"
             :key="`pinned-${s.id}`"
             :session="s"
+              :project-role="projectRoles.get(s.id) ?? null"
             :active="s.id === chatStore.activeSessionId"
             :pinned="true"
             can-delete
@@ -2909,6 +3050,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               v-for="s in recentSessions.sessions"
               :key="`recent-${s.id}`"
               :session="s"
+              :project-role="projectRoles.get(s.id) ?? null"
               :active="s.id === chatStore.activeSessionId"
               :pinned="Boolean(s.isPinned)"
               can-delete
@@ -2967,8 +3109,13 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             >
               <polyline points="9 18 15 12 9 6" />
             </svg>
+            <ProjectIcon
+              v-if="projectAttentionByFolder.has(group.key)"
+              class="session-group-folder session-group-folder--project"
+              data-testid="session-group-project-icon"
+            />
             <svg
-              v-if="group.key !== 'category-none'"
+              v-else-if="group.key !== 'category-none'"
               class="session-group-folder"
               width="13"
               height="13"
@@ -2983,7 +3130,12 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               <path v-if="collapsedCategories.has(group.key)" d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.2l2 2.2h8.8A1.5 1.5 0 0 1 21 8.7v8.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5Z" />
               <path v-else d="M3 17.5V6.5A1.5 1.5 0 0 1 4.5 5h4.2l2 2.2h7.8A1.5 1.5 0 0 1 20 8.7V10M3.2 18.2l2.3-7.4a1.5 1.5 0 0 1 1.4-1h14.2a1 1 0 0 1 1 1.3l-2 6.6a1.5 1.5 0 0 1-1.4 1.1H4.5a1.5 1.5 0 0 1-1.3-.6Z" />
             </svg>
-            <span class="session-group-label">{{ group.label }}</span>
+            <span class="session-group-label" :class="{ 'session-group-label--project': projectAttentionByFolder.has(group.key) }">{{ group.label }}</span>
+            <ProjectAttentionBadges
+              v-if="projectAttentionByFolder.get(group.key)"
+              :needs-you="projectAttentionByFolder.get(group.key)!.needsYou"
+              :idle="projectAttentionByFolder.get(group.key)!.idle"
+            />
             <span class="session-group-count">{{ group.totalCount ?? group.sessions.length }}</span>
             <button
               v-if="group.key !== 'category-none'"
@@ -3016,6 +3168,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               v-for="s in group.sessions"
               :key="s.id"
               :session="s"
+              :project-role="projectRoles.get(s.id) ?? null"
               :active="s.id === chatStore.activeSessionId"
               :pinned="false"
               can-delete
@@ -3037,8 +3190,25 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             />
           </div>
         </template>
+        </template>
       </template>
     </SessionListSidebar>
+
+    <NModal v-model:show="showMoveToProject" preset="card" :title="t('projects.moveTitle')" style="max-width: 420px">
+      <NSelect
+        v-model:value="moveToProjectId"
+        :options="knownProjects.map(project => ({ label: project.name, value: project.id }))"
+        :placeholder="t('projects.pick')"
+        :aria-label="t('projects.pick')"
+        data-testid="move-to-project-select"
+      />
+      <template #footer>
+        <div class="move-to-project-actions">
+          <NButton @click="showMoveToProject = false">{{ t('projects.cancel') }}</NButton>
+          <NButton type="primary" :disabled="!moveToProjectId" :loading="movingToProject" data-testid="move-to-project-confirm" @click="confirmMoveToProject">{{ t('projects.save') }}</NButton>
+        </div>
+      </template>
+    </NModal>
 
     <NDropdown
       :key="contextMenuCategoriesKey"
@@ -3515,7 +3685,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
                   :native-effort-choices="isNewChatGlobalCodingAgent ? newChatNativeEffortChoices : undefined"
                   :submit="submitNewChat" :model-label="newChatModelLabel" :model-disabled="newChatLoading || (!isNewChatGlobalCodingAgent && newChatModelsLoading)"
                   :model-expanded="showSessionModelPicker && sessionModelIsDraft"
-                  :persist-draft="false" :initial-text="initialComposerText" @model-click="openSessionModelPicker(null, $event)" />
+                  :persist-draft="false" :initial-text="composeSeed || initialComposerText" @model-click="openSessionModelPicker(null, $event)" />
                 <button v-if="newChatHasNoModels" type="button" class="new-chat-config-hint" @click="openNewChatModelSettings">
                   {{ t('models.noModels') }} · {{ t('models.noProviderPromptAction') }}
                 </button>
@@ -3599,6 +3769,15 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             v-if="showOutline"
             :messages="chatStore.messages"
             @navigate="handleOutlineNavigate"
+          />
+          <ThreadPane
+            v-if="threadPaneShown && paneThread"
+            :project-id="paneThread.project.id"
+            :thread-id="paneThread.threadId"
+            :initial-thread="paneThread.initial"
+            @open="openFromProjects"
+            @select="selectPaneThread"
+            @close="paneThread = null"
           />
           <Transition
             name="tool-panel"
@@ -3748,6 +3927,12 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
     background: rgba(var(--accent-primary-rgb), 0.06);
     color: $text-primary;
   }
+}
+
+.move-to-project-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .session-list-title {
@@ -4057,6 +4242,15 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
     border-radius: 0;
     box-shadow: none;
   }
+}
+
+// A project's folder in the chat list: the Projects mark and an accent label.
+.session-group-folder--project {
+  color: var(--accent-primary);
+}
+
+.session-group-label--project {
+  color: var(--text-primary);
 }
 
 .chat-content-wrapper {

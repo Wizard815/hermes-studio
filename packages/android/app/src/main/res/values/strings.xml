@@ -44,4 +44,22 @@
     <string name="alerts_paired">Paired. Approval alerts are on.</string>
     <string name="alerts_confirm_title">Answer this approval?</string>
     <string name="alerts_confirm_body">Check what it does before you answer:\n\n%1$s</string>
+    <string name="share_truncated">The shared text was too long; Studio kept the first 20,000 characters.</string>
+    <string name="omi_panel_title">Omi</string>
+    <string name="omi_shortcut">Omi</string>
+    <string name="omi_open_approvals">Omi: waiting for your OK</string>
+    <string name="omi_open_tasks">Omi: tasks</string>
+    <string name="omi_open_capture">Omi: capture</string>
+    <string name="omi_missing">Omi is not installed on this phone.</string>
+    <string name="phone_ai_start">Start phone AI</string>
+    <string name="phone_ai_stop">Stop phone AI</string>
+    <string name="phone_ai_refresh">Check phone AI</string>
+    <string name="phone_ai_checking">Phone AI: checking…</string>
+    <string name="phone_ai_status">Phone AI\nChat model (port 8081): %1$s\nSpeech-to-text (port 8080): %2$s</string>
+    <string name="phone_ai_off">off</string>
+    <string name="phone_ai_loading">loading the model</string>
+    <string name="phone_ai_running">running</string>
+    <string name="phone_ai_script_missing">~/bin/omi-phone-ai.sh was not found in Termux. Set it up with Omi\'s phone AI guide (PHONE-LLM.md).</string>
+    <string name="termux_setup_title">Termux not set up</string>
+    <string name="termux_setup_body">Studio runs the phone AI in Termux, and Termux has to allow it first.\n\n1. Install Termux from F-Droid or GitHub (the Play Store build is outdated).\n\n2. In Termux, run:\n\nmkdir -p ~/.termux &amp;&amp; echo \"allow-external-apps = true\" &gt;&gt; ~/.termux/termux.properties\ntermux-reload-settings\n\n3. Try again. Android asks once to let Studio run Termux commands, and Studio shows every command before it runs.</string>
 </resources>
