@@ -705,6 +705,9 @@ class AgentPool:
                 # Some native registries retain definitions after their transport shuts down.
                 # Never advertise those retired names in a newly built model tool snapshot.
                 self._filter_retired_mcp_tools(agent)
+                # "I'll read the screen." with no tool call is re-prompted, not the answer (bridge_turn_guards).
+                from bridge_turn_guards import apply_turn_guards
+                apply_turn_guards(agent, cfg)
                 agent.compression_enabled = False
                 self._install_compression_hook(agent, session_id)
                 self._install_prepersist_dedup_hook(agent)

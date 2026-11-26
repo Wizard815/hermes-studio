@@ -54,6 +54,22 @@ all, and with it off they get lost in the list.
   `components/hermes/settings/HermesToolSearchSettings.vue`,
   `stores/hermes/tool-load.ts`, strings in `i18n/tool-load-messages.ts`.
 
+## "I'll do it" and then nothing
+
+Small models often end a turn on an announcement with no tool call ("I'll find
+the Studio phone tool and read the screen."), and the chat stops there. Hermes
+has a bounded re-prompt for this, `agent.intent_ack_continuation`: at most two
+"Continue now. Execute the required tool calls…" nudges per turn, only before
+the turn's first tool result and only for a short reply that promises an
+action. Its default (`auto`) keeps it to Codex-style providers. Studio's
+bridge turns it on for Studio's Hermes chats
+(`bridge/python/bridge_turn_guards.py`); a profile that sets
+`agent.intent_ack_continuation` in its `config.yaml` (true, false or model
+names) keeps its own choice. A false positive costs one extra model call.
+
+It does not cover a model that stops after a tool result ("Now let me look up
+the tool."), or one that returns only reasoning (Hermes retries that itself).
+
 ## Limits
 
 - Only Studio's own Hermes chats are counted. Group chats, Hermes in herdr and
@@ -67,4 +83,5 @@ all, and with it off they get lost in the list.
 
 `tests/server/tool-load.test.ts` (store, threshold, watcher kind, and the
 bridge's counting via `tests/server/fixtures/hermes-bridge-tool-load.py`),
+`tests/server/hermes-bridge-turn-guards.test.ts` (the re-prompt switch),
 `tests/e2e/tool-load.spec.ts` (the notice's buttons and Settings → Tools).
