@@ -12,6 +12,18 @@ import { dirname } from 'node:path'
 /** herdr's agent states, plus `gone` (the pane closed) and `starting` (launched, not reported yet). */
 export type ProjectThreadStatus = 'starting' | 'working' | 'blocked' | 'done' | 'idle' | 'unknown' | 'gone'
 
+/**
+ * Where a thread is in its life, for the person (docs/projects.md#thread-stages).
+ * The same names as FAITH's projects: working, needs_you (blocked or failed),
+ * review (finished, the person has not opened it since), done (finished and
+ * seen) and resolved (put away: hidden, and reopened by new work).
+ */
+export type ThreadStage = 'working' | 'needs_you' | 'review' | 'done' | 'resolved'
+export const THREAD_STAGES: ThreadStage[] = ['needs_you', 'working', 'review', 'done', 'resolved']
+/** Done threads are resolved after this many days unless the project says otherwise; 0 turns it off. */
+export const AUTO_RESOLVE_DAYS = 3
+export const AUTO_RESOLVE_DAYS_MAX = 90
+
 export interface ProjectThread {
   id: string
   title: string
@@ -34,6 +46,14 @@ export interface ProjectThread {
   status: ProjectThreadStatus
   /** The person or the coordinator marked the thread finished; it moves to Resolved. */
   resolved: boolean
+  /** Its agent stopped (herdr pane closed) while it was working or waiting: it needs the person. */
+  failed: boolean
+  /** When it last finished a turn (done, idle or stopped), 0 when it has not. */
+  finishedAt: number
+  /** When the person last opened it, 0 when never. Opening it after it finished turns review into done. */
+  seenAt: number
+  /** When it was last resolved, by anyone, 0 when never. */
+  resolvedAt: number
   /** The pull request (or merge request) its work went to, '' when none yet. */
   pr: string
   createdAt: number
@@ -100,6 +120,8 @@ export interface Project {
   worktrees: boolean
   /** The coordinator gets a turn when a thread finishes or needs the person. */
   wakeCoordinator: boolean
+  /** Done threads are resolved after this many days; 0 never (docs/projects.md#thread-stages). */
+  autoResolveDays: number
   threads: ProjectThread[]
   tasks: ProjectTask[]
   memory: ProjectMemory[]
@@ -132,6 +154,19 @@ export function prLink(value: unknown): string {
   return /^https?:\/\/[^\s<>"]+$/i.test(link) ? link : ''
 }
 
+/** A time that may be unset (0). */
+function stamp(value: unknown): number {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
+}
+
+/** Whole days 0 to 90; anything else is the default. */
+export function autoResolveDays(value: unknown): number {
+  if (value === null || value === undefined || value === '') return AUTO_RESOLVE_DAYS
+  const n = Number(value)
+  return Number.isInteger(n) && n >= 0 && n <= AUTO_RESOLVE_DAYS_MAX ? n : AUTO_RESOLVE_DAYS
+}
+
 function time(value: unknown, fallback: number): number {
   const n = Number(value)
   return Number.isFinite(n) && n > 0 ? n : fallback
@@ -155,6 +190,10 @@ export function normalizeThread(raw: any, now = Date.now()): ProjectThread | nul
     branch: text(raw.branch, 200),
     status,
     resolved: raw.resolved === true,
+    failed: raw.failed === true,
+    finishedAt: stamp(raw.finishedAt),
+    seenAt: stamp(raw.seenAt),
+    resolvedAt: stamp(raw.resolvedAt),
     pr: prLink(raw.pr),
     createdAt: time(raw.createdAt, now),
     updatedAt: time(raw.updatedAt, now),
@@ -214,6 +253,7 @@ export function normalizeProject(raw: any, now = Date.now()): Project | null {
     defaultModel: text(raw.defaultModel, 200),
     worktrees: raw.worktrees !== false,
     wakeCoordinator: raw.wakeCoordinator !== false,
+    autoResolveDays: autoResolveDays(raw.autoResolveDays),
     threads: (Array.isArray(raw.threads) ? raw.threads : [])
       .map((thread: unknown) => normalizeThread(thread, now))
       .filter((thread: ProjectThread | null): thread is ProjectThread => !!thread)
@@ -283,11 +323,12 @@ export class ProjectStore {
     return null
   }
 
-  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'memory' | 'artifacts' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo'>>): Promise<Project> {
+  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'memory' | 'artifacts' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo' | 'autoResolveDays'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo' | 'autoResolveDays'>>): Promise<Project> {
     const now = Date.now()
     const project = normalizeProject({ ...input, id: randomUUID(), threads: [], tasks: [], memory: [], artifacts: [], createdAt: now, updatedAt: now }, now)
     if (!project) throw Object.assign(new Error('A project needs a name'), { status: 400 })
-    const list = await this.list()
+    await this.list()
+    const list = this.cache!
     if (list.some(item => item.name.toLowerCase() === project.name.toLowerCase())) {
       throw Object.assign(new Error(`A project named “${project.name}” already exists`), { status: 409 })
     }
@@ -297,7 +338,8 @@ export class ProjectStore {
 
   /** Change a project; `change` gets a copy and returns it changed. */
   async update(id: string, change: (project: Project) => Project): Promise<Project> {
-    const list = await this.list()
+    await this.list()
+    const list = this.cache!
     const index = list.findIndex(project => project.id === id)
     if (index < 0) throw Object.assign(new Error('Project not found'), { status: 404 })
     const copy = structuredClone(list[index])
@@ -313,12 +355,17 @@ export class ProjectStore {
   }
 
   async remove(id: string): Promise<Project | null> {
-    const list = await this.list()
+    await this.list()
+    const list = this.cache!
     const project = list.find(item => item.id === id) || null
     if (project) await this.write(list.filter(item => item.id !== id))
     return project
   }
 
+  // create, update and remove read this.cache after their await, not the value
+  // list() returned: two changes that start together then each build on the
+  // other's result instead of the later one overwriting the first (everything
+  // from there to write() is synchronous).
   private async write(projects: Project[]): Promise<void> {
     this.cache = projects
     const job = this.writing.then(async () => {

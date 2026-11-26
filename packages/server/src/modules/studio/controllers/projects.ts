@@ -7,7 +7,7 @@ function fail(ctx: Context, error: unknown) {
   ctx.body = { error: error instanceof Error ? error.message : String(error) }
 }
 
-export const PROJECT_ACTIONS = ['list', 'start_thread', 'message_thread', 'read_thread', 'resolve_thread', 'set_pr', 'add_task', 'update_task', 'start_task', 'message_coordinator', 'remember', 'forget', 'add_artifact']
+export const PROJECT_ACTIONS = ['list', 'start_thread', 'message_thread', 'read_thread', 'resolve_thread', 'resolve_done', 'set_pr', 'add_task', 'update_task', 'start_task', 'message_coordinator', 'remember', 'forget', 'add_artifact']
 /** What a thread may do through the tool; the rest is the coordinator's. */
 export const THREAD_ACTIONS = ['list', 'read_thread', 'message_thread', 'message_coordinator', 'set_pr', 'remember', 'add_artifact']
 
@@ -59,6 +59,10 @@ export async function readThread(ctx: Context) {
 
 export async function resolveThread(ctx: Context) {
   try { ctx.body = { thread: await projectService().setResolved(param(ctx, 'id'), param(ctx, 'threadId'), body(ctx).resolved !== false) } } catch (error) { fail(ctx, error) }
+}
+
+export async function seenThread(ctx: Context) {
+  try { ctx.body = { thread: await projectService().markSeen(param(ctx, 'id'), param(ctx, 'threadId')) } } catch (error) { fail(ctx, error) }
 }
 
 export async function releaseThread(ctx: Context) {
@@ -166,6 +170,9 @@ export async function tool(ctx: Context) {
         return
       case 'resolve_thread':
         ctx.body = { thread: await service.setResolved(project.id, threadId, input.resolved !== false) }
+        return
+      case 'resolve_done':
+        ctx.body = { resolved: await service.sweep({ project: project.id, all: true }) }
         return
       case 'set_pr':
         if (from && threadId && threadId !== from) throw Object.assign(new Error('A thread can set only its own PR'), { status: 403 })

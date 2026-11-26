@@ -21,6 +21,7 @@ projectRoutes.post('/api/studio/projects/:id/chats', requireSuperAdmin, ctrl.ado
 projectRoutes.get('/api/studio/projects/:id/threads/:threadId', requireSuperAdmin, ctrl.readThread)
 projectRoutes.post('/api/studio/projects/:id/threads/:threadId/message', requireSuperAdmin, ctrl.messageThread)
 projectRoutes.put('/api/studio/projects/:id/threads/:threadId/resolved', requireSuperAdmin, ctrl.resolveThread)
+projectRoutes.post('/api/studio/projects/:id/threads/:threadId/seen', requireSuperAdmin, ctrl.seenThread)
 projectRoutes.delete('/api/studio/projects/:id/threads/:threadId', requireSuperAdmin, ctrl.releaseThread)
 projectRoutes.put('/api/studio/projects/:id/threads/:threadId/pr', requireSuperAdmin, ctrl.setThreadPr)
 projectRoutes.post('/api/studio/projects/:id/tasks', requireSuperAdmin, ctrl.addTask)

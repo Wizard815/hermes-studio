@@ -6,8 +6,8 @@ import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import ProjectBoard from './ProjectBoard.vue'
 import { getDownloadUrl } from '@/api/studio/download'
-import { forgetInProject, rememberInProject, removeProjectArtifact, type ProjectArtifact, getProject, messageProjectThread, readProjectThread, type Project, type ProjectThread, type ThreadMessage } from '@/api/studio/projects'
-import { THREAD_GROUPS, groupThreads, threadDisplayStatus, threadGroup } from './project-groups'
+import { forgetInProject, markThreadSeen, rememberInProject, removeProjectArtifact, type ProjectArtifact, getProject, messageProjectThread, readProjectThread, type Project, type ProjectThread, type ThreadMessage } from '@/api/studio/projects'
+import { THREAD_GROUPS, groupThreads, needsSeen, threadDisplayStatus, threadGroup } from './project-groups'
 
 // A project's threads beside its coordinator: one thread's latest messages (read
 // and sent through the project API) or, with no thread picked, all of them at a
@@ -46,15 +46,37 @@ const switcherOptions = computed<Array<SelectOption | SelectGroupOption>>(() => 
     .map(group => ({
       type: 'group' as const,
       key: group,
-      label: t(`projects.groups.${group}`),
+      label: t(`projectStages.groups.${group}`),
       children: groups.value[group].map(item => ({ label: item.title, value: item.id })),
     })),
 ])
 
 function statusLabel(thread: ProjectThread): string {
   if (thread.liveStatus === 'starting') return t('projects.starting')
-  return t(`projects.groups.${threadGroup(thread)}`)
+  if (isFailed(thread)) return t('projectStages.failed')
+  return t(`projectStages.groups.${threadGroup(thread)}`)
 }
+
+/** Needs the person because its agent stopped mid-task, not because of a question on screen. */
+function isFailed(thread: ProjectThread): boolean {
+  return thread.stage === 'needs_you' && thread.liveStatus !== 'blocked'
+}
+
+// The person has this thread open: once it has finished, it is reviewed (review → done).
+// Checked on every poll, so a thread that finishes while open moves to Done too.
+let seenPending = ''
+watch(live, thread => {
+  if (!thread || !needsSeen(thread) || seenPending === thread.id) return
+  seenPending = thread.id
+  void markThreadSeen(props.projectId, thread.id)
+    .then(updated => {
+      const list = project.value?.threads
+      const index = list?.findIndex(item => item.id === updated.id) ?? -1
+      if (list && index >= 0) list[index] = updated
+    })
+    .catch(() => undefined)
+    .finally(() => { seenPending = '' })
+}, { immediate: true })
 
 async function load() {
   const id = ++request
@@ -300,7 +322,7 @@ onUnmounted(() => {
             :data-testid="`thread-pane-group-${group}`"
             @click="toggleGroup(group)"
           >
-            {{ t(`projects.groups.${group}`) }} · {{ groups[group].length }}
+            {{ t(`projectStages.groups.${group}`) }} · {{ groups[group].length }}
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="thread-pane-group-chevron" :class="{ open: !collapsed.has(group) }" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
           </button>
           <template v-if="!collapsed.has(group)">
@@ -322,7 +344,9 @@ onUnmounted(() => {
                 <span v-if="latestLine(item)" class="thread-pane-row-last" :title="lastWords[item.id] || item.brief">{{ latestLine(item) }}</span>
                 <span class="thread-pane-row-chips">
                   <span class="thread-pane-chip">{{ item.model ? `${item.agent} · ${item.model}` : item.agent }}</span>
-                  <span v-if="item.liveStatus === 'blocked'" class="thread-pane-chip thread-pane-chip--needs">{{ t('projects.groups.needsYou') }}</span>
+                  <span v-if="item.liveStatus === 'blocked'" class="thread-pane-chip thread-pane-chip--needs">{{ t('projectStages.groups.needsYou') }}</span>
+                  <span v-else-if="isFailed(item)" class="thread-pane-chip thread-pane-chip--needs" :title="t('projectStages.failedHint')">{{ t('projectStages.failed') }}</span>
+                  <span v-else-if="item.stage === 'review'" class="thread-pane-chip">{{ t('projectStages.groups.review') }}</span>
                   <span v-if="item.branch" class="thread-pane-chip" :title="item.workspace">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="8" r="2" /><path d="M6 7v10M18 10c0 4-6 3-11 7" /></svg>
                     {{ item.branch }}
@@ -359,6 +383,8 @@ onUnmounted(() => {
         <dd>{{ t(project.worktrees !== false ? 'projects.context.on' : 'projects.context.off') }}</dd>
         <dt>{{ t('projects.context.wake') }}</dt>
         <dd>{{ t(project.wakeCoordinator !== false ? 'projects.context.on' : 'projects.context.off') }}</dd>
+        <dt>{{ t('projectStages.autoResolveContext') }}</dt>
+        <dd data-testid="thread-pane-auto-resolve">{{ (project.autoResolveDays ?? 3) > 0 ? t('projectStages.days', { n: project.autoResolveDays ?? 3 }) : t('projectStages.never') }}</dd>
         <template v-if="project.defaultModel">
           <dt>{{ t('projects.form.defaultModel') }}</dt>
           <dd>{{ project.defaultModel }}</dd>

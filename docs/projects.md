@@ -77,13 +77,63 @@ project's threads together (see `docs/harness/herdr.md`).
    agent reports its session. Until then the thread shows "starting…" and
    cannot be opened.
 
+## Thread stages
+
+Each thread has a stage, worked out from what herdr reports and whether the
+person has looked. FAITH's projects use the same names.
+
+| Stage | When | Shown as |
+| --- | --- | --- |
+| `working` | herdr says starting, working or unknown; for a chat with no herdr pane, Studio is running it | Working |
+| `needs_you` | an approval or question is on its screen (blocked), or it **failed**: its pane closed while it was still working | Needs you (with "Failed") |
+| `review` | it finished (done, idle, or its pane closed after it finished) and the person has not opened it since | Ready for review |
+| `done` | it finished and the person opened it afterwards | Done |
+| `resolved` | the person or the coordinator put it away | Resolved |
+
+How herdr's reports move a thread:
+
+- herdr reports each agent's state to Studio (`workStatusChanged`), and the
+  list also reads each pane's live state. When a thread first reports
+  done, idle or gone, it gets a `finishedAt` time. If it is reported done
+  again, or its pane closes later, the time stays the same.
+- Gone straight after working, blocked or starting means the agent died
+  mid-task, so the thread is marked `failed` and moves to Needs you. A pane
+  that was already gone when Studio last saw it working counts the same, so
+  a thread lost while Studio was down shows as failed too. When it works,
+  finishes or blocks again, the flag clears.
+- Opening a thread (in the list or the thread pane) records `seenAt`. A
+  finished thread opened after it finished is done. If it works and finishes
+  again, it goes back to review. Opening a thread does not reorder the list.
+- A resolved thread whose herdr pane starts working or blocks again comes
+  back. That happens when someone types into it in herdr directly, or the
+  coordinator sends it a message. A repeated done report leaves it resolved.
+- Hermes threads run in herdr like any other agent (`hermes` in herdr), so
+  they follow the same rules. A Studio chat added to a project has no herdr
+  pane. It starts as done, and it shows as working while Studio runs it.
+
+**Auto-resolve.** Every hour, and when Studio starts, done threads are
+resolved once they have been done for the project's `autoResolveDays` (3 by
+default, 0 never, at most 90). A thread counts as done from whichever is later,
+when it finished or when it was last opened. The sweep never touches threads in
+needs_you, review or working. It checks each thread again just before saving,
+so a herdr report that arrives during the sweep wins. Reopening a thread
+starts its count again. The setting is in the project form ("Resolve done
+threads after").
+
+**The coordinator** sees each open thread's stage, for example
+`needs_you (gone)`. It is told to resolve a thread only when nothing is left
+for it or the person, and never to resolve one in needs_you or review on its
+own. `resolve_done` resolves every done thread at once. On a wake-up, a
+failed thread reads "failed: its herdr pane closed while it was still
+working". `message_thread` resumes it.
+
 ## Board
 
 The pane's **Board** tab is the project's kanban, with columns To do, In
 progress, Needs you, Review and Done. The pane widens while it shows.
 
 - **Threads** are cards by themselves, placed by status: working in In
-  progress, blocked in Needs you, finished or idle in Review, resolved in Done.
+  progress, needs you (blocked or failed) in Needs you, review or done in Review, resolved in Done.
   A thread moves only in or out of Done, which resolves or reopens it.
 - **Tasks** are cards that are not threads yet: a to-do, or a pull request to
   follow. Add one with **Add task**; move it by dragging or with its **Move to**
@@ -221,7 +271,7 @@ the open threads with their status, and how to use its tool.
 
 The coordinator's tool is `ekko_studio_use_project` in Studio's `use` MCP
 toolset. Actions: `list`, `start_thread`, `message_thread`, `read_thread`,
-`resolve_thread`, `set_pr`, `add_task`, `update_task`, `start_task`, and
+`resolve_thread`, `resolve_done`, `set_pr`, `add_task`, `update_task`, `start_task`, and
 `message_coordinator` for threads. The project is the calling chat's project
 (`HERMES_STUDIO_SESSION_ID`) unless `arguments.project` names one.
 
@@ -247,13 +297,14 @@ All routes need a super admin.
 | Method and path | Does |
 | --- | --- |
 | `GET /api/studio/projects` | Projects with threads, live status and counts |
-| `POST /api/studio/projects` | New project `{ name, folder?, repo?, instructions?, defaultAgent?, defaultModel? }` |
+| `POST /api/studio/projects` | New project `{ name, folder?, repo?, instructions?, defaultAgent?, defaultModel?, autoResolveDays? }` |
 | `GET/PUT/DELETE /api/studio/projects/:id` | Read, change, stop being a project (chats and folder stay) |
 | `POST /api/studio/projects/:id/threads` | Start a thread `{ brief, title?, agent? }` |
 | `POST /api/studio/projects/:id/chats` | Existing chat joins `{ sessionId }` |
 | `GET /api/studio/projects/:id/threads/:threadId` | Latest messages |
 | `POST /api/studio/projects/:id/threads/:threadId/message` | `{ text }` to the thread's agent |
 | `PUT /api/studio/projects/:id/threads/:threadId/resolved` | `{ resolved }` |
+| `POST /api/studio/projects/:id/threads/:threadId/seen` | The person opened it: review becomes done |
 | `DELETE /api/studio/projects/:id/threads/:threadId` | Thread leaves the project, chat stays |
 | `PUT /api/studio/projects/:id/threads/:threadId/pr` | `{ pr }`: the thread's PR link, `''` clears it |
 | `GET /api/studio/projects/:id/prs` | Live status of the board's GitHub PRs |
@@ -322,6 +373,15 @@ Between Studios (no login; signed with the sender's device key, headers
   the same subfolder of its own checkout.
 - **A message to a resolved thread** reopens it, so its next report reaches
   the coordinator.
+- **A thread shows "Failed":** its herdr pane closed while it was working,
+  for example because the agent crashed, the pane was closed or herdr
+  restarted. Send it a message to carry on, or resolve it.
+- **A finished thread stays in "Ready for review":** nobody has opened it
+  since it finished. Open it once and it moves to Done.
+- **Done threads never go away by themselves:** the project's auto-resolve is
+  0. Edit the project and set a number of days.
+- **"Auto-resolve takes a whole number of days from 0 (never) to 90":** the
+  setting accepts only that.
 - **"A PR is a link that starts with https://":** PR links must be http(s)
   URLs. Paste the PR's address, not its number.
 - **A thread card won't move to To do or Review:** threads follow their status.
@@ -331,7 +391,9 @@ Between Studios (no login; signed with the sender's device key, headers
 
 ## Code map
 
-- `modules/studio/services/projects/store.ts`: the project file.
+- `modules/studio/services/projects/store.ts`: the project file. Changes
+  build on the latest saved copy, so two changes that land together both
+  stay.
 - `modules/studio/services/projects/service.ts`: projects, threads, context
   block, wake-ups; the herdr side comes in through `setProjectRuntime`.
 - `modules/studio/services/projects/worktree.ts`: thread worktrees and branches.

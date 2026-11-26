@@ -804,6 +804,8 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
   const socket = setupHerdrSocket(io)
   const folders = startSpaceFolders()
   setProjectRuntime(projectRuntime())
+  // Finished threads the person has seen are resolved after the project's autoResolveDays.
+  projectService().startSweeps()
   try {
     const repaired = repairHerdrChatModes()
     if (repaired) logger.info({ repaired }, '[herdr] chats started in herdr now resume with their agent\'s own configuration')
@@ -824,6 +826,7 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
       folders.stop()
       herdrManager.setSpaceFolders(null)
       setProjectRuntime(null)
+      projectService().stopSweeps()
       socket.close()
       herdrManager.shutdown()
     },

@@ -29,6 +29,8 @@ import {
   TASK_NOTES_MAX,
   ProjectStore,
   prLink,
+  autoResolveDays,
+  type ThreadStage,
   type Project,
   type ProjectArtifact,
   type ProjectMemory,
@@ -87,6 +89,8 @@ export interface ProjectDeps {
   clone?: (url: string, dest: string) => Promise<void>
   /** Live pull request status, replaceable in tests. */
   prs?: Pick<PrStatusReader, 'readAll'>
+  /** Whether a Studio chat has a run going, for threads with no herdr pane (adopted chats). */
+  chatBusy?: (sessionId: string) => boolean
 }
 
 /** Thread states the coordinator is woken for: it finished, stopped, or needs the person. */
@@ -96,6 +100,12 @@ const WAKE_DELAY_MS = 5_000
 const PR_URL = /https?:\/\/[^\s<>"')\]]+\/(?:pull|pulls|merge_requests)\/\d+/g
 const WAKE_RETRY_MS = 15_000
 const WAKE_RETRIES = 240
+const DAY_MS = 86_400_000
+/** How often the auto-resolve sweep runs. */
+const SWEEP_EVERY_MS = 60 * 60_000
+/** herdr states where the agent has stopped for now; the ones where it is still at it. */
+const FINISHED = new Set<ProjectThreadStatus>(['done', 'idle', 'gone'])
+const ACTIVE = new Set<ProjectThreadStatus>(['starting', 'working', 'blocked'])
 
 /** The default waker: a Hermes turn in the coordinator chat, through Studio's chat runs. */
 export function chatRunWaker(): CoordinatorWaker | null {
@@ -121,11 +131,14 @@ export function chatRunWaker(): CoordinatorWaker | null {
 export interface ThreadView extends ProjectThread {
   /** Live status from herdr when it knows it, else the last one reported. */
   liveStatus: ProjectThreadStatus
+  /** Where it is for the person: working, needs_you, review, done or resolved. */
+  stage: ThreadStage
 }
 
 export interface ProjectView extends Omit<Project, 'threads'> {
   threads: ThreadView[]
-  counts: { needsYou: number; working: number; done: number; resolved: number }
+  /** Open threads by stage (`done` counts review and done, as before), plus how many are resolved. */
+  counts: { needsYou: number; working: number; review: number; done: number; resolved: number }
 }
 
 let defaultStore: ProjectStore | null = null
@@ -172,6 +185,22 @@ export function isWorking(status: ProjectThreadStatus): boolean {
   return status === 'working' || status === 'starting'
 }
 
+/**
+ * A thread's stage (docs/projects.md#thread-stages). Resolved wins; then a
+ * question on screen or a failure needs the person; a running agent (or one
+ * herdr has not reported yet) is working; a finished one is in review until
+ * the person opens it after it finished, then done.
+ */
+export function threadStage(thread: Pick<ProjectThread, 'resolved' | 'failed' | 'status' | 'finishedAt' | 'seenAt'> & { liveStatus: ProjectThreadStatus }): ThreadStage {
+  if (thread.resolved) return 'resolved'
+  const live = thread.liveStatus
+  // herdr says the pane is gone but its last report was still working: it died mid-task.
+  const failed = live === 'gone' ? thread.failed || ACTIVE.has(thread.status) : thread.failed && !ACTIVE.has(live)
+  if (live === 'blocked' || failed) return 'needs_you'
+  if (!FINISHED.has(live)) return 'working'
+  return thread.seenAt > 0 && thread.seenAt >= thread.finishedAt ? 'done' : 'review'
+}
+
 /** The first prompt a thread's agent gets: the project's rules, then the brief. */
 /** The project's memory as context lines, newest kept when it is long. */
 export function memoryLines(memory: ProjectMemory[] = [], budget = 4000): string[] {
@@ -210,6 +239,7 @@ export function projectContextBlock(project: ProjectView | Project, role: 'coord
   if (role === 'coordinator') {
     lines.push(`You coordinate the Studio project "${project.name}" (project id ${project.id}). The person gives you a stream of related work here.`)
     lines.push('Answer directly when a request needs no separate work. For a task that takes real work, start a thread: ekko_studio_use_project with action start_thread and a self-contained brief (the thread does not see this chat). Check on threads with list and read_thread, steer them with message_thread, and resolve_thread when one is finished. Tell the person which threads you started and what each is for.')
+    lines.push(`Each thread has a stage: working; needs_you (a question on its screen, or it failed); review (finished, the person has not opened it yet); done (finished and seen); resolved (put away, hidden, reopened by new work). Resolve a thread when nothing is left for you or the person; when unsure, leave it open. resolve_done resolves every done thread at once.${project.autoResolveDays ? ` Done threads resolve by themselves after ${project.autoResolveDays} day${project.autoResolveDays === 1 ? '' : 's'}.` : ''} Never resolve one in needs_you or review on your own; ask the person.`)
     if (project.folder) lines.push(`Project folder: ${project.folder}`)
     if (project.worktrees) lines.push('In a git repo each thread works in its own worktree on its own branch, so threads do not see each other\'s uncommitted changes. To combine their work, start a thread that merges the branches or opens pull requests.')
     if (project.wakeCoordinator) lines.push('You get a <studio_project_event> turn when a thread finishes or needs the person; act on it then, rather than waiting to be asked.')
@@ -219,10 +249,12 @@ export function projectContextBlock(project: ProjectView | Project, role: 'coord
     lines.push('Save lasting facts about this project (decisions, paths, preferences) with remember (text); forget (memory id) removes a wrong one. Threads see the memory too.')
     const open = project.threads.filter(thread => !thread.resolved)
     if (open.length) {
-      lines.push('Open threads (id · title · agent/model · status · branch · PR):')
+      lines.push('Open threads (id · title · agent/model · stage (herdr status) · branch · PR):')
       for (const thread of open.slice(-30)) {
-        const status = 'liveStatus' in thread ? thread.liveStatus : thread.status
-        lines.push(`- ${thread.id} · ${thread.title} · ${thread.agent}${thread.model ? `/${thread.model}` : ''} · ${status}${thread.branch ? ` · ${thread.branch}` : ''}${thread.pr ? ` · ${thread.pr}` : ''}`)
+        const view = thread as ProjectThread & Partial<Pick<ThreadView, 'liveStatus' | 'stage'>>
+        const status = view.liveStatus ?? view.status
+        const stage = view.stage ?? threadStage({ ...view, liveStatus: status })
+        lines.push(`- ${thread.id} · ${thread.title} · ${thread.agent}${thread.model ? `/${thread.model}` : ''} · ${stage} (${status})${thread.branch ? ` · ${thread.branch}` : ''}${thread.pr ? ` · ${thread.pr}` : ''}`)
       }
     } else {
       lines.push('No open threads.')
@@ -256,7 +288,14 @@ export class ProjectService {
 
   constructor(private readonly deps: ProjectDeps) {}
 
+  private sweepTimer: ReturnType<typeof setInterval> | null = null
+
   private get store() { return this.deps.store }
+
+  private chatBusy(sessionId: string): boolean {
+    if (this.deps.chatBusy) return this.deps.chatBusy(sessionId)
+    try { return !!getChatRunServer()?.isSessionRunning?.(sessionId) } catch { return false }
+  }
   private now() { return this.deps.now ? this.deps.now() : Date.now() }
 
   private requireRuntime(): ProjectRuntime {
@@ -270,18 +309,22 @@ export class ProjectService {
     const rt = this.deps.runtime()
     const threads: ThreadView[] = project.threads.map(thread => {
       const sessionId = thread.sessionId || (thread.paneId && rt?.sessionForPane(thread.paneId)) || ''
-      const live = thread.paneId ? rt?.statusForPane(thread.paneId) ?? null : null
-      return { ...thread, sessionId, liveStatus: live || thread.status }
+      let live = thread.paneId ? rt?.statusForPane(thread.paneId) ?? null : null
+      // A chat with no herdr pane (one the project adopted) is working while Studio runs it.
+      if (!thread.paneId && sessionId && this.chatBusy(sessionId)) live = 'working'
+      const liveStatus = live || thread.status
+      return { ...thread, sessionId, liveStatus, stage: threadStage({ ...thread, liveStatus }) }
     })
-    const open = threads.filter(thread => !thread.resolved)
+    const count = (stage: ThreadStage) => threads.filter(thread => thread.stage === stage).length
     return {
       ...project,
       threads,
       counts: {
-        needsYou: open.filter(thread => needsYou(thread.liveStatus)).length,
-        working: open.filter(thread => isWorking(thread.liveStatus)).length,
-        done: open.filter(thread => thread.liveStatus === 'done' || thread.liveStatus === 'idle' || thread.liveStatus === 'gone').length,
-        resolved: threads.length - open.length,
+        needsYou: count('needs_you'),
+        working: count('working'),
+        review: count('review'),
+        done: count('review') + count('done'),
+        resolved: count('resolved'),
       },
     }
   }
@@ -320,7 +363,7 @@ export class ProjectService {
    * New project: a Studio chat folder named after it (an existing folder of the
    * same name is reused, so a folder can become a project) and its coordinator chat.
    */
-  async create(input: { name?: unknown; folder?: unknown; instructions?: unknown; profile?: unknown; defaultAgent?: unknown; defaultModel?: unknown; repo?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; userId?: string | number | null }): Promise<ProjectView> {
+  async create(input: { name?: unknown; folder?: unknown; instructions?: unknown; profile?: unknown; defaultAgent?: unknown; defaultModel?: unknown; repo?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; autoResolveDays?: unknown; userId?: string | number | null }): Promise<ProjectView> {
     const name = clean(input.name, PROJECT_NAME_MAX)
     if (!name) fail('Give the project a name', 400)
     const profile = clean(input.profile, 128) || 'default'
@@ -359,6 +402,7 @@ export class ProjectService {
         defaultModel: clean(input.defaultModel, 200),
         worktrees: input.worktrees !== false,
         wakeCoordinator: input.wakeCoordinator !== false,
+        autoResolveDays: autoResolveDays(input.autoResolveDays),
       })
       return this.view(project)
     } catch (error) {
@@ -368,7 +412,7 @@ export class ProjectService {
     }
   }
 
-  async update(id: string, change: { name?: unknown; folder?: unknown; instructions?: unknown; defaultAgent?: unknown; defaultModel?: unknown; worktrees?: unknown; wakeCoordinator?: unknown }): Promise<ProjectView> {
+  async update(id: string, change: { name?: unknown; folder?: unknown; instructions?: unknown; defaultAgent?: unknown; defaultModel?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; autoResolveDays?: unknown }): Promise<ProjectView> {
     const project = await this.store.update(id, current => ({
       ...current,
       ...(change.name !== undefined ? { name: clean(change.name, PROJECT_NAME_MAX) || current.name } : {}),
@@ -378,6 +422,7 @@ export class ProjectService {
       ...(change.defaultModel !== undefined ? { defaultModel: clean(change.defaultModel, 200) } : {}),
       ...(typeof change.worktrees === 'boolean' ? { worktrees: change.worktrees } : {}),
       ...(typeof change.wakeCoordinator === 'boolean' ? { wakeCoordinator: change.wakeCoordinator } : {}),
+      ...(change.autoResolveDays !== undefined ? { autoResolveDays: this.daysInput(change.autoResolveDays) } : {}),
     }))
     if (change.name !== undefined && project.categoryId && getSessionCategory(project.categoryId)?.name !== project.name) {
       try { renameSessionCategory(project.categoryId, project.name) } catch { /* a folder of that name exists: keep the old folder name */ }
@@ -414,7 +459,7 @@ export class ProjectService {
       sessionId: '',
       workspace,
       branch,
-      status: 'starting', resolved: false, pr: '', createdAt: now, updatedAt: now,
+      status: 'starting', resolved: false, failed: false, finishedAt: 0, seenAt: 0, resolvedAt: 0, pr: '', createdAt: now, updatedAt: now,
     }
     await this.store.update(project.id, current => ({ ...current, threads: [...current.threads, thread] }))
     let launched: { paneId: string; sessionId?: string }
@@ -674,11 +719,89 @@ export class ProjectService {
 
   async setResolved(idOrName: string, threadId: string, resolved: boolean): Promise<ThreadView> {
     const { project, thread } = await this.thread(idOrName, threadId)
+    const now = this.now()
     const saved = await this.store.update(project.id, current => ({
       ...current,
-      threads: current.threads.map(item => item.id === thread.id ? { ...item, resolved, sessionId: item.sessionId || thread.sessionId, updatedAt: this.now() } : item),
+      threads: current.threads.map(item => item.id !== thread.id ? item : {
+        ...item,
+        resolved,
+        resolvedAt: resolved ? (item.resolved ? item.resolvedAt : now) : item.resolvedAt,
+        // Reopening is looking at it: it comes back as done (or what herdr says), and the
+        // auto-resolve clock starts again instead of putting it straight back away.
+        seenAt: !resolved && item.resolved ? now : item.seenAt,
+        sessionId: item.sessionId || thread.sessionId,
+        updatedAt: now,
+      }),
     }))
     return this.view(saved).threads.find(item => item.id === thread.id)!
+  }
+
+  /** The person opened a thread: a finished one moves from review to done. */
+  async markSeen(idOrName: string, threadId: string): Promise<ThreadView> {
+    const { project, thread } = await this.thread(idOrName, threadId)
+    const now = this.now()
+    // updatedAt stays: opening a thread should not reorder the list.
+    const saved = await this.store.update(project.id, current => ({
+      ...current,
+      threads: current.threads.map(item => item.id === thread.id ? { ...item, seenAt: Math.max(now, item.finishedAt) } : item),
+    }))
+    return this.view(saved).threads.find(item => item.id === thread.id)!
+  }
+
+  private daysInput(value: unknown): number {
+    const n = Number(value)
+    if (value === '' || value === null || !Number.isInteger(n) || n < 0 || n > 90) fail('Auto-resolve takes a whole number of days from 0 (never) to 90', 400)
+    return n
+  }
+
+  /**
+   * Resolve finished threads the person has seen: in every project, those done
+   * for its autoResolveDays (when not 0); with `project` and `now`, all of that
+   * project's done threads at once (the coordinator's resolve_done). Threads
+   * that need the person or wait for review are never touched.
+   */
+  async sweep(options: { project?: string; all?: boolean } = {}): Promise<Array<{ project: string; thread: string; title: string }>> {
+    const resolved: Array<{ project: string; thread: string; title: string }> = []
+    const target = options.project ? await this.store.find(options.project) : null
+    if (options.project && !target) fail('Project not found', 404)
+    for (const project of target ? [target] : await this.store.list()) {
+      if (!options.all && !project.autoResolveDays) continue
+      const now = this.now()
+      const due = (thread: ThreadView) => thread.stage === 'done'
+        && (options.all || now - Math.max(thread.finishedAt, thread.seenAt) >= project.autoResolveDays * DAY_MS)
+      if (!this.view(project).threads.some(due)) continue
+      const ids = new Set<string>()
+      // Checked again on the copy being saved, so a report that just arrived wins.
+      await this.store.update(project.id, current => {
+        const live = new Map(this.view(current).threads.map(thread => [thread.id, thread]))
+        return {
+          ...current,
+          threads: current.threads.map(thread => {
+            const view = live.get(thread.id)
+            if (!view || !due(view)) return thread
+            ids.add(thread.id)
+            return { ...thread, resolved: true, resolvedAt: now }
+          }),
+        }
+      })
+      for (const thread of project.threads) if (ids.has(thread.id)) resolved.push({ project: project.id, thread: thread.id, title: thread.title })
+    }
+    if (resolved.length) logger.info({ resolved: resolved.length }, 'Projects resolved finished threads')
+    return resolved
+  }
+
+  /** Run the auto-resolve sweep now and then every hour (bootstrap calls it once). */
+  startSweeps(everyMs = SWEEP_EVERY_MS): void {
+    if (this.sweepTimer) return
+    const run = () => { this.sweep().catch(error => logger.warn({ err: error }, 'Project auto-resolve failed')) }
+    run()
+    this.sweepTimer = setInterval(run, everyMs)
+    this.sweepTimer.unref?.()
+  }
+
+  stopSweeps(): void {
+    if (this.sweepTimer) clearInterval(this.sweepTimer)
+    this.sweepTimer = null
   }
 
   /** An existing chat joins the project as a thread (its history stays). */
@@ -705,6 +828,11 @@ export class ProjectService {
       branch: '',
       status: 'idle',
       resolved: false,
+      failed: false,
+      // The person picked this chat, so it starts as done (seen), not waiting for review.
+      finishedAt: now,
+      seenAt: now,
+      resolvedAt: 0,
       pr: '',
       createdAt: now,
       updatedAt: now,
@@ -727,22 +855,40 @@ export class ProjectService {
     const project = await this.store.get(ref.id)
     if (!project || !project.threads.some(thread => thread.id === ref.thread)) return
     const next = (['working', 'blocked', 'done', 'idle', 'unknown', 'gone'] as const).find(value => value === status) || 'unknown'
-    const before = project.threads.find(thread => thread.id === ref.thread)!
-    if (before.status !== next && WAKE_STATES.has(next) && !before.resolved && project.wakeCoordinator) this.queueWake(project.id, ref.thread, next)
+    const first = project.threads.find(thread => thread.id === ref.thread)!
     // A thread that finished and named a pull request gets it linked on the board.
-    const chat = before.sessionId || sessionId || ''
-    const pr = !before.pr && chat && WAKE_STATES.has(next) ? this.prMentioned(chat) : ''
+    const chat = first.sessionId || sessionId || ''
+    const pr = !first.pr && chat && WAKE_STATES.has(next) ? this.prMentioned(chat) : ''
+    const now = this.now()
+    let wake = false
     await this.store.update(project.id, current => ({
       ...current,
-      threads: current.threads.map(thread => thread.id !== ref.thread ? thread : {
-        ...thread,
-        status: next,
-        paneId: thread.paneId || paneId,
-        sessionId: thread.sessionId || sessionId || '',
-        pr: thread.pr || pr,
-        updatedAt: this.now(),
+      threads: current.threads.map(thread => {
+        if (thread.id !== ref.thread) return thread
+        // Worked out from the saved thread, so a resolve or a seen that landed meanwhile is kept.
+        const changed = thread.status !== next
+        // Someone typed into a resolved thread's pane in herdr: it is back at work, so it comes back.
+        const reopen = thread.resolved && changed && (next === 'working' || next === 'blocked')
+        const resolved = thread.resolved && !reopen
+        wake = changed && WAKE_STATES.has(next) && !resolved && current.wakeCoordinator
+        // 'unknown' says nothing: the flags stay as they were.
+        const finishedAt = changed && FINISHED.has(next) && !FINISHED.has(thread.status) ? now : thread.finishedAt
+        const failed = next === 'gone' ? (changed ? ACTIVE.has(thread.status) || thread.failed : thread.failed)
+          : next === 'working' || next === 'blocked' || next === 'done' || next === 'idle' ? false : thread.failed
+        return {
+          ...thread,
+          status: next,
+          resolved,
+          finishedAt,
+          failed,
+          paneId: thread.paneId || paneId,
+          sessionId: thread.sessionId || sessionId || '',
+          pr: thread.pr || pr,
+          updatedAt: now,
+        }
       }),
     }))
+    if (wake) this.queueWake(project.id, ref.thread, next)
   }
 
   /** The last pull/merge request link in a chat's recent agent messages, else ''. */
@@ -866,7 +1012,7 @@ export class ProjectService {
     for (const thread of threads) {
       const state = thread.liveStatus === 'blocked'
         ? 'needs the person: an approval or question is on its screen, and only the person can answer it in the thread'
-        : thread.liveStatus === 'gone' ? 'stopped (its herdr pane closed)' : 'finished its turn'
+        : thread.liveStatus === 'gone' ? (thread.stage === 'needs_you' ? 'failed: its herdr pane closed while it was still working, so its task is unfinished' : 'stopped (its herdr pane closed)') : 'finished its turn'
       lines.push(`- ${thread.id} · ${thread.title} · ${thread.agent}${thread.branch ? ` · ${thread.branch}` : ''}${thread.pr ? ` · PR ${thread.pr}` : ''}: ${state}.`)
       if (thread.liveStatus !== 'blocked') {
         const last = (await this.readThread(project.id, thread.id, 2).catch(() => null))?.messages.filter(item => item.role === 'assistant').at(-1)
@@ -885,9 +1031,9 @@ export class ProjectService {
       }
       lines.push('Answer a thread with message_thread when it asked something.')
     }
-    lines.push('Decide the next step: read_thread for more, message_thread to follow up, start the next thread (or start_task for a board task), set_pr when a thread opened a pull request, or resolve_thread when one is finished. Tell the person briefly what changed and anything they need to do.')
+    lines.push('Decide the next step: read_thread for more, message_thread to follow up (it resumes a stopped or failed thread), start the next thread (or start_task for a board task), set_pr when a thread opened a pull request, or resolve_thread when one is finished and nothing is left for anyone. A finished thread waits in review until the person opens it; leave it open when the person still has to look at its result. Tell the person briefly what changed and anything they need to do.')
     const names = [
-      ...threads.map(thread => `“${thread.title}” ${thread.liveStatus === 'blocked' ? 'needs you' : thread.liveStatus === 'gone' ? 'stopped' : 'is done'}`),
+      ...threads.map(thread => `“${thread.title}” ${thread.liveStatus === 'blocked' ? 'needs you' : thread.stage === 'needs_you' ? 'failed' : thread.liveStatus === 'gone' ? 'stopped' : 'is done'}`),
       ...[...new Set(notes.filter(note => !note.studio).map(note => note.threadId))].map(id => `“${project.threads.find(thread => thread.id === id)!.title}” sent a message`),
       ...[...new Set(notes.filter(note => note.studio).map(note => note.studio!))].map(name => `the Studio “${name}” sent a message`),
     ]

@@ -49,3 +49,33 @@ describe('TestProjects_board', () => {
     expect(boardTargets(cards.done[0])).toEqual(['review'])
   })
 })
+
+describe('TestProjects_stageGroups', () => {
+  const thread = (id: string, extra: Record<string, unknown>) => ({ id, title: id, agent: 'codex', brief: '', paneId: '', sessionId: '', workspace: '', branch: '', status: 'done', liveStatus: 'done', resolved: false, pr: '', createdAt: 1, updatedAt: 1, ...extra }) as any
+
+  it('groups by the server\'s stage, and by herdr status for an older server', () => {
+    const groups = groupThreads([
+      thread('a', { stage: 'review' }),
+      thread('b', { stage: 'done' }),
+      thread('c', { stage: 'needs_you', liveStatus: 'gone' }),
+      thread('d', { stage: 'working', liveStatus: 'working' }),
+      thread('e', { stage: 'resolved', resolved: true }),
+      thread('old', {}),
+      thread('weird', { stage: 'bogus' }),
+    ])
+    expect(Object.fromEntries(Object.entries(groups).map(([key, list]) => [key, list.map((item: any) => item.id).sort()]))).toEqual({
+      needsYou: ['c'], working: ['d'], review: ['a'], done: ['b', 'old', 'weird'], resolved: ['e'],
+    })
+  })
+
+  it('badges review instead of done, unless the server has no review count', () => {
+    expect(projectSummary({ counts: { needsYou: 1, working: 0, review: 2, done: 3, resolved: 0 } })).toEqual([{ key: 'needsYou', count: 1 }, { key: 'review', count: 2 }])
+    expect(projectSummary({ counts: { needsYou: 0, working: 0, done: 3, resolved: 0 } })).toEqual([{ key: 'done', count: 3 }])
+  })
+
+  it('keeps finished threads in Review on the board and lets a resolved one go back there', () => {
+    const cards = boardCards({ threads: [thread('r', { stage: 'review' }), thread('d', { stage: 'done' }), thread('x', { stage: 'resolved', resolved: true })], tasks: [] })
+    expect(cards.review.map(card => card.id).sort()).toEqual(['d', 'r'])
+    expect(boardTargets(cards.done[0])).toEqual(['review'])
+  })
+})

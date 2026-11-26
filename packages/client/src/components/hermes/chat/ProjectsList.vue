@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { NButton, NCheckbox, NForm, NFormItem, NInput, NModal, NPopconfirm, NSelect, useMessage } from 'naive-ui'
+import { NButton, NCheckbox, NForm, NFormItem, NInput, NInputNumber, NModal, NPopconfirm, NSelect, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import {
   createProject,
   listProjects,
+  markThreadSeen,
   removeProject,
   setThreadResolved,
   startProjectThread,
@@ -14,7 +15,7 @@ import {
   type ProjectThread,
 } from '@/api/studio/projects'
 import StudiosDialog from './StudiosDialog.vue'
-import { THREAD_AGENTS, THREAD_GROUPS, groupThreads, projectSummary, threadDisplayStatus } from './project-groups'
+import { THREAD_AGENTS, THREAD_GROUPS, groupThreads, needsSeen, projectSummary, threadDisplayStatus } from './project-groups'
 
 /**
  * Projects in the chat list (the chat menu's Projects view): each project is a
@@ -83,6 +84,8 @@ const agentOptions = computed(() => THREAD_AGENTS.map(value => ({ label: value, 
 function openThread(project: Project, thread: ProjectThread) {
   if (props.threadsInPane) emit('thread', project, thread)
   else if (thread.sessionId) emit('open', thread.sessionId)
+  // Opening a finished thread is reviewing it: it moves to Done.
+  if (needsSeen(thread)) void markThreadSeen(project.id, thread.id).then(() => refresh()).catch(() => undefined)
 }
 
 function threadActive(thread: ProjectThread): boolean {
@@ -91,17 +94,17 @@ function threadActive(thread: ProjectThread): boolean {
 }
 
 // --- New / edit project ---
-const projectForm = reactive({ show: false, editing: '' as string, name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', repo: '', worktrees: true, wakeCoordinator: true, saving: false })
+const projectForm = reactive({ show: false, editing: '' as string, name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', repo: '', worktrees: true, wakeCoordinator: true, autoResolveDays: 3 as number | null, saving: false })
 
 function openNewProject() {
-  Object.assign(projectForm, { show: true, editing: '', name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', repo: '', worktrees: true, wakeCoordinator: true, saving: false })
+  Object.assign(projectForm, { show: true, editing: '', name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', repo: '', worktrees: true, wakeCoordinator: true, autoResolveDays: 3, saving: false })
 }
 
 function openEditProject(project: Project) {
   Object.assign(projectForm, {
     show: true, editing: project.id, name: project.name, folder: project.folder,
     instructions: project.instructions, defaultAgent: project.defaultAgent, defaultModel: project.defaultModel || '',
-    worktrees: project.worktrees !== false, wakeCoordinator: project.wakeCoordinator !== false, saving: false,
+    worktrees: project.worktrees !== false, wakeCoordinator: project.wakeCoordinator !== false, autoResolveDays: project.autoResolveDays ?? 3, saving: false,
   })
 }
 
@@ -109,7 +112,7 @@ async function saveProject() {
   if (!projectForm.name.trim()) return
   projectForm.saving = true
   try {
-    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, defaultAgent: projectForm.defaultAgent, defaultModel: projectForm.defaultModel.trim(), ...(!projectForm.editing && projectForm.repo.trim() ? { repo: projectForm.repo.trim() } : {}), worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator }
+    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, defaultAgent: projectForm.defaultAgent, defaultModel: projectForm.defaultModel.trim(), ...(!projectForm.editing && projectForm.repo.trim() ? { repo: projectForm.repo.trim() } : {}), worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator, autoResolveDays: projectForm.autoResolveDays ?? 3 }
     const saved = projectForm.editing ? await updateProject(projectForm.editing, input) : await createProject(input)
     projectForm.show = false
     await refresh()
@@ -204,7 +207,7 @@ defineExpose({ refresh })
         </button>
         <div v-if="projectSummary(project).length" class="project-badges">
           <span v-for="item in projectSummary(project)" :key="item.key" class="project-badge" :class="`project-badge--${item.key}`">
-            {{ t(`projects.badge.${item.key}`, { n: item.count }) }}
+            {{ item.key === 'review' ? t('projectStages.badgeReview', { n: item.count }) : t(`projects.badge.${item.key}`, { n: item.count }) }}
           </span>
         </div>
       </div>
@@ -235,7 +238,7 @@ defineExpose({ refresh })
 
         <template v-for="group in THREAD_GROUPS" :key="group">
           <template v-if="groupThreads(project.threads)[group].length">
-            <div class="project-group">{{ t(`projects.groups.${group}`) }}</div>
+            <div class="project-group">{{ t(`projectStages.groups.${group}`) }}</div>
             <div
               v-for="thread in groupThreads(project.threads)[group]"
               :key="thread.id"
@@ -254,7 +257,9 @@ defineExpose({ refresh })
                 <AgentStatusIcon :status="threadDisplayStatus(thread.liveStatus)" :live="thread.liveStatus !== 'idle' && thread.liveStatus !== 'gone'" />
                 <span class="project-thread-text">
                   <span class="project-item-title">{{ thread.title }}</span>
-                  <span class="project-item-meta">{{ thread.liveStatus === 'starting' ? t('projects.starting') : thread.model ? `${thread.agent} · ${thread.model}` : thread.agent }}</span>
+                  <span class="project-item-meta">
+                    <span v-if="thread.stage === 'needs_you' && thread.liveStatus !== 'blocked'" class="project-thread-failed" :title="t('projectStages.failedHint')">{{ t('projectStages.failed') }} · </span>{{ thread.liveStatus === 'starting' ? t('projects.starting') : thread.model ? `${thread.agent} · ${thread.model}` : thread.agent }}
+                  </span>
                 </span>
               </button>
               <button
@@ -297,6 +302,9 @@ defineExpose({ refresh })
         </NFormItem>
         <NFormItem :show-label="false">
           <NCheckbox v-model:checked="projectForm.wakeCoordinator" data-testid="project-form-wake">{{ t('projects.form.wakeCoordinator') }}</NCheckbox>
+        </NFormItem>
+        <NFormItem :label="t('projectStages.autoResolve')" :feedback="t('projectStages.autoResolveHint')">
+          <NInputNumber v-model:value="projectForm.autoResolveDays" :min="0" :max="90" :precision="0" data-testid="project-form-auto-resolve" style="width: 120px" />
         </NFormItem>
       </NForm>
       <template #footer>
@@ -453,6 +461,16 @@ defineExpose({ refresh })
     border-color: $warning;
     color: $text-primary;
   }
+
+  &--review {
+    border-color: $accent-primary;
+    color: $text-primary;
+  }
+}
+
+.project-thread-failed {
+  color: $error;
+  font-weight: 600;
 }
 
 .project-body {

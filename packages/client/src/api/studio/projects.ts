@@ -3,6 +3,9 @@ import { request } from '../client'
 /** herdr's agent states, plus `starting` (just launched) and `gone` (its pane closed). */
 export type ProjectThreadStatus = 'starting' | 'working' | 'blocked' | 'done' | 'idle' | 'unknown' | 'gone'
 
+/** Where a thread is for the person (docs/projects.md#thread-stages); the same names as FAITH's projects. */
+export type ThreadStage = 'working' | 'needs_you' | 'review' | 'done' | 'resolved'
+
 export interface ProjectThread {
   id: string
   title: string
@@ -20,7 +23,13 @@ export interface ProjectThread {
   branch: string
   status: ProjectThreadStatus
   liveStatus: ProjectThreadStatus
+  /** From the server; older servers leave it out. */
+  stage?: ThreadStage
   resolved: boolean
+  /** Its agent stopped mid-task (herdr pane closed). */
+  failed?: boolean
+  finishedAt?: number
+  seenAt?: number
   /** Its pull request link, '' when none. */
   pr: string
   createdAt: number
@@ -64,7 +73,9 @@ export interface Project {
   tasks: ProjectTask[]
   memory?: ProjectMemory[]
   artifacts?: ProjectArtifact[]
-  counts: { needsYou: number; working: number; done: number; resolved: number }
+  /** Done threads resolve after this many days; 0 never. */
+  autoResolveDays?: number
+  counts: { needsYou: number; working: number; review?: number; done: number; resolved: number }
   createdAt: number
   updatedAt: number
 }
@@ -79,6 +90,7 @@ export interface ProjectInput {
   profile?: string
   worktrees?: boolean
   wakeCoordinator?: boolean
+  autoResolveDays?: number
 }
 
 const base = '/api/studio/projects'
@@ -103,6 +115,10 @@ export const addChatToProject = async (id: string, sessionId: string) =>
 
 export const setThreadResolved = async (id: string, threadId: string, resolved: boolean) =>
   (await request<{ thread: ProjectThread }>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}/resolved`, json('PUT', { resolved }))).thread
+
+/** The person opened a thread: a finished one moves from review to done. */
+export const markThreadSeen = async (id: string, threadId: string) =>
+  (await request<{ thread: ProjectThread }>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}/seen`, json('POST', {}))).thread
 
 export const removeThreadFromProject = (id: string, threadId: string) =>
   request<{ ok: true }>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}`, { method: 'DELETE' })
