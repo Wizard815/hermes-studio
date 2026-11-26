@@ -305,6 +305,10 @@ onUnmounted(() => {
       <dl>
         <dt>{{ t('projects.form.folder') }}</dt>
         <dd><code>{{ project.folder || '—' }}</code></dd>
+        <template v-if="project.repo">
+          <dt>{{ t('projects.form.repo') }}</dt>
+          <dd><code>{{ project.repo }}</code></dd>
+        </template>
         <dt>{{ t('projects.form.instructions') }}</dt>
         <dd class="thread-pane-context-text">{{ project.instructions || t('projects.context.noInstructions') }}</dd>
         <dt>{{ t('projects.form.defaultAgent') }}</dt>

@@ -89,10 +89,10 @@ function threadActive(thread: ProjectThread): boolean {
 }
 
 // --- New / edit project ---
-const projectForm = reactive({ show: false, editing: '' as string, name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', worktrees: true, wakeCoordinator: true, saving: false })
+const projectForm = reactive({ show: false, editing: '' as string, name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', repo: '', worktrees: true, wakeCoordinator: true, saving: false })
 
 function openNewProject() {
-  Object.assign(projectForm, { show: true, editing: '', name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', worktrees: true, wakeCoordinator: true, saving: false })
+  Object.assign(projectForm, { show: true, editing: '', name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', repo: '', worktrees: true, wakeCoordinator: true, saving: false })
 }
 
 function openEditProject(project: Project) {
@@ -107,7 +107,7 @@ async function saveProject() {
   if (!projectForm.name.trim()) return
   projectForm.saving = true
   try {
-    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, defaultAgent: projectForm.defaultAgent, defaultModel: projectForm.defaultModel.trim(), worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator }
+    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, defaultAgent: projectForm.defaultAgent, defaultModel: projectForm.defaultModel.trim(), ...(!projectForm.editing && projectForm.repo.trim() ? { repo: projectForm.repo.trim() } : {}), worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator }
     const saved = projectForm.editing ? await updateProject(projectForm.editing, input) : await createProject(input)
     projectForm.show = false
     await refresh()
@@ -270,6 +270,9 @@ defineExpose({ refresh })
         </NFormItem>
         <NFormItem :label="t('projects.form.folder')" :feedback="t('projects.form.folderHint')">
           <NInput v-model:value="projectForm.folder" placeholder="~/code/my-app" />
+        </NFormItem>
+        <NFormItem v-if="!projectForm.editing" :label="t('projects.form.repo')" :feedback="t('projects.form.repoHint')">
+          <NInput v-model:value="projectForm.repo" placeholder="https://github.com/owner/repo.git" data-testid="project-form-repo" />
         </NFormItem>
         <NFormItem :label="t('projects.form.instructions')" :feedback="t('projects.form.instructionsHint')">
           <NInput v-model:value="projectForm.instructions" type="textarea" :autosize="{ minRows: 3, maxRows: 10 }" :maxlength="8000" />

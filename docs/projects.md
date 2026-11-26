@@ -96,6 +96,21 @@ progress, Needs you, Review and Done. The pane widens while it shows.
 - The coordinator sees board tasks that are not threads in its context block,
   and can `add_task`, `update_task` and `start_task`.
 
+## From a repo URL
+
+**New project** takes a **Repo URL** (`https://`, `ssh://` or `git@host:path`).
+Studio clones it with the host's git (and its credentials) into the folder you
+give, or, with the folder empty, into
+`HERMES_WEB_UI_HOME/projects/repos/<repo>-<id>`. The project then works in the
+clone like any folder: worktrees per thread, branches, PRs. The URL shows in
+the Context tab.
+
+- Local paths, `file://`, plain `http://` and option-like text are refused.
+- A folder that already has files is refused (409), so nothing is overwritten.
+- A failed clone (wrong URL, no access) is shown with git's last line, and no
+  project is made. git never prompts for a password; set up an SSH key or a
+  credential helper on the host for private repos.
+
 ## Memory
 
 A project keeps short facts every thread and the coordinator should know: a
@@ -172,7 +187,7 @@ All routes need a super admin.
 | Method and path | Does |
 | --- | --- |
 | `GET /api/studio/projects` | Projects with threads, live status and counts |
-| `POST /api/studio/projects` | New project `{ name, folder?, instructions?, defaultAgent? }` |
+| `POST /api/studio/projects` | New project `{ name, folder?, repo?, instructions?, defaultAgent?, defaultModel? }` |
 | `GET/PUT/DELETE /api/studio/projects/:id` | Read, change, stop being a project (chats and folder stay) |
 | `POST /api/studio/projects/:id/threads` | Start a thread `{ brief, title?, agent? }` |
 | `POST /api/studio/projects/:id/chats` | Existing chat joins `{ sessionId }` |

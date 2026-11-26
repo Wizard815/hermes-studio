@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, readdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -43,5 +43,36 @@ export async function removeWorktree(repo: string, path: string): Promise<{ remo
     return { removed: true }
   } catch (error: any) {
     return { removed: false, reason: String(error?.stderr || error?.message || error).trim().split('\n')[0] }
+  }
+}
+
+/**
+ * A git URL a project may clone: https://, ssh:// or git@host:path. Local paths,
+ * file:// and anything that looks like an option are refused.
+ */
+export function repoUrl(value: unknown): string {
+  const url = String(value ?? '').trim()
+  if (!url || url.length > 500 || /\s/.test(url) || url.startsWith('-')) return ''
+  if (/^https:\/\/[^/\s]+\/.+/i.test(url) || /^ssh:\/\/[^/\s]+\/.+/i.test(url)) return url
+  if (/^[\w.-]+@[\w.-]+:[\w./~-]+$/.test(url)) return url
+  return ''
+}
+
+/** A folder name for a clone: the repo's name. */
+export function repoFolderName(url: string): string {
+  const last = url.replace(/\.git$/i, '').split(/[/:]/).filter(Boolean).at(-1) || 'repo'
+  return last.replace(/[^\w.-]+/g, '-').replace(/^[.-]+/, '').slice(0, 80) || 'repo'
+}
+
+/** Clone `url` into `dest`, which must not exist or be empty. */
+export async function cloneRepo(url: string, dest: string): Promise<void> {
+  const entries = await readdir(dest).catch(() => null)
+  if (entries && entries.length) throw Object.assign(new Error(`${dest} is not empty. Pick an empty or new folder for the clone.`), { status: 409 })
+  await mkdir(dirname(dest), { recursive: true })
+  try {
+    await run('git', ['clone', '--', url, dest], { timeout: 10 * 60_000, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+  } catch (error: any) {
+    const reason = String(error?.stderr || error?.message || error).trim().split('\n').filter(Boolean).at(-1) || 'git clone failed'
+    throw Object.assign(new Error(`Could not clone ${url}: ${reason}`), { status: 422 })
   }
 }

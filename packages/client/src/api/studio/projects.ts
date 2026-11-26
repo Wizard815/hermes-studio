@@ -47,6 +47,8 @@ export interface Project {
   id: string
   name: string
   folder: string
+  /** The git URL the folder was cloned from, '' when none. */
+  repo?: string
   instructions: string
   profile: string
   categoryId: number | null
@@ -70,6 +72,7 @@ export interface ProjectInput {
   instructions?: string
   defaultAgent?: string
   defaultModel?: string
+  repo?: string
   profile?: string
   worktrees?: boolean
   wakeCoordinator?: boolean

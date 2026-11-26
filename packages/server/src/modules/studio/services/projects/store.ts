@@ -71,6 +71,8 @@ export interface Project {
   name: string
   /** Where its threads start: the project's folder on the Studio host. */
   folder: string
+  /** The git URL the folder was cloned from, '' when the folder came first. */
+  repo: string
   /** Rules every thread and the coordinator get, like a project's instructions in Claude. */
   instructions: string
   profile: string
@@ -180,6 +182,7 @@ export function normalizeProject(raw: any, now = Date.now()): Project | null {
     id,
     name,
     folder: text(raw.folder, 1024),
+    repo: text(raw.repo, 500),
     instructions: text(raw.instructions, PROJECT_INSTRUCTIONS_MAX),
     profile: text(raw.profile, 128) || 'default',
     categoryId: Number.isInteger(categoryId) && categoryId > 0 ? categoryId : null,
@@ -253,7 +256,7 @@ export class ProjectStore {
     return null
   }
 
-  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'memory' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel'>>): Promise<Project> {
+  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'memory' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo'>>): Promise<Project> {
     const now = Date.now()
     const project = normalizeProject({ ...input, id: randomUUID(), threads: [], tasks: [], memory: [], createdAt: now, updatedAt: now }, now)
     if (!project) throw Object.assign(new Error('A project needs a name'), { status: 400 })

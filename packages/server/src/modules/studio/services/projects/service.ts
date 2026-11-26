@@ -35,7 +35,7 @@ import {
   type ProjectThread,
   type ProjectThreadStatus,
 } from './store'
-import { addWorktree, removeWorktree, repoRoot, threadBranch } from './worktree'
+import { addWorktree, cloneRepo, removeWorktree, repoFolderName, repoRoot, repoUrl, threadBranch } from './worktree'
 
 /**
  * How project threads run. Bootstrap supplies it from herdr (a thread is an
@@ -78,6 +78,10 @@ export interface ProjectDeps {
   waker?: () => CoordinatorWaker | null
   /** How long to gather thread updates before waking the coordinator. */
   wakeDelayMs?: number
+  /** Where repo-URL projects are cloned (default: HERMES_WEB_UI_HOME/projects/repos). */
+  reposRoot?: string
+  /** git clone, replaceable in tests. */
+  clone?: (url: string, dest: string) => Promise<void>
 }
 
 /** Thread states the coordinator is woken for: it finished, stopped, or needs the person. */
@@ -307,11 +311,20 @@ export class ProjectService {
    * New project: a Studio chat folder named after it (an existing folder of the
    * same name is reused, so a folder can become a project) and its coordinator chat.
    */
-  async create(input: { name?: unknown; folder?: unknown; instructions?: unknown; profile?: unknown; defaultAgent?: unknown; defaultModel?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; userId?: string | number | null }): Promise<ProjectView> {
+  async create(input: { name?: unknown; folder?: unknown; instructions?: unknown; profile?: unknown; defaultAgent?: unknown; defaultModel?: unknown; repo?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; userId?: string | number | null }): Promise<ProjectView> {
     const name = clean(input.name, PROJECT_NAME_MAX)
     if (!name) fail('Give the project a name', 400)
     const profile = clean(input.profile, 128) || 'default'
-    const folder = clean(input.folder, 1024)
+    let folder = clean(input.folder, 1024)
+    // A repo URL is cloned first: into the folder given, else under Studio's projects folder.
+    const repoInput = clean(input.repo, 600)
+    const repo = repoInput ? repoUrl(repoInput) : ''
+    if (repoInput && !repo) fail('A repo is an https://, ssh:// or git@host:path URL', 400)
+    if (repo) {
+      if ((await this.store.list()).some(item => item.name.toLowerCase() === name.toLowerCase())) fail(`A project named “${name}” already exists`, 409)
+      folder = folder || join(this.reposRoot(), `${repoFolderName(repo)}-${randomUUID().slice(0, 6)}`)
+      await (this.deps.clone ?? cloneRepo)(repo, folder)
+    }
     const category = findSessionCategoryByName(name, null) || createSessionCategory(name, null)
     const coordinatorId = randomUUID()
     createSession({
@@ -328,6 +341,7 @@ export class ProjectService {
       const project = await this.store.create({
         name,
         folder,
+        repo,
         instructions: clean(input.instructions, PROJECT_INSTRUCTIONS_MAX),
         profile,
         categoryId: category?.id ?? null,
@@ -446,6 +460,10 @@ export class ProjectService {
 
   private checkoutPath(projectId: string, threadId: string): string {
     return join(this.worktreeRoot(), projectId, threadId)
+  }
+
+  private reposRoot(): string {
+    return this.deps.reposRoot || join(getWebUiHome(), 'projects', 'repos')
   }
 
   private worktreeRoot(): string {
