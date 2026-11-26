@@ -96,6 +96,19 @@ progress, Needs you, Review and Done. The pane widens while it shows.
 - The coordinator sees board tasks that are not threads in its context block,
   and can `add_task`, `update_task` and `start_task`.
 
+## Artifacts
+
+The top of the pane's **Threads** tab lists what the project made for you
+("Artifacts · 2"): files (a report, a screenshot, a build) and links (a
+dashboard, a deployed page), newest first, with the thread that made each.
+A file opens through Studio's download route; a link opens in a new tab; ✕
+takes it off the list (the file stays).
+
+Threads and the coordinator add one with `add_artifact` (`title`, and `path` or
+`url`). A relative path is taken from the thread's workspace. A file must be
+inside the project folder or a thread's workspace, and must exist; links must
+be http(s). A project keeps 300.
+
 ## From a repo URL
 
 **New project** takes a **Repo URL** (`https://`, `ssh://` or `git@host:path`).
@@ -196,6 +209,8 @@ All routes need a super admin.
 | `PUT /api/studio/projects/:id/threads/:threadId/resolved` | `{ resolved }` |
 | `DELETE /api/studio/projects/:id/threads/:threadId` | Thread leaves the project, chat stays |
 | `PUT /api/studio/projects/:id/threads/:threadId/pr` | `{ pr }`: the thread's PR link, `''` clears it |
+| `POST /api/studio/projects/:id/artifacts` | Add `{ title?, path? or url?, thread? }` |
+| `DELETE /api/studio/projects/:id/artifacts/:artifactId` | Take one off the list |
 | `POST /api/studio/projects/:id/memory` | Remember `{ text }` |
 | `DELETE /api/studio/projects/:id/memory/:memoryId` | Forget one |
 | `POST /api/studio/projects/:id/tasks` | New board task `{ title, notes?, column?, pr? }` |

@@ -49,6 +49,18 @@ export interface ProjectMemory {
   createdAt: number
 }
 
+/** Something a project produced for the person: a file on the Studio host or a link (docs/projects.md#artifacts). */
+export interface ProjectArtifact {
+  id: string
+  title: string
+  /** An absolute file path, or an http(s) URL. */
+  ref: string
+  kind: 'file' | 'link'
+  /** The thread that made it, '' for the coordinator or the person. */
+  threadId: string
+  createdAt: number
+}
+
 /** A board column for a task. Threads take theirs from their status (docs/projects.md#board). */
 export type ProjectTaskColumn = 'todo' | 'doing' | 'review' | 'done'
 export const TASK_COLUMNS: ProjectTaskColumn[] = ['todo', 'doing', 'review', 'done']
@@ -91,6 +103,7 @@ export interface Project {
   threads: ProjectThread[]
   tasks: ProjectTask[]
   memory: ProjectMemory[]
+  artifacts: ProjectArtifact[]
   createdAt: number
   updatedAt: number
 }
@@ -104,6 +117,7 @@ export const TASKS_MAX = 500
 export const TASK_NOTES_MAX = 4000
 export const PR_MAX = 500
 export const MEMORY_MAX = 200
+export const ARTIFACTS_MAX = 300
 export const MEMORY_TEXT_MAX = 1000
 
 const STATUSES = new Set<ProjectThreadStatus>(['starting', 'working', 'blocked', 'done', 'idle', 'unknown', 'gone'])
@@ -145,6 +159,15 @@ export function normalizeThread(raw: any, now = Date.now()): ProjectThread | nul
     createdAt: time(raw.createdAt, now),
     updatedAt: time(raw.updatedAt, now),
   }
+}
+
+export function normalizeArtifact(raw: any, now = Date.now()): ProjectArtifact | null {
+  if (!raw || typeof raw !== 'object') return null
+  const id = text(raw.id, 64)
+  const ref = text(raw.ref, 2048)
+  const kind = raw.kind === 'link' ? 'link' : 'file'
+  if (!id || !ref || (kind === 'link' ? !prLink(ref) : !ref.startsWith('/'))) return null
+  return { id, title: text(raw.title, THREAD_TITLE_MAX) || ref.split('/').filter(Boolean).at(-1) || ref, ref, kind, threadId: text(raw.threadId, 64), createdAt: time(raw.createdAt, now) }
 }
 
 export function normalizeMemory(raw: any, now = Date.now()): ProjectMemory | null {
@@ -203,6 +226,10 @@ export function normalizeProject(raw: any, now = Date.now()): Project | null {
       .map((item: unknown) => normalizeMemory(item, now))
       .filter((item: ProjectMemory | null): item is ProjectMemory => !!item)
       .slice(-MEMORY_MAX),
+    artifacts: (Array.isArray(raw.artifacts) ? raw.artifacts : [])
+      .map((item: unknown) => normalizeArtifact(item, now))
+      .filter((item: ProjectArtifact | null): item is ProjectArtifact => !!item)
+      .slice(-ARTIFACTS_MAX),
     createdAt: time(raw.createdAt, now),
     updatedAt: time(raw.updatedAt, now),
   }
@@ -256,9 +283,9 @@ export class ProjectStore {
     return null
   }
 
-  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'memory' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo'>>): Promise<Project> {
+  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'memory' | 'artifacts' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo'>>): Promise<Project> {
     const now = Date.now()
-    const project = normalizeProject({ ...input, id: randomUUID(), threads: [], tasks: [], memory: [], createdAt: now, updatedAt: now }, now)
+    const project = normalizeProject({ ...input, id: randomUUID(), threads: [], tasks: [], memory: [], artifacts: [], createdAt: now, updatedAt: now }, now)
     if (!project) throw Object.assign(new Error('A project needs a name'), { status: 400 })
     const list = await this.list()
     if (list.some(item => item.name.toLowerCase() === project.name.toLowerCase())) {

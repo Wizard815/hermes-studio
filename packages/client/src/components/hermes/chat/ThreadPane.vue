@@ -5,7 +5,8 @@ import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import ProjectBoard from './ProjectBoard.vue'
-import { forgetInProject, rememberInProject, getProject, messageProjectThread, readProjectThread, type Project, type ProjectThread, type ThreadMessage } from '@/api/studio/projects'
+import { getDownloadUrl } from '@/api/studio/download'
+import { forgetInProject, rememberInProject, removeProjectArtifact, type ProjectArtifact, getProject, messageProjectThread, readProjectThread, type Project, type ProjectThread, type ThreadMessage } from '@/api/studio/projects'
 import { THREAD_GROUPS, groupThreads, threadDisplayStatus, threadGroup } from './project-groups'
 
 // A project's threads beside its coordinator: one thread's latest messages (read
@@ -156,6 +157,24 @@ function ago(ms: number): string {
 
 const memoryDraft = ref('')
 
+/** Links open as they are; files through Studio's download route. */
+function artifactHref(item: ProjectArtifact): string {
+  return item.kind === 'link' ? item.ref : getDownloadUrl(item.ref, item.ref.split('/').at(-1))
+}
+
+function threadTitle(id: string): string {
+  return id ? project.value?.threads.find(item => item.id === id)?.title || '' : ''
+}
+
+async function removeArtifact(id: string) {
+  try {
+    await removeProjectArtifact(props.projectId, id)
+    await load()
+  } catch (err: any) {
+    error.value = t('projects.failed', { error: err?.message || String(err) })
+  }
+}
+
 /** Who saved a memory, in words. */
 function memoryBy(by: string): string {
   if (by === 'coordinator') return t('projects.memory.byCoordinator')
@@ -248,6 +267,29 @@ onUnmounted(() => {
     </div>
 
     <div v-if="tab === 'threads'" class="thread-pane-overview" data-testid="thread-pane-all" role="tabpanel">
+      <section v-if="project?.artifacts?.length" class="thread-pane-group" data-testid="thread-pane-artifacts">
+        <button
+          type="button"
+          class="thread-pane-group-title"
+          :aria-expanded="!collapsed.has('artifacts')"
+          data-testid="thread-pane-group-artifacts"
+          @click="toggleGroup('artifacts')"
+        >
+          {{ t('projects.artifacts.title') }} · {{ project.artifacts.length }}
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="thread-pane-group-chevron" :class="{ open: !collapsed.has('artifacts') }" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
+        </button>
+        <template v-if="!collapsed.has('artifacts')">
+          <div v-for="item in [...project.artifacts].reverse()" :key="item.id" class="thread-pane-artifact" :data-testid="`thread-pane-artifact-${item.id}`">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path v-if="item.kind === 'link'" d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+              <path v-else d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6" />
+            </svg>
+            <a class="thread-pane-artifact-title" :href="artifactHref(item)" target="_blank" rel="noopener noreferrer" :title="item.ref">{{ item.title }}</a>
+            <span v-if="threadTitle(item.threadId)" class="thread-pane-row-time">{{ t('projects.artifacts.fromThread', { title: threadTitle(item.threadId) }) }}</span>
+            <button type="button" class="thread-pane-memory-forget" :aria-label="`${t('projects.artifacts.remove')}: ${item.title}`" :title="t('projects.artifacts.remove')" @click="removeArtifact(item.id)">✕</button>
+          </div>
+        </template>
+      </section>
       <p v-if="project && !project.threads.length" class="thread-pane-note">{{ t('projects.pane.noThreads') }}</p>
       <template v-for="group in THREAD_GROUPS" :key="group">
         <section v-if="groups[group].length" class="thread-pane-group">
@@ -599,6 +641,30 @@ onUnmounted(() => {
   &:focus-visible { outline: 2px solid $accent-primary; outline-offset: 1px; }
 }
 .thread-pane-memory-add { display: flex; gap: 6px; }
+.thread-pane-artifact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: var(--radius-component, 8px);
+  color: $text-secondary;
+
+  &:hover { background-color: $bg-secondary; }
+}
+.thread-pane-artifact-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  color: $text-primary;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover { text-decoration: underline; }
+  &:focus-visible { outline: 2px solid $accent-primary; outline-offset: 2px; }
+}
 
 .thread-pane-context-text {
   white-space: pre-wrap;

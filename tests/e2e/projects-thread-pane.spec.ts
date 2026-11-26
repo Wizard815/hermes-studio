@@ -11,7 +11,7 @@ const sessions = [
 const thread = { id: 't1', title: 'Fix Safari export button', agent: 'claude-code', brief: 'Fix it', paneId: 'w1:p1', sessionId: 'herdr-a', status: 'working', liveStatus: 'working', resolved: false, createdAt: 1, updatedAt: 1 }
 const waiting = { ...thread, id: 't2', title: 'Add Overseer Docker collector', agent: 'codex', sessionId: 'herdr-b', branch: 'studio/add-overseer-docker-collector-t2', status: 'blocked', liveStatus: 'blocked', updatedAt: 2 }
 const finished = { ...thread, id: 't3', title: 'Write the Omi setup guide', agent: 'hermes', sessionId: 'herdr-c', status: 'done', liveStatus: 'done', updatedAt: 3 }
-const project = { id: 'p1', name: 'Homelab', folder: '/srv/homelab', instructions: '', profile: 'default', categoryId: 4, coordinatorSessionId: 'coord-1', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true, memory: [] as any[], threads: [thread, waiting, finished], counts: { needsYou: 1, working: 1, done: 1, resolved: 0 }, createdAt: 1, updatedAt: 1 }
+const project = { id: 'p1', name: 'Homelab', folder: '/srv/homelab', instructions: '', profile: 'default', categoryId: 4, coordinatorSessionId: 'coord-1', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true, memory: [] as any[], artifacts: [{ id: 'a1', title: 'Omi setup guide', ref: '/srv/homelab/docs/omi-setup.md', kind: 'file', threadId: 't3', createdAt: 1 }, { id: 'a2', title: 'GPU dashboard', ref: 'https://grafana.local/d/gpu', kind: 'link', threadId: '', createdAt: 2 }], threads: [thread, waiting, finished], counts: { needsYou: 1, working: 1, done: 1, resolved: 0 }, createdAt: 1, updatedAt: 1 }
 const history: Record<string, any[]> = {
   'coord-1': [{ id: 1, role: 'assistant', content: 'Coordinator says the Safari thread is working.', timestamp: 1 }],
   'herdr-a': [{ id: 2, role: 'assistant', content: 'Full thread chat transcript.', timestamp: 1 }],
@@ -96,6 +96,12 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
   await pane.getByTestId('thread-pane-switcher').click()
   await page.locator('.n-base-select-option', { hasText: 'All threads (3 open)' }).click()
   const all = pane.getByTestId('thread-pane-all')
+  // Artifacts: what the project made, newest first; files open through Studio's download route.
+  await expect(all.getByTestId('thread-pane-artifacts')).toContainText('Artifacts · 2')
+  await expect(all.getByTestId('thread-pane-artifact-a1')).toContainText('from Write the Omi setup guide')
+  await expect(all.getByTestId('thread-pane-artifact-a1').locator('a')).toHaveAttribute('href', /\/api\/studio\/files\/download\?path=%2Fsrv%2Fhomelab%2Fdocs%2Fomi-setup\.md/)
+  await expect(all.getByTestId('thread-pane-artifact-a2').locator('a')).toHaveAttribute('href', 'https://grafana.local/d/gpu')
+  if (process.env.ARTIFACTS_SHOT) await page.screenshot({ path: process.env.ARTIFACTS_SHOT })
   await expect(all.getByTestId('thread-pane-card-t2')).toContainText('Waiting for approval to restart the overseer container.')
   await expect(all.getByTestId('thread-pane-card-t2')).toContainText('studio/add-overseer-docker-collector-t2')
   await expect(all.getByTestId('thread-pane-card-t3')).toContainText('The guide is in docs/omi-setup.md.')

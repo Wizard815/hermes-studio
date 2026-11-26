@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, realpathSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { existsSync, realpathSync, statSync } from 'node:fs'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { getWebUiHome } from '../../public/config'
 import { getChatRunServer } from '../../public/chat-run'
 import { logger } from '../../public/logging'
@@ -23,12 +23,14 @@ import {
   THREAD_TITLE_MAX,
   TASKS_MAX,
   MEMORY_MAX,
+  ARTIFACTS_MAX,
   MEMORY_TEXT_MAX,
   TASK_COLUMNS,
   TASK_NOTES_MAX,
   ProjectStore,
   prLink,
   type Project,
+  type ProjectArtifact,
   type ProjectMemory,
   type ProjectTask,
   type ProjectTaskColumn,
@@ -188,6 +190,7 @@ export function threadPrompt(project: Pick<Project, 'name' | 'instructions'> & {
     thread.branch ? `You work in your own git worktree on the branch ${thread.branch}; other threads have their own. Commit your work on this branch. Push it and open a pull request only when the task or the project instructions ask for one.` : '',
     project.instructions ? `Project instructions (they apply to every thread):\n${project.instructions}` : '',
     memoryLines(project.memory).join('\n'),
+    project.id && thread.id ? `When you make something the person should look at (a report, a screenshot, a build, a page), add it to the project's Artifacts with action add_artifact and {"project": "${project.id}", "from": "${thread.id}", "title": "...", "path": "<file in your workspace>"} or "url" for a link.` : '',
     project.id && thread.id ? `When you learn something every thread should know (a decision, a path, a gotcha), save it with action remember and {"project": "${project.id}", "from": "${thread.id}", "text": "..."}.` : '',
     `Your task:\n${thread.brief}`,
     'Work only on this task. When you finish, end with a short summary of what you did and anything left open; the project\'s coordinator reads it.',
@@ -209,6 +212,7 @@ export function projectContextBlock(project: ProjectView | Project, role: 'coord
     if (project.wakeCoordinator) lines.push('You get a <studio_project_event> turn when a thread finishes or needs the person; act on it then, rather than waiting to be asked.')
     if (project.instructions) lines.push(`Project instructions:\n${project.instructions}`)
     lines.push(...memoryLines(project.memory))
+    if (project.artifacts?.length) lines.push(`Artifacts (${project.artifacts.length}): ${project.artifacts.slice(-10).map(item => `${item.title} (${item.ref})`).join('; ')}`)
     lines.push('Save lasting facts about this project (decisions, paths, preferences) with remember (text); forget (memory id) removes a wrong one. Threads see the memory too.')
     const open = project.threads.filter(thread => !thread.resolved)
     if (open.length) {
@@ -497,6 +501,58 @@ export class ProjectService {
   }
 
   /** The thread's latest messages, for the coordinator (it sees results, not every step). */
+  /**
+   * Add something the project made to its Artifacts: a file inside the project
+   * folder or a thread's workspace (a relative path is taken from the thread's
+   * workspace, else the project folder), or an http(s) link.
+   */
+  async addArtifact(idOrName: string, input: { title?: unknown; path?: unknown; url?: unknown; thread?: unknown }): Promise<ProjectArtifact> {
+    const project = await this.store.find(idOrName)
+    if (!project) fail('Project not found', 404)
+    if (project.artifacts.length >= ARTIFACTS_MAX) fail(`This project has ${ARTIFACTS_MAX} artifacts. Remove old ones first.`, 409)
+    const threadId = clean(input.thread, 64)
+    const thread = threadId ? project.threads.find(item => item.id === threadId) : undefined
+    if (threadId && !thread) fail('Thread not found in this project', 404)
+    const url = clean(input.url, 2048)
+    let ref = ''
+    let kind: ProjectArtifact['kind'] = 'file'
+    if (url) {
+      ref = prLink(url) || fail('An artifact link starts with https://', 400)
+      kind = 'link'
+    } else {
+      const raw = clean(input.path, 2048)
+      if (!raw) fail('An artifact needs a path or a url', 400)
+      const base = thread?.workspace || project.folder
+      const path = isAbsolute(raw) ? resolve(raw) : base ? resolve(base, raw) : ''
+      const roots = [project.folder, ...project.threads.map(item => item.workspace)].filter(Boolean).map(root => resolve(root))
+      if (!path || !roots.some(root => path === root || !relative(root, path).startsWith('..') && !isAbsolute(relative(root, path)))) {
+        fail('An artifact file must be inside the project folder or a thread\'s workspace', 400)
+      }
+      try { if (!statSync(path).isFile()) fail('An artifact path must be a file', 400) } catch (error: any) {
+        if (error?.status) throw error
+        fail(`No file at ${path}`, 404)
+      }
+      ref = path
+    }
+    const existing = project.artifacts.find(item => item.ref === ref)
+    if (existing) return existing
+    const artifact: ProjectArtifact = {
+      id: `a${randomUUID().slice(0, 6)}`,
+      title: clean(input.title, THREAD_TITLE_MAX) || ref.split('/').filter(Boolean).at(-1) || ref,
+      ref, kind, threadId: thread?.id || '', createdAt: this.now(),
+    }
+    await this.store.update(project.id, current => ({ ...current, artifacts: [...current.artifacts, artifact] }))
+    return artifact
+  }
+
+  async removeArtifact(idOrName: string, artifactId: string): Promise<{ removed: true }> {
+    const project = await this.store.find(idOrName)
+    if (!project) fail('Project not found', 404)
+    if (!project.artifacts.some(item => item.id === artifactId)) fail('No such artifact in this project', 404)
+    await this.store.update(project.id, current => ({ ...current, artifacts: current.artifacts.filter(item => item.id !== artifactId) }))
+    return { removed: true }
+  }
+
   /** Save a fact to the project's memory. */
   async remember(idOrName: string, text: unknown, by = 'person'): Promise<ProjectMemory> {
     const project = await this.store.find(idOrName)

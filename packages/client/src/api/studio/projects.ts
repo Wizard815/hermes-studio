@@ -41,6 +41,8 @@ export interface ProjectTask {
   updatedAt: number
 }
 
+export interface ProjectArtifact { id: string; title: string; ref: string; kind: 'file' | 'link'; threadId: string; createdAt: number }
+
 export interface ProjectMemory { id: string; text: string; by: string; createdAt: number }
 
 export interface Project {
@@ -61,6 +63,7 @@ export interface Project {
   threads: ProjectThread[]
   tasks: ProjectTask[]
   memory?: ProjectMemory[]
+  artifacts?: ProjectArtifact[]
   counts: { needsYou: number; working: number; done: number; resolved: number }
   createdAt: number
   updatedAt: number
@@ -135,3 +138,9 @@ export const rememberInProject = async (id: string, text: string) =>
 
 export const forgetInProject = (id: string, memoryId: string) =>
   request<{ removed: true }>(`${base}/${encodeURIComponent(id)}/memory/${encodeURIComponent(memoryId)}`, { method: 'DELETE' })
+
+export const addProjectArtifact = async (id: string, input: { title?: string; path?: string; url?: string; thread?: string }) =>
+  (await request<{ artifact: ProjectArtifact }>(`${base}/${encodeURIComponent(id)}/artifacts`, json('POST', input))).artifact
+
+export const removeProjectArtifact = (id: string, artifactId: string) =>
+  request<{ removed: true }>(`${base}/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(artifactId)}`, { method: 'DELETE' })
