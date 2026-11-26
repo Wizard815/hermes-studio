@@ -1,16 +1,19 @@
+import { withSocketProviderAccount } from '../../public/provider-account'
 import { studioModelReasoningEffort } from '../../public/model-reasoning-effort'
 import { studioSessionAccount } from '../../contracts/runs/usage'
 import { isNativeCodingAgent, isGlobalOnlyCodingAgent } from '../../contracts/agents/native-coding-agents'
 import { codingAgentId } from './types'
 import { studioMcpCapabilities, type StudioMcpCapabilities } from '../../public/runs/mcp-capabilities'
 import { clarificationTurnInstruction } from '../clarification-runs'
-import { withTaskPlanTurnContext } from '../task-plan-runs'
+import { taskPlanTurnInstruction } from '../task-plan-runs'
+import { projectService } from '../projects/service'
 import type { Server, Socket } from 'socket.io'
 import { chatCodingAgentRunManager as codingAgentRunManager } from '../../public/chat-agent-runtime'
 import {
   getChatCodingAgentMcpServers,
   handleChatCodingAgentSessionCommand as handleCodingAgentSessionCommand,
   parseChatCodingAgentSessionCommand as parseCodingAgentSessionCommand,
+  enterChatCodingAgentCleanRoom as enterCodingAgentCleanRoom,
   sendChatCodingAgentRunInput as sendCodingAgentRunInput,
   startChatCodingAgentRun as startCodingAgentRun,
 } from '../../public/chat-agent-runtime'
@@ -61,7 +64,7 @@ export interface CodingAgentRunSocketData {
   group_agent_id?: string
 }
 
-export async function handleCodingAgentRun(
+async function handleCodingAgentRunImpl(
   nsp: ReturnType<Server['of']>,
   socket: Socket,
   data: CodingAgentRunSocketData,
@@ -91,7 +94,11 @@ export async function handleCodingAgentRun(
 
   if (typeof data.input === 'string') {
     const command = parseCodingAgentSessionCommand(data.input)
-    if (command) {
+    // "/cleanroom <task>": make the chat a clean room, then run the task in it.
+    if (command?.name === 'cleanroom' && command.args) {
+      await enterCodingAgentCleanRoom(sessionId)
+      data.input = command.args
+    } else if (command) {
       await handleCodingAgentSessionCommand(nsp, socket, data, command, profile, sessionMap)
       return
     }
@@ -205,17 +212,21 @@ export async function handleCodingAgentRun(
         : (includeBaseSystemPrompt ? getSystemPrompt(undefined, { source: data.session_source || data.source, mcpCapabilities }) : ''),
       String(data.instructions || '').trim() === groupSystemPrompt ? '' : String(data.instructions || '').trim(),
     ].filter(Boolean).join('\n')
-    const plannedInput = withTaskPlanTurnContext(codingInput.text, taskPlanContext, !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || '')) as string
-    const runtimeInput = interactionContext
-      ? `${plannedInput}\n\n${clarificationTurnInstruction(interactionContext)}`
-      : plannedInput
-    const sent = await (Array.isArray(data.input) || taskPlanContext || interactionContext
+    // Studio's per-turn context blocks go separately: Claude Code gets them through a hook, so
+    // its session and a herdr pane's resumed history show only what the user typed.
+    const turnContext = [
+      taskPlanContext ? taskPlanTurnInstruction(taskPlanContext, !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || '')) : '',
+      interactionContext ? clarificationTurnInstruction(interactionContext) : '',
+      await projectService().contextFor(sessionId),
+    ].filter(Boolean).join('\n\n')
+    const sent = await (Array.isArray(data.input) || turnContext
       ? sendCodingAgentRunInput(
         sessionId,
-        runtimeInput,
+        codingInput.text,
         runPrompt,
         codingInput.images,
         contentBlocksToString(data.input),
+        turnContext,
       )
       : sendCodingAgentRunInput(sessionId, codingInput.text, runPrompt))
     return sent
@@ -240,3 +251,5 @@ export async function handleCodingAgentRun(
     throw err
   }
 }
+
+export const handleCodingAgentRun = withSocketProviderAccount(handleCodingAgentRunImpl)

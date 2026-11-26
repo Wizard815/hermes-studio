@@ -27,6 +27,8 @@ export interface ChatAgentRuntimeDependencies {
   startCodingAgentRun(...args: any[]): any
   handleCodingAgentSessionCommand(...args: any[]): Promise<any>
   parseCodingAgentSessionCommand(...args: any[]): any
+  /** Make a chat a clean room (its coding agent runs in its own container). */
+  enterCleanRoom(sessionId: string): Promise<void>
   getEkkoAgent(profile: string): any
   abortEkkoBackgroundTasks(...args: any[]): Promise<any>
   hasEkkoBackgroundTasks(...args: any[]): boolean
@@ -89,6 +91,7 @@ export const sendChatCodingAgentRunInput = (...args: any[]) => configured().send
 export const startChatCodingAgentRun = (...args: any[]) => configured().startCodingAgentRun(...args)
 export const handleChatCodingAgentSessionCommand = (...args: any[]) => configured().handleCodingAgentSessionCommand(...args)
 export const parseChatCodingAgentSessionCommand = (...args: any[]) => configured().parseCodingAgentSessionCommand(...args)
+export const enterChatCodingAgentCleanRoom = (sessionId: string) => configured().enterCleanRoom(sessionId)
 
 export const getChatEkkoAgent = (profile: string) => configured().getEkkoAgent(profile)
 export const abortChatEkkoBackgroundTasks = (...args: any[]) => configured().abortEkkoBackgroundTasks(...args)

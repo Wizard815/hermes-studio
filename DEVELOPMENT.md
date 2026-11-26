@@ -19,6 +19,14 @@ npm run build
 - `npm run test:e2e` runs Playwright browser tests against a mocked BFF API.
 - `npm run build` type-checks and builds both client and server.
 
+## Independent Studio Plugins
+
+Use `ekko-studio plugins create <id> [directory]`, `link <directory>`, `list`,
+`dev [id|directory]` and `unlink <id>` to manage standalone projects. Start
+debugging from the plugin center to build and watch a trusted project. The CLI
+and host must use the same `HERMES_WEB_UI_HOME`. See `docs/plugins.md` for the
+registry, local SDK, reload behavior and troubleshooting.
+
 ## Architecture
 
 - Frontend code lives under `packages/client/src`.
@@ -75,8 +83,9 @@ npm run build
 - Independent Test and E2E workflows run `npm test` and `npm run test:e2e`
   automatically on pushes to `main` and pull requests targeting `main` or `base`;
   both also support manual dispatch. Build reports harness and production-build
-  results separately. Lockfile checks remain separate. Coverage, browser shards
-  and platform test matrices remain removed. See `tests/README.md`.
+  results separately. E2E uses four Chromium shards with one worker each and a
+  combined `E2E` result and HTML report. Lockfile checks remain separate. Blanket
+  coverage and platform test matrices remain removed. See `tests/README.md`.
 
 ## npm Publishing
 
@@ -153,3 +162,11 @@ Closes #123
 - `npm run build`
 - Focused tests for each new feature, including E2E for new browser journeys
 ```
+
+## Task Outputs
+
+Keep one-off reports, temporary scripts and test evidence outside every checkout.
+Use `npm run --silent artifacts:new -- <task>` for an owned external directory.
+`npm run artifacts:check` and the existing harness reject known report/scratch
+paths, including ignored files. See `docs/harness/task-artifacts.md` for supported
+test output locations, protected runtime/dependency areas, cleanup and limits.

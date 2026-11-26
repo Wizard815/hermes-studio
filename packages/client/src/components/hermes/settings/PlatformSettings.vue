@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { ref, reactive, onUnmounted, watch } from 'vue'
-import { NSpin, NSwitch, NInput, NButton, useDialog, useMessage } from 'naive-ui'
+import { ref, reactive, computed, onUnmounted, watch } from 'vue'
+import { NSpin, NSwitch, NInput, NButton, NSelect, NAlert, useDialog, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/hermes/settings'
 import { clearCredentials as clearCredsApi, saveCredentials as saveCredsApi, fetchWeixinQrCode, pollWeixinQrStatus, saveWeixinCredentials } from '@/api/hermes/config'
 import PlatformCard from './PlatformCard.vue'
 import SettingRow from './SettingRow.vue'
+
+const props = defineProps<{
+  /** Optional live state per platform key (from Hermes Agent), shown in each card header. */
+  statuses?: Record<string, { label: string; type: 'success' | 'warning' | 'error' | 'info' | 'default' }>
+}>()
 
 const settingsStore = useSettingsStore()
 const message = useMessage()
@@ -157,6 +162,26 @@ function boolValue(value: unknown) {
   return value === true || value === 'true'
 }
 
+// Mattermost behaviour settings are .env values (MATTERMOST_*): strings on the wire.
+function mmCred(key: string): string {
+  const value = credentialDraft('mattermost')[key]
+  return value === undefined || value === null ? '' : String(value)
+}
+
+function setMm(key: string, value: string | boolean) {
+  setCredentialDraft('mattermost', { [key]: typeof value === 'boolean' ? String(value) : value })
+}
+
+/** Hermes treats anything but false/0/no as "mention required" (the default). */
+const mmRequireMention = computed(() => !['false', '0', 'no'].includes(mmCred('require_mention').toLowerCase()))
+const mmThreads = computed(() => mmCred('reply_mode').toLowerCase() === 'thread')
+const mmAllowAll = computed(() => boolValue(credentialDraft('mattermost').allow_all_users))
+const mmBotOptions = computed(() => [
+  { label: t('hermesChannels.mattermost.allowBotsNone'), value: 'none' },
+  { label: t('hermesChannels.mattermost.allowBotsMentions'), value: 'mentions' },
+  { label: t('hermesChannels.mattermost.allowBotsAll'), value: 'all' },
+])
+
 // This QR login belongs only to the Hermes channel credentials.
 const wxQrUrl = ref('')
 const wxQrId = ref('')
@@ -241,6 +266,13 @@ const platforms = [
     icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zm1.271 0a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zm0 1.271a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zm10.122 0a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V5.042zm-1.27 0a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zm0-1.27a2.527 2.527 0 0 1 2.523-2.52h6.313A2.528 2.528 0 0 1 24 18.956a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>',
   },
   {
+    key: 'mattermost',
+    name: 'Mattermost',
+    // Server URL, token and allowed users live in the Hermes panel above; nothing for Studio to clear.
+    hermesCredentials: true,
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.6 3.1a9.5 9.5 0 1 1-7.2 0"/><path d="M12 2.5v8.2a2.6 2.6 0 1 0 2.6 2.6"/></svg>',
+  },
+  {
     key: 'whatsapp',
     name: 'WhatsApp',
     exclusive: true,
@@ -313,7 +345,11 @@ watch(
       :exclusive="p.exclusive"
       :config="settingsStore[p.key as keyof typeof settingsStore] as Record<string, any>"
       :credentials="getCreds(p.key)"
+      :status-label="props.statuses?.[p.key]?.label"
+      :status-type="props.statuses?.[p.key]?.type"
+      :default-expanded="props.statuses ? props.statuses[p.key]?.type === 'success' : undefined"
     >
+      <slot name="platform-extra" :platform-key="p.key" />
       <!-- Telegram -->
       <template v-if="p.key === 'telegram'">
         <SettingRow :label="t('platform.botToken')" :hint="t('platform.botTokenHint')">
@@ -380,6 +416,39 @@ watch(
         </SettingRow>
         <SettingRow :label="t('platform.freeResponseChannels')" :hint="t('platform.freeResponseChannelsHint')">
           <NInput :value="configDraft('slack').free_response_channels || ''" :loading="isSavingPlatform('slack')" size="small" placeholder="channel_id1,channel_id2" @update:value="v => setConfigDraft('slack', { free_response_channels: v })" />
+        </SettingRow>
+      </template>
+
+      <!-- Mattermost: connection fields come from Hermes (panel above); these are its behaviour settings. -->
+      <template v-if="p.key === 'mattermost'">
+        <div class="section-caption">{{ t('hermesChannels.mattermost.behaviour') }}</div>
+        <SettingRow :label="t('hermesChannels.mattermost.threads')" :hint="t('hermesChannels.mattermost.threadsHint')">
+          <NSwitch :value="mmThreads" :loading="isSavingPlatform('mattermost')" @update:value="v => setMm('reply_mode', v ? 'thread' : 'off')" />
+        </SettingRow>
+        <SettingRow :label="t('hermesChannels.mattermost.requireMention')" :hint="t('hermesChannels.mattermost.requireMentionHint')">
+          <NSwitch :value="mmRequireMention" :loading="isSavingPlatform('mattermost')" @update:value="v => setMm('require_mention', v)" />
+        </SettingRow>
+        <SettingRow :label="t('hermesChannels.mattermost.freeChannels')" :hint="t('hermesChannels.mattermost.freeChannelsHint')">
+          <NInput :value="mmCred('free_response_channels')" :loading="isSavingPlatform('mattermost')" clearable size="small" class="input-lg" placeholder="channel_id1,channel_id2" @update:value="v => setMm('free_response_channels', v)" />
+        </SettingRow>
+        <SettingRow :label="t('hermesChannels.mattermost.onlyChannels')" :hint="t('hermesChannels.mattermost.onlyChannelsHint')">
+          <NInput :value="mmCred('allowed_channels')" :loading="isSavingPlatform('mattermost')" clearable size="small" class="input-lg" placeholder="channel_id1,channel_id2" @update:value="v => setMm('allowed_channels', v)" />
+        </SettingRow>
+        <SettingRow :label="t('hermesChannels.mattermost.homeChannel')" :hint="t('hermesChannels.mattermost.homeChannelHint')">
+          <NInput :value="mmCred('home_channel_id')" :loading="isSavingPlatform('mattermost')" clearable size="small" class="input-lg" placeholder="channel_id" @update:value="v => setMm('home_channel_id', v)" />
+        </SettingRow>
+        <SettingRow :label="t('hermesChannels.mattermost.allowBots')" :hint="t('hermesChannels.mattermost.allowBotsHint')">
+          <NSelect :value="mmCred('allow_bots') || 'none'" :options="mmBotOptions" size="small" class="input-md" @update:value="v => setMm('allow_bots', v === 'none' ? '' : v)" />
+        </SettingRow>
+        <SettingRow :label="t('hermesChannels.mattermost.botUsers')" :hint="t('hermesChannels.mattermost.botUsersHint')">
+          <NInput :value="mmCred('bot_users')" :loading="isSavingPlatform('mattermost')" clearable size="small" class="input-lg" placeholder="user_id1,user_id2" @update:value="v => setMm('bot_users', v)" />
+        </SettingRow>
+        <SettingRow :label="t('hermesChannels.mattermost.allowAll')" :hint="t('hermesChannels.mattermost.allowAllHint')">
+          <NSwitch :value="mmAllowAll" :loading="isSavingPlatform('mattermost')" @update:value="v => setCredentialDraft('mattermost', { allow_all_users: v })" />
+        </SettingRow>
+        <NAlert v-if="mmAllowAll" type="warning" :show-icon="false" class="mm-alert">{{ t('hermesChannels.mattermost.allowAllWarning') }}</NAlert>
+        <SettingRow :label="t('platform.proxyUrl')" :hint="t('platform.proxyUrlHint')">
+          <NInput :value="mmCred('proxy')" :loading="isSavingPlatform('mattermost')" clearable size="small" class="input-lg" placeholder="http://127.0.0.1:7890" @update:value="v => setMm('proxy', v)" />
         </SettingRow>
       </template>
 
@@ -535,6 +604,7 @@ watch(
 
       <div class="platform-actions">
         <NButton
+          v-if="!p.hermesCredentials"
           type="error"
           quaternary
           size="small"
@@ -581,6 +651,18 @@ watch(
 .weixin-qr-hint {
   font-size: calc(var(--font-size-base, 14px) * 13 / 14);
   color: $text-secondary;
+}
+
+.section-caption {
+  margin: 12px 0 4px;
+  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
+  font-weight: 600;
+  color: $text-secondary;
+}
+
+.mm-alert {
+  margin: 4px 0 8px;
+  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
 }
 
 .platform-actions {

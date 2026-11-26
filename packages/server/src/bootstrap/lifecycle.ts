@@ -1,7 +1,7 @@
 import { codingAgentRunManager } from '../modules/coding-agents/services/runtime/run-manager'
 import { shutdownDshManagement } from '../modules/coding-agents/services/dsh/management'
 import { shutdownDshPluginOperations } from '../modules/coding-agents/services/dsh/plugins'
-import { forceStopManagedGateways, shutdownManagedGateways } from '../modules/hermes/services/gateway/runner'
+import { detachManagedGatewaysForShutdown, forceStopManagedGateways, shutdownManagedGateways } from '../modules/hermes/services/gateway/runner'
 import { closeDb } from '../modules/studio/infrastructure/database'
 import { logger } from '../modules/studio/public/logging'
 import { shutdownLocalSttRuntime } from '../modules/studio/services/voice/stt/local-model-manager'
@@ -43,10 +43,11 @@ export function shouldStopManagedGatewaysOnShutdown(env: NodeJS.ProcessEnv = pro
   if (['1', 'true', 'yes', 'on'].includes(raw)) return true
   if (['0', 'false', 'no', 'off'].includes(raw)) return false
 
-  // Only gateways spawned through the managed runner are present in its
-  // ownership registry, so stopping by default cannot touch an externally
-  // managed gateway that Studio merely discovered.
-  return true
+  // The messaging gateway outlives a Studio restart: it is detached, keeps
+  // serving chats while Studio is down, and the next Studio adopts it without
+  // restarting it. Stopping it here cut every in-flight conversation and, when
+  // it was mid-start, needed a SIGKILL. The desktop app still stops it on quit.
+  return String(env.HERMES_DESKTOP || '').trim().toLowerCase() === 'true'
 }
 
 export interface AdditionalShutdownStep {
@@ -131,7 +132,8 @@ export function createShutdownHandler(
             logger.info('[shutdown] managed gateways stopped result=%j', result)
           })
         } else {
-          logger.info('[shutdown] leaving managed gateways running')
+          const left = detachManagedGatewaysForShutdown()
+          logger.info('[shutdown] leaving managed gateways running for the next Studio count=%s', left)
         }
 
         await runShutdownStep('Preview runtime', stopPreviewRuntime)

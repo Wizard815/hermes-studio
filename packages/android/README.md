@@ -15,14 +15,23 @@ What it adds on top of the web console:
 Only pages from the server address you configured get these abilities (WebView
 origin rules); see [docs/android-devices.md](../../docs/android-devices.md).
 
+- **Share to Studio:** share text, links or images from any app into a new
+  Studio chat or the open one; links to your server and `studio-own://chat/<id>`
+  open in the app (see [docs/android-devices.md](../../docs/android-devices.md#share-to-studio-and-links)).
+
+- **Approval alerts:** pair the app in Studio (Settings → Android app) and
+  approvals arrive as notifications with Approve / Reject, over a stream from
+  your own server (no Firebase). Live or Battery saver; see
+  [docs/approval-alerts.md](../../docs/approval-alerts.md).
+
 ## Omi
 
 The app works with the Omi app on the same
 phone. The intent contract both ways is in [docs/omi.md](../../docs/omi.md).
 
-- **Share to Studio:** share text from Omi (or any app) and choose **Send to
-  Studio**. Studio opens a new chat with the text in the composer; you press Send.
-  The link `ekkostudio-own://chat?text=...` does the same.
+- **From Omi:** share from Omi like from any app (above), or use the link
+  `ekkostudio-own://chat?text=...`, which opens a new chat with the text in the
+  composer; you press Send.
 - **Open Omi:** the Android page's *This phone* card has **Omi and phone AI**
   (or long-press the app icon → **Omi**). It opens Omi on its approvals
   (`omi://approvals`), tasks (`omi://tasks`) or capture (`omi://capture`) screen,
@@ -34,8 +43,7 @@ phone. The intent contract both ways is in [docs/omi.md](../../docs/omi.md).
   (speech-to-text) answer. Termux needs `allow-external-apps = true`; the panel
   shows the steps when it is missing.
 
-Roadmap: notifications (no Firebase), calendar/reminders, tasks and Kanban,
-home-screen widgets.
+Roadmap: calendar/reminders, tasks and Kanban, home-screen widgets.
 
 Build: GitHub Actions workflow `Android APK` (see `.github/workflows/android-apk.yml`)
 builds a debug APK on every change under `packages/android/`; download it from the

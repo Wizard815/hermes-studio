@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ProjectIcon from './ProjectIcon.vue'
 import { computed, ref, onUnmounted } from 'vue'
 import { NPopconfirm, NCheckbox, NTooltip } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -7,6 +8,8 @@ import { useAppStore } from '@/stores/hermes/app'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import ProfileAvatar from '@/components/hermes/profiles/ProfileAvatar.vue'
 import PinIcon from '@/components/common/PinIcon.vue'
+import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
+import type { AgentDisplayStatus } from '../../../../../shared/session-state'
 import { formatTimestampMs } from '@/shared/session-display'
 import { chatSessionAgentAvatar, personAvatarAnimation, personAvatarStyle } from '@/utils/chat-agent-avatar'
 import { resolveSessionNavigation } from './session-list-item-navigation'
@@ -20,12 +23,20 @@ const props = withDefaults(defineProps<{
   deleteConfirmText?: string
   streaming?: boolean
   completedUnread?: boolean
+  /** Combined display status; derived from streaming/completedUnread when omitted. */
+  status?: AgentDisplayStatus
+  /** The chat is open in a live herdr pane. */
+  herdrLinked?: boolean
+  /** The chat is elevated to herdr (it has a herdr space); every other chat is Studio-only. */
+  herdrElevated?: boolean
   selectable?: boolean
   selected?: boolean
   showProfile?: boolean
   showTime?: boolean
   singleLine?: boolean
   categoryLabel?: string
+  /** The chat is a project's coordinator or one of its threads (docs/projects.md). */
+  projectRole?: 'coordinator' | 'thread' | null
   to?: string
   interceptModifiedNavigation?: boolean
 }>(), {
@@ -56,6 +67,10 @@ const profileModelsMissing = computed(() =>
 const isGlobalAgentSession = computed(() => props.session.source === 'global_agent')
 const sessionAgentLogo = computed(() => chatSessionAgentAvatar(props.session))
 const isPersonSession = computed(() => !!personAvatarAnimation(sessionAgentLogo.value, 'idle'))
+const displayStatus = computed<AgentDisplayStatus>(() =>
+  props.status ?? (props.streaming ? 'working' : props.completedUnread ? 'done' : 'idle'))
+// Idle chats without a live agent stay quiet; everything else shows its glyph.
+const showStatusIcon = computed(() => displayStatus.value !== 'idle' || !!props.herdrLinked)
 
 let longPressTimer: ReturnType<typeof setTimeout> | null = null
 const longPressTriggered = ref(false)
@@ -135,10 +150,21 @@ onUnmounted(() => {
           <span v-if="pinned" class="session-item-pin" aria-hidden="true">
             <PinIcon width="13" height="13" filled />
           </span>
-          <span v-if="completedUnread && !streaming" class="session-item-unread-dot" aria-hidden="true" />
+          <AgentStatusIcon
+            v-if="showStatusIcon"
+            class="session-item-status"
+            :status="displayStatus"
+            :live="herdrLinked"
+          />
           <span class="session-item-title" dir="auto">
             {{ session.title }}
           </span>
+          <span
+            v-if="herdrElevated"
+            class="session-item-herdr-elevated"
+            data-testid="session-herdr-elevated"
+            :title="t('herdr.elevatedBadgeHint')"
+          >herdr</span>
           <NTooltip v-if="profileModelsMissing" trigger="click" placement="top">
             <template #trigger>
               <button class="session-item-warning" type="button" @click.stop.prevent>
@@ -151,7 +177,7 @@ onUnmounted(() => {
         <span v-if="showTime" class="session-item-time">{{ formatTimestampMs(session.createdAt) }}</span>
       </span>
       <span class="session-item-agent-row">
-        <span class="session-item-agent-logo-wrap" :class="{ streaming }">
+        <span class="session-item-agent-logo-wrap">
           <img
             class="session-item-agent-logo"
             :class="{ 'session-item-agent-logo--person': isPersonSession }"
@@ -165,11 +191,14 @@ onUnmounted(() => {
           <span class="session-item-profile-name">{{ profileName }}</span>
         </span>
         <span
-          v-if="props.categoryLabel"
+          v-if="props.categoryLabel || props.projectRole"
           class="session-item-category-tag"
-          :title="props.categoryLabel"
+          :class="{ 'session-item-category-tag--project': !!props.projectRole }"
+          :title="props.projectRole ? `${props.categoryLabel ? `${props.categoryLabel} · ` : ''}${t(props.projectRole === 'coordinator' ? 'projects.coordinator' : 'projects.pane.label')}` : props.categoryLabel"
+          :data-testid="props.projectRole ? 'session-project-tag' : undefined"
         >
-          {{ props.categoryLabel }}
+          <ProjectIcon v-if="props.projectRole" :size="10" class="session-item-project-icon" />
+          {{ props.categoryLabel || t(props.projectRole === 'coordinator' ? 'projects.coordinator' : 'projects.pane.label') }}
         </span>
       </span>
     </div>
@@ -203,6 +232,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
+@use '@/styles/variables' as *;
 @use '@/styles/person-avatar' as *;
 
 .session-item {
@@ -305,13 +335,8 @@ onUnmounted(() => {
   color: var(--accent-primary);
 }
 
-.session-item-unread-dot {
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(var(--accent-primary-rgb), 0.12);
+.session-item-status {
+  margin-right: 1px;
 }
 
 .session-item-time {
@@ -383,6 +408,18 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
+.session-item-category-tag--project {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+  color: var(--text-secondary);
+}
+
+.session-item-project-icon {
+  flex: none;
+}
+
 .session-item-category-tag {
   flex: 0 1 auto;
   min-width: 0;
@@ -449,18 +486,6 @@ onUnmounted(() => {
   border-radius: 50%;
 }
 
-.session-item-agent-logo-wrap.streaming::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  box-sizing: border-box;
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 2px #ff6b6b,
-    0 0 10px rgba(255, 107, 107, 0.4),
-    0 0 20px rgba(255, 107, 107, 0.2);
-  animation: rainbow-glow 4s linear infinite;
-}
 
 .session-item-agent-logo {
   position: relative;
@@ -478,52 +503,15 @@ onUnmounted(() => {
   border-radius: inherit;
 }
 
-@keyframes rainbow-glow {
-  0% {
-    box-shadow:
-      0 0 0 2px #ff6b6b,
-      0 0 10px rgba(255, 107, 107, 0.4),
-      0 0 20px rgba(255, 107, 107, 0.2);
-  }
-  16.66% {
-    box-shadow:
-      0 0 0 2px #feca57,
-      0 0 10px rgba(254, 202, 87, 0.4),
-      0 0 20px rgba(254, 202, 87, 0.2);
-  }
-  33.33% {
-    box-shadow:
-      0 0 0 2px #48dbfb,
-      0 0 10px rgba(72, 219, 251, 0.4),
-      0 0 20px rgba(72, 219, 251, 0.2);
-  }
-  50% {
-    box-shadow:
-      0 0 0 2px #ff9ff3,
-      0 0 10px rgba(255, 159, 243, 0.4),
-      0 0 20px rgba(255, 159, 243, 0.2);
-  }
-  66.66% {
-    box-shadow:
-      0 0 0 2px #54a0ff,
-      0 0 10px rgba(84, 160, 255, 0.4),
-      0 0 20px rgba(84, 160, 255, 0.2);
-  }
-  83.33% {
-    box-shadow:
-      0 0 0 2px #5f27cd,
-      0 0 10px rgba(95, 39, 205, 0.4),
-      0 0 20px rgba(95, 39, 205, 0.2);
-  }
-  100% {
-    box-shadow:
-      0 0 0 2px #ff6b6b,
-      0 0 10px rgba(255, 107, 107, 0.4),
-      0 0 20px rgba(255, 107, 107, 0.2);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .session-item-agent-logo-wrap.streaming::before { animation: none; }
+.session-item-herdr-elevated {
+  flex: none;
+  margin-left: 4px;
+  padding: 1px 4px;
+  border: var(--border-width, 1px) solid $border-light;
+  border-radius: 4px;
+  color: $text-muted;
+  font-size: 10px;
+  line-height: 1.2;
+  cursor: default;
 }
 </style>

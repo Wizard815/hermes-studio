@@ -1,3 +1,4 @@
+import { spawnInCleanRoom } from '../cleanroom'
 import { spawn, type ChildProcess } from 'child_process'
 import { StringDecoder } from 'node:string_decoder'
 import type { CodingAgentImageInput } from '../../protocol/types'
@@ -9,6 +10,8 @@ export const ANTIGRAVITY_COMPACT_UNSUPPORTED = 'Native /compact is not supported
 export interface AntigravityTurnProcessInput {
   command: string
   baseArgs: string[]
+  /** Ask before acting: drop the flag that lets the agent act unchecked. */
+  asks?: boolean
   workspaceDir: string
   env: NodeJS.ProcessEnv
   nativeSessionId: string
@@ -35,6 +38,8 @@ export function buildAntigravityTurnArgs(
   nativeSessionId: string,
   resume: boolean,
   _prompt: string,
+  /** Without it Antigravity refuses what needs approval instead of running it. */
+  skipPermissions = true,
 ): string[] {
   const resumeArgs = resume && String(nativeSessionId || '').trim()
     ? ['--conversation', String(nativeSessionId).trim()]
@@ -45,7 +50,7 @@ export function buildAntigravityTurnArgs(
     '--output-format',
     'stream-json',
     ...resumeArgs,
-    '--dangerously-skip-permissions',
+    ...(skipPermissions ? ['--dangerously-skip-permissions'] : []),
     ...baseArgs.filter(arg => arg !== '--dangerously-skip-permissions'),
     '--print-timeout', '0',
   ]
@@ -72,6 +77,8 @@ export function createAntigravityStdoutReader(): { push(chunk: Buffer): string[]
 }
 
 function spawnAntigravity(command: string, args: string[], input: AntigravityTurnProcessInput): ChildProcess {
+  const inRoom = spawnInCleanRoom(command, args, { cwd: input.workspaceDir, env: input.env })
+  if (inRoom) return inRoom
   const normalizedCommand = process.platform === 'win32' ? normalizeWindowsCommandPath(command) : command
   if (process.platform === 'win32' && windowsCommandNeedsShell(command)) {
     const execution = windowsCmdShimExecution(normalizedCommand, args)
@@ -95,7 +102,7 @@ function spawnAntigravity(command: string, args: string[], input: AntigravityTur
 
 export function startAntigravityTurnProcess(input: AntigravityTurnProcessInput): ChildProcess {
   const prompt = antigravityPrompt(input.input, input.images)
-  const args = buildAntigravityTurnArgs(input.baseArgs, input.nativeSessionId, input.resume, prompt)
+  const args = buildAntigravityTurnArgs(input.baseArgs, input.nativeSessionId, input.resume, prompt, !input.asks)
   const child = spawnAntigravity(input.command, args, input)
   child.stdin?.on('error', () => { /* startup/close handlers own lifecycle errors */ })
   // Stream-json explicitly activates headless mode without the value-taking

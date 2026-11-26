@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <img src="./docs/screenshots/overview/new-chat.png" alt="Ekko Studio new-chat page with Agent cards and a shared composer" width="960"/>
+  <img src="./docs/screenshots/overview/new-chat.png" alt="Ekko Studio new-chat page with the Agent carousel and shared composer" width="960"/>
 </p>
 
 <p align="center">
@@ -33,27 +33,274 @@ repository is `EKKOLearnAI/ekko-studio`. The primary npm package is
 `ekko-studio`, with the `ekko-studio-web` command. The legacy `hermes-web-ui`
 package and command remain supported and receive the same releases.
 
+## This fork (Wizard815/hermes-studio): test branch and upgrade guide
+
+This fork adds herdr, Pondering Orb, Mattermost, Home Assistant, Unraid and
+Agent work (Vikunja tasks and approvals) on top of the newest Ekko Studio,
+with its model gateway. Until it is merged into `main`, all of it lives on
+one test branch, **`studio-herder`**: Studio with herdr, where chats start in
+Studio and can be elevated to herdr. `main` stays as it is until
+`studio-herder` has been tested on a real machine.
+
+| Branch | What it is |
+|---|---|
+| `main` | Current stable build (Pondering Orb through Studio, no herdr). Unchanged until `studio-herder` is confirmed. |
+| **`studio-herder`** | **Test this one.** Studio with herdr: chats start in Studio and can be elevated to herdr. Everything in this fork + newest Ekko Studio, and all of `main`'s fixes. |
+| `herdr-integration` | Older version where every chat is a herdr space. Will be retired; don't start new installs on it. |
+
+Old branches you can delete on GitHub (everything in them is already in
+`studio-herder`): `herdr-separation` (renamed to `studio-herder`),
+`herdr-space-folders`, `herdr-command-center`, `herdr-app-ui`,
+`herdr-combined-ui`, `herdr-agents-reopen`, `recommended-plugins`,
+`agent-limits`, `cleanroom-hardening`, `herdr-upstream`, `agent-work`,
+`upstream-sync`, `desktop-apk` and `claude/awesome-archimedes-0x0di9`.
+Delete `herdr-integration` too once `studio-herder` works for you.
+
+### How chats use herdr
+
+Studio and herdr are separate but work together. You start in Studio and
+move a chat to herdr only when you want its agent in a terminal.
+
+- **New chats are Studio-only.** They get no herdr space and no process.
+- **Elevate to herdr**: the chat header's Elevate button, *Elevate to herdr*
+  in the chat list's right-click menu, or `/herdr` in the chat box. The chat
+  gets its own herdr space and its agent starts there. Messages, status,
+  approvals, run limits and its folder stay in sync with Studio.
+- **Return to Studio**: the chat header's menu, the right-click menu, or
+  `/studio`. Its herdr space closes; the chat and its history stay.
+- **The herdr page** (Chat | herdr at the top of Chats) shows only elevated
+  chats and spaces you made in herdr itself. Studio's top bar is hidden there,
+  so it looks like the Herdr App window; the small button at the top right
+  (or Esc) brings it back.
+- Agents you start in herdr itself are elevated chats too.
+
+### Install on a Linux machine (for example an Intel NUC)
+
+Needs Docker with the compose plugin and about 7 GB of disk.
+
+```bash
+git clone -b studio-herder https://github.com/Wizard815/hermes-studio.git
+cd hermes-studio
+docker compose up -d --build
+docker compose logs -f hermes-webui
+```
+
+Open `http://<machine-ip>:6060`. Data is kept in `./hermes_data` (set
+`HERMES_DATA_DIR` to put it somewhere else). The first login token is in the
+logs and in `./hermes_data/hermes-web-ui/.token`.
+
+To update later:
+
+```bash
+git pull && docker compose up -d --build
+```
+
+### Upgrade an existing install from `main` to `studio-herder`
+
+1. **Back up first.** Stop Studio and copy the whole data folder: the folder
+   mounted at `/home/agent/.hermes` (`./hermes_data` with compose, the
+   container's appdata folder on Unraid). This copy is the surest way back.
+2. **Get the branch:**
+   - Compose (same checkout): `git fetch origin && git checkout studio-herder && git pull`
+   - Unraid / plain Docker (new folder): `git clone -b studio-herder https://github.com/Wizard815/hermes-studio.git`
+3. **Build the image** (about 5 minutes):
+   - Compose: `docker compose up -d --build`
+   - Unraid / plain Docker: `docker build -t hermes-studio:studio-herder .`
+4. **Point the container at it** (Unraid / plain Docker only): edit the Studio
+   container, set **Repository** to `hermes-studio:studio-herder`, keep the
+   same data path, and apply.
+5. **Add herdr's folders** so herdr keeps its spaces across restarts. Compose
+   already has them. On Unraid add two paths:
+   - `<appdata>/herdr/config` → `/home/agent/.config/herdr`
+   - `<appdata>/herdr/state` → `/home/agent/.local/state/herdr`
+
+Already on `herdr-integration`? Back up the same way, then
+`git fetch origin && git checkout studio-herder && git pull` and rebuild
+(steps 3 and 4). Your data folder and herdr folders stay as they are.
+
+What happens on the first start:
+
+- **herdr chats move to the new model once** (logged as "chats are Studio-only
+  now"). Chats whose agent is running in herdr stay elevated. The waiting
+  "press Enter" spaces of all other chats close. No chat history is touched,
+  and spaces you made in herdr yourself stay. If herdr is not running yet,
+  this happens the first time Studio reaches it.
+- Chats, profiles, MCP servers and their tokens, Mattermost and herdr settings
+  and scheduled jobs are kept.
+- Each profile's model settings move onto Studio's **model gateway**: profile
+  defaults become gateway routes, Hermes API key pools show on **Models → Key
+  pools**, and jobs with their own model are moved onto the gateway.
+- Before Studio first changes a profile, it copies Hermes's own `config.yaml`,
+  `.env`, `auth.json` and `cron/jobs.json` into `<profile>/pre-studio-gateway/`
+  (`<profile>` is the data folder itself for the default profile, or
+  `profiles/<name>/` for the others).
+- Scheduled job posts no longer carry Hermes's "Cronjob Response" header and
+  "To stop or manage this job" footer. Turn them back on in **Hermes Settings →
+  Session → Job post header and footer**.
+- About 30 seconds after start, Studio installs and enables eight Hermes
+  plugins from Hermes's plugin catalog (pinned versions), once per profile:
+  agent-importers, homeassistant, langfuse, mcp-serve, bubblewrap, rea,
+  print3d and gadget. It only enables them: no keys, no terminal backend
+  change, no import. It also adds `hermes-chats` (mcp-serve, read-only tools)
+  on the **MCP** page, and turns the Hermes Gadget platform on so devices such
+  as D.A.S.H can connect to `ws://<host>:8765/gadget` after the gateway's next
+  start (Docker publishes 8765; keep it on your LAN). Its status is under
+  **Connections → MCU devices**. A plugin, server or platform you remove or
+  turn off later stays that way. If the
+  catalog cannot be reached, or Hermes is too old, Studio tries again on its
+  next start. Turn it off in **Hermes Settings → Agent → Recommended Hermes
+  plugins**, or set `STUDIO_RECOMMENDED_HERMES_PLUGINS=0` on the container.
+  Details: [docs/hermes-integrations.md](docs/hermes-integrations.md#recommended-plugins).
+- About 5 seconds after start, Studio copies ten UI and design skills
+  (jakubkrehel/skills, MIT) once into every Hermes and Ekko profile,
+  `~/.claude/skills` and `~/.agents/skills`, so every agent builds nicer UIs.
+  A skill you delete or edit stays that way. The Skills pages show them as
+  **UI skills (bundled)**. Turn it off in **Hermes Settings → Agent → UI skills
+  for every agent**, or set `STUDIO_UI_SKILLS=0`. Details:
+  [docs/ui-skills.md](docs/ui-skills.md).
+- The **MCP** page's catalog has a **Paper (paper.design)** card (design
+  canvas, OAuth sign-in, needs a Paper account; designs go to Paper's
+  servers). It is never added on its own.
+
+### Agent work: Vikunja tasks, approvals and alerts
+
+Agents record the work they do on your Vikunja tasks; you approve it once, in
+Studio, Mattermost, Pondering Orb, Omi or on your phone, and it counts everywhere.
+**Settings → Watcher → Where approvals reach you** picks Mattermost, the Studio
+Own Android app, both or off for each super admin, and for which approvals
+(Agent work, chat approvals, phone actions, Blocked alerts); see
+[docs/approval-alerts.md](docs/approval-alerts.md). Set it up in
+**Connections → Agent work → Settings**; nothing is on until you fill it in.
+
+- **Mattermost:** run **Channels → Mattermost → Set up Mattermost** first
+  (it connects the bot). Then set:
+  - **Channel**: where posts go (for example `hermes`). Empty: no posts.
+  - **Mention**: usernames to @mention on `#blocked` (and approval) posts.
+    Empty: nobody is mentioned. Set that channel to "Mentions only" in
+    Mattermost so only those alert you.
+  - **Studio address for Mattermost buttons**: Studio's address as Mattermost reaches
+    it (for example `http://192.168.1.10:6060`). It adds Approve / Reject
+    buttons; without it, react ✅ or ❌ instead. For the buttons, also add
+    Studio's IP in Mattermost under **System Console → Developer → Allow
+    untrusted internal connections**.
+- **ALLGlance:** its address under **ALLGlance (Vikunja tasks)** (for example `http://allglance-gateway:8090`)
+  and its `GATEWAY_TOKEN`, or set `ALLGLANCE_URL` / `ALLGLANCE_TOKEN` on the
+  container. Approving work linked to a Vikunja task marks the task done;
+  rejecting leaves it open. If ALLGlance is down, Studio retries every 5
+  minutes.
+- **Pondering Orb:** connect Orb under **Connections → Pondering Orb**, then
+  turn on **Share agent activity with Pondering Orb** (off by default). Orb
+  needs its `agent-work` build for the Approve / Reject alerts.
+- **Wiki daily digest:** the wiki REST address (Obsidian Local REST API) and API key, the daily-notes folder and the
+  section name. Studio writes its part of each day's digest there.
+
+Posts are tagged `#agentwork` plus `#working`, `#blocked`, `#approval`,
+`#done`, `#approved` or `#rejected`. Once something is decided anywhere, its
+Mattermost post loses its buttons, Orb's alert clears and Studio's badge goes.
+
+API (admins): `POST /api/studio/agent-work` takes `vikunjaTaskId` or
+`vikunja_task_id`, `sessionId` or `session_id`. Work an Ekko or coding-agent
+chat reports without a chat id is linked to that chat. `DELETE
+/api/studio/agent-work/<id>` removes a record and its activity (the Vikunja
+task stays); agents have it as `ekko_studio_use_agent_work` action `delete`.
+
+### Upstream Manager: repos, tasks and herdr agents, in tandem with Studio
+
+[Upstream Manager](https://github.com/Wizard815/UpstreamManager) (it keeps your repos in step with
+their upstreams and hands work to coding agents) shows inside Studio in the **Upstream** tab.
+
+**Setup.** Install Upstream on the same machine (`scripts/install.sh`, or `docker compose up -d
+--build`; it listens on `127.0.0.1:5001`). Then open the **Upstream** tab once. That's all: the
+tab hands Upstream Studio's address and a login for you (renewed on its own), so Upstream can call
+Studio back. If the tab says Upstream isn't answering, it shows the address it tried and how to fix
+it. Upstream elsewhere: start Studio with `UPSTREAM_UPKEEP_TARGET=http://host:5001`, list Studio's
+address in Upstream's `UPSTREAM_TRUSTED_PROXIES`, and set `HERMES_STUDIO_URL_FOR_UPSTREAM` to how
+that machine reaches Studio.
+
+**herdr: one herdr, two apps.** On Studio's machine Upstream starts its agents through Studio's
+herdr bridge, not on its own:
+
+- Each agent a task gets (Hermes by default) is a normal Studio chat in its own herdr space, with
+  Studio's models, profile and folders, filed in the Studio folder named after the repo if there is
+  one. It works in the task's own branch folder.
+- The chat's header shows **Upstream task**; it opens the task in the Upstream tab (its branch,
+  the proposed commit message, the approval).
+- Studio tells Upstream when the agent starts working, waits for an answer, finishes, or its pane
+  closes, the same way it tells Pondering Orb about Orb work. You answer the agent in Studio or in
+  herdr.
+- Neither app closes the other's herdr spaces. Agents on other machines (`herdr --machine`) are
+  started by Upstream's own herdr connection, and Upstream falls back to that here too if Studio
+  can't start one. Set `UPSTREAM_HERDR_VIA_STUDIO=off` in Upstream's `.env` to never go through Studio.
+
+**Moving between them.** A link in Upstream to a Studio chat opens the chat in Studio. Links to
+`#/hermes/upstream?path=/work?task=<id>` open an Upstream page, and Studio's address follows the
+page Upstream shows, so reloads and the back button keep your place.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `UPSTREAM_UPKEEP_TARGET` | `http://127.0.0.1:5001` | Where Upstream Manager listens. |
+| `UPSTREAM_UPKEEP_PATH_PREFIX` | `/upstream` | The path Studio serves it under. |
+| `HERMES_STUDIO_URL_FOR_UPSTREAM` | `http://127.0.0.1:<PORT>` | How Upstream reaches Studio (only when Upstream runs on another machine). |
+
+### Going back to `main`
+
+`main` has not changed, so its image still works with your backup.
+
+Easiest: stop Studio, put the backup from step 1 back, check out `main`
+(`git checkout main`) and rebuild, or point the container back at your old
+`main` image.
+
+Without the backup: stop Studio, copy the files in each
+`<profile>/pre-studio-gateway/` back into that profile (`cron-jobs.json` goes
+back to `cron/jobs.json`), then start the `main` image. If you skip the copy,
+the old build opens but no model works. herdr spaces stay in herdr's folders;
+`main` ignores them.
+
+### What to check after upgrading
+
+Things the automated tests could not cover, because they need a real model or
+your own services:
+
+- [ ] A chat streams a reply and uses a tool
+- [ ] `/model` switches the model in a chat and in herdr
+- [ ] A job with its own model runs and posts to Mattermost (without the header and footer)
+- [ ] Home Assistant and Unraid tools answer through Hermes
+- [ ] Key pools switch to the next key on a real rate limit
+- [ ] Hermes local works with a downloaded model (if you use it)
+- [ ] Old chats, jobs and Mattermost still work as before
+- [ ] Connections → Pondering Orb connects, and Orb work starts a Studio chat
+- [ ] Agent work: approve one item from each of Studio, Mattermost and Orb; the Vikunja task is marked done
+- [ ] Omi: Connections → Omi → Test connection answers; make a key, paste it in Omi as the Studio token, and "Send to agent → Studio" starts a chat listed under Work from Omi; register the webhook and the result reaches Omi ([docs/omi.md](docs/omi.md))
+- [ ] LLM wiki: Connections → LLM wiki → pick your profile, paste the wiki's address and your token, Test connection names you; turn it on, ask a new Hermes chat about something only your wiki knows, and check today's daily note gets "Chat with Hermes: …"; the household profile's token cannot find your private notes ([docs/llm-wiki.md](docs/llm-wiki.md))
+- [ ] A new chat stays in Studio: no herdr space appears for it
+- [ ] herdr: elevate a Hermes chat (`/herdr`), send a message, restart the container, and check the pane is still linked
+- [ ] herdr: `/studio` on that chat closes its herdr space and the chat keeps its messages
+- [ ] Watcher: a denied approval shows in the bell; Trust this lets the next run through without asking ([docs/watcher.md](docs/watcher.md))
+- [ ] Approval alerts: pair Studio Own in Settings → Android app, pick "Both" in Settings → Watcher; an Agent work approval shows on the phone and in Mattermost, Approve on the phone, and Studio and Mattermost say "approved on phone" ([docs/approval-alerts.md](docs/approval-alerts.md))
+- [ ] Home Assistant: "turn on the kitchen light" in a Hermes chat asks first; Trust this with `light.*` lets the next one run ([docs](docs/hermes-integrations.md#home-assistant-actions-ask-first))
+- [ ] A new Hermes chat answers within about 10 s with the recommended plugins (rea) installed
+- [ ] Gadget: from a Studio Hermes chat, "show 'hello' on my gadget" shows a card on the device
+- [ ] herdr: on a new install, elevating a Claude Code chat opens the chat, not Claude Code's theme or API key questions
+- [ ] UI skills: the Skills page shows **UI skills (bundled)**, and `~/.claude/skills/better-interface` exists in the container; asking Claude Code to review a page uses it ([docs/ui-skills.md](docs/ui-skills.md))
+- [ ] Test Lab: `/test-lab` with the Docker socket mounted, pick a model and Static page (nginx), Start run; the steps go to Report, the report and screenshots show, and `docker ps` lists no `studio-testlab-` containers afterwards ([docs/test-lab.md](docs/test-lab.md))
+- [ ] Import chats: chat list ⋯ → Import chats…, point it at a backup of `~/.claude` or a Hermes home; the preview lists the chats, Import adds them, running it again skips them all ([docs/chat-import.md](docs/chat-import.md))
+- [ ] Paper (optional, needs a Paper account): MCP → Catalog → Paper → Add and sign in; a Hermes chat can read a frame
+
+Known issues on this branch:
+
+- A reply that is still being written when Studio restarts is lost without a note.
+- A full disk shows only "Internal Server Error" (files are not damaged).
+- With gateway autostart off, Hermes can still start its own gateway for chats.
+
+
 ## Screenshots
 
-Captured from the **v0.7.33** client on 2026-10-10. Chat, workflows, and Skills use demo data; Agent versions reflect a local installation. See [capture notes](./docs/screenshots/overview/README.md).
+Captured from **v0.8.13** source on 2026-11-03, running locally with isolated data. The workflow is an example created in the UI and has not been run; Agent statuses reflect this machine. See [capture notes](./docs/screenshots/overview/README.md).
 
 | Visual workflows | Agent Manager |
 | --- | --- |
-| [![Visual workflow connecting research, coding, and review](./docs/screenshots/overview/workflow.png)](./docs/screenshots/overview/workflow.png) | [![Agent Manager with built-in and coding-agent integrations](./docs/screenshots/overview/agent-manager.png)](./docs/screenshots/overview/agent-manager.png) |
-| Connect agent steps and add a human approval gate. | Manage agent installations, settings, and updates in one place. |
-
-<details>
-<summary>Explore chat progress and Skills</summary>
-
-Follow a task in the conversation, including its plan and per-turn usage.
-
-![Ekko Studio conversation with a completed task plan and usage summary](./docs/screenshots/overview/workspace.png)
-
-Browse installed skills, read their instructions, and enable them as needed.
-
-![Ekko Agent Skills browser showing the GitHub skill](./docs/screenshots/overview/skills.png)
-
-</details>
+| [![Idle example workflow connecting Claude, Codex, and a review node with an approval gate](./docs/screenshots/overview/workflow.png)](./docs/screenshots/overview/workflow.png) | [![Agent Manager with all 16 built-in and coding-agent cards](./docs/screenshots/overview/agent-manager.png)](./docs/screenshots/overview/agent-manager.png) |
+| Connect agent steps and add a human approval gate; this example is not running. | Manage Agent installations, settings, and updates in one place. |
 
 ## Core Capabilities
 
@@ -417,6 +664,7 @@ These variables configure Ekko Studio, its local Hermes runtime integration, and
 | `HERMES_WEB_UI_DISABLE_MCP_AUTOINJECT` | unset | Disable startup injection of the managed `ekko-studio-*` MCP servers into Hermes profile configs. |
 | `HERMES_WEB_UI_ALLOW_TRANSIENT_MCP_AUTOINJECT` | unset | Allow managed MCP injection when `HERMES_WEB_UI_HOME` is under a temporary directory, such as Version Preview runtimes. |
 | `UPLOAD_DIR` | `$HERMES_WEB_UI_HOME/upload` | Upload root override. Files are stored below profile-scoped subdirectories. |
+| `STUDIO_OWN_ANDROID_CERT_SHA256` | unset | Signing fingerprint(s) of your Studio Own APK (comma-separated, `AA:BB:…`). Studio then serves `/.well-known/assetlinks.json` so links to this server open in the app ([docs/android-devices.md](docs/android-devices.md#share-to-studio-and-links)). |
 | `CORS_ORIGINS` | same host only | Comma- or space-separated cross-origin allowlist for HTTP, Socket.IO, and WebSocket requests. Set `*` only when you intentionally need legacy wildcard CORS. |
 | `AUTH_TOKEN` | auto-generated | Explicit bearer token. If unset, Studio creates one under `HERMES_WEB_UI_HOME`. |
 | `AUTH_JWT_SECRET` | `AUTH_TOKEN` | JWT signing secret override for username/password sessions. |
@@ -458,7 +706,7 @@ These variables configure Ekko Studio, its local Hermes runtime integration, and
 | `HERMES_WEB_UI_MANAGED_GATEWAY` | enabled | Controls Studio-managed Hermes gateway process handling. Set `0`, `false`, `no`, or `off` to use `hermes gateway start` instead. |
 | `HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART` | unset | Override the opt-in Hermes Gateway autostart policy. Set `1`, `true`, `yes`, or `on` to disable startup checks and configuration-driven reconciliation even when enabled in settings. |
 | `HERMES_WEB_UI_DISABLE_SKILL_INJECTION` | unset | Skip startup bundled skill injection. Set `1`, `true`, `yes`, or `on` when bundled skills are managed outside Studio. When injection is enabled, Studio updates only skills it previously installed or identical existing bundled copies; local edits and user-owned same-name skills are skipped. |
-| `HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | enabled | Controls whether Studio shutdown also stops only the gateway processes started and tracked by this Studio process. Set `0` or `false` to detach them; externally discovered gateways are never adopted or stopped. |
+| `HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | off (on in the desktop app) | By default the gateway Studio supervises keeps running when Studio shuts down, and the next Studio adopts it without restarting it. Set `1` or `true` to stop it on shutdown instead. Gateways Studio did not launch are never adopted or stopped. |
 | `HERMES_WEB_UI_SHUTDOWN_FORCE_EXIT_MS` | `10000` | Short cleanup budget before Studio force-stops its owned process trees and exits. |
 | `HERMES_DESKTOP_STOP_TIMEOUT_MS` | `20000` | Desktop host's existing outer deadline before it force-stops the complete Web UI process tree; independent from the Web UI's 10-second cleanup budget. |
 | `HERMES_GATEWAY_URL` / `GATEWAY_URL` | unset | Explicit Hermes gateway upstream URL for proxy routes. |

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
+import { taskArtifactPath } from './scripts/task-artifacts.mjs'
 
 export default defineConfig({
   plugins: [vue()],
@@ -20,6 +21,7 @@ export default defineConfig({
     // The fork keeps some pre-reset regression tests that rely on these globals and mocks.
     setupFiles: ['tests/setup.ts'],
     coverage: {
+      reportsDirectory: taskArtifactPath(__dirname, 'coverage'),
       exclude: [
         '**/dist/**',
         'packages/desktop/release/**',

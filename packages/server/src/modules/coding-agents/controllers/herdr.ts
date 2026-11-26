@@ -1,0 +1,480 @@
+import type { Context } from 'koa'
+import { gzipSync } from 'node:zlib'
+import { upstreamWorkRef } from '../../studio/services/upstream/client'
+import { herdrAppLayoutScript, herdrManager, HERDR_INTEGRATIONS } from '../services/herdr/manager'
+import { readFile } from 'node:fs/promises'
+import { herdrKindForStudioAgent } from '../services/herdr/protocol'
+import { herdrChatProfile } from '../services/herdr/runtime'
+import { HERDR_PLUGIN_TOKEN_HEADER } from '../services/herdr/plugin'
+import type { HerdrWorkRef } from '../services/herdr/bridge'
+import { clientBridgeState, studioStatusClock } from '../services/herdr/client-state'
+import { readSpaceView } from '../services/herdr/space-view'
+import { readSpaceChanges, readSpaceDiff } from '../services/herdr/space-changes'
+
+function fail(ctx: Context, error: unknown, fallback: string) {
+  const err = error as { status?: number; message?: string; code?: string }
+  ctx.status = err?.status && err.status >= 400 && err.status < 600 ? err.status : 500
+  ctx.body = { error: err?.message || fallback, ...(err?.code ? { code: err.code } : {}) }
+}
+
+/**
+ * The address a browser used to reach Studio (its tunnel or LAN address), so
+ * apps that link into Studio, like Pondering Orb, need no extra setup. Only
+ * browser requests count (they carry Sec-Fetch headers); Orb's own server
+ * calls Studio on an internal address.
+ */
+function browserOrigin(ctx: Context): string {
+  if (!ctx.get('sec-fetch-mode')) return ''
+  const host = (ctx.get('x-forwarded-host') || ctx.get('host')).split(',')[0].trim()
+  const proto = (ctx.get('x-forwarded-proto') || ctx.protocol || 'http').split(',')[0].trim()
+  if (!/^[A-Za-z0-9.-]+(:\d+)?$|^\[[0-9a-fA-F:]+\](:\d+)?$/.test(host) || !/^https?$/.test(proto)) return ''
+  return `${proto}://${host}`
+}
+
+/**
+ * JSON, gzipped when the browser takes it and it is big: herdr's status holds
+ * every chat's space (hundreds with hundreds of chats), and API responses are
+ * not compressed otherwise.
+ */
+function sendJson(ctx: Context, value: unknown) {
+  const json = JSON.stringify(value)
+  ctx.type = 'application/json'
+  ctx.vary('Accept-Encoding')
+  if (json.length >= 8192 && /\bgzip\b/i.test(ctx.get('Accept-Encoding'))) {
+    ctx.set('Content-Encoding', 'gzip')
+    ctx.body = gzipSync(json, { level: 6 })
+  } else {
+    ctx.body = json
+  }
+}
+
+export async function status(ctx: Context) {
+  try {
+    herdrManager.noteBrowserOrigin(browserOrigin(ctx))
+    herdrManager.noteUser(ctx.state.user)
+    await herdrManager.noteStudioProfile(ctx.state.profile?.name)
+    const current = await herdrManager.status()
+    sendJson(ctx, { ...current, bridge: clientBridgeState(current.bridge, studioStatusClock), integrations: HERDR_INTEGRATIONS })
+  } catch (error) { fail(ctx, error, 'Failed to read herdr status') }
+}
+
+export async function updateSettings(ctx: Context) {
+  try {
+    const settings = await herdrManager.updateSettings((ctx.request.body || {}) as any)
+    ctx.body = { settings }
+  } catch (error) { fail(ctx, error, 'Failed to save herdr settings') }
+}
+
+export async function updateWelcome(ctx: Context) {
+  try {
+    const show = (ctx.request.body as { show?: unknown } | undefined)?.show
+    if (typeof show !== 'boolean') throw Object.assign(new Error('show must be true or false'), { status: 400 })
+    ctx.body = { welcome: await herdrManager.setWelcome(show) }
+  } catch (error) { fail(ctx, error, 'Failed to change herdr\'s welcome screen') }
+}
+
+export async function startServer(ctx: Context) {
+  try {
+    ctx.body = await herdrManager.startServer()
+  } catch (error) { fail(ctx, error, 'Failed to start herdr') }
+}
+
+export async function listMachines(ctx: Context) {
+  try {
+    ctx.body = { machines: await herdrManager.listMachines(ctx.query.status === '1') }
+  } catch (error) { fail(ctx, error, 'Failed to list herdr machines') }
+}
+
+export async function addMachine(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { target?: unknown; label?: unknown; session?: unknown }
+    const message = await herdrManager.addMachine(body)
+    ctx.body = { message, machines: await herdrManager.listMachines() }
+  } catch (error) { fail(ctx, error, 'Failed to add the herdr machine') }
+}
+
+export async function changeMachine(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { enabled?: unknown; label?: unknown }
+    await herdrManager.changeMachine(ctx.params.id, {
+      ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
+      ...(body.label !== undefined ? { label: body.label } : {}),
+    })
+    ctx.body = { machines: await herdrManager.listMachines() }
+  } catch (error) { fail(ctx, error, 'Failed to change the herdr machine') }
+}
+
+export async function listMachineAgents(ctx: Context) {
+  try {
+    ctx.body = { agents: await herdrManager.listRemoteAgents(ctx.params.id) }
+  } catch (error) { fail(ctx, error, 'Failed to list the agents on that herdr machine') }
+}
+
+export async function focusMachineAgent(ctx: Context) {
+  try {
+    await herdrManager.focusRemoteAgent(ctx.params.id, ctx.params.paneId)
+    ctx.body = { ok: true }
+  } catch (error) { fail(ctx, error, 'Failed to focus the agent on that herdr machine') }
+}
+
+export async function removeMachine(ctx: Context) {
+  try {
+    await herdrManager.changeMachine(ctx.params.id, { remove: true })
+    ctx.body = { machines: await herdrManager.listMachines() }
+  } catch (error) { fail(ctx, error, 'Failed to remove the herdr machine') }
+}
+
+export async function installIntegrations(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { kinds?: unknown }
+    // Default: integrations for the agents installed in Studio only.
+    const kinds = Array.isArray(body.kinds) ? body.kinds.map(String) : await herdrManager.detectIntegrationKinds()
+    ctx.body = { kinds, results: await herdrManager.installIntegrations(kinds) }
+  } catch (error) { fail(ctx, error, 'Failed to install herdr integrations') }
+}
+
+export async function openSession(ctx: Context) {
+  try {
+    herdrManager.noteUser(ctx.state.user)
+    ctx.body = { link: await herdrManager.requireBridge().openSession(String(ctx.params.sessionId || '')) }
+  } catch (error) { fail(ctx, error, 'Failed to open chat in herdr') }
+}
+
+/** Return to Studio: the elevated chat's herdr space closes; the chat and its history stay in Studio. */
+export async function returnSession(ctx: Context) {
+  try {
+    ctx.body = await herdrManager.requireBridge().returnToStudio(String(ctx.params.sessionId || ''))
+  } catch (error) { fail(ctx, error, 'Failed to return the chat to Studio') }
+}
+
+export async function promptSession(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { text?: unknown }
+    ctx.body = await herdrManager.requireBridge().promptSession(String(ctx.params.sessionId || ''), String(body.text ?? ''))
+  } catch (error) { fail(ctx, error, 'Failed to send message to herdr') }
+}
+
+export async function closeSessionPane(ctx: Context) {
+  try {
+    ctx.body = { closed: await herdrManager.requireBridge().closeSessionPane(String(ctx.params.sessionId || '')) }
+  } catch (error) { fail(ctx, error, 'Failed to close herdr pane') }
+}
+
+/** Chats closed in herdr that "Reopen closed chat" can bring back, newest first. */
+export async function closedChats(ctx: Context) {
+  try {
+    ctx.body = { entries: herdrManager.requireBridge().closedChats().reverse() }
+  } catch (error) { fail(ctx, error, 'Failed to list closed chats') }
+}
+
+/**
+ * Reopen the newest closed chat (or the chats of a closed tab or space) that
+ * still exists, is not archived and is not open: it resumes in its herdr space,
+ * linked to the same Studio chat. `reopened` is empty when there is nothing left.
+ */
+export async function reopenClosedChat(ctx: Context) {
+  try {
+    if (ctx.state.user) herdrManager.noteUser(ctx.state.user)
+    ctx.body = await herdrManager.requireBridge().reopenClosed()
+  } catch (error) { fail(ctx, error, 'Failed to reopen the closed chat') }
+}
+
+export async function sessionLink(ctx: Context) {
+  const link = herdrManager.getBridge()?.linkFor(String(ctx.params.sessionId || '')) ?? null
+  ctx.body = { link }
+}
+
+/**
+ * What a launched agent is for: a Pondering Orb task or project (marked in progress once it works),
+ * and/or an Upstream Manager task (Upstream is told how the agent is doing).
+ */
+function workRef(input: any): HerdrWorkRef | undefined {
+  const orb = orbRef(input?.orb)
+  const upstream = upstreamWorkRef(input?.upstream)
+  return orb || upstream ? { ...(orb || {}), ...(upstream ? { upstream } : {}) } : undefined
+}
+
+/** The Pondering Orb task or project an agent is for, marked in progress once it works. */
+function orbRef(input: any): HerdrWorkRef | undefined {
+  const text = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max)
+  if (input?.task?.title) return { orb: { task: { title: text(input.task.title, 300), list: text(input.task.list, 120) } } }
+  if (input?.project) return { orb: { project: text(input.project, 120) } }
+  return undefined
+}
+
+export async function launchAgent(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { agentId?: unknown; provider?: unknown; model?: unknown; workspace?: unknown; title?: unknown; prompt?: unknown; orb?: any; upstream?: any }
+    const agentId = String(body.agentId || '')
+    if (!herdrKindForStudioAgent(agentId)) throw Object.assign(new Error('This agent cannot run in herdr'), { status: 400 })
+    herdrManager.noteUser(ctx.state.user)
+    ctx.body = {
+      link: await herdrManager.requireBridge().launchAgent(agentId, {
+        provider: body.provider ? String(body.provider) : undefined,
+        model: body.model ? String(body.model) : undefined,
+        workspace: body.workspace ? String(body.workspace) : undefined,
+        title: body.title ? String(body.title) : undefined,
+        prompt: body.prompt ? String(body.prompt).slice(0, 20000) : undefined,
+        onWorking: workRef(body),
+      }),
+    }
+  } catch (error) { fail(ctx, error, 'Failed to launch agent in herdr') }
+}
+
+export async function focusPane(ctx: Context) {
+  try {
+    await herdrManager.requireBridge().focusPane(String(ctx.params.paneId || ''))
+    ctx.body = { ok: true }
+  } catch (error) { fail(ctx, error, 'Failed to focus herdr pane') }
+}
+
+export async function installPlugin(ctx: Context) {
+  try {
+    ctx.body = await herdrManager.installPlugin()
+  } catch (error) { fail(ctx, error, 'Failed to install the Studio plugin into herdr') }
+}
+
+// --- Routes called by the Studio plugin running inside herdr (own token, loopback only) ---
+
+function isLoopback(ctx: Context): boolean {
+  const values = [ctx.ip, ctx.req.socket.remoteAddress].map(value => String(value || '').replace(/^::ffff:/, ''))
+  return values.some(value => value === '::1' || value.startsWith('127.'))
+}
+
+export async function requirePluginToken(ctx: Context, next: () => Promise<unknown>) {
+  const provided = String(ctx.get(HERDR_PLUGIN_TOKEN_HEADER) || '')
+  if (!isLoopback(ctx) || !(await herdrManager.verifyPluginToken(provided))) {
+    ctx.status = 401
+    ctx.body = { error: 'Invalid Studio plugin token' }
+    return
+  }
+  await next()
+}
+
+export async function pluginChats(ctx: Context) {
+  try {
+    const limit = Math.min(Math.max(Number(ctx.query.limit) || 30, 1), 100)
+    const offset = Math.min(Math.max(Number(ctx.query.offset) || 0, 0), 100000)
+    const query = String(ctx.query.q || '').slice(0, 100)
+    const bridge = herdrManager.getBridge()
+    ctx.body = {
+      chats: herdrManager.getPluginDeps().listChats(limit, { query, offset }).map(chat => {
+        const link = bridge?.linkFor(chat.id)
+        // A chat with no space in herdr is asleep; opening it wakes it.
+        return { ...chat, status: link?.status || 'idle', herdrPaneId: link?.paneId || null, asleep: !link && !bridge?.hasChatSpace(chat.id) }
+      }),
+    }
+  } catch (error) { fail(ctx, error, 'Failed to list chats') }
+}
+
+export async function pluginLink(ctx: Context) {
+  const paneId = String(ctx.query.pane || '')
+  const pane = herdrManager.getBridge()?.getState().panes.find(entry => entry.pane_id === paneId)
+  ctx.body = { sessionId: pane?.studioSessionId ?? null }
+}
+
+export async function pluginAgents(ctx: Context) {
+  try {
+    const deps = herdrManager.getPluginDeps()
+    const profile = herdrChatProfile(herdrManager.getSettings())
+    const [agents, providers, profileDefault] = await Promise.all([
+      deps.listAgents(),
+      deps.listProviders(profile).catch(() => []),
+      deps.profileDefault?.(profile).catch(() => null) ?? null,
+    ])
+    // `default`: the profile's default model, the plugin's first choice.
+    ctx.body = { agents: agents.filter(agent => herdrKindForStudioAgent(agent.id)), providers, profile, default: profileDefault?.model ? profileDefault : null }
+  } catch (error) { fail(ctx, error, 'Failed to list agents') }
+}
+
+/** A chat's waiting pane resumes its agent in place: the launch it runs there. */
+export async function pluginResume(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { sessionId?: unknown; paneId?: unknown }
+    const sessionId = String(body.sessionId || '')
+    const paneId = String(body.paneId || '')
+    if (!sessionId || !/^[\w:.-]{1,64}$/.test(paneId)) throw Object.assign(new Error('A chat id and pane id are required'), { status: 400 })
+    const launch = await herdrManager.requireBridge().prepareResume(sessionId, paneId)
+    ctx.body = { launch: { command: launch.command, args: launch.args, env: launch.env, cwd: launch.workspaceDir, ...(launch.retryArgs ? { retryArgs: launch.retryArgs } : {}) } }
+  } catch (error) { fail(ctx, error, 'Failed to resume the chat in herdr') }
+}
+
+/** The pane's agent refused its launch and runs the retry launch: type what Studio prepared for it. */
+export async function pluginAfterRetry(ctx: Context) {
+  try {
+    const paneId = String(((ctx.request.body || {}) as { paneId?: unknown }).paneId || '')
+    if (!/^[\w:.-]{1,64}$/.test(paneId)) throw Object.assign(new Error('A pane id is required'), { status: 400 })
+    ctx.body = { typed: await herdrManager.requireBridge().afterRetry(paneId) }
+  } catch (error) { fail(ctx, error, 'Failed to finish resuming the chat in herdr') }
+}
+
+/** A chat herdr cannot run itself: the pane talks to it through Studio's chat runs. */
+export async function pluginChat(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { sessionId?: unknown; paneId?: unknown }
+    const sessionId = String(body.sessionId || '')
+    const paneId = String(body.paneId || '')
+    if (!sessionId || !/^[\w:.-]{1,64}$/.test(paneId)) throw Object.assign(new Error('A chat id and pane id are required'), { status: 400 })
+    ctx.body = await herdrManager.requireBridge().prepareChat(sessionId, paneId)
+  } catch (error) { fail(ctx, error, 'Failed to open the chat in herdr') }
+}
+
+export async function pluginOpen(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { sessionId?: unknown }
+    ctx.body = { link: await herdrManager.requireBridge().openSession(String(body.sessionId || '')) }
+  } catch (error) { fail(ctx, error, 'Failed to open chat in herdr') }
+}
+
+/**
+ * The plugin shows the chat it opened or started (herdr's CLI only moves focus
+ * by direction). The plugin runs in a popup, and herdr gives focus back to the
+ * pane under the popup when it closes, so focus again once it has closed.
+ */
+export async function pluginFocus(ctx: Context) {
+  try {
+    const paneId = String(((ctx.request.body || {}) as { paneId?: unknown }).paneId || '')
+    if (!/^[\w:.-]{1,64}$/.test(paneId)) throw Object.assign(new Error('Invalid pane id'), { status: 400 })
+    const bridge = herdrManager.requireBridge()
+    await bridge.focusPane(paneId)
+    for (const delay of [400, 1200]) setTimeout(() => { void bridge.focusPane(paneId).catch(() => undefined) }, delay).unref?.()
+    ctx.body = { ok: true }
+  } catch (error) { fail(ctx, error, 'Failed to focus the herdr pane') }
+}
+
+export async function installHerdr(ctx: Context) {
+  try {
+    ctx.body = await herdrManager.installHerdr()
+  } catch (error) { fail(ctx, error, 'Failed to install herdr') }
+}
+
+export async function setupHerdr(ctx: Context) {
+  try {
+    ctx.body = await herdrManager.setup()
+  } catch (error) { fail(ctx, error, 'Failed to set up herdr') }
+}
+
+export async function profiles(ctx: Context) {
+  try {
+    ctx.body = { profiles: herdrManager.getPluginDeps().listProfiles() }
+  } catch (error) { fail(ctx, error, 'Failed to list profiles') }
+}
+
+/** herdr-side settings: which Studio profile herdr chats belong to. */
+export async function pluginSettings(ctx: Context) {
+  try {
+    const settings = herdrManager.getSettings()
+    // profile: the pinned profile ('' follows Studio); current: the one in use now.
+    ctx.body = { profile: settings.profile, current: herdrChatProfile(settings), studioProfile: settings.studioProfile, autoImport: settings.autoImport, profiles: herdrManager.getPluginDeps().listProfiles() }
+  } catch (error) { fail(ctx, error, 'Failed to read settings') }
+}
+
+export async function updatePluginSettings(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { profile?: unknown; autoImport?: unknown }
+    const patch: { profile?: string; autoImport?: boolean } = {}
+    if (body.profile !== undefined) {
+      const profile = String(body.profile)
+      // '' follows Studio's profile.
+      if (profile && !herdrManager.getPluginDeps().listProfiles().includes(profile)) throw Object.assign(new Error(`Profile "${profile}" does not exist`), { status: 400 })
+      patch.profile = profile
+    }
+    if (typeof body.autoImport === 'boolean') patch.autoImport = body.autoImport
+    const settings = await herdrManager.updateSettings(patch)
+    ctx.body = { profile: settings.profile, current: herdrChatProfile(settings), autoImport: settings.autoImport }
+  } catch (error) { fail(ctx, error, 'Failed to save settings') }
+}
+
+export async function getFolders(ctx: Context) {
+  try { ctx.body = await herdrManager.folders().load() } catch (error) { fail(ctx, error, 'Failed to read space folders') }
+}
+
+export async function saveFolders(ctx: Context) {
+  try { ctx.body = await herdrManager.folders().save(ctx.request.body || {}) } catch (error) { fail(ctx, error, 'Failed to save space folders') }
+}
+
+export async function createWorkspace(ctx: Context) {
+  try {
+    const body = (ctx.request.body || {}) as { cwd?: unknown; label?: unknown }
+    const cwd = typeof body.cwd === 'string' ? body.cwd.trim() : ''
+    if (cwd && !cwd.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(cwd)) throw Object.assign(new Error('Folder must be an absolute path'), { status: 400 })
+    ctx.body = await herdrManager.requireBridge().createWorkspace({ cwd: cwd || undefined, label: typeof body.label === 'string' ? body.label.trim() : undefined })
+  } catch (error) { fail(ctx, error, 'Failed to create space') }
+}
+
+// ---- Herdr App layout: one space's tabs and panes, and its git changes ----
+
+const ID = /^[A-Za-z0-9:_-]{1,64}$/
+
+function idParam(ctx: Context, name: string): string {
+  const value = String(ctx.params[name] || '')
+  if (!ID.test(value)) throw Object.assign(new Error(`Invalid ${name}`), { status: 400 })
+  return value
+}
+
+/** The space's tabs and its active tab's panes, laid out as herdr has them. */
+export async function spaceView(ctx: Context) {
+  try {
+    const bridge = herdrManager.requireBridge()
+    const workspaceId = idParam(ctx, 'workspaceId')
+    const panes = bridge.getState().panes
+    ctx.body = await readSpaceView((method, params) => bridge.call(method, params), workspaceId, tabId => {
+      const inTab = panes.filter(pane => pane.workspace_id === workspaceId && pane.tab_id === tabId)
+      return (inTab.find(pane => pane.focused) ?? inTab[0])?.pane_id || ''
+    })
+  } catch (error) { fail(ctx, error, 'Failed to read the herdr space') }
+}
+
+export async function createTab(ctx: Context) {
+  try {
+    const workspaceId = idParam(ctx, 'workspaceId')
+    const result = await herdrManager.requireBridge().call<any>('tab.create', { workspace_id: workspaceId, focus: true }, { refresh: true })
+    ctx.body = { tabId: String(result?.tab?.tab_id || ''), paneId: String(result?.root_pane?.pane_id || '') }
+  } catch (error) { fail(ctx, error, 'Failed to open a herdr tab') }
+}
+
+export async function focusTab(ctx: Context) {
+  try {
+    await herdrManager.requireBridge().call('tab.focus', { tab_id: idParam(ctx, 'tabId') }, { refresh: true })
+    ctx.body = { ok: true }
+  } catch (error) { fail(ctx, error, 'Failed to show the herdr tab') }
+}
+
+export async function closeTab(ctx: Context) {
+  try {
+    await herdrManager.requireBridge().call('tab.close', { tab_id: idParam(ctx, 'tabId') }, { refresh: true })
+    ctx.body = { ok: true }
+  } catch (error) { fail(ctx, error, 'Failed to close the herdr tab') }
+}
+
+/** A folder a herdr pane works in: the Changes panel reads git only there. */
+function paneFolder(paneId: string): string {
+  const pane = herdrManager.requireBridge().getState().panes.find(entry => entry.pane_id === paneId)
+  const cwd = pane?.foreground_cwd || pane?.cwd || ''
+  if (!cwd) throw Object.assign(new Error('That pane has no folder'), { status: 404 })
+  return cwd
+}
+
+export async function paneChanges(ctx: Context) {
+  try {
+    const changes = await readSpaceChanges(paneFolder(idParam(ctx, 'paneId')))
+    ctx.body = changes ?? { root: '', branch: null, changes: [], notRepo: true }
+  } catch (error) { fail(ctx, error, 'Failed to read the changes') }
+}
+
+export async function paneDiff(ctx: Context) {
+  try {
+    const diff = await readSpaceDiff(paneFolder(idParam(ctx, 'paneId')), String(ctx.query.path || ''))
+    if (!diff) throw Object.assign(new Error('No such change'), { status: 404 })
+    ctx.body = diff
+  } catch (error) { fail(ctx, error, 'Failed to read the diff') }
+}
+
+/** The Herdr App layout installer, to run on the computer Herdr App is on. */
+export async function appLayoutScript(ctx: Context) {
+  const path = herdrAppLayoutScript()
+  if (!path) { ctx.status = 404; ctx.body = { error: 'The Herdr App layout installer is not part of this install' }; return }
+  ctx.type = 'text/x-shellscript'
+  ctx.set('Content-Disposition', 'attachment; filename="install-herdr-app-layout.sh"')
+  ctx.body = await readFile(path, 'utf8')
+}

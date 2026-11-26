@@ -4,7 +4,9 @@ import { cancelPersonDelivery } from '../person/delivery'
  */
 
 import type { Server, Socket } from 'socket.io'
-import { updateSession, updateSessionStats } from '../../repositories/session-store'
+import { getSession, updateSession, updateSessionStats } from '../../repositories/session-store'
+import { isPrivatePersonSession } from '../../contracts/person-session'
+import { publishPluginObservation } from '../plugins/event-source'
 import { logger } from '../../public/logging'
 import { chatCodingAgentRunManager as codingAgentRunManager } from '../../public/chat-agent-runtime'
 import {
@@ -16,6 +18,7 @@ import { flushResponseRunToDb } from './response-stream'
 import { replaceState } from './compression'
 import { calcAndUpdateUsage } from './usage'
 import { finalizeAbortedRunUsage } from './terminal-usage'
+import { observeRunLimitEvent } from '../run-limits'
 import type { QueuedRun, SessionState } from './types'
 
 const ABORT_BRIDGE_SYNC_TIMEOUT_MESSAGE = 'Hermes Agent did not confirm stop before timeout. Local run state was released so you can continue.'
@@ -58,6 +61,8 @@ export async function handleAbort(
   bridge: any,
   runQueuedItem: (socket: Socket, sessionId: string, next: QueuedRun, fallbackProfile?: string) => void,
 ) {
+  // Stop ends the run for run limits too (abort.completed below is not on the observed event stream).
+  observeRunLimitEvent(sessionId, 'abort.completed')
   let state = sessionMap.get(sessionId)
   const hasCodingAgentRun = codingAgentRunManager.hasSession(sessionId)
   const hasEkkoBackgroundTasks = hasGlobalEkkoBackgroundTasks(sessionId)
@@ -65,7 +70,7 @@ export async function handleAbort(
     state = { messages: [], isWorking: true, events: [], queue: [], source: hasCodingAgentRun ? 'coding_agent' : 'builtin_agent' }
     sessionMap.set(sessionId, state)
   }
-  const isCodingAgentRun = state?.source === 'coding_agent' || state?.source === 'builtin_agent' || state?.webhookAgent === 'ekko' || hasCodingAgentRun || hasEkkoBackgroundTasks
+  const isCodingAgentRun = !!state?.pluginAgent || state?.source === 'coding_agent' || state?.source === 'builtin_agent' || state?.webhookAgent === 'ekko' || hasCodingAgentRun || hasEkkoBackgroundTasks
   if (state) {
     state.backgroundWakeStopped = true
     const dropped = state.queue.filter(item => item.goalContinuation || item.autonomous || item.backgroundDelegationId)
@@ -161,6 +166,7 @@ export async function handleAbort(
   const shouldAbortThroughBridge = isBridgeRunSource(activeState.source) && !isCodingAgentRun
 
   // Flush in-memory assistant text to DB before aborting the stream.
+  activeState.pluginAgent?.flushPartial()
   if (shouldAbortThroughBridge) {
     flushBridgePendingToDb(activeState, sessionId)
   } else {
@@ -306,6 +312,7 @@ export async function markAbortCompleted(
   state.runId = undefined
   state.responseRun = undefined
   state.activeRunMarker = undefined
+  state.pluginAgent = undefined
   state.finalizeRunUsage = undefined
   state.nativeUsageSource = undefined
 
@@ -362,6 +369,11 @@ export async function markAbortCompleted(
 
 function emitToSession(nsp: ReturnType<Server['of']>, socket: Socket, sessionId: string, event: string, payload: any) {
   const tagged = { ...payload, session_id: sessionId }
+  if (event === 'abort.completed' && !payload.ignored && !isPrivatePersonSession(sessionId)) {
+    const session = getSession(sessionId)
+    if (session) publishPluginObservation('chat.run.stopped', session.profile || 'default', session.source || 'chat',
+      { session_id: sessionId, run_id: payload.run_id || undefined }, { status: 'stopped' })
+  }
   nsp.to(`session:${sessionId}`).emit(event, tagged)
   if (!nsp.adapter.rooms.get(`session:${sessionId}`)?.size && socket.connected) {
     socket.emit(event, tagged)

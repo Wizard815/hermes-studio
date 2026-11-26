@@ -7,6 +7,11 @@ import { captureProviderImport } from '@/utils/provider-import'
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
+    { path: '/home', name: 'studio.start', component: { render: () => null } },
+    { path: '/studio/plugins', name: 'studio.plugins', component: () => import('@/views/StudioPluginsView.vue') },
+    { path: '/studio/plugin-settings/:pluginId/:viewId', name: 'studio.pluginSettings', component: () => import('@/views/PluginPageView.vue') },
+    { path: '/studio/plugin-agent-settings/:pluginId/:viewId?', name: 'studio.pluginAgentSettings', component: () => import('@/views/PluginPageView.vue') },
+    { path: '/studio/plugins/:pluginId/:viewId?', name: 'studio.pluginPage', component: () => import('@/views/PluginPageView.vue') },
     { path: '/person', name: 'hermes.person', component: () => import('@/views/hermes/PersonView.vue') },
     {
       path: '/hermes/tasks',
@@ -44,6 +49,13 @@ const router = createRouter({
       path: '/hermes/chat',
       name: 'hermes.chat',
       component: () => import('@/views/hermes/ChatView.vue'),
+    },
+    {
+      // Bring chats from another Hermes, Claude Code, Codex or OpenClaw (docs/chat-import.md).
+      path: '/hermes/import-chats',
+      name: 'hermes.chatImport',
+      component: () => import('@/views/hermes/ChatImportView.vue'),
+      meta: { requiresSuperAdmin: true },
     },
     {
       path: '/hermes/session/:sessionId',
@@ -197,6 +209,14 @@ const router = createRouter({
       meta: { requiresSuperAdmin: true },
     },
     {
+      // herdr lives in Chats (Chat | herdr) and its settings with the agents; old links still work.
+      path: '/herdr',
+      name: 'herdr',
+      redirect: to => to.query.tab === 'settings'
+        ? { name: 'codingAgent.config', params: { agentId: 'herdr', section: 'settings' }, query: {} }
+        : { name: 'hermes.chat', query: { center: 'herdr', ...(typeof to.query.pane === 'string' ? { pane: to.query.pane } : {}) } },
+    },
+    {
       path: '/android',
       name: 'android',
       component: () => import('@/views/hermes/AndroidDevicesView.vue'),
@@ -206,6 +226,13 @@ const router = createRouter({
       path: '/system',
       name: 'system',
       component: () => import('@/views/hermes/SystemView.vue'),
+      meta: { requiresSuperAdmin: true },
+    },
+    {
+      // Throwaway app containers and one agent test against them (docs/test-lab.md).
+      path: '/test-lab',
+      name: 'testLab',
+      component: () => import('@/views/hermes/TestLabView.vue'),
       meta: { requiresSuperAdmin: true },
     },
     {
@@ -363,6 +390,14 @@ router.beforeEach(async (to, _from, next) => {
   // All other pages require token
   if (!hasApiKey()) {
     next({ name: 'login', query: { redirect: to.fullPath } })
+    return
+  }
+
+  if (to.name === 'studio.start') {
+    const { resolveNavigationStartup } = await import('@/utils/navigation-startup')
+    const target = await resolveNavigationStartup()
+    if (!hasApiKey()) { next({ name: 'login' }); return }
+    next(typeof target === 'string' ? { path: target, replace: true } : { ...target, replace: true })
     return
   }
 

@@ -1,0 +1,13 @@
+{
+  "id": "studio",
+  "name": "Another Studio",
+  "description": "A second Hermes Studio, built from git (large and slow: 10 minutes or more the first time). Signs in as admin / 123456.",
+  "build": { "git": "https://github.com/Wizard815/hermes-studio.git#studio-herder" },
+  "port": 6060,
+  "sizeMb": 2500,
+  "memory": "2g",
+  "env": { "NODE_ENV": "production" },
+  "health": { "path": "/health", "timeoutSeconds": 300 },
+  "logins": [{ "username": "admin", "password": "123456", "role": "super admin (asked to change the password)" }],
+  "notes": "It has no model provider, so its chats cannot answer."
+}

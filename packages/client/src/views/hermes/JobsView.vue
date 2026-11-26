@@ -8,6 +8,8 @@ import { useI18n } from 'vue-i18n'
 import JobsPanel from '@/components/hermes/jobs/JobsPanel.vue'
 import JobRunHistory from '@/components/hermes/jobs/JobRunHistory.vue'
 import JobFormModal from '@/components/hermes/jobs/JobFormModal.vue'
+import JobTemplatesModal from '@/components/hermes/jobs/JobTemplatesModal.vue'
+import { isStoredSuperAdmin } from '@/api/client'
 import { useJobsStore } from '@/stores/hermes/jobs'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 
@@ -15,6 +17,8 @@ const { t } = useI18n()
 const jobsStore = useJobsStore()
 const profilesStore = useProfilesStore()
 const showModal = ref(false)
+const showTemplates = ref(false)
+const canUseTemplates = isStoredSuperAdmin()
 const editingJob = ref<string | null>(null)
 const selectedJobId = ref<string | null>(null)
 const sortBy = ref<'time' | 'name'>('name')
@@ -62,6 +66,11 @@ function openEditModal(jobId: string) {
 function handleModalClose() {
   showModal.value = false
   editingJob.value = null
+}
+
+async function handleTemplateSaved() {
+  showTemplates.value = false
+  await jobsStore.fetchJobs()
 }
 
 async function handleSave() {
@@ -123,6 +132,9 @@ function arrowIcon(field: 'time' | 'name'): string {
           </div>
         </HeaderActionOverflow>
         <span class="sort-divider"></span>
+        <NButton v-if="canUseTemplates" size="small" data-testid="job-templates-open" @click="showTemplates = true">
+          {{ t('hermesTools.templates.open') }}
+        </NButton>
         <NButton type="primary" size="small" @click="openCreateModal">
           <template #icon>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -162,6 +174,12 @@ function arrowIcon(field: 'time' | 'name'): string {
       :job-id="editingJob"
       @close="handleModalClose"
       @saved="handleSave"
+    />
+
+    <JobTemplatesModal
+      v-if="showTemplates"
+      @close="showTemplates = false"
+      @saved="handleTemplateSaved"
     />
   </PageLoading>
 </template>

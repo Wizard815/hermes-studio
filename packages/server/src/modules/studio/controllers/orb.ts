@@ -1,6 +1,7 @@
 import type { Context } from 'koa'
 import { getOrbClient, OrbError } from '../services/orb/client'
 import { getOrbWork } from '../services/orb/work'
+import * as omi from './omi'
 
 function fail(ctx: Context, error: unknown) {
   ctx.status = error instanceof OrbError ? error.status : 500
@@ -32,6 +33,8 @@ function bearerToken(ctx: Context): string {
 
 /** Orb sends a task or project to Studio: a new chat with that agent and the plan as its first message. */
 export async function startWork(ctx: Context) {
+  // Omi still posts here; with its own key the chat is Omi's (docs/omi.md).
+  if (ctx.state.omiKey) return omi.startWork(ctx)
   try {
     const body = (ctx.request.body || {}) as Record<string, unknown>
     const work = await getOrbWork().start({
@@ -53,5 +56,6 @@ export async function startWork(ctx: Context) {
 
 /** The chats working on Orb tasks and projects, with their state. */
 export async function listWork(ctx: Context) {
+  if (ctx.state.omiKey) return omi.listWork(ctx)
   try { ctx.body = { work: await getOrbWork().list() } } catch (error) { fail(ctx, error) }
 }

@@ -10,14 +10,28 @@ and keep this file small enough to fit into every task context.
 - `docs/harness/README.md` - how this repository is prepared for agent work.
 - `docs/harness/validation.md` - which checks to run for each change type.
 - `docs/harness/worktree-runbook.md` - isolated local dev and test setup.
+- `docs/harness/task-artifacts.md` - external task/report directories, checks and safe cleanup.
 - `docs/harness/pr-review.md` - self-review checklist before pushing.
 - `docs/harness/server-module-boundaries.md` - target backend modules, ownership, and dependency rules.
 - `docs/harness/jev-integrations.md` - required switches, frontend configuration and registration for JEV consumers.
 - `docs/harness/frontend-ui.md` - required theme surfaces, UI exceptions and automatic checks.
+- `docs/harness/herdr.md` - herdr integration: chat linking, status, plugin and how to test it.
+- `docs/cleanroom.md` - clean-room chats: a chat's coding agent runs in its own container.
+- `docs/vscode.md` - VS Code (code-server) inside Studio: the Code view on a chat's folder.
+- `docs/agent-screen.md` - the agents' screen (Hermes Bot Screen) in Studio: watch, take over, hand back.
 - `docs/android-devices.md` - Android page: adb devices, emulator stream, BlueStacks, phones, Termux bridge in the Android app.
-- `docs/omi.md` - Studio Own and the Omi app on the phone: share/deep-link intent contract both ways, phone AI in Termux.
+- `docs/llm-wiki.md` - LLM wiki: the family's Obsidian wiki as a Hermes memory provider per profile (Connections → LLM wiki), token per profile, MCP card.
 - `docs/pondering-orb.md` - Pondering Orb: Connections tab, Orb tools for Studio agents, and Orb sending work to Studio chats.
+- `docs/omi.md` - Omi (omi-local): Connections tab, the scoped Studio key for Omi, results webhook, approvals from Omi, MCP card and Hermes skill; Studio Own and the Omi app on the phone (share/deep-link intents both ways, phone AI in Termux).
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.
+- `docs/projects.md` - Projects in the chat menu: a coordinator chat and threads that run in herdr.
+- `docs/agent-limits.md` - run limits: cost, tokens, time and loop detector per run, for every chat type.
+- `docs/watcher.md` - the Watcher: one alert feed and bell for Studio's guards, trust rules, Settings → Watcher and Clean rooms.
+- `docs/approval-alerts.md` - where approvals reach you: Mattermost, the Studio Own Android app (paired phone key, live stream, notifications with Approve / Reject), both or off.
+- `docs/hermes-tool-load.md` - too many tools for a small model: the chat notice, the tool search switch per profile.
+- `docs/ui-skills.md` - UI skills (bundled): design skills copied once into Hermes, Ekko and every coding agent; removal, edits, switch.
+- `docs/test-lab.md` - Test Lab: throwaway app containers, one agent test on a pinned, capped model, report and cleanup by label.
+- `docs/chat-import.md` - Import chats: Hermes, Claude Code, Codex, OpenClaw sessions into Studio chats; preview, dedupe, never credentials.
 
 ## Common Commands
 
@@ -53,12 +67,15 @@ Empty suites are allowed during the reset; this does not waive new-feature tests
 - Keep routes thin: put request handling in controllers and reusable behavior in services.
 - Put new server code under `modules/studio`, `modules/hermes`, `modules/ekko`, or `modules/coding-agents`; compose modules only from `bootstrap`.
 - Keep Web UI state under `HERMES_WEB_UI_HOME` or `HERMES_WEBUI_STATE_DIR`.
+- A test Studio (`node dist/server/index.js`) needs `NODE_ENV=production` for `HERMES_WEB_UI_HOME` to apply; otherwise it opens `packages/server/data/hermes-web-ui.db`. Never run tests against that file.
 - Keep Hermes Agent state separate from Web UI state.
 - Register local API routes before proxy catch-all routes.
 - Use structured APIs and argument arrays instead of shell string construction.
 - Add user-facing strings to every locale file.
 - Register every JEV business integration with its own switch and frontend configuration entry; explicitly register any enabled Studio default, keep standalone defaults off, and run `npm run harness:check`.
 - Do not mix unrelated refactors into a bug fix.
+- When changing plugin SDK/context/return structures, directly update the relevant Markdown in `packages/plugin-sdk/docs` in the same change. These guides ship with new plugins; see `docs/harness/validation.md`.
+- Keep one-off reports, temporary probes and test evidence outside all checkouts; use `npm run artifacts:new -- <task>` and `npm run artifacts:check`.
 - New UI must follow the theme surface contract in `docs/harness/frontend-ui.md`; do not expand the legacy style baseline to bypass checks.
 
 ## When The Agent Gets Stuck

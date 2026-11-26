@@ -1,6 +1,8 @@
 import type { Context, Next } from 'koa'
 import { logger } from '../public/logging'
-import { authenticateUserToken } from './auth'
+import { authenticateUserToken, getUserJwtExpiresSeconds, issueUserJwt, type AuthenticatedUser } from './auth'
+import { config } from '../public/config'
+import { upstreamStatus } from '../services/upstream/client'
 
 /**
  * Reverse proxy for the Upstream Management Flask app (Upstream-Upkeep).
@@ -18,6 +20,14 @@ import { authenticateUserToken } from './auth'
  * reach it. The iframe passes the login token once as `?token=`; it is moved
  * into a path-scoped HttpOnly cookie so the Flask app's relative sub-requests
  * stay authenticated, and neither is forwarded to the Flask app.
+ *
+ * Working in tandem: every forwarded request also carries `x-studio-url` (how
+ * Upstream reaches Studio) and `x-studio-token` (a login for this administrator,
+ * renewed well before it expires). Upstream keeps them, so opening the tab once
+ * is all it takes for Upstream to start herdr agents as Studio chats and run
+ * Studio chats for its tasks. Upstream accepts them only from its trusted proxy
+ * (this machine, or an address in its UPSTREAM_TRUSTED_PROXIES).
+ * `GET /api/studio/upstream/status` says whether Upstream answers.
  */
 
 const DEFAULT_TARGET = process.env.UPSTREAM_UPKEEP_TARGET || 'http://127.0.0.1:5001'
@@ -49,8 +59,25 @@ function readCookie(req: any, name: string): string {
   return ''
 }
 
-/** Returns true when the caller is a super administrator; otherwise answers 401/403. */
-async function authorize(ctx: Context): Promise<boolean> {
+/** How Upstream reaches Studio: HERMES_STUDIO_URL_FOR_UPSTREAM, else this server on loopback. */
+export function studioUrlForUpstream(env: NodeJS.ProcessEnv = process.env, port: number = config.port): string {
+  return (env.HERMES_STUDIO_URL_FOR_UPSTREAM || `http://127.0.0.1:${port}`).replace(/\/+$/, '')
+}
+
+const handedOver = new Map<number, { token: string; at: number }>()
+
+/** A login for Upstream to act as this administrator; the same one until half its life is gone. */
+export async function tokenForUpstream(user: Pick<AuthenticatedUser, 'id' | 'username' | 'role'>, now = Date.now()): Promise<string> {
+  const life = getUserJwtExpiresSeconds() * 1000
+  const kept = handedOver.get(user.id)
+  if (kept && now - kept.at < life / 2) return kept.token
+  const token = await issueUserJwt({ id: user.id, username: user.username, role: user.role })
+  handedOver.set(user.id, { token, at: now })
+  return token
+}
+
+/** Returns the super administrator, or answers 401/403 and returns null. */
+async function authorize(ctx: Context): Promise<AuthenticatedUser | null> {
   const bearer = String(ctx.headers.authorization || '')
   const queryToken = typeof ctx.query.token === 'string' ? ctx.query.token.trim() : ''
   const token = (bearer.startsWith('Bearer ') ? bearer.slice(7).trim() : '')
@@ -60,19 +87,19 @@ async function authorize(ctx: Context): Promise<boolean> {
   if (!user) {
     ctx.status = 401
     ctx.body = { error: 'Unauthorized' }
-    return false
+    return null
   }
   if (user.role !== 'super_admin') {
     ctx.status = 403
     ctx.body = { error: 'Super administrator privileges are required' }
-    return false
+    return null
   }
   if (queryToken) {
     ctx.cookies.set(AUTH_COOKIE, queryToken, {
       httpOnly: true, sameSite: 'strict', path: prefixPath, secure: ctx.secure, overwrite: true,
     })
   }
-  return true
+  return user
 }
 
 function stripToken(search: string): string {
@@ -87,6 +114,8 @@ function copyHeaders(req: any): Record<string, string> {
   const hopByHop = new Set([
     'host', 'connection', 'keep-alive', 'transfer-encoding', 'content-length',
     'te', 'trailer', 'upgrade', 'proxy-authorization', 'authorization', 'cookie',
+    // only Studio itself sets these
+    'x-studio-token', 'x-studio-url', 'x-upstream-base',
   ])
   for (const [key, value] of Object.entries(req.headers)) {
     if (!value || hopByHop.has(key.toLowerCase())) continue
@@ -95,11 +124,17 @@ function copyHeaders(req: any): Record<string, string> {
   return headers
 }
 
-async function forward(ctx: Context, next: Next, backendPath: string, method: string): Promise<void> {
+async function forward(ctx: Context, next: Next, backendPath: string, method: string, user?: AuthenticatedUser): Promise<void> {
   const url = `${targetBase}${backendPath}${stripToken(ctx.search ?? '')}`
   const headers = copyHeaders(ctx.req)
   headers['host'] = new URL(url).host
   headers['x-upstream-base'] = upstreamBaseHeader
+  if (user) {
+    headers['x-studio-url'] = studioUrlForUpstream()
+    try { headers['x-studio-token'] = await tokenForUpstream(user) } catch (err) {
+      logger.warn({ err }, '[upstream-upkeep] could not make a login for Upstream')
+    }
+  }
   let body: Buffer | undefined
   if (method !== 'GET' && method !== 'HEAD') {
     try {
@@ -132,22 +167,28 @@ async function forward(ctx: Context, next: Next, backendPath: string, method: st
 export function upstreamUpkeepProxy(): (ctx: Context, next: Next) => Promise<void> {
   return async (ctx: Context, next: Next): Promise<void> => {
     const { path, method } = ctx
-    if ((path === prefixPath || path.startsWith(`${prefixPath}/`)) && !(await authorize(ctx))) return
+    if (path === '/api/studio/upstream/status' && method === 'GET') {
+      if (!(await authorize(ctx))) return
+      ctx.body = await upstreamStatus()
+      return
+    }
+    if (!(path === prefixPath || path.startsWith(`${prefixPath}/`))) {
+      await next()
+      return
+    }
+    const user = await authorize(ctx)
+    if (!user) return
     if (path === prefixPath || path === `${prefixPath}/`) {
-      await forward(ctx, next, '/', method)
+      await forward(ctx, next, '/', method, user)
       return
     }
-    if (path.startsWith(`${prefixPath}/`)) {
-      const rel = path.slice(prefixPath.length)
-      if (rel.startsWith('/api/') || rel.startsWith('/static/')) {
-        await forward(ctx, next, rel, method)
-        return
-      }
-      // View path (Repos / requests / settings / repo/<id>) -> serve the shell;
-      // the SPA reads location.pathname to render the right section.
-      await forward(ctx, next, '/', method)
+    const rel = path.slice(prefixPath.length)
+    if (rel.startsWith('/api/') || rel.startsWith('/static/')) {
+      await forward(ctx, next, rel, method, user)
       return
     }
-    await next()
+    // View path (Repos / requests / settings / repo/<id>) -> serve the shell;
+    // the SPA reads location.pathname to render the right section.
+    await forward(ctx, next, '/', method, user)
   }
 }

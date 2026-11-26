@@ -1,8 +1,11 @@
+import { withSocketProviderAccount } from '../../public/provider-account'
 import { createPersonDisplayStream } from './person-display'
+import { emitEkkoAbortCompletion } from './ekko-abort-completion'
 import { studioModelReasoningEffort } from '../../public/model-reasoning-effort'
 import { personBackgroundPendingCount } from '../../repositories/person-store'
 import { isPersonSession, isPrivatePersonSession, parsePersonResultQueueId } from '../../contracts/person-session'
-import { finishPersonStageTurn } from '../person/stage-flows'
+import { finishPersonStageTurn, waitPersonStageTurn } from '../person/stage-flows'
+import { startPersonStageRun, stageDecisionEvent } from '../../repositories/person-stage-confirmations'
 import type { PersonStageContext } from '../../contracts/person-stage'
 import { createPersonChatAgent } from '../person/chat-agent'
 import { requirePersonWorkspace } from '../person/workspace'
@@ -70,6 +73,7 @@ import { selectWorkspace } from '../workspace/manager'
 import { config } from '../../public/config'
 import { issueUserJwt } from '../../public/auth'
 import { findUserById, findFirstUser } from '../../repositories/users-store'
+import { generationSeconds } from '../../public/generation-time'
 
 /**
  * Mint an internal JWT that the Studio auth middleware will accept on the
@@ -452,7 +456,7 @@ function createProviderModelClient(
   }
 }
 
-export async function handleEkkoAgentRun(
+async function handleEkkoAgentRunImpl(
   nsp: ReturnType<Server['of']>,
   socket: Socket,
   data: EkkoAgentRunSocketData,
@@ -574,8 +578,12 @@ export async function handleEkkoAgentRun(
   const projectDisplayEvent = createPersonDisplayStream(sessionId)
   const emit = (event: string, payload: any) => {
     const tagged = { ...payload, session_id: sessionId }
+    if (personStageContext && event === 'run.started') startPersonStageRun(Number(authenticatedUserId),personStageContext,String(payload.run_id))
+    if (personStageContext && ['clarify.requested','approval.requested','clarify.resolved','approval.resolved'].includes(event))
+      stageDecisionEvent(personStageContext,String(payload.run_id),event.endsWith('.requested'))
     if (personStageContext && (event === 'run.completed' || event === 'run.failed')) {
-      finishPersonStageTurn(Number(authenticatedUserId),personStageContext,String(payload.run_id || ''),payload.message_id || payload.run_usage?.assistantMessageId,event === 'run.completed',String(payload.error || ''))
+      if (payload.waiting_for_tasks) waitPersonStageTurn(Number(authenticatedUserId),personStageContext,String(payload.run_id || ''))
+      else finishPersonStageTurn(Number(authenticatedUserId),personStageContext,String(payload.run_id || ''),payload.message_id || payload.run_usage?.assistantMessageId,event === 'run.completed',String(payload.error || ''))
     }
     if (!isPrivatePersonSession(sessionId)) observeRunChatPetEvent(profile, event, tagged)
     data.onEvent?.(event, tagged)
@@ -764,6 +772,8 @@ export async function handleEkkoAgentRun(
   let usageOutput = 0
   let usageCallIndex = 0
   let modelStartedAt: number | undefined
+  /** First streamed text or reasoning of the current model call: speed is measured from here. */
+  let modelOutputAt: number | undefined
   let contextEstimate: any
   let parentUsagePersisted = false
   const pendingToolGroups = new Map<string, PendingToolGroup>()
@@ -1052,6 +1062,7 @@ export async function handleEkkoAgentRun(
       }
     } else if (event.type === 'model.delta') {
       assistantText += event.text
+      if (modelOutputAt == null) modelOutputAt = performance.now()
       emit('message.delta', {
         event: 'message.delta',
         run_id: event.runId,
@@ -1059,6 +1070,7 @@ export async function handleEkkoAgentRun(
       })
     } else if (event.type === 'model.started') {
       modelStartedAt = performance.now()
+      modelOutputAt = undefined
     } else if (event.type === 'model.usage') {
       usageInput += event.usage.inputTokens || 0
       usageOutput += event.usage.outputTokens || 0
@@ -1067,7 +1079,7 @@ export async function handleEkkoAgentRun(
         sessionId,
         runId: `${event.runId}:step:${event.step}:call:${usageCallIndex}`,
         parentRunId: event.runId,
-        apiDuration: modelStartedAt == null ? undefined : (performance.now() - modelStartedAt) / 1000,
+        apiDuration: modelStartedAt == null ? undefined : generationSeconds(modelStartedAt, modelOutputAt),
         source: 'ekko_agent',
         agent: 'ekko_agent',
         usageScope: 'model_call',
@@ -1087,6 +1099,7 @@ export async function handleEkkoAgentRun(
       })
     } else if (event.type === 'model.reasoning') {
       if (event.text) {
+        if (modelOutputAt == null) modelOutputAt = performance.now()
         assistantReasoning += event.text
         emit('reasoning.delta', {
           event: 'reasoning.delta',
@@ -1371,6 +1384,7 @@ export async function handleEkkoAgentRun(
       }
     }
     const toolContext = {
+      ...(socket.data?.user?.id ? pluginRunHooks({ userId: socket.data.user.id, profile, sessionId, get runId() { return runId || undefined }, runtime: 'ekko-agent', workspace, surface: sessionSource }, abortController.signal) : {}),
       cwd: workspace,
       workspaceRoot: workspace,
       workspaceId: workspace,
@@ -1661,6 +1675,7 @@ export async function handleEkkoAgentRun(
     assistantReasoning = agentReasoningText(result.output.reasoning) || assistantReasoning
     const hadToolActivity = result.steps.some((step: any) => step.type === 'tool')
     const boundaryInterrupted = result.output.finishReason === 'boundary_interrupt'
+    const waitingForTasks = result.output.finishReason === 'waiting_for_tasks'
     if (!boundaryInterrupted && !assistantText.trim() && !assistantReasoning.trim() && !hadToolActivity) {
       const error = 'Model provider returned an empty response after streaming and non-streaming attempts.'
       logger.warn({
@@ -1750,6 +1765,7 @@ export async function handleEkkoAgentRun(
       output: assistantText,
       context: result.context,
       ...(result.output.finishReason === 'max_steps' ? { stop_reason: 'max_steps' } : {}),
+      ...(waitingForTasks ? {stop_reason:'waiting_for_tasks',waiting_for_tasks:true} : {}),
       interrupted: boundaryInterrupted,
       boundary_interrupt: boundaryInterrupted,
       contextTokens: contextEstimate?.contextTokens,
@@ -1771,9 +1787,16 @@ export async function handleEkkoAgentRun(
   } catch (err) {
     if (abortController.signal.aborted || isAbortError(err)) {
       logger.info('[chat-run-socket] ekko-agent run aborted for session %s', sessionId)
-      try { finalizeInterruptedUsage() }
+      let interruptedUsage: ReturnType<typeof finalizeInterruptedUsage>
+      try { interruptedUsage = finalizeInterruptedUsage() }
       catch (usageError) { logger.warn({ err: usageError, sessionId }, '[run-usage] interrupted Ekko usage failed') }
-      completeWorkspaceRunDiff()
+      const workspaceRunChange = completeWorkspaceRunDiff()
+      if (personStageContext) emitEkkoAbortCompletion(state,abortController,emit,{
+        run_id:runId,queue_id:data.queue_id,autonomous:data.autonomous === true,
+        delegation_id:data.background_delegation_id,
+        background_pending:ekkoBackgroundPendingCount(state,sessionId,data.background_delegation_id),
+        workspace_run_change:workspaceRunChange,run_usage:interruptedUsage,
+      })
       return
     }
     const error = err instanceof Error ? err.message : String(err)
@@ -1803,7 +1826,7 @@ export async function handleEkkoAgentRun(
   } finally {
     foregroundEnded = true
     releaseIdleMcp()
-    if (!abortController.signal.aborted || state.abortController === abortController) {
+    if (state.abortController === abortController) {
       state.ekkoBoundaryInterrupt = undefined
       state.isWorking = false
       state.isAborting = false
@@ -1823,3 +1846,6 @@ export async function handleEkkoAgentRun(
 function isAbortError(error: unknown): boolean {
   return error instanceof Error && (error.name === 'AbortError' || error.message === 'Run aborted.')
 }
+import { pluginRunHooks } from '../plugins/integration'
+
+export const handleEkkoAgentRun = withSocketProviderAccount(handleEkkoAgentRunImpl)

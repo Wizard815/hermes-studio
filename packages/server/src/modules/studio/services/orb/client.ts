@@ -39,6 +39,12 @@ export const ORB_DATA_PATHS: Record<string, string> = {
 export const ORB_TOOLS = new Set([
   'orb_list_projects', 'orb_get_project', 'orb_list_logs', 'orb_list_lists', 'orb_list_tasks', 'orb_list_chores',
   'orb_add_log', 'orb_move_project', 'orb_add_task', 'orb_set_task_priority', 'orb_start_task', 'orb_set_agent_status', 'orb_complete_task', 'orb_chore_done',
+  // Agent work Studio shares with Orb (only when sharing is on in Connections → Agent work).
+  'orb_studio_activity', 'orb_studio_approval',
+  // Milaclone boards on Orb's Ideas tab. orb_board_remove only asks: the user approves it in Orb.
+  'orb_board_find', 'orb_board_read', 'orb_board_activity', 'orb_board_create', 'orb_board_add_cards', 'orb_board_connect',
+  'orb_board_group', 'orb_board_move', 'orb_board_mark', 'orb_board_link_project', 'orb_board_to_tasks',
+  'orb_board_from_project', 'orb_board_sync_project', 'orb_board_remove',
 ])
 
 export class OrbError extends Error {

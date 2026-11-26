@@ -32,9 +32,12 @@ if (typeof window !== 'undefined') {
     })),
   })
 
-  // Mock localStorage
+  // Mock localStorage only where the environment has no working one: jsdom's
+  // own Storage keeps Storage.prototype spies (upstream tests use them) working.
+  let storageWorks = false
+  try { window.localStorage.setItem('__setup__', '1'); window.localStorage.removeItem('__setup__'); storageWorks = true } catch { /* no storage */ }
   const store: Record<string, string> = {}
-  Object.defineProperty(window, 'localStorage', {
+  if (!storageWorks) Object.defineProperty(window, 'localStorage', {
     value: {
       getItem: vi.fn((key: string) => store[key] ?? null),
       setItem: vi.fn((key: string, value: string) => { store[key] = value }),

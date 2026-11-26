@@ -59,6 +59,24 @@ export interface ChatWebhookDispatcherOptions {
   random?: () => number
 }
 
+/**
+ * Extra checks for endpoints a Studio feature registered for one receiver: the
+ * Omi results webhook only gets the chats Omi started (docs/omi.md).
+ */
+const endpointFilters = new Map<string, (event: ChatRunWebhookEvent) => boolean>()
+
+export function setChatWebhookEndpointFilter(endpointId: string, filter: ((event: ChatRunWebhookEvent) => boolean) | null): void {
+  if (!endpointId) return
+  if (filter) endpointFilters.set(endpointId, filter)
+  else endpointFilters.delete(endpointId)
+}
+
+function passesEndpointFilter(endpointId: string, event: ChatRunWebhookEvent): boolean {
+  const filter = endpointFilters.get(endpointId)
+  if (!filter) return true
+  try { return filter(event) } catch { return false }
+}
+
 export function signChatWebhookPayload(secret: string, timestamp: string, rawBody: string): string {
   return `sha256=${createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex')}`
 }
@@ -262,6 +280,7 @@ export class ChatWebhookDispatcher {
         endpoint.enabled
         && (endpoint.event_types.length === 0 || endpoint.event_types.includes(event.type))
         && (endpoint.profiles.length === 0 || endpoint.profiles.includes(event.profile))
+        && passesEndpointFilter(endpoint.id, event)
       ))
       let dropped = 0
       for (const endpoint of targets) {

@@ -42,6 +42,8 @@ export interface OrbWork {
   startedAt: number
   updatedAt: number
   error?: string
+  /** 'omi': Omi started it with its Studio key (Connections → Omi). */
+  source?: 'omi'
 }
 
 export const fetchOrbWork = () => request<{ work: OrbWork[] }>(`${base}/work`)

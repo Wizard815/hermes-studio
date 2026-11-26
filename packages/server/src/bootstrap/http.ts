@@ -1,7 +1,19 @@
+import { restoreStudioModelTargets } from '../modules/studio/public/model-target-store'
 import { registerDesktopBrowserRelay } from '../modules/studio/sockets/desktop-browser'
+import { registerPluginSessions } from '../modules/studio/sockets/plugin-sessions'
+import { getPluginManager, startPluginHost, stopPluginHost } from '../modules/studio/services/plugins/host'
+import { createPluginHttpMiddleware } from '../modules/studio/services/plugins/http'
+import { registerPluginMcpSync } from './plugin-mcp'
 import { setupMobileTerminal } from '../modules/hermes/sockets/mobile-terminal'
+import { startHerdrIntegration } from './herdr'
 import { startAndroidDevices } from './android'
 import { startOrbIntegration } from './orb'
+import { startOmiIntegration } from './omi'
+import { startAgentWork } from './agent-work'
+import { startRunLimits } from './run-limits'
+import { startWatcher } from './watcher'
+import { startApprovalAlerts } from './approval-alerts'
+import { startCleanRoomCleanup } from './cleanroom'
 import { getSessionMetadata as getTerminalSessionMetadata } from '../modules/studio/public/sessions'
 import Koa from 'koa'
 import type { Context } from 'koa'
@@ -19,6 +31,10 @@ import { setupKanbanEventsWebSocket } from '../modules/hermes/sockets/kanban-eve
 import { startVersionCheck } from './health'
 import { registerRoutes } from './routes'
 import { dshPluginUi } from '../modules/coding-agents/services'
+import { vscodeGateway, vscodeManager } from '../modules/studio/services/vscode'
+import { screenGateway, screenManager } from '../modules/studio/services/screen'
+import { hermesApi } from '../modules/hermes/services/hermes-api'
+import { startScreenBrowser } from '../modules/studio/services/screen-browser'
 import './chat-agent-runtime-adapter'
 import './skill-files-adapter'
 import { setGroupChatServer } from '../modules/studio/routes/group-chat'
@@ -33,6 +49,8 @@ import { startChatWebhookDispatcher } from '../modules/studio/services/webhooks'
 import { getAgentBridgeManager, startAgentBridgeManager } from '../modules/hermes/services/bridge'
 import { HermesSkillInjector } from '../modules/hermes/services/skills/injector'
 import { injectBundledMcpServer } from '../modules/hermes/services/mcp/studio-autoinject'
+import { applyJobPostDefaultsToAllProfiles } from '../modules/hermes/services/cron/job-post-defaults'
+import { scheduleRecommendedPlugins } from '../modules/hermes/services/plugins/recommended'
 import { ensureProfileGatewaysRunning } from '../modules/hermes/services/gateway/autostart'
 import { runRegisteredStartupTasks } from './startup-tasks'
 import { refreshConfiguredProviderModelCatalogsInBackground } from '../modules/hermes/services/providers/model-catalog-cache'
@@ -50,6 +68,10 @@ import {
 } from '../modules/studio/repositories/app-connections-store'
 import { ensureAppRelayHostClient } from '../modules/studio/services/app-relay/connection'
 import { setupGlobalEkkoAgent } from './ekko'
+import { codingAgentUiSkillTargets, registerUiSkillTargetProvider, scheduleUiSkillsInstall } from '../modules/studio/public/ui-skills'
+import { closeTestLab, sweepTestLab } from '../modules/studio/public/test-lab'
+import { hermesUiSkillTargets } from '../modules/hermes/services/skills/ui-skill-targets'
+import { ekkoUiSkillTargets } from '../modules/ekko/services/ui-skill-targets'
 import { injectManagedEkkoMcpServers } from '../modules/ekko/services/mcp'
 import { WorkflowSocketServer } from '../modules/studio/sockets/workflow'
 import { PetStateSocketServer } from '../modules/studio/sockets/pet-state'
@@ -74,7 +96,7 @@ import {
   restorePersistedCodexProxyTargets,
   restorePersistedPiProxyTargets,
 } from './coding-agents'
-import { isAuthorizedCodexProxyRequest } from '../modules/coding-agents/services/codex/proxy'
+import { isAuthorizedCodexProxyRequest } from '../modules/coding-agents/public/model-gateway'
 import {
   configurePreferredHermesRuntime,
   readLockedDesktopHermesSelection,
@@ -166,6 +188,17 @@ async function listenWithFallback(app: Koa, port: number, host?: string): Promis
   console.log(`[bootstrap] listening on ${bindHost}:${port}`)
   const primary = await listen(app, port, bindHost)
   return { primary, servers: [primary] }
+}
+
+/** Own port for the herdr Mission view; 0 turns it off (it stays at /mission/). */
+const missionPort = (() => {
+  const raw = String(process.env.HERDR_MISSION_PORT ?? '5180').trim()
+  const value = Number(raw)
+  return Number.isInteger(value) && value >= 0 && value < 65536 ? value : 5180
+})()
+
+function isMissionPath(path: string): boolean {
+  return path === '/mission' || path.startsWith('/mission/')
 }
 
 function getLoopbackBaseUrl(httpServer: any): string {
@@ -426,6 +459,8 @@ export async function bootstrap() {
     console.warn('[bootstrap] failed to inject bundled MCP server:', err instanceof Error ? err.message : err)
   }
 
+  await applyJobPostDefaultsToAllProfiles()
+
   try {
     const migratedPiMcpConfigs = await migratePersistedPiRuntimeMcpConfigs()
     if (migratedPiMcpConfigs > 0) {
@@ -436,6 +471,7 @@ export async function bootstrap() {
   }
 
   try {
+    await restoreStudioModelTargets()
     const restoredCodexProxyTargets = await restorePersistedCodexProxyTargets()
     if (restoredCodexProxyTargets > 0) {
       console.log(`[bootstrap] restored ${restoredCodexProxyTargets} persisted Codex/Grok proxy target(s)`)
@@ -474,6 +510,9 @@ export async function bootstrap() {
     console.error('[bootstrap] ekko-agent setup failed; continuing without Ekko:', err instanceof Error ? err.message : err)
   }
 
+  const releasePluginMcpSync = registerPluginMcpSync()
+  additionalShutdownSteps.push({ name: 'Plugin MCP synchronization', close: releasePluginMcpSync })
+
   agentBridgeManager = getAgentBridgeManager()
   if (!isDesktopRuntime()) {
     await startRuntimeServicesBeforeListen(hermesAgentAvailable)
@@ -503,9 +542,13 @@ export async function bootstrap() {
   // before dispatching to any provider API mode.
   app.use(createCodexProxyRequestBodyParser(isAuthorizedCodexProxyRequest))
   app.use(dshPluginUi.middleware)
+  // VS Code (code-server) at /vscode/<ticket>/, before the body parser so
+  // uploads stream through untouched.
+  app.use(vscodeGateway.middleware)
   // Raise body limits above the default 1mb: profile avatars and MiMo voice-clone
   // reference audio are posted as base64 data URLs before reaching handlers.
   app.use(createRequestBodyParser())
+  app.use(createPluginHttpMiddleware(getPluginManager))
   console.log('[bootstrap] cors + bodyParser registered')
 
   registerReadinessRoute(app)
@@ -518,6 +561,18 @@ export async function bootstrap() {
   // SPA fallback
   const distDir = resolve(__dirname, '..', 'client')
   app.use(createStaticCompressionMiddleware())
+  // On the Mission port the root page is Mission (which now sends you on to
+  // Studio's herdr page at /index.html#/...), not Studio; static serving would
+  // otherwise answer "/" with index.html first.
+  app.use(async (ctx, next) => {
+    if (missionPort > 0 && ctx.req.socket.localPort === missionPort && (ctx.method === 'GET' || ctx.method === 'HEAD')
+      && ctx.path === '/') {
+      ctx.set('Cache-Control', SPA_ENTRY_CACHE_CONTROL)
+      await send(ctx, 'mission.html', { root: distDir })
+      return
+    }
+    await next()
+  })
   app.use(serve(distDir, {
     setHeaders(res, filePath) {
       const cacheControl = getStaticCacheControl(relative(distDir, filePath))
@@ -529,7 +584,10 @@ export async function bootstrap() {
       !ctx.path.startsWith('/api') &&
       ctx.path !== '/health') {
       ctx.set('Cache-Control', SPA_ENTRY_CACHE_CONTROL)
-      await send(ctx, 'index.html', { root: distDir })
+      // The herdr Mission view: /mission/ on Studio's port (so one tunnel port
+      // serves both), and the whole of its own port.
+      const missionPage = isMissionPath(ctx.path) || (missionPort > 0 && ctx.req.socket.localPort === missionPort)
+      await send(ctx, missionPage ? 'mission.html' : 'index.html', { root: distDir })
     }
   })
   console.log('[bootstrap] SPA fallback registered')
@@ -542,6 +600,17 @@ export async function bootstrap() {
     if (address && typeof address === 'object') process.send({ type: 'hermes-desktop:listening', port: address.port })
   }
   servers.splice(0, servers.length, ...listenResult.servers)
+  if (missionPort > 0 && missionPort !== config.port) {
+    // Same app on a second port: Socket.IO namespaces attach to every server in
+    // `servers`, so the Mission view's live data works on either port.
+    try {
+      const missionServer = await listen(app, missionPort, config.host || '0.0.0.0')
+      servers.push(missionServer)
+      console.log(`[bootstrap] herdr Mission view on port ${missionPort}`)
+    } catch (err) {
+      logger.warn(err, '[bootstrap] herdr Mission port %d unavailable; Mission stays at /mission/', missionPort)
+    }
+  }
   console.log('[bootstrap] app.listen called')
   // The Desktop shell only needs registered HTTP routes and static assets before
   // it can render. Keep slower runtime, socket, and recovery work below in the
@@ -551,6 +620,31 @@ export async function bootstrap() {
 
   const closeDshPluginUi = dshPluginUi.attach(servers)
   additionalShutdownSteps.push({ name: 'DSH plugin UI transport', close: closeDshPluginUi })
+  additionalShutdownSteps.push({ name: 'Hermes Agent API', close: () => hermesApi.close() })
+  // Recommended official Hermes plugins, once per profile, in the background
+  // (it starts Hermes's API and clones pinned plugins; never blocks startup).
+  const recommendedPluginsTimer = setTimeout(() => { void scheduleRecommendedPlugins() }, Number(process.env.STUDIO_RECOMMENDED_HERMES_PLUGINS_DELAY_MS || 30_000))
+  recommendedPluginsTimer.unref()
+  // UI skills (docs/ui-skills.md), once per Hermes profile, Ekko profile and coding agent skills folder.
+  registerUiSkillTargetProvider('hermes', hermesUiSkillTargets)
+  registerUiSkillTargetProvider('ekko', ekkoUiSkillTargets)
+  registerUiSkillTargetProvider('coding-agents', () => codingAgentUiSkillTargets())
+  const uiSkillsTimer = setTimeout(() => { void scheduleUiSkillsInstall() }, Number(process.env.STUDIO_UI_SKILLS_DELAY_MS || 5_000))
+  uiSkillsTimer.unref()
+  // Test Lab (docs/test-lab.md): runs left behind on Docker (older than a day, or cut short by a restart).
+  const testLabTimer = setTimeout(() => { void sweepTestLab() }, 10_000)
+  testLabTimer.unref()
+  additionalShutdownSteps.push({ name: 'Test Lab', close: () => closeTestLab() })
+  const closeScreenGateway = screenGateway.attach(servers)
+  additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })
+  // A screen installed before this container was rebuilt is installed again.
+  void screenManager.restoreAfterRebuild().catch(() => undefined)
+  // The agents' screen browser behind the Browser Broker protocol (started further below,
+  // after the headless browser service, so its broker.json takes priority).
+  let stopScreenBrowser: (() => Promise<void>) | null = null
+  additionalShutdownSteps.push({ name: "Agents' screen browser", close: () => stopScreenBrowser?.() })
+  const closeVsCodeGateway = vscodeGateway.attach(servers)
+  additionalShutdownSteps.push({ name: 'VS Code', close: () => { closeVsCodeGateway(); vscodeManager.close() } })
   const terminalWebSocket = setupTerminalWebSocket(servers)
   if (terminalWebSocket) {
     additionalShutdownSteps.push({
@@ -593,8 +687,22 @@ export async function bootstrap() {
     return room ? { profile: context.profile, workspace: room.workspace || '' } : null
   })
   additionalShutdownSteps.push({ name: 'Mobile terminal PTY sessions', close: () => mobileTerminal.close() })
+  // Orb first: herdr's bridge reports agent status to the Orb client configured here.
   const orbIntegration = startOrbIntegration()
+  startCleanRoomCleanup()
   additionalShutdownSteps.push({ name: 'Pondering Orb work', close: () => orbIntegration.close() })
+  const watcher = startWatcher()
+  additionalShutdownSteps.push({ name: 'Watcher', close: () => watcher.close() })
+  const agentWork = startAgentWork()
+  additionalShutdownSteps.push({ name: 'Agent work', close: () => agentWork.close() })
+  const approvalAlerts = startApprovalAlerts()
+  additionalShutdownSteps.push({ name: 'Approval alerts', close: () => approvalAlerts.close() })
+  const omiIntegration = startOmiIntegration()
+  additionalShutdownSteps.push({ name: 'Omi', close: () => omiIntegration.close() })
+  const runLimits = startRunLimits()
+  additionalShutdownSteps.push({ name: 'Run limits', close: () => runLimits.close() })
+  const herdrIntegration = startHerdrIntegration(activeGroupChatServer.getIO(), loopbackBaseUrl)
+  additionalShutdownSteps.push({ name: 'herdr bridge', close: () => herdrIntegration.close() })
   const androidDevices = startAndroidDevices(activeGroupChatServer.getIO())
   additionalShutdownSteps.push({ name: 'Android device screens', close: () => androidDevices.close() })
   startLocalAppRelayServer(activeGroupChatServer.getIO(), { localBaseUrl: loopbackBaseUrl })
@@ -612,7 +720,6 @@ export async function bootstrap() {
     name: 'Group agent outbound relay',
     close: () => groupAgentOutboundRelayManager.shutdown(),
   })
-  void groupAgentOutboundRelayManager.restore()
 
   // A process restart loses in-memory scheduler, approval, and runner ownership.
   // Persist a fail-closed terminal state before exposing workflow sockets, then abort
@@ -623,6 +730,10 @@ export async function bootstrap() {
     logger.warn('Recovered %d orphaned workflow runs and aborted %d sessions', recoveredWorkflows.runs, recoveredWorkflows.sessions)
   }
   const { getWorkflowScheduleService } = await import('../modules/studio/services/workflow/schedule')
+  // Restore plugin actions before schedulers or restored agents can invoke them.
+  await startPluginHost(loopbackBaseUrl)
+  additionalShutdownSteps.push({ name: 'Studio plugins', close: stopPluginHost })
+  void groupAgentOutboundRelayManager.restore()
   const workflowScheduleService = getWorkflowScheduleService()
   workflowScheduleService.start()
   const { startPersonWork, stopPersonWork } = await import('../modules/studio/services/person/runner')
@@ -646,6 +757,7 @@ export async function bootstrap() {
   personPresenceServer.init()
   additionalShutdownSteps.push({ name: 'Person presence', close: () => personPresenceServer.close() })
   registerDesktopBrowserRelay(activeGroupChatServer.getIO())
+  registerPluginSessions(activeGroupChatServer.getIO())
 
   startGlobalAgentServer(activeGroupChatServer.getIO(), { localBaseUrl: loopbackBaseUrl })
   console.log('[bootstrap] global agent server ready')
@@ -681,6 +793,7 @@ export async function bootstrap() {
     console.warn('[bootstrap] headless browser service failed:', err.message)
     logger.warn(err, '[bootstrap] headless browser startup failed')
   }
+  stopScreenBrowser = startScreenBrowser()
 
   // Catch-all: destroy upgrade requests not handled by terminal or Socket.IO
   servers.forEach((httpServer) => {
@@ -690,7 +803,7 @@ export async function bootstrap() {
         writeBadUpgradeRequest(socket)
         return
       }
-      if (!dshPluginUi.handlesUpgrade(req) &&
+      if (!dshPluginUi.handlesUpgrade(req) && !vscodeGateway.handlesUpgrade(req) && !screenGateway.handlesUpgrade(req) &&
         url.pathname !== '/api/hermes/terminal' &&
         url.pathname !== '/api/hermes/kanban/events' &&
         !url.pathname.startsWith('/socket.io/')) {

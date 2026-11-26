@@ -1,3 +1,4 @@
+import { spawnInCleanRoom } from '../cleanroom'
 import { randomUUID } from 'crypto'
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
@@ -44,6 +45,8 @@ function promptFileContent(input: string, images: CodingAgentImageInput[]): { ex
 }
 
 function spawnGrok(command: string, args: string[], input: GrokTurnProcessInput): ChildProcess {
+  const inRoom = spawnInCleanRoom(command, args, { cwd: input.workspaceDir, env: input.env, pipeStdin: false })
+  if (inRoom) return inRoom
   const normalizedCommand = process.platform === 'win32' ? normalizeWindowsCommandPath(command) : command
   if (process.platform === 'win32' && windowsCommandNeedsShell(command)) {
     const execution = windowsCmdShimExecution(normalizedCommand, args)

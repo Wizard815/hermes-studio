@@ -9,13 +9,21 @@ services:
       - "${PORT:-6060}:${PORT:-6060}"
       - "${PREVIEW_FRONTEND_PORT:-8651}:8651"
       - "${XAI_OAUTH_PORT:-56121}:56121"
+      # Hermes Gadget (recommended plugin): devices such as D.A.S.H connect to ws://<host>:8765/gadget.
+      # Plain ws:// with pairing codes: publish it on your LAN only (e.g. "192.168.1.20:8765:8765").
+      - "${STUDIO_GADGET_PUBLISH:-8765}:${STUDIO_GADGET_PORT:-8765}"
       - "${STUDIO_P2P_UDP_PORT_RANGE:-50000-50127}:${STUDIO_P2P_UDP_PORT_RANGE:-50000-50127}/udp"
     volumes:
       - ${HERMES_DATA_DIR:-./hermes_data}:/home/agent/.hermes
       - ${HERMES_DATA_DIR:-./hermes_data}/hermes-web-ui:/home/agent/.hermes-web-ui
       # adb's key: phones and BlueStacks stay authorized after the container is recreated.
       - ${HERMES_DATA_DIR:-./hermes_data}/android:/home/agent/.android
-      # System page → Docker: manage the host's containers. This gives Studio full control of Docker.
+      # herdr's config, chat spaces and sessions: herdr picks up where it was after the container is recreated.
+      - ${HERMES_DATA_DIR:-./hermes_data}/herdr/config:/home/agent/.config/herdr
+      - ${HERMES_DATA_DIR:-./hermes_data}/herdr/state:/home/agent/.local/state/herdr
+      # System page → Docker, and clean-room chats (/cleanroom: a chat's agent runs in its own
+      # container). This gives Studio full control of the host's Docker. Clean rooms also need
+      # each chat's folder on a mounted volume (e.g. under ./hermes_data) so Docker can share it.
       # - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - PORT=${PORT:-6060}
@@ -36,6 +44,11 @@ services:
       - HERMES_ACP_TIMEOUT_MS=${HERMES_ACP_TIMEOUT_MS:-}
       - HERMES_AGENT_MODEL_DISCOVERY_TIMEOUT_MS=${HERMES_AGENT_MODEL_DISCOVERY_TIMEOUT_MS:-}
       - STUDIO_P2P_UDP_PORT_RANGE=${STUDIO_P2P_UDP_PORT_RANGE:-50000-50127}
+      # Recommended Hermes plugins once per profile (0 turns it off); Gadget's bind address and port
+      # inside the container, written when Studio first turns the Gadget platform on.
+      - STUDIO_RECOMMENDED_HERMES_PLUGINS=${STUDIO_RECOMMENDED_HERMES_PLUGINS:-}
+      - STUDIO_GADGET_HOST=${STUDIO_GADGET_HOST:-0.0.0.0}
+      - STUDIO_GADGET_PORT=${STUDIO_GADGET_PORT:-8765}
       - STUDIO_P2P_INTERFACE=${STUDIO_P2P_INTERFACE:-}
       - STUDIO_P2P_ADVERTISE_ADDRESSES=${STUDIO_P2P_ADVERTISE_ADDRESSES:-}
       - NPM_CONFIG_PREFIX=/home/agent/.hermes-web-ui/coding-agent/npm

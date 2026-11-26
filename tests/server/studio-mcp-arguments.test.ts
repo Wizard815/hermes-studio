@@ -70,6 +70,14 @@ describe('Studio MCP: arguments are checked before Studio is called', () => {
     expect(out.hits).toEqual([])
   })
 
+  it('a toolset call with bad arguments gets the tool\'s schema in the error', async () => {
+    const out = await mcp.call('ekko_studio_use_toolset', { action: 'call', tool: 'ekko_studio_use_orb_board', arguments: {} })
+    expect(out.error).toContain('arguments.action is required')
+    expect(out.error).toContain('action=call, tool=ekko_studio_use_orb_board')
+    expect(out.error).toContain('"enum":["find","read","activity","create"')
+    expect(out.hits).toEqual([])
+  })
+
   it('enum typos, wrong types and unknown keys are refused', async () => {
     expect((await mcp.call('ekko_studio_use_orb_read', { kind: 'taks' })).error).toMatch(/kind must be one of: tasks, lists/)
     expect((await mcp.call('ekko_studio_use_sessions_list', { limit: 'five' })).error).toContain('limit must be number')
@@ -81,6 +89,39 @@ describe('Studio MCP: arguments are checked before Studio is called', () => {
     expect((await mcp.call('ekko_studio_use_orb_read', { kind: 'tasks', due_on_or_before: '2026-11-13', limit: 10 })).hits)
       .toEqual(['POST /api/studio/orb/tools/orb_list_tasks {"due_on_or_before":"2026-11-13","limit":10}'])
     expect((await mcp.call('ekko_studio_use_orb_read', { kind: 'lists' })).hits).toEqual(['POST /api/studio/orb/tools/orb_list_lists {}'])
+  })
+
+  it('board actions reach the matching Orb board tool, and nothing else', async () => {
+    const out = await mcp.call('ekko_studio_use_orb_board', { action: 'mark', arguments: { board: 'Garage', marks: [{ card: 'Pegboard', state: 'doing' }], agent: 'Hermes' } })
+    expect(out.hits).toEqual(['POST /api/studio/orb/tools/orb_board_mark {"board":"Garage","marks":[{"card":"Pegboard","state":"doing"}],"agent":"Hermes"}'])
+    expect((await mcp.call('ekko_studio_use_orb_board', { action: 'remove', arguments: { board: 'Garage' } })).hits)
+      .toEqual(['POST /api/studio/orb/tools/orb_board_remove {"board":"Garage"}'])
+    const bad = await mcp.call('ekko_studio_use_orb_board', { action: 'wipe' })
+    expect(bad.error).toMatch(/action must be one of: find, read/)
+    expect(bad.hits).toEqual([])
+  })
+
+  it('project actions go to Studio\'s project tool route with the calling chat, and nothing else', async () => {
+    const out = await mcp.call('ekko_studio_use_project', { action: 'start_thread', arguments: { brief: 'Fix the flaky login test', agent: 'codex' } })
+    expect(out.error).toBe('')
+    expect(out.hits).toEqual(['POST /api/studio/projects/tool/start_thread {"brief":"Fix the flaky login test","agent":"codex","sessionId":""}'])
+    const task = await mcp.call('ekko_studio_use_project', { action: 'add_task', arguments: { title: 'Review PR 12', pr: 'https://github.com/o/r/pull/12' } })
+    expect(task.hits).toEqual(['POST /api/studio/projects/tool/add_task {"title":"Review PR 12","pr":"https://github.com/o/r/pull/12","sessionId":""}'])
+    const bad = await mcp.call('ekko_studio_use_project', { action: 'delete_everything' })
+    expect(bad.error).toMatch(/action must be one of: list, start_thread/)
+    expect(bad.hits).toEqual([])
+  })
+
+  it('phone actions go to Studio\'s Android agent route with the chat and agent, and nothing else', async () => {
+    const out = await mcp.call('ekko_studio_use_phone', { action: 'tap', arguments: { id: 'e3' }, agent: 'hermes' })
+    expect(out.error).toBe('')
+    expect(out.hits).toEqual(['POST /api/studio/android/agent {"action":"tap","arguments":{"id":"e3"},"sessionId":"","agent":"hermes"}'])
+    // Hermes names its chat with the turn's context id; Studio resolves it.
+    const withContext = await mcp.call('ekko_studio_use_phone', { action: 'screen', agent: 'hermes', context_id: ' ctx-1 ' })
+    expect(withContext.hits).toEqual(['POST /api/studio/android/agent {"action":"screen","arguments":{},"sessionId":"","contextId":"ctx-1","agent":"hermes"}'])
+    const bad = await mcp.call('ekko_studio_use_phone', { action: 'factory_reset' })
+    expect(bad.error).toMatch(/action must be one of: devices, screen/)
+    expect(bad.hits).toEqual([])
   })
 
   it('deletes are marked destructive in the catalog and in describe', async () => {

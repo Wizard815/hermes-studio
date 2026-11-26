@@ -13,12 +13,19 @@ export type SessionMenuIconName =
   | 'open-new'
   | 'link'
   | 'copy'
+  | 'herdr'
+  | 'studio'
+  | 'limits'
 
 interface ActiveSessionMenuLabels {
   outline: string
   rename: string
   open: string
   copyId: string
+  /** "Run limits" (docs/agent-limits.md); left out when not given. */
+  runLimits?: string
+  /** "Return to Studio" for a chat elevated to herdr; left out when not given. */
+  returnToStudio?: string
 }
 
 interface ActiveSessionMenuAvailability {
@@ -40,12 +47,24 @@ interface SessionContextMenuLabels {
   open: string
   copyLink: string
   copyId: string
+  /** "Elevate to herdr" (or "Open in herdr" once elevated); needed when `includeHerdr` is set. */
+  openInHerdr?: string
+  /** "Return to Studio"; needed when `elevated` is set. */
+  returnToStudio?: string
+  /** "Move to project…" (docs/projects.md); needed when `includeProject` is set. */
+  moveToProject?: string
 }
 
 interface BuildSessionContextMenuOptions {
   pinned: boolean
   includeArchive: boolean
   includeModel: boolean
+  /** "Elevate to herdr" (super admins, herdr on, a chat that can be a herdr space). */
+  includeHerdr?: boolean
+  /** The chat is elevated to herdr: "Return to Studio" is offered too. */
+  elevated?: boolean
+  /** "Move to project…" (super admins, a chat that is in no project yet). */
+  includeProject?: boolean
   categoryChildren: DropdownOption[]
   labels: SessionContextMenuLabels
 }
@@ -110,6 +129,23 @@ function iconChildren(name: SessionMenuIconName): VNodeChild[] {
         h('rect', { x: 9, y: 9, width: 12, height: 12, rx: 2 }),
         h('path', { d: 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1' }),
       ]
+    case 'limits':
+      // A gauge: the run's limits.
+      return [
+        h('path', { d: 'M4 18a8 8 0 1 1 16 0' }),
+        h('path', { d: 'm12 18 4-6' }),
+      ]
+    case 'herdr':
+      // The header's "Elevate to herdr" button icon: a split terminal.
+      return [
+        h('path', { d: 'M3 4h18v16H3zM12 4v16M3 12h9M7 8l2 2-2 2' }),
+      ]
+    case 'studio':
+      // Back to Studio: an arrow out of the terminal.
+      return [
+        h('path', { d: 'M14 4h7v16h-7' }),
+        h('path', { d: 'M10 12H3m3-3-3 3 3 3' }),
+      ]
   }
 }
 
@@ -152,6 +188,30 @@ export function buildActiveSessionMenuOptions(
     actionOption(labels.copyId, 'copy-id', 'copy'),
     actionOption(labels.rename, 'rename', 'rename', { disabled: !availability.canRename }),
     actionOption(labels.open, 'open-link', 'open-new', { disabled: !availability.canOpen }),
+    ...(labels.runLimits ? [actionOption(labels.runLimits, 'run-limits', 'limits', { disabled: !availability.canRename })] : []),
+    ...(labels.returnToStudio ? [actionOption(labels.returnToStudio, 'return-studio', 'studio')] : []),
+  ]
+}
+
+/**
+ * The chat header's menu with herdr's actions as a "herdr" group (phones in
+ * herdr mode, where the header row has room for one menu only).
+ */
+export function withHerdrMenuGroup(
+  options: DropdownOption[],
+  label: string,
+  items: Array<{ key: string; label: string; disabled?: boolean }>,
+): DropdownOption[] {
+  if (!items.length) return options
+  return [
+    ...options,
+    { type: 'divider', key: 'herdr-divider' },
+    {
+      type: 'group',
+      key: 'herdr-group',
+      label,
+      children: items.map(item => ({ key: `herdr:${item.key}`, label: item.label, disabled: !!item.disabled })),
+    },
   ]
 }
 
@@ -159,6 +219,9 @@ export function buildSessionContextMenuOptions({
   pinned,
   includeArchive,
   includeModel,
+  includeHerdr = false,
+  elevated = false,
+  includeProject = false,
   categoryChildren,
   labels,
 }: BuildSessionContextMenuOptions): DropdownOption[] {
@@ -180,6 +243,9 @@ export function buildSessionContextMenuOptions({
   options.push(actionOption(labels.category, 'category', 'category', {
     children: categoryChildren,
   }))
+  if (includeProject && labels.moveToProject) {
+    options.push(actionOption(labels.moveToProject, 'project', 'category'))
+  }
   options.push(actionOption(labels.export, 'export', 'export', {
     children: [
       {
@@ -200,6 +266,10 @@ export function buildSessionContextMenuOptions({
       },
     ],
   }))
+  if (includeHerdr && labels.openInHerdr) {
+    options.push(actionOption(labels.openInHerdr, 'open-herdr', 'herdr'))
+    if (elevated && labels.returnToStudio) options.push(actionOption(labels.returnToStudio, 'return-studio', 'studio'))
+  }
   options.push(actionOption(labels.open, 'open-link', 'open-new'))
   options.push(actionOption(labels.copyLink, 'copy-link', 'link'))
   options.push(actionOption(labels.copyId, 'copy-id', 'copy'))

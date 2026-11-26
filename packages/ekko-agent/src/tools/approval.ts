@@ -266,6 +266,15 @@ export function toolApprovalRequirement(
   input: Record<string, unknown>,
 ): ToolApprovalRequirement | undefined {
   if (toolName === 'computer_use') return computerUseApproval(input)
+  // Typing into a terminal the user has open runs whatever is typed there.
+  if (toolName === 'studio_terminal_write' && (input.enter === true || /^(enter|return|c-m)$/i.test(String(input.key || '')))) {
+    const text = String(input.text ?? input.key ?? '')
+    return {
+      key: 'studio:terminal-write',
+      command: text.slice(0, MAX_APPROVAL_PREVIEW_CHARS),
+      description: 'types and runs a command in your open Studio terminal',
+    }
+  }
   if (toolName === 'ekko_repair_database' && input.strategy === 'rebuild') {
     return {
       key: 'ekko:database-rebuild',

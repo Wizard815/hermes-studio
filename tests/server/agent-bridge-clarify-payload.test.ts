@@ -58,6 +58,8 @@ bridge_runtime._resolve_runtime = lambda *_a, **_k: {"provider": "primary"}
 bridge_runtime._suppress_bridge_platform_hint = lambda: None
 bridge_runtime._title_user_message = lambda value: value
 bridge_runtime._tool_names_from_definitions = lambda *_a, **_k: []
+bridge_runtime._tool_load_info = lambda *_a, **_k: {}
+bridge_runtime._tool_search_setting = lambda *_a, **_k: "auto"
 
 @contextlib.contextmanager
 def _profile_env(_profile):

@@ -29,7 +29,7 @@ This compose file runs a single service:
 
 - `hermes-webui` — Web UI dashboard with integrated Hermes Agent runtime (pre-built image or built from source)
 
-The Web UI container is built on the `nousresearch/hermes-agent` base image and uses the Hermes CLI / agent bridge runtime for chat execution. By default it performs startup gateway checks/autostart for profiles, but no Hermes gateway ports are exposed by this compose setup.
+The Web UI container is built on the `nousresearch/hermes-agent` base image and uses the Hermes CLI / agent bridge runtime for chat execution. By default it performs startup gateway checks/autostart for profiles. The only Hermes gateway port it publishes is Hermes Gadget's WebSocket (`8765`, see below).
 
 ## Environment Variables
 
@@ -46,6 +46,10 @@ All key runtime settings are configured from compose variables.
 | `STUDIO_P2P_INTERFACE` | automatic | Container interface for P2P, normally `eth0` in bridge mode. |
 | `STUDIO_P2P_UDP_PORT_RANGE` | `50000-50127` | UDP range used by ICE and published with identical host/container ports. |
 | `STUDIO_P2P_ADVERTISE_ADDRESSES` | unset | Reachable Docker host LAN/public IP addresses advertised for the published UDP range. |
+| `STUDIO_RECOMMENDED_HERMES_PLUGINS` | on | `0` stops Studio installing the recommended Hermes plugins once per profile ([Hermes integrations](hermes-integrations.md#recommended-plugins)). |
+| `STUDIO_GADGET_HOST` | `0.0.0.0` | Bind address the Hermes Gadget platform gets when Studio first turns it on. Keep `0.0.0.0` inside the container; limit who reaches it with the published address below. |
+| `STUDIO_GADGET_PORT` | `8765` | Gadget's port inside the container (written the same way). |
+| `STUDIO_GADGET_PUBLISH` | `8765` | Host side of the Gadget port mapping, e.g. `192.168.1.20:8765` to publish it on one LAN address only. |
 | `HERMES_BIN` | `/opt/hermes/.venv/bin/hermes` | Path to Hermes CLI binary |
 | `HERMES_AGENT_IMAGE` | `nousresearch/hermes-agent:latest` | Hermes Agent base image (used only during build) |
 | `WEBUI_IMAGE` | `hermes-web-ui-local:latest` | Web UI image (set to `ekkoye8888/hermes-web-ui` to use pre-built) |
@@ -125,8 +129,25 @@ if you use native global logins and need to retain them across recreation.
 |---|---|
 | `${PORT}` (6060) | Web UI dashboard |
 | `${STUDIO_P2P_UDP_PORT_RANGE}` (`50000-50127/udp`) | App P2P ICE checks and DataChannel traffic |
+| `${STUDIO_GADGET_PUBLISH}` (8765) | Hermes Gadget WebSocket `ws://<host>:8765/gadget` (devices such as D.A.S.H) |
 
-No Hermes gateway ports are exposed by this compose setup.
+No other Hermes gateway ports are exposed by this compose setup.
+
+### Hermes Gadget (devices such as D.A.S.H)
+
+Studio installs the `gadget` Hermes plugin once per profile and turns its
+gateway platform on (`platforms.gadget.enabled: true` in the profile's
+`config.yaml`, bind address `STUDIO_GADGET_HOST`, port `STUDIO_GADGET_PORT`).
+The gateway starts listening after its next start; **Connections → MCU devices
+→ Hermes Gadget** shows whether it listens and which devices are connected, and
+can change the bind address and port or restart the gateway.
+
+The traffic is plain `ws://` and new devices need a Hermes pairing code
+(`hermes gadget pair` in the container). Publish the port on your LAN only, for
+example `STUDIO_GADGET_PUBLISH=192.168.1.20:8765`, or not at all (delete the
+mapping) if you use no gadget device. A standalone `docker run` needs
+`-p 8765:8765`. With `network_mode: host`, set the bind address to the host's LAN
+address instead of `0.0.0.0`.
 
 ### App P2P connectivity
 

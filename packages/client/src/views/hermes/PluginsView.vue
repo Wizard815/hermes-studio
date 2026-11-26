@@ -2,10 +2,14 @@
 import PageLoading from '@/components/common/PageLoading.vue'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import { computed, ref, watch } from 'vue'
-import { NAlert, NButton, NEmpty, NInput, NSelect, NTag, useMessage } from 'naive-ui'
+import { NAlert, NButton, NEmpty, NInput, NSelect, NTabPane, NTabs, NTag, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { fetchPlugins, setPluginEnabled, type HermesPluginInfo, type HermesPluginsMetadata } from '@/api/hermes/plugins'
+import {
+  fetchPlugins, fetchRecommendedPlugins, isRecommendedPlugin, setPluginEnabled,
+  type HermesPluginInfo, type HermesPluginsMetadata, type RecommendedPluginsInfo,
+} from '@/api/hermes/plugins'
 import { useProfilesStore } from '@/stores/hermes/profiles'
+import PluginsHubPanel from '@/components/hermes/plugins/PluginsHubPanel.vue'
 
 const { t, te } = useI18n()
 const message = useMessage()
@@ -17,8 +21,27 @@ const metadata = ref<HermesPluginsMetadata | null>(null)
 const loading = ref(true)
 const error = ref('')
 const actionLoading = ref<Record<string, boolean>>({})
+const recommendedInfo = ref<RecommendedPluginsInfo | null>(null)
+const recommended = computed(() => recommendedInfo.value?.plugins ?? [])
+const envFile = computed(() => metadata.value?.envFile || recommendedInfo.value?.envFile || '.env')
+/** Required keys not set yet, by plugin key and name (the hub cards use catalog names). */
+const missingEnvByName = computed(() => {
+  const map: Record<string, string[]> = {}
+  for (const plugin of plugins.value) {
+    if (!plugin.missingEnv?.length) continue
+    map[plugin.key] = plugin.missingEnv
+    map[plugin.name] = plugin.missingEnv
+  }
+  return map
+})
+/** Recommended plugins Studio could not install yet for this profile (it retries on its next start). */
+const pendingRecommended = computed(() => {
+  const failures = recommendedInfo.value?.profile?.lastFailure || {}
+  return Object.entries(failures).map(([name, failure]) => `${name} (${failure.error})`)
+})
 
 const searchQuery = ref('')
+const activeTab = ref<'installed' | 'browse'>('installed')
 const sourceFilter = ref<string | null>(null)
 const kindFilter = ref<string | null>(null)
 const statusFilter = ref<string | null>(null)
@@ -66,7 +89,8 @@ async function loadPlugins() {
     if (!profilesStore.activeProfileName || profilesStore.profiles.length === 0) {
       await profilesStore.fetchProfiles()
     }
-    const data = await fetchPlugins()
+    const [data, info] = await Promise.all([fetchPlugins(), fetchRecommendedPlugins().catch(() => null)])
+    recommendedInfo.value = info
     plugins.value = data.plugins ?? []
     warnings.value = data.warnings ?? []
     metadata.value = data.metadata ?? null
@@ -148,6 +172,8 @@ watch(() => profilesStore.activeProfileName || 'default', () => {
 
       </div>
       <template v-else>
+        <NTabs v-model:value="activeTab" type="line" animated class="plugins-tabs">
+          <NTabPane name="installed" :tab="t('hermesExtensions.pluginTabs.installed')">
         <NAlert type="info" :bordered="false" class="plugins-notice">
           {{ t('plugins.notice') }}
         </NAlert>
@@ -158,6 +184,10 @@ watch(() => profilesStore.activeProfileName || 'default', () => {
 
         <NAlert v-for="warning in warnings" :key="warning" type="warning" class="plugins-notice">
           {{ warning }}
+        </NAlert>
+
+        <NAlert v-if="pendingRecommended.length && recommendedInfo?.autoInstall" type="warning" :bordered="false" class="plugins-notice recommended-pending">
+          {{ t('recommendedPlugins.pending', { list: pendingRecommended.join(' · ') }) }}
         </NAlert>
 
         <div class="summary-grid">
@@ -209,6 +239,12 @@ watch(() => profilesStore.activeProfileName || 'default', () => {
                   <div class="plugin-name">
                     <strong>{{ plugin.key }}</strong>
                     <span v-if="plugin.name !== plugin.key">{{ plugin.name }}</span>
+                    <NTag v-if="isRecommendedPlugin(recommended, plugin.key, plugin.name)" size="small" type="info" round class="recommended-tag">
+                      {{ t('recommendedPlugins.badge') }}
+                    </NTag>
+                  </div>
+                  <div v-if="plugin.missingEnv?.length" class="missing-env">
+                    {{ t('recommendedPlugins.missingEnv', { keys: plugin.missingEnv.join(', '), file: envFile }) }}
                   </div>
                   <div v-if="plugin.description" class="description">{{ plugin.description }}</div>
                   <div v-if="plugin.version || plugin.author" class="meta-line">
@@ -255,12 +291,27 @@ watch(() => profilesStore.activeProfileName || 'default', () => {
           <span>{{ t('plugins.metadata.scanCwd') }}: <code>{{ metadata.cwd }}</code></span>
           <span>{{ t('plugins.metadata.projectPlugins') }}: <code>{{ metadata.projectPluginsEnabled ? t('plugins.enabled') : t('plugins.disabled') }}</code></span>
         </div>
+          </NTabPane>
+          <NTabPane name="browse" :tab="t('hermesExtensions.pluginTabs.browse')" display-directive="show:lazy">
+            <PluginsHubPanel :recommended="recommended" :missing-env="missingEnvByName" :env-file="envFile" @changed="loadPlugins" />
+          </NTabPane>
+        </NTabs>
       </template>
     </div>
   </PageLoading>
 </template>
 
 <style scoped lang="scss">
+@use '@/styles/variables' as *;
 @use '@/styles/plugins-page' as plugins-page;
 @include plugins-page.layout;
+
+.plugins-tabs :deep(.n-tab-pane) { padding-top: calc(14px * var(--spacing-scale, 1)); }
+.recommended-tag { align-self: flex-start; }
+.missing-env {
+  margin-top: 4px;
+  color: $warning;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
+  word-break: break-word;
+}
 </style>

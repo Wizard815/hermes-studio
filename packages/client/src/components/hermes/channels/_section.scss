@@ -1,0 +1,79 @@
+// Shared look of the Hermes sections on the Channels page (matches Studio's channel cards).
+@forward '@/styles/variables';
+@use '@/styles/variables' as *;
+
+.hermes-section {
+  margin-top: 24px;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: calc(var(--font-size-base, 14px) * 15 / 14);
+  font-weight: 600;
+  color: $text-primary;
+}
+
+.section-hint {
+  margin: 4px 0 0;
+  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
+  color: $text-secondary;
+}
+
+.card {
+  background-color: var(--theme-card-bg, $bg-card);
+  border: var(--border-width, 1px) solid $border-color;
+  border-radius: $radius-md;
+  padding: calc(12px * var(--spacing-scale, 1)) calc(16px * var(--spacing-scale, 1));
+  margin-bottom: 12px;
+}
+
+.sub-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.sub-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: $text-primary;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: var(--border-width, 1px) solid $border-light;
+
+  &:last-of-type {
+    border-bottom: none;
+  }
+}
+
+.row-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  color: $text-primary;
+  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
+}
+
+.muted {
+  color: $text-muted;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
+}

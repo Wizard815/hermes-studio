@@ -534,6 +534,12 @@ onBeforeUnmount(() => {
     padding: 8px;
   }
 
+  // Room for the floating menu button (other pages' .page-header leaves the same).
+  .system-bar {
+    padding-left: 52px;
+    min-height: 52px;
+  }
+
   .system-col-name {
     max-width: 140px;
   }

@@ -1,6 +1,7 @@
 @use 'variables' as *;
 @use 'code-block';
 @use 'theme-surfaces';
+@use 'scrollbars';
 
 @font-face {
   font-family: 'Comic Neue';
@@ -158,6 +159,17 @@ body:has(.app-shell--navigation-rail) {
   }
 }
 
+// The herdr page hides Studio's top bar (the shell's header row), so it looks
+// like the Herdr App window (ChatPanel sets the class; the desktop app keeps
+// its window controls).
+body.herdr-topbar-hidden:has(.app-shell--navigation-rail:not(.desktop)) {
+  --studio-header-height: var(--studio-content-gutter, 5px);
+
+  .studio-page-header {
+    visibility: hidden;
+  }
+}
+
 .hermes-desktop-pet-window,
 .hermes-desktop-pet-window body,
 .hermes-desktop-pet-window #app {
@@ -212,35 +224,6 @@ a {
   &:hover {
     color: $accent-hover;
   }
-}
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-  background: transparent;
-}
-
-::-webkit-scrollbar-track,
-::-webkit-scrollbar-track-piece {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: $border-color;
-  border-radius: var(--radius-component, 3px);
-
-  &:hover {
-    background: $text-muted;
-  }
-}
-
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-* {
-  scrollbar-width: thin;
-  scrollbar-color: $border-color transparent;
 }
 
 ::selection {

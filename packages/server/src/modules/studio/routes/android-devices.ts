@@ -16,3 +16,8 @@ androidDeviceRoutes.post('/api/studio/android/devices/:serial/install', requireS
 androidDeviceRoutes.post('/api/studio/android/devices/:serial/launch', requireSuperAdmin, ctrl.launch)
 androidDeviceRoutes.post('/api/studio/android/devices/:serial/input', requireSuperAdmin, ctrl.gesture)
 androidDeviceRoutes.get('/api/studio/android/devices/:serial/screenshot', requireSuperAdmin, ctrl.screenshot)
+// Agents on the phone: tool calls from Studio's MCP server, the page's log, questions and take over.
+androidDeviceRoutes.post('/api/studio/android/agent', requireSuperAdmin, ctrl.agentAction)
+androidDeviceRoutes.get('/api/studio/android/agent', requireSuperAdmin, ctrl.agentState)
+androidDeviceRoutes.post('/api/studio/android/agent/approvals/:id', requireSuperAdmin, ctrl.agentApproval)
+androidDeviceRoutes.post('/api/studio/android/devices/:serial/takeover', requireSuperAdmin, ctrl.takeOver)

@@ -2,6 +2,9 @@ import type { Context } from 'koa'
 import { join } from 'node:path'
 import { getWebUiHome } from '../public/config'
 import { androidDeviceManager } from '../services/android/manager'
+import { phoneAgent } from '../services/android/phone-agent'
+import { phoneToolChat } from '../services/android/phone-chat'
+import { getChatRunServer } from '../public/chat-run'
 
 function fail(ctx: Context, error: unknown, fallback: string) {
   const err = error as { status?: number; message?: string }
@@ -74,4 +77,40 @@ export async function screenshot(ctx: Context) {
     ctx.type = 'image/png'
     ctx.body = await androidDeviceManager.screenshot(String(ctx.params.serial || ''))
   } catch (error) { fail(ctx, error, 'Failed to take a screenshot') }
+}
+
+// --- Agents on the phone (docs/android-devices.md) ---------------------------
+
+/** One phone tool call from an agent (Studio MCP `ekko_studio_use_phone`). */
+export async function agentAction(ctx: Context) {
+  const input = body(ctx)
+  try {
+    ctx.body = await phoneAgent.run({
+      action: text(input.action),
+      arguments: input.arguments && typeof input.arguments === 'object' ? input.arguments as Record<string, unknown> : {},
+      sessionId: phoneToolChat({
+        runSessionId: ctx.state.runBinding?.sessionId,
+        contextId: text(input.contextId),
+        claimedSessionId: text(input.sessionId),
+        chatForContext: contextId => getChatRunServer()?.chatForTurnContext(contextId, String(ctx.state.profile?.name || 'default').trim() || 'default') || '',
+      }),
+      agent: text(input.agent) || 'agent',
+    })
+  } catch (error) { fail(ctx, error, 'The phone action failed') }
+}
+
+export function agentState(ctx: Context) {
+  ctx.body = { log: phoneAgent.log(), approvals: phoneAgent.approvals(), takenOver: phoneAgent.takenOver() }
+}
+
+export function agentApproval(ctx: Context) {
+  const handled = phoneAgent.respond(String(ctx.params.id || ''), body(ctx).allow === true)
+  if (!handled) { ctx.status = 404; ctx.body = { error: 'That question was already answered or has expired.' }; return }
+  ctx.body = { ok: true }
+}
+
+export function takeOver(ctx: Context) {
+  try {
+    ctx.body = phoneAgent.setTakeOver(String(ctx.params.serial || ''), body(ctx).held !== false)
+  } catch (error) { fail(ctx, error, 'Failed to take over the phone') }
 }

@@ -1,3 +1,4 @@
+import { providerAccountId, withProviderAccount, providerCredentialDir } from '../../studio/public/provider-account'
 import { openCodeSessionHeaders } from '../../studio/public/opencode-session'
 import { invalidateProviderRuntime } from '../../studio/public/provider-runtime'
 import { openRouterAttributionHeaders } from '../../studio/public/openrouter-attribution'
@@ -5,13 +6,14 @@ import { readFile } from 'fs/promises'
 import { isAuthorizedRuntimeProvider, readAuthorizedProviderStoredAuth } from '../services/providers/authorized-provider-credentials'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { getActiveEnvPath, getActiveAuthPath, getActiveProfileName, getProfileDir, listProfileNamesFromDisk } from '../services/profiles/profile'
-import { readConfigYaml, readConfigYamlForProfile, updateConfigYaml, updateConfigYamlForProfile, buildModelGroups, PROVIDER_ENV_MAP } from '../../studio/public/profile-config'
+import { getActiveProfileName } from '../services/profiles/profile'
+import { getActiveEnvPath, getActiveAuthPath, getProfileDir, listProfileNamesFromDisk } from '../../studio/public/provider-config'
+import { readConfigYaml, readConfigYamlForProfile, updateConfigYaml, updateConfigYamlForProfile, buildModelGroups, PROVIDER_ENV_MAP } from '../../studio/public/provider-config'
 import { fetchProviderModels } from '../../studio/public/provider-catalog'
-import { getCompatibleCustomProviders } from '../../studio/contracts/provider-compat'
+import { getCompatibleCustomProviders, resolveCustomProviderApiKey, type NormalizedCustomProvider } from '../../studio/contracts/provider-compat'
 import { buildProviderModelMap, PROVIDER_PRESETS, isRetiredProvider, RETIRED_PROVIDER_MESSAGE } from '../../studio/contracts/providers'
 import { getCopilotModelsDetailed, resolveCopilotOAuthToken, type CopilotModelMeta } from '../services/providers/copilot-models'
-import { readAppConfig, writeAppConfig, providerDisplayLabel, type ModelVisibilityRule } from '../../studio/public/app-config'
+import { readAppConfig, writeAppConfig, providerDisplayLabel, type ModelVisibilityRule } from '../../studio/public/provider-config'
 import { listUserProfiles } from '../../studio/public/users'
 import { readModelContextRecord, upsertModelContextRecord } from '../../studio/public/provider-context'
 import { getModelContextLength } from '../services/models/context'
@@ -31,7 +33,7 @@ const PROVIDER_MODEL_CATALOG = buildProviderModelMap()
 
 type ModelMeta = { preview?: boolean; disabled?: boolean; alias?: string; reasoning?: boolean; reasoning_efforts?: string[] }
 type ProviderApiMode = 'chat_completions' | 'codex_responses' | 'anthropic_messages' | 'bedrock_converse' | 'codex_app_server'
-type AvailableGroup = { provider: string; label: string; base_url: string; models: string[]; api_key: string; api_mode?: ProviderApiMode; api_mode_by_model?: Record<string, ProviderApiMode | null>; builtin?: boolean; model_meta?: Record<string, ModelMeta>; available_models?: string[]; base_url_env?: string; provider_source?: 'custom_providers' | 'providers'; provider_key?: string; provider_editable?: boolean; editable_fields?: ProviderEditableField[]; model_refreshable?: boolean; model_refresh_reason?: string; model_restore_available?: boolean }
+type AvailableGroup = { provider: string; label: string; base_url: string; models: string[]; api_key: string; credential_configured?: boolean; supports_gateway_auth?: boolean; api_mode?: ProviderApiMode; api_mode_by_model?: Record<string, ProviderApiMode | null>; builtin?: boolean; model_meta?: Record<string, ModelMeta>; available_models?: string[]; base_url_env?: string; provider_source?: 'custom_providers' | 'providers'; provider_key?: string; provider_editable?: boolean; editable_fields?: ProviderEditableField[]; model_refreshable?: boolean; model_refresh_reason?: string; model_restore_available?: boolean }
 type ModelVisibility = Record<string, ModelVisibilityRule>
 type CustomModels = Record<string, string[]>
 
@@ -332,6 +334,7 @@ function mergeAvailableGroups(groups: AvailableGroup[]): AvailableGroup[] {
     existing.models = [...new Set([...existing.models, ...group.models])]
     existing.available_models = [...new Set([...(existing.available_models || existing.models), ...(group.available_models || group.models)])]
     existing.api_key = existing.api_key || group.api_key
+    existing.credential_configured = existing.credential_configured || group.credential_configured
     existing.base_url = existing.base_url || group.base_url
     existing.api_mode = existing.api_mode || group.api_mode
     existing.builtin = existing.builtin || group.builtin
@@ -350,7 +353,7 @@ function requestedProfileName(ctx: any): string {
   return typeof queryProfile === 'string' && queryProfile.trim() ? queryProfile.trim() : ''
 }
 
-function requestScopedProfileName(ctx: any): string {
+export function requestScopedProfileName(ctx: any): string {
   const headerProfile = typeof ctx.get === 'function' ? ctx.get('x-hermes-profile') : ''
   const queryProfile = typeof ctx.query?.profile === 'string' ? ctx.query.profile : ''
   const bodyProfile = typeof ctx.request?.body?.profile === 'string' ? ctx.request.body.profile : ''
@@ -386,10 +389,49 @@ function cachedProviderModels(
 }
 
 
-// Copilot 授权检测：复用同一套 token 解析逻辑（含 ~/.config/github-copilot/apps.json
-// 与 ghp_ PAT 跳过），与 getCopilotModels 行为一致，避免出现"模型能拉到却被判未授权"。
-async function isCopilotAuthorized(envContent: string): Promise<boolean> {
-  return !!(await resolveCopilotOAuthToken(envContent))
+// Only advertise credentials the active Hermes profile can read at execution time.
+async function isCopilotAuthorized(envContent: string, profile: string): Promise<boolean> {
+  return !!(await resolveCopilotOAuthToken(envContent, false))
+}
+
+async function accountProviderAuthorized(provider: NormalizedCustomProvider, profile: string): Promise<boolean> {
+  if (!provider.auth_provider) return false
+  const dir = providerCredentialDir(provider.auth_scope)
+  if (provider.auth_provider === 'qwen-oauth') {
+    const data = JSON.parse(await readFile(join(dir, 'qwen-oauth.json'), 'utf8').catch(() => '{}'))
+    return !!(data.access_token || data.refresh_token)
+  }
+  if (provider.auth_provider === 'copilot') return !!(await resolveCopilotOAuthToken(await readFile(join(dir, '.env'), 'utf8').catch(() => ''), false))
+  return !!(await readAuthorizedProviderStoredAuth(profile, provider.auth_provider, { profileDir: () => dir }))
+}
+
+/**
+ * Provider groups and models for one profile, with Studio's aliases and
+ * visibility rules applied (the same list the model picker shows). Used by
+ * integrations such as herdr that launch agents outside a browser request.
+ */
+export async function listProfileModelGroups(profile: string): Promise<Array<{ provider: string; label: string; models: string[] }>> {
+  return (await listProfileModelChoices(profile)).groups
+}
+
+/** A profile's model groups and its default model (provider keyed as in the groups), as Studio's model picker shows them. */
+export async function listProfileModelChoices(profile: string): Promise<{
+  groups: Array<{ provider: string; label: string; models: string[] }>
+  default: { provider: string; model: string }
+}> {
+  const appConfig = await readAppConfig()
+  const aliases = normalizeAliases(appConfig.modelAliases)
+  const visibility = normalizeModelVisibility(appConfig.modelVisibility)
+  const enrich = createCatalogModelMetadataEnricher(
+    group => filterModelsForProvider(group.provider, group.models, visibility),
+  )
+  const cache = await readProviderModelCatalogCache()
+  const result = await buildAvailableForProfile(profile, cache, appConfig, enrich)
+  return {
+    groups: applyModelVisibility(applyModelAliases(result.groups, aliases), visibility)
+      .map((group: any) => ({ provider: String(group.provider), label: String(group.label || group.provider), models: (group.models || []).map(String) })),
+    default: { provider: result.default_provider || '', model: result.default || '' },
+  }
 }
 
 async function buildAvailableForProfile(
@@ -416,7 +458,7 @@ async function buildAvailableForProfile(
         (cp) => cp.base_url?.replace(/\/+$/, '') === String(modelSection.base_url || '').replace(/\/+$/, '')
           && cp.model === currentDefault,
       )
-      if (match) currentDefaultProvider = providerKeyForCustom(String(match.name || ''))
+      if (match) currentDefaultProvider = match.catalog_provider || providerKeyForCustom(String(match.name || ''))
     }
   } else if (typeof modelSection === 'string') {
     currentDefault = modelSection.trim()
@@ -439,7 +481,7 @@ async function buildAvailableForProfile(
 
   const groups: AvailableGroup[] = []
   const seenProviders = new Set<string>()
-  const addGroup = (provider: string, label: string, base_url: string, models: string[], api_key: string, builtin?: boolean, model_meta?: Record<string, ModelMeta>, extra?: Pick<AvailableGroup, 'provider_source' | 'provider_key' | 'api_mode'>) => {
+  const addGroup = (provider: string, label: string, base_url: string, models: string[], api_key: string, builtin?: boolean, model_meta?: Record<string, ModelMeta>, extra?: Pick<AvailableGroup, 'provider_source' | 'provider_key' | 'api_mode' | 'credential_configured'>) => {
     if (isRetiredProvider(provider) || seenProviders.has(provider)) return
     seenProviders.add(provider)
     const availableModels = [...new Set(models)]
@@ -461,7 +503,10 @@ async function buildAvailableForProfile(
       base_url,
       models: availableModels,
       available_models: availableModels,
-      api_key,
+      api_key: '',
+      supports_gateway_auth: true,
+      credential_configured: !!api_key || extra?.credential_configured,
+      ...(extra?.credential_configured !== undefined ? { credential_configured: extra.credential_configured } : {}),
       ...(apiMode ? { api_mode: apiMode } : {}),
       ...(builtin ? { builtin: true } : {}),
       ...(Object.keys(unavailableMeta).length ? { model_meta: unavailableMeta } : {}),
@@ -482,15 +527,13 @@ async function buildAvailableForProfile(
   }
 
   for (const [providerKey, envMapping] of Object.entries(PROVIDER_ENV_MAP)) {
+    if (Object.values(config.providers || {}).some((entry: any) => entry.catalog_provider === providerKey)) continue
     const oauthAuthorized = providerSupportsStoredOAuth(providerKey) ? isOAuthAuthorized(providerKey) : false
-    if (envMapping.api_key_env && !envHasValue(envMapping.api_key_env) && !oauthAuthorized) continue
-    if (!envMapping.api_key_env) {
-      if (providerKey === 'copilot') {
-        if (!copilotEnabled) continue
-        if (!(await isCopilotAuthorized(envContent))) continue
-      } else if (!isOAuthAuthorized(providerKey)) {
-        continue
-      }
+    if (providerKey === 'copilot') {
+      if (!copilotEnabled || !(await isCopilotAuthorized(envContent, profile))) continue
+    } else {
+      if (envMapping.api_key_env && !envHasValue(envMapping.api_key_env) && !oauthAuthorized) continue
+      if (!envMapping.api_key_env && !isOAuthAuthorized(providerKey)) continue
     }
     const preset = PROVIDER_PRESETS.find((p: any) => p.value === providerKey)
     const label = preset?.label || providerKey.replace(/^custom:/, '')
@@ -522,9 +565,9 @@ async function buildAvailableForProfile(
   const customFetches = await Promise.allSettled(
     customProviders.map(async cp => {
       if (!cp.base_url) return null
-      const providerKey = providerKeyForCustom(cp.name)
+      const providerKey = cp.catalog_provider || providerKeyForCustom(cp.name)
       const baseUrl = cp.base_url.replace(/\/+$/, '')
-      const builtinProviderKey = providerKeyWithoutCustomPrefix(providerKey)
+      const builtinProviderKey = cp.runtime_provider || providerKeyWithoutCustomPrefix(providerKey)
       const builtinPreset = PROVIDER_PRESETS.find((preset: any) => preset.value === builtinProviderKey)
       const hasStaticManifest = builtinPreset?.builtin === true
       const builtinCatalogModels = hasStaticManifest
@@ -540,16 +583,16 @@ async function buildAvailableForProfile(
         providerKey,
         baseUrl,
         [...builtinCatalogModels],
-        { hasStaticManifest, profile },
+        { hasStaticManifest, profile, freeOnly: providerKey === 'openrouter' },
       )
       const models = [...new Set([cp.model, ...configuredModels, ...resolvedCatalogModels].filter(Boolean) as string[])]
-      return { providerKey, label: cp.name, base_url: baseUrl, models, api_key: cp.api_key || '', api_mode: cp.api_mode, builtin: hasStaticManifest, provider_source: cp.source, provider_key: cp.provider_key }
+      return { providerKey, label: cp.name, base_url: baseUrl, models, api_key: cp.api_key || '', credential_configured: !!resolveCustomProviderApiKey(cp, envContent) || await accountProviderAuthorized(cp, profile), api_mode: cp.api_mode, builtin: hasStaticManifest, provider_source: cp.source, provider_key: cp.provider_key }
     }),
   )
   for (const result of customFetches) {
     if (result.status === 'fulfilled' && result.value?.models.length) {
-      const { providerKey, label, base_url, models, api_key, api_mode, builtin, provider_source, provider_key } = result.value
-      addGroup(providerKey, label, base_url, models, api_key, builtin, undefined, { provider_source, provider_key, api_mode })
+      const { providerKey, label, base_url, models, api_key, credential_configured, api_mode, builtin, provider_source, provider_key } = result.value
+      addGroup(providerKey, label, base_url, models, api_key, builtin, undefined, { provider_source, provider_key, api_mode, credential_configured })
     }
   }
 
@@ -585,7 +628,7 @@ async function buildAvailableForProfile(
   return { profile, default: currentDefault, default_provider: currentDefaultProvider, groups: applyCatalogModelMetadata(groupsWithCustomModels) }
 }
 
-export async function getAvailableModelConfigForProfile(profile: string) {
+async function getAvailableModelConfigForProfileImpl(profile: string) {
   const appConfig = await readAppConfig()
   const modelVisibility = normalizeModelVisibility(appConfig.modelVisibility)
   const applyCatalogModelMetadata = createCatalogModelMetadataEnricher(
@@ -829,7 +872,7 @@ export async function getAvailable(ctx: any) {
     let copilotLiveModels: CopilotModelMeta[] | null = null
     const getCopilotLive = async (): Promise<CopilotModelMeta[]> => {
       if (copilotLiveModels !== null) return copilotLiveModels
-      try { copilotLiveModels = await getCopilotModelsDetailed(envContent) }
+      try { copilotLiveModels = await getCopilotModelsDetailed(envContent, false) }
       catch { copilotLiveModels = [] }
       return copilotLiveModels
     }
@@ -852,14 +895,11 @@ export async function getAvailable(ctx: any) {
 
     for (const [providerKey, envMapping] of Object.entries(PROVIDER_ENV_MAP)) {
       const oauthAuthorized = providerSupportsStoredOAuth(providerKey) ? isOAuthAuthorized(providerKey) : false
-      if (envMapping.api_key_env && !envHasValue(envMapping.api_key_env) && !oauthAuthorized) continue
-      if (!envMapping.api_key_env) {
-        if (providerKey === 'copilot') {
-          if (!copilotEnabled) continue
-          if (!(await isCopilotAuthorized(envContent))) continue
-        } else if (!isOAuthAuthorized(providerKey)) {
-          continue
-        }
+      if (providerKey === 'copilot') {
+        if (!copilotEnabled || !(await isCopilotAuthorized(envContent, getActiveProfileName()))) continue
+      } else {
+        if (envMapping.api_key_env && !envHasValue(envMapping.api_key_env) && !oauthAuthorized) continue
+        if (!envMapping.api_key_env && !isOAuthAuthorized(providerKey)) continue
       }
       const preset = PROVIDER_PRESETS.find((p: any) => p.value === providerKey)
       const label = preset?.label || providerKey.replace(/^custom:/, '')
@@ -1373,3 +1413,5 @@ export async function setModelVisibility(ctx: any) {
     ctx.body = { error: err.message }
   }
 }
+
+export const getAvailableModelConfigForProfile = (profile: string, userId?: number) => withProviderAccount(userId || providerAccountId(profile), () => getAvailableModelConfigForProfileImpl(profile), profile)

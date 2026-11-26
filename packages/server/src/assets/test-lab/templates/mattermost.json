@@ -1,0 +1,23 @@
+{
+  "id": "mattermost",
+  "name": "Mattermost (preview)",
+  "description": "Team chat, the all-in-one preview image (large). An admin, alice and a team called Lab.",
+  "image": "mattermost/mattermost-preview:11.11.4",
+  "port": 8065,
+  "sizeMb": 1100,
+  "memory": "2g",
+  "env": { "MM_SERVICESETTINGS_SITEURL": "http://mattermost:8065" },
+  "health": { "path": "/api/v4/system/ping", "timeoutSeconds": 300 },
+  "logins": [
+    { "username": "labadmin", "password": "Lab-pass-123!", "role": "system admin" },
+    { "username": "alice", "password": "Lab-pass-123!", "role": "member of team Lab" }
+  ],
+  "seed": [
+    { "name": "First user (becomes admin)", "method": "POST", "path": "/api/v4/users", "json": { "email": "labadmin@lab.test", "username": "labadmin", "password": "Lab-pass-123!" }, "expect": [201] },
+    { "name": "Log in as labadmin", "method": "POST", "path": "/api/v4/users/login", "json": { "login_id": "labadmin", "password": "Lab-pass-123!" }, "save": { "token": "header:token" } },
+    { "name": "Team Lab", "method": "POST", "path": "/api/v4/teams", "headers": { "Authorization": "Bearer {{token}}" }, "json": { "name": "lab", "display_name": "Lab", "type": "O" }, "expect": [201], "save": { "team": "id" } },
+    { "name": "Add alice", "method": "POST", "path": "/api/v4/users", "headers": { "Authorization": "Bearer {{token}}" }, "json": { "email": "alice@lab.test", "username": "alice", "password": "Lab-pass-123!" }, "expect": [201], "save": { "alice": "id" } },
+    { "name": "Alice joins Lab", "method": "POST", "path": "/api/v4/teams/{{team}}/members", "headers": { "Authorization": "Bearer {{token}}" }, "json": { "team_id": "{{team}}", "user_id": "{{alice}}" }, "expect": [201], "optional": true }
+  ],
+  "notes": "Team \"Lab\" is at http://mattermost:8065/lab."
+}

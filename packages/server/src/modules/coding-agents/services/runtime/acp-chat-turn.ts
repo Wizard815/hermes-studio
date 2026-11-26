@@ -1,18 +1,28 @@
 import { NativeAcpTurn } from '../../protocol/acp/turn'
+import { answerAcpPermission } from '../../protocol/acp/permission'
+import { launchAsks } from '../approvals'
 import { acpMcpServers, applyNativeAcpUpdate } from '../../protocol/acp/events'
 import type { ManagedCodingAgentRun } from './run-manager'
 import type { NativeTurnHost } from './turn-host'
 import { startNativeTurnProcess } from './native-turn-process'
 import type { CodingAgentImageInput } from '../../protocol/types'
 
-export function startAcpChatTurn(definition: { name: string; acpArgs: readonly string[] }, run: ManagedCodingAgentRun, input: string, systemPrompt: string, host: NativeTurnHost, images: CodingAgentImageInput[] = []) {
+export function startAcpChatTurn(definition: { name: string; acpArgs: readonly string[]; baseArgs?: readonly string[] }, run: ManagedCodingAgentRun, input: string, systemPrompt: string, host: NativeTurnHost, images: CodingAgentImageInput[] = []) {
   const { child, text, session, finish, isFinished } = startNativeTurnProcess(run, input, systemPrompt, host, {
-    name: definition.name, args: () => [...run.launch.args, ...definition.acpArgs],
+    name: definition.name, args: () => [...(definition.baseArgs ?? run.launch.args), ...definition.acpArgs],
     emptyPrompt: images.length ? 'Inspect the attached images.' : '',
   })
   let connection: NativeAcpTurn | undefined
+  // Some agents (Grok) end the turn as "cancelled" when a request is denied: that is the user's answer, not a failure.
+  let denied = false
   connection = new NativeAcpTurn(child, {
     session, permissionRequired: run.launch.approvalRequired,
+    ...(host.askApproval && launchAsks(run.launch)
+      ? { askPermission: (params: any) => answerAcpPermission(params, definition.name, async request => {
+          const choice = await host.askApproval!(request)
+          if (choice === 'deny') denied = true
+          return choice
+        }) } : {}),
     update: update => { if (!run.exited && !run.stoppedByUser && !isFinished()) { host.touch(); applyNativeAcpUpdate(update, host) } },
   })
   run.nativeAcpTurn = connection
@@ -21,7 +31,7 @@ export function startAcpChatTurn(definition: { name: string; acpArgs: readonly s
     mcpServers: acpMcpServers(run.launch.nativeMcpServers || {}),
     model: run.launch.mode === 'global' ? run.launch.model : undefined,
     reasoningEffort: run.launch.mode === 'global' ? run.launch.reasoningEffort : undefined,
-  }).then(reason => finish(['end_turn', 'max_tokens'].includes(reason) ? undefined : `${definition.name} stopped: ${reason}`))
+  }).then(reason => finish(['end_turn', 'max_tokens'].includes(reason) || (reason === 'cancelled' && denied) ? undefined : `${definition.name} stopped: ${reason}`))
     .catch(error => { finish(host.processError(error)); host.terminate(child) })
     .finally(() => {
       connection?.dispose()

@@ -2,6 +2,7 @@ export type BridgeSessionCommandName =
   | 'usage'
   | 'context'
   | 'status'
+  | 'cleanroom'
   | 'yolo'
   | 'abort'
   | 'queue'
@@ -21,6 +22,8 @@ export type BridgeSessionCommandName =
   | 'destroy'
   | 'reload-mcp'
   | 'reload-skills'
+  | 'herdr'
+  | 'studio'
 
 export interface BridgeSessionCommandDefinition {
   key: string
@@ -59,6 +62,7 @@ export const BRIDGE_SESSION_COMMAND_DEFINITIONS: BridgeSessionCommandDefinition[
   { key: 'command:title', name: 'title', argsKey: 'chat.slashCommandArgs.title', descriptionKey: 'chat.slashCommands.title' },
   { key: 'command:compress', name: 'compress', args: '', descriptionKey: 'chat.slashCommands.compress' },
   { key: 'command:compact', name: 'compact', args: '', descriptionKey: 'chat.slashCommands.compact' },
+  { key: 'command:cleanroom', name: 'cleanroom', argsKey: 'chat.slashCommandArgs.text', descriptionKey: 'chat.slashCommands.cleanroom' },
   { key: 'command:fork', name: 'fork', argsKey: 'chat.slashCommandArgs.title', descriptionKey: 'chat.slashCommands.fork' },
   { key: 'command:steer', name: 'steer', argsKey: 'chat.slashCommandArgs.text', descriptionKey: 'chat.slashCommands.steer' },
   { key: 'command:destroy', name: 'destroy', args: '', descriptionKey: 'chat.slashCommands.destroy' },
@@ -66,8 +70,9 @@ export const BRIDGE_SESSION_COMMAND_DEFINITIONS: BridgeSessionCommandDefinition[
   { key: 'command:reload-skills', name: 'reload-skills', args: '', descriptionKey: 'chat.slashCommands.reloadSkills' },
 ]
 
+// "/cleanroom" is listed for coding-agent chats only; Hermes chats do not know it.
 export const BRIDGE_SESSION_COMMAND_NAMES = Array.from(
-  new Set(BRIDGE_SESSION_COMMAND_DEFINITIONS.map(command => command.name)),
+  new Set(BRIDGE_SESSION_COMMAND_DEFINITIONS.map(command => command.name).filter(name => name !== 'cleanroom')),
 )
 
 const BRIDGE_SESSION_COMMAND_ALIASES = new Map<string, BridgeSessionCommandName>([
@@ -108,4 +113,26 @@ export const EKKO_SESSION_COMMAND_DEFINITIONS: BridgeSessionCommandDefinition[] 
 export function isKnownEkkoSessionCommand(input: string): boolean {
   const name = readBridgeSessionCommandName(input)
   return name === 'compress' || EKKO_SESSION_COMMAND_DEFINITIONS.some(command => command.name === name)
+}
+
+/**
+ * `/herdr`: Studio opens the chat in herdr (waking it into its space if it is
+ * asleep). Handled in the chat box, never sent to the agent, so it is not one
+ * of the bridge or Ekko commands above.
+ */
+export const HERDR_SESSION_COMMAND_DEFINITION: BridgeSessionCommandDefinition = {
+  key: 'command:herdr', name: 'herdr', args: '', descriptionKey: 'herdr.slashCommand',
+}
+
+export function isHerdrSessionCommand(input: string): boolean {
+  return /^\/herdr$/i.test(input.trim())
+}
+
+/** `/studio`: return a chat elevated to herdr to Studio (handled by the chat box, never sent to the agent). */
+export const STUDIO_SESSION_COMMAND_DEFINITION: BridgeSessionCommandDefinition = {
+  key: 'command:studio', name: 'studio', args: '', descriptionKey: 'herdr.studioSlashCommand',
+}
+
+export function isStudioSessionCommand(input: string): boolean {
+  return /^\/studio$/i.test(input.trim())
 }

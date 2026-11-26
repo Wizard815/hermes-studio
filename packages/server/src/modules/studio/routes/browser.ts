@@ -23,6 +23,7 @@ browserRoutes.post('/api/studio/browser/interact', ctrl.interact)
 // Manual input for the live view (coordinate-based)
 browserRoutes.post('/api/studio/browser/input', ctrl.manualInput)
 browserRoutes.post('/api/studio/browser/viewport', ctrl.viewportInfo)
+browserRoutes.post('/api/studio/browser/element-at', ctrl.elementAt)
 browserRoutes.get('/api/studio/browser/viewport', ctrl.viewportInfo)
 
 // Screenshot capture

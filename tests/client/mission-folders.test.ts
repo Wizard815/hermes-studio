@@ -1,0 +1,66 @@
+import { describe, expect, it, vi } from 'vitest'
+vi.mock('@/api/studio/sessions', () => ({}))
+vi.mock('@/api/coding-agents/herdr', () => ({}))
+vi.mock('@/api/coding-agents', () => ({}))
+vi.mock('@/api/studio/orb', () => ({ fetchOrbStatus: async () => ({ settings: { url: '' } }) }))
+import { buildFolderTree, folderForSpace, herdrCanHost, herdrCanOpenChat } from '@/mission/useFolders'
+import { HERDR_AGENTS } from '@/mission/useMission'
+
+const cat = (id: number, name: string, parent_id: number | null = null) => ({ id, name, parent_id, created_at: 0, updated_at: 0 })
+const categories = [cat(1, 'Clients'), cat(2, 'acme', 1), cat(3, 'api', 2), cat(4, 'Home')]
+const meta = { list: [{ id: 'c2', name: 'acme', color: 'teal', folded: false, start: '~/code/acme', rules: '' }], of: { w9: 'c4' }, at: 1 }
+
+describe('Mission folders are Studio chat folders', () => {
+  it('builds the same nesting as Studio, with Mission colors and start folders', () => {
+    const tree = buildFolderTree(categories, meta)
+    expect(tree.map(f => `${'  '.repeat(f.depth)}${f.name}`)).toEqual(['Clients', '  acme', '    api', 'Home'])
+    expect(tree.find(f => f.id === 'c2')).toMatchObject({ color: 'teal', start: '~/code/acme', parentId: 'c1', categoryId: 2 })
+    expect(tree.find(f => f.id === 'c3')).toMatchObject({ parentId: 'c2', depth: 2, color: '' })
+  })
+
+  it('places a space by its chat folder first, then where it was dropped, then by directory', () => {
+    const folders = buildFolderTree(categories, meta)
+    const panes: any[] = [
+      { pane_id: 'w1:p1', workspace_id: 'w1', studioSessionId: 'chat-a' },
+      { pane_id: 'w9:p1', workspace_id: 'w9', studioSessionId: null },
+    ]
+    const chatFolders = new Map<string, number | null>([['chat-a', 3]])
+    const place = (spaceId: string, cwd: string) => folderForSpace({ spaceId, panes, cwd, home: '/home/me', folders, meta, chatFolders })
+    expect(place('w1', '/tmp')).toBe('c3')
+    expect(place('w9', '/home/me/code/acme/x')).toBe('c4')
+    expect(place('w5', '/home/me/code/acme/web')).toBe('c2')
+    expect(place('w6', '/tmp')).toBe('')
+    // A chat moved out of every folder in Studio is no longer pinned by it.
+    chatFolders.set('chat-a', null)
+    expect(place('w1', '/home/me/code/acme')).toBe('c2')
+  })
+
+  it('hosts coding-agent and hermes chats in herdr panes (no stored agent = Hermes); Ekko runs through Studio', () => {
+    for (const agent of ['claude', 'claude-code', 'codex', 'opencode', 'hermes', '', null, undefined]) expect(herdrCanHost(agent)).toBe(true)
+    for (const agent of ['ekko-agent', 'ekko', 'dsh']) expect(herdrCanHost(agent)).toBe(false)
+  })
+
+  it('runs every Studio coding agent with a terminal CLI in herdr panes, CodeBuddy and ZCode included; DSH uses Studio\'s chat client there', () => {
+    for (const agent of ['pi', 'grok', 'cursor', 'antigravity', 'qwen', 'kimi', 'qoder', 'copilot', 'codebuddy', 'zcode']) expect(herdrCanHost(agent)).toBe(true)
+    for (const agent of ['codebuddy', 'zcode']) expect(HERDR_AGENTS).toContain(agent)
+    expect(HERDR_AGENTS).not.toContain('dsh')
+    expect(herdrCanOpenChat({ id: 'dsh-chat', source: 'coding_agent' })).toBe(true)
+  })
+
+  it('opens every saved top-level chat in herdr, Ekko and old Hermes chats included', () => {
+    expect(herdrCanOpenChat({ id: 'a', source: 'cli' })).toBe(true)
+    expect(herdrCanOpenChat({ id: 'b', source: 'api_server' })).toBe(true)
+    expect(herdrCanOpenChat({ id: 'c', source: 'builtin_agent' })).toBe(true)
+    expect(herdrCanOpenChat({ id: 'd', source: 'coding_agent' })).toBe(true)
+    expect(herdrCanOpenChat({ id: 'e', source: 'global_agent' })).toBe(true)
+  })
+
+  it('offers herdr for no sub-chat, archived, unsaved, group or workflow chat', () => {
+    expect(herdrCanOpenChat(null)).toBe(false)
+    expect(herdrCanOpenChat({ id: 'a', source: 'cli', parentSessionId: 'p' })).toBe(false)
+    expect(herdrCanOpenChat({ id: 'a', source: 'cli', isArchived: true })).toBe(false)
+    expect(herdrCanOpenChat({ id: 'a', source: 'cli', isLocalOnly: true })).toBe(false)
+    expect(herdrCanOpenChat({ id: 'a', source: 'group_chat' })).toBe(false)
+    expect(herdrCanOpenChat({ id: 'a', source: 'workflow' })).toBe(false)
+  })
+})

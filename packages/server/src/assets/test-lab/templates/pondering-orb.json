@@ -1,0 +1,13 @@
+{
+  "id": "pondering-orb",
+  "name": "Pondering Orb",
+  "description": "The homelab dashboard. No pinned image is published, so Studio builds it from git (a few minutes).",
+  "build": { "git": "https://github.com/Wizard815/pondering-orb.git#main" },
+  "port": 8095,
+  "sizeMb": 400,
+  "memory": "768m",
+  "env": { "ORB_PASSWORD": "lab-pass-123", "TZ": "UTC" },
+  "health": { "path": "/api/health", "timeoutSeconds": 120 },
+  "logins": [{ "username": "(password only)", "password": "lab-pass-123" }],
+  "notes": "No other apps are connected to this Orb, so most tabs show empty states."
+}

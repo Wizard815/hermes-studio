@@ -33,7 +33,7 @@ export interface RecordSessionUsageInput {
   /** Model request duration in seconds, excluding tool execution. */
   apiDuration?: number
   source: 'hermes' | 'coding_agent' | 'ekko_agent' | 'model_api'
-  agent: 'hermes' | 'claude_code' | 'codex' | 'pi' | 'grok' | 'opencode' | 'dsh' | 'cursor' | 'antigravity' | 'qwen' | 'kimi' | 'codebuddy' | 'qoder' | 'copilot' | 'zcode' | 'ekko_agent' | 'model_api'
+  agent: 'hermes' | 'claude_code' | 'codex' | 'pi' | 'grok' | 'opencode' | 'dsh' | 'cursor' | 'antigravity' | 'qwen' | 'kimi' | 'codebuddy' | 'qoder' | 'copilot' | 'zcode' | 'ekko_agent' | 'model_api' | `plugin:${string}/${string}`
   profile?: string | null
   model?: string | null
   provider?: string | null
@@ -129,11 +129,45 @@ export function normalizeTokenUsage(
   }
 }
 
+/** One recorded model call (or a price that arrived later for it), for run limits (docs/agent-limits.md). */
+export interface RecordedUsageNotice {
+  sessionId: string
+  runId?: string
+  parentRunId?: string
+  /** Tokens read and written, cache included; 0 for a late price. */
+  tokens: number
+  /** USD, when the call has a price. */
+  costUsd?: number
+  /** A price filled in after the call was recorded (the model catalog was still loading). */
+  late: boolean
+}
+
+const usageListeners = new Set<(notice: RecordedUsageNotice) => void>()
+
+export function onSessionUsageRecorded(listener: (notice: RecordedUsageNotice) => void): () => void {
+  usageListeners.add(listener)
+  return () => usageListeners.delete(listener)
+}
+
+function publishUsage(notice: RecordedUsageNotice) {
+  for (const listener of usageListeners) {
+    try { listener(notice) } catch { logger.warn('[usage-recorder] usage listener failed') }
+  }
+}
+
 export function recordSessionUsage(input: RecordSessionUsageInput): NormalizedTokenUsage {
   const usage = normalizeTokenUsage(input.usage, input.fallbackUsage)
-  const notify = (cost?: UsageCost) => {
+  const notify = (cost?: UsageCost, late = false) => {
     try { input.onRecorded?.({ ...usage, ...(cost ? { costUsd: cost.costUsd, costSource: cost.costSource } : {}) }) }
     catch { logger.warn('[usage-recorder] usage notification failed') }
+    if (input.sessionId && input.origin !== 'external') {
+      const costUsd = typeof cost?.costUsd === 'number' && Number.isFinite(cost.costUsd) ? cost.costUsd : undefined
+      publishUsage({
+        sessionId: input.sessionId, runId: input.runId || undefined, parentRunId: input.parentRunId, late,
+        tokens: late ? 0 : usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens,
+        ...(costUsd !== undefined ? { costUsd } : {}),
+      })
+    }
   }
   const canPrice = input.origin !== 'external' || !usage.isEstimated
   try {
@@ -191,7 +225,7 @@ export function recordSessionUsage(input: RecordSessionUsageInput): NormalizedTo
       const model = input.model
       void refreshModelCatalog().then(snapshot => {
         const estimate = estimateCatalogUsageCost(snapshot, provider, model, usage, input.usageScope, input.apiCalls, baseUrl)
-        if (estimate) { fillMissingUsageCost(row, estimate); notify(estimate) }
+        if (estimate) { fillMissingUsageCost(row, estimate); notify(estimate, true) }
       }).catch(err => logger.warn({ err }, '[usage-recorder] failed to fill catalog cost'))
     }
   } catch (err) {

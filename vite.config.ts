@@ -57,6 +57,12 @@ export default defineConfig({
     // CSS code splitting for better caching
     cssCodeSplit: true,
     rollupOptions: {
+      // Studio, plugin frames, and the herdr Mission view served at /mission/ and on its own port.
+      input: {
+        app: resolve(__dirname, 'packages/client/index.html'),
+        plugin: resolve(__dirname, 'packages/client/plugin-frame.html'),
+        mission: resolve(__dirname, 'packages/client/mission.html'),
+      },
       output: {
         // Optimize chunk file names for better caching
         chunkFileNames: 'assets/js/[name]-[hash].js',

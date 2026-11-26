@@ -1,3 +1,9 @@
+import { uiSkillsPointer } from '../../studio/public/ui-skills'
+import { providerAccountHome, providerAccountId } from '../../studio/public/provider-account'
+import { canonicalProviderId, logicalModelSelection } from '../../studio/public/model-routing'
+import { migrateSessionRuntime } from './session-runtime-migration'
+import { saveModelTarget } from '../../studio/public/model-target-store'
+import { resolveProviderUpstream } from '../../studio/public/provider-upstream'
 import { lowestReasoningEffort } from '../../../../../shared/reasoning-effort'
 import { studioModelReasoningEffort } from '../../studio/public/model-reasoning-effort'
 import type { CodingAgentDefinition, CodingAgentConfigFileDefinition } from '../contracts/definition'
@@ -11,6 +17,9 @@ import { isNativeCodingAgent, nativeCodingAgentSupportsScoped, isGlobalOnlyCodin
 import { prioritizeManagedNpmBin } from './managed-command-path'
 import { readTomlAssignment } from './toml-assignment'
 import { studioMcpCapabilities } from '../../studio/public/runs/mcp-capabilities'
+import { pluginMcpServers, mergePluginMcpServers } from '../../studio/public/plugin-mcp'
+import { DshManagedInstall, validateDshInstallOptions, type DshInstallOptions } from './dsh/managed-install'
+import { preflightDsh } from './dsh/preflight'
 import { prepareDshRuntime, DSH_API_KEY_ENV } from './dsh/runtime-config'
 import { readDshMcpServers, validateDshSettings } from './dsh/config'
 import { createDshHost } from './dsh/host'
@@ -24,10 +33,16 @@ import { delimiter, dirname, join, win32 as win32Path } from 'path'
 import { promisify } from 'util'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { getWebUiHome } from '../../studio/public/config'
-import { getProfileDir, PROVIDER_ENV_MAP, readConfigYamlForProfile, safeReadFile } from '../../studio/public/profile-config'
-import { getCompatibleCustomProviders } from '../../studio/contracts/provider-compat'
+import { agentAsksBeforeActing, withApprovals, withApprovalsEnv } from './approvals'
+import { cleanRoomCommand, cleanRoomExec, cleanRoomHome, cleanRoomTerminalDocker, cleanRoomWebTools, ensureCleanRoom, isCleanRoom, studioConfigMounts } from './cleanroom'
+import { herdrKindForStudioAgent } from './herdr/protocol'
+import { answerClaudeFirstRun } from './herdr/first-run'
+export { withApprovals, withApprovalsEnv } from './approvals'
+import { getProfileDir, PROVIDER_ENV_MAP, readConfigYamlForProfile, safeReadFile } from '../../studio/public/provider-config'
+import { getCompatibleCustomProviders, resolveCustomProviderApiKey } from '../../studio/contracts/provider-compat'
 import { registerClaudeCodeProxyTarget } from './claude-code/proxy'
-import { registerCodexProxyTarget, restoreCodexProxyTarget } from './codex/proxy'
+import { paneTurnContextFile, paneTurnContextLaunch, withStudioTurnContextHook } from './claude-code/turn-context'
+import { registerCodexProxyTarget } from './codex/proxy'
 import { compactCodexThread } from './codex/compact'
 import { writeManagedPromptFile } from './prompt-file'
 import type { ApiMode, CodingAgentImageInput } from '../protocol/types'
@@ -63,13 +78,13 @@ import { getCodingAgentGlobalHome } from '../../studio/public/coding-agent-globa
 import { codingAgentContextPolicy, compactionPercent, claudeCompactionPercent, piCompactionSettings, type CodingAgentContextPolicy } from './context-policy'
 import { createCodingAgentModelDiscovery } from './models'
 import { nativeModelVariant } from './models/variants'
+import { classifySpawnError, codingAgentNotInstalledMessage, NODE_ENVIRONMENT_MISSING_CODE, NODE_ENVIRONMENT_MISSING_MESSAGE, spawnFailureCode, spawnFailureMessage } from './spawn-errors'
 
 const execFileAsync = promisify(execFile)
 const LAUNCH_API_MODES = new Set<ApiMode>(['chat_completions', 'codex_responses', 'anthropic_messages'])
 const CODING_AGENT_HOME_DIR = 'coding-agent'
 const CODEX_MODEL_CATALOG_FILE = 'codex-model-catalog.json'
 const CODEX_CATALOG_BASE_INSTRUCTIONS = 'You are Codex, a coding agent. Be precise, safe, and helpful.'
-const NODE_ENVIRONMENT_MISSING_CODE = 'node_environment_missing'
 const POSIX_LAUNCHER_FILE = 'launch.sh'
 const WINDOWS_LAUNCHER_FILE = 'launch.ps1'
 const CLAUDE_CODE_SKIP_PERMISSIONS_ARGS = ['--dangerously-skip-permissions']
@@ -77,6 +92,17 @@ const PI_MCP_ADAPTER_PACKAGE = 'pi-mcp-adapter'
 const OFFICIAL_NPM_REGISTRY = 'https://registry.npmjs.org'
 const PI_PROVIDER_ID = 'hermes-studio'
 const PI_PROXY_TARGET_FILE = 'proxy-target.json'
+
+async function registerSavedCodexTarget(input: Parameters<typeof registerCodexProxyTarget>[0]) {
+  const target = registerCodexProxyTarget(input)
+  await saveModelTarget('codex_responses', input, target.token)
+  return target
+}
+async function registerSavedClaudeTarget(input: Parameters<typeof registerClaudeCodeProxyTarget>[0]) {
+  const target = registerClaudeCodeProxyTarget(input)
+  await saveModelTarget('anthropic_messages', { ...input, profile: input.profile || 'default' }, target.token)
+  return target
+}
 const PI_DYNAMIC_PROMPT_FILE = 'dynamic-system-prompt.md'
 const PI_STUDIO_EXTENSION_FILE = 'hermes-studio-runtime.ts'
 const PI_PROXY_TARGET_KEY_FILE = '.pi-proxy-target.key'
@@ -85,13 +111,17 @@ const PI_PROXY_TARGET_LEGACY_AAD = Buffer.from('hermes-studio/pi-proxy-target/v1
 const CODEX_TOOL_SEARCH_MIN_VERSION = '0.128.0'
 const CODEX_TOOL_SEARCH_ALWAYS_DEFER_REMOVED_VERSION = '0.142.0'
 const CODEX_VERSION_CACHE_TTL_MS = 5 * 60 * 1000
+/** How long a launch waits for the agent's model list (it only picks a default effort). */
+const LAUNCH_MODEL_LOOKUP_MS = 3000
 const HERMES_MCP_SERVERS: ReadonlyArray<{ name: string; toolset: string }> = [
   { name: 'ekko-studio-api', toolset: 'api' },
+  { name: 'ekko-studio-plugins', toolset: 'plugins' },
   { name: 'ekko-studio-browser', toolset: 'browser' },
   { name: 'ekko-studio-use', toolset: 'use' },
   { name: 'ekko-studio-interaction', toolset: 'plan' },
 ]
 const HERMES_MCP_SERVER_NAMES: Set<string> = new Set(HERMES_MCP_SERVERS.map(server => server.name))
+const managedMcpServers = () => [...HERMES_MCP_SERVERS, ...pluginMcpServers()]
 const LEGACY_HERMES_MCP_SERVER_NAMES = new Set([
   'ekko-studio-plan',
   'hermes-studio-api',
@@ -110,7 +140,15 @@ const LEGACY_HERMES_MCP_COMMANDS = new Set([
 ])
 const HERMES_MCP_MANAGED_ENV_KEY = 'HERMES_WEB_UI_MANAGED_MCP'
 const HERMES_STUDIO_SESSION_ENV_KEY = 'HERMES_STUDIO_SESSION_ID'
+/** Codex hands its MCP servers only a short list of variables; this one says which chat a Studio tool call is from. */
+const CODEX_MCP_FORWARDED_ENV = [HERMES_STUDIO_SESSION_ENV_KEY]
 const GLOBAL_CODEX_SHADOW_LINK_DIRS = new Set(['memories', 'plugins', 'rules', 'skills', 'vendor_imports', 'visualizations'])
+
+/** Native agents have no skills folder Studio fills: they get a pointer to the UI skills (docs/ui-skills.md). */
+async function withUiSkillsPointer(prompt: string): Promise<string> {
+  const pointer = await uiSkillsPointer(getGlobalConfigHome()).catch(() => '')
+  return [prompt, pointer].filter(Boolean).join('\n\n')
+}
 
 let cachedCodexVersion: { version: string; checkedAt: number } | null = null
 
@@ -253,6 +291,7 @@ export interface CodingAgentToolStatus extends CodingAgentDefinition {
   source: 'user-cli' | 'not-installed'
   path: string
   error?: string
+  compatibility?: { pinnedVersion: string; previousVersion: string; adapterRevision: number; verifiedVersion: string }
 }
 
 export interface CodingAgentsStatus {
@@ -498,24 +537,9 @@ function prependPathEntries(env: NodeJS.ProcessEnv, entries: Array<string | null
 }
 
 function nodeEnvironmentMissingError(): Error {
-  const err = new Error('Node/npm environment was not detected. Please install Node.js and try again.')
+  const err = new Error(NODE_ENVIRONMENT_MISSING_MESSAGE)
   ;(err as any).code = NODE_ENVIRONMENT_MISSING_CODE
   return err
-}
-
-function isNodeEnvironmentMissingError(err: any): boolean {
-  const text = [
-    err?.code,
-    err?.message,
-    typeof err?.stderr === 'string' ? err.stderr : '',
-    typeof err?.stdout === 'string' ? err.stdout : '',
-  ].filter(Boolean).join('\n').toLowerCase()
-  return text.includes('enoent') ||
-    text.includes('spawn npm') ||
-    text.includes('npm: command not found') ||
-    text.includes('npm not found') ||
-    text.includes('node: command not found') ||
-    text.includes('node not found')
 }
 
 function npmCliFromNpmBin(npmBin: string): { node: string; npmCli: string } | null {
@@ -675,8 +699,10 @@ async function resolveStoredProviderLaunchInput(
   const profile = String(input.profile || existingSession?.profile || 'default').trim() || 'default'
   const inputProvider = String(input.provider || '').trim()
   const storedProvider = String(existingSession?.provider || '').trim()
-  const provider = String(inputProvider || storedProvider).trim()
-  const model = String(input.model || existingSession?.model || '').trim()
+  const config = await readConfigYamlForProfile(profile)
+  const selection = logicalModelSelection(profile, inputProvider || storedProvider, String(input.model || existingSession?.model || '').trim())
+  const provider = selection.provider
+  const model = selection.model
   const workspace = input.workspace || existingSession?.workspace || undefined
   let baseUrl = String(input.baseUrl || '').trim()
   let apiKey = String(input.apiKey || '').trim()
@@ -684,6 +710,7 @@ async function resolveStoredProviderLaunchInput(
     ? normalizeStoredLaunchApiMode(existingSession?.api_mode)
     : undefined
   let apiMode = input.apiMode || storedApiMode
+  if (provider !== (inputProvider || storedProvider)) { baseUrl = ''; apiKey = ''; apiMode = undefined }
   assertProviderAvailable(provider)
   let canonicalProvider = provider
   const ignoredStaleProviderRuntime = belongsToDifferentBuiltinProvider(provider, baseUrl)
@@ -696,10 +723,6 @@ async function resolveStoredProviderLaunchInput(
     return { ...input, profile, provider: provider || input.provider, model: model || input.model, workspace, baseUrl, apiKey, apiMode }
   }
 
-  let config: Record<string, any> = {}
-  try {
-    config = await readConfigYamlForProfile(profile)
-  } catch {}
   const envContent = await safeReadFile(join(getProfileDir(profile), '.env')) || ''
   const normalizedProvider = providerKeyWithoutCustomPrefix(provider)
   const preset = PROVIDER_PRESETS.find(item => item.value === normalizedProvider)
@@ -708,15 +731,16 @@ async function resolveStoredProviderLaunchInput(
   const customProviders = getCompatibleCustomProviders(config)
   const customEntry = customProviders.find((entry) => {
     const name = slugProviderName(String(entry?.name || ''))
-    return candidates.includes(`custom:${name}`) || candidates.includes(`custom_${name}`) || candidates.includes(name)
+    return entry.catalog_provider === provider || candidates.includes(`custom:${name}`) || candidates.includes(`custom_${name}`) || candidates.includes(name)
   })
   if (customEntry) {
-    canonicalProvider = `custom:${slugProviderName(String(customEntry.name || normalizedProvider))}`
+    canonicalProvider = customEntry.catalog_provider || `custom:${slugProviderName(String(customEntry.name || normalizedProvider))}`
     if (!baseUrl) baseUrl = String(customEntry.base_url || '').trim()
-    if (!apiKey) apiKey = String(customEntry.api_key || '').trim()
-    if (!apiKey) {
-      const keyEnv = String(customEntry.key_env || '').trim()
-      if (keyEnv) apiKey = parseEnvValue(envContent, keyEnv)
+    if (!apiKey) apiKey = resolveCustomProviderApiKey(customEntry, envContent)
+    if (!apiKey && customEntry.auth_provider) {
+      const runtime = await resolveProviderUpstream({ profile, provider: canonicalProvider, model })
+      apiKey = runtime.apiKey || ''
+      if (!baseUrl) baseUrl = runtime.baseUrl || ''
     }
     if (!apiMode) {
       apiMode = normalizeLaunchApiMode(
@@ -803,13 +827,14 @@ function makeAgentSessionId(): string {
 }
 
 function getScopedConfigRoot(id: CodingAgentId, scope: Required<CodingAgentConfigScope>): string {
-  return join(getWebUiHome(), CODING_AGENT_HOME_DIR, 'model', scope.profile, scope.provider, id)
+  return join(providerAccountHome(providerAccountId(scope.profile)), CODING_AGENT_HOME_DIR, 'model', scope.profile, scope.provider, id)
 }
 
 function getScopedRuntimeConfigRoot(
   id: CodingAgentId,
   scope: Required<CodingAgentConfigScope>,
   input: Pick<CodingAgentLaunchInput, 'sessionId' | 'agentSessionId' | 'groupRuntimeScope' | 'studioMcpTokenFile'>,
+  rootDir = getScopedConfigRoot(id, scope),
 ): string {
   const groupRoomId = String(input.groupRuntimeScope?.roomId || '').trim()
   const groupAgentId = String(input.groupRuntimeScope?.agentId || '').trim()
@@ -820,14 +845,13 @@ function getScopedRuntimeConfigRoot(
       return `${readable}_${digest}`
     }
     return join(
-      getScopedConfigRoot(id, scope),
+      rootDir,
       'group-chat',
       stableSegment(groupRoomId),
       stableSegment(groupAgentId),
       ...(input.studioMcpTokenFile ? ['runs', createHash('sha256').update(input.studioMcpTokenFile).digest('hex').slice(0, 24)] : []),
     )
   }
-  const rootDir = getScopedConfigRoot(id, scope)
   const sessionId = String(input.sessionId || '').trim()
   const agentSessionId = String(input.agentSessionId || '').trim()
   if ((!sessionId || !agentSessionId) && (id === 'pi' || id === 'dsh')) {
@@ -1015,7 +1039,7 @@ async function prepareGlobalCodexShadowHome(rootDir: string, systemPrompt: strin
     if (HERMES_MCP_SERVER_NAMES.has(name) || LEGACY_HERMES_MCP_SERVER_NAMES.has(name)
       || server?.env?.[HERMES_MCP_MANAGED_ENV_KEY]) delete externalMcp[name]
   }
-  config.mcp_servers = { ...externalMcp, ...getCodingAgentManagedMcpServerConfigs('codex', profile, runTokenFile) } as any
+  config.mcp_servers = mergePluginMcpServers(externalMcp, getCodingAgentManagedMcpServerConfigs('codex', profile, runTokenFile)) as any
   await writeFile(join(rootDir, 'config.toml'), stringifyToml(config), { mode: 0o600 })
 
   const promptPath = join(rootDir, 'AGENTS.md')
@@ -1207,22 +1231,23 @@ function inheritClaudeSettings(existingContent: string | null | undefined = ''):
 
 function claudeMcpConfigJson(profile: string, runTokenFile: string | undefined, ...existingContents: Array<string | null | undefined>): string {
   const mcpServers: Record<string, unknown> = {}
+  const managed: Record<string, unknown> = {}
   for (const content of existingContents) {
     Object.assign(mcpServers, parseClaudeMcpServers(content))
   }
-  for (const server of HERMES_MCP_SERVERS) {
+  for (const server of managedMcpServers()) {
     if (getDisabledManagedMcpServers('claude-code', profile).has(server.name)) continue
     const config = managedHermesMcpServerConfig('claude-code', profile, server.name, server.toolset, runTokenFile)
-    mcpServers[server.name] = config
+    managed[server.name] = config
   }
-  return `${JSON.stringify({ mcpServers }, null, 2)}\n`
+  return `${JSON.stringify({ mcpServers: mergePluginMcpServers(mcpServers, managed) }, null, 2)}\n`
 }
 
 function cursorMcpConfigJson(profile: string, runTokenFile: string | undefined): string {
   const mcpServers: Record<string, unknown> = {}
   // Cursor loads user/project MCP itself. Copying those entries into the plugin
   // would start them twice and bypass Cursor's own disabled-server preferences.
-  for (const server of HERMES_MCP_SERVERS) {
+  for (const server of managedMcpServers()) {
     if (getDisabledManagedMcpServers('cursor', profile).has(server.name)) continue
     mcpServers[server.name] = managedHermesMcpServerConfig('cursor', profile, server.name, server.toolset, runTokenFile)
   }
@@ -1416,9 +1441,11 @@ function codexMcpConfigToml(
   ...externalContents: Array<string | null | undefined>
 ): string {
   const blocks: string[] = [...parseCodexExternalMcpBlocks(...externalContents)]
+  const external = (parseToml(blocks.join('\n')).mcp_servers || {}) as Record<string, unknown>
   const disabledManaged = getDisabledManagedMcpServers(agentId, profile)
-  for (const item of HERMES_MCP_SERVERS) {
+  for (const item of managedMcpServers()) {
     const server = managedHermesMcpServerConfig(agentId, profile, item.name, item.toolset, runTokenFile)
+    if (mergePluginMcpServers(external, { [item.name]: server })[item.name] !== server) continue
     const lines = [
       `[mcp_servers.${item.name}]`,
     ]
@@ -1431,6 +1458,7 @@ function codexMcpConfigToml(
     if (server.env && typeof server.env === 'object' && !Array.isArray(server.env)) {
       lines.push(`env = ${tomlInlineStringTable(server.env as Record<string, string>)}`)
     }
+    if (agentId === 'codex' && typeof server.command === 'string' && server.command) lines.push(`env_vars = ${tomlStringArray(CODEX_MCP_FORWARDED_ENV)}`)
     lines.push('')
     blocks.push(lines.join('\n'))
   }
@@ -1504,6 +1532,17 @@ function piStudioRuntimeExtension(): string {
     '    try { instructions = readFileSync(path, "utf8").trim(); } catch {}',
     '    if (!instructions) return;',
     '    return { systemPrompt: `${event.systemPrompt}\\n\\n${instructions}` };',
+    '  });',
+    '  // Pi has no approvals of its own: with HERMES_PI_ASK=1 it asks before running',
+    '  // commands or writing files (Studio\'s approval card, or Pi\'s own dialog in a terminal).',
+    '  const ask = new Set(["bash", "powershell", "edit", "write"]);',
+    '  pi.on("tool_call", async (event: any, ctx: any) => {',
+    '    if (process.env.HERMES_PI_ASK !== "1" || !ask.has(event.toolName)) return;',
+    '    const input = event.input || {};',
+    '    const what = event.toolName === "bash" || event.toolName === "powershell" ? String(input.command || "") : String(input.path || input.file_path || "");',
+    '    if (!ctx.hasUI) return { block: true, reason: "This needs approval and nobody can answer here." };',
+    '    const ok = await ctx.ui.confirm(`Pi wants to use ${event.toolName}`, what);',
+    '    if (!ok) return { block: true, reason: "The user denied this." };',
     '  });',
     '}',
     '',
@@ -1590,11 +1629,11 @@ function piUserMcpConfig(...existingContents: Array<string | null | undefined>):
 function piMcpConfig(profile: string, runTokenFile: string | undefined, ...externalContents: Array<string | null | undefined>): string {
   const external = parsePiExternalMcpConfig(...externalContents)
   const disabledManaged = getDisabledManagedMcpServers('pi', profile)
-  const mcpServers = Object.fromEntries(HERMES_MCP_SERVERS
+  const mcpServers = Object.fromEntries(managedMcpServers()
     .filter(item => !disabledManaged.has(item.name))
     .map((item) => {
     const server = managedHermesMcpServerConfig('pi', profile, item.name, item.toolset, runTokenFile)
-    const requestTimeoutMs = item.toolset === 'api' ? 120_000 : item.toolset === 'use' ? 360_000 : 1_860_000
+    const requestTimeoutMs = (item.toolset === 'api' || item.toolset === 'plugins') ? 120_000 : item.toolset === 'use' ? 360_000 : 1_860_000
     // plan and use are always-on direct tools. The use toolset collapses all
     // Studio operations (including session_get / session_messages) into a
     // single toolset meta-tool, so registering it directly costs one tool, not
@@ -1615,11 +1654,16 @@ function piMcpConfig(profile: string, runTokenFile: string | undefined, ...exter
       ...external.settings,
       ...PI_RUNTIME_MCP_SETTINGS,
     },
-    mcpServers: {
-      ...external.mcpServers,
-      ...mcpServers,
-    },
+    mcpServers: mergePluginMcpServers(external.mcpServers, mcpServers),
   }, null, 2)}\n`
+}
+
+/** Runtime-neutral managed transport; custom runtimes adapt its configuration themselves. */
+export function getPluginAgentManagedMcpServerConfigs(profile: string, runTokenFile: string): Record<string, Record<string, unknown>> {
+  return Object.fromEntries(managedMcpServers().map(item => {
+    const server = hermesMcpServerConfig(profile, item.name, item.toolset)
+    return [item.name, { ...server, env: { ...server.env, HERMES_WEB_UI_RUN_TOKEN_FILE: runTokenFile } }]
+  }))
 }
 
 export function getCodingAgentManagedMcpServerConfigs(
@@ -1630,10 +1674,10 @@ export function getCodingAgentManagedMcpServerConfigs(
   if (!['claude-code', 'codex', 'pi', 'grok', 'opencode', 'dsh', 'cursor', 'antigravity', 'qwen', 'kimi', 'codebuddy', 'qoder', 'copilot', 'zcode'].includes(id)) return {}
   if (id === 'zcode') return {}
   const disabledManaged = getDisabledManagedMcpServers(id, profile)
-  return Object.fromEntries(HERMES_MCP_SERVERS.map((item) => {
+  return Object.fromEntries(managedMcpServers().map((item) => {
     const server = managedHermesMcpServerConfig(id, profile || 'default', item.name, item.toolset, runTokenFile)
     if (id === 'pi') {
-      const requestTimeoutMs = item.toolset === 'api' ? 120_000 : item.toolset === 'use' ? 360_000 : 1_860_000
+      const requestTimeoutMs = (item.toolset === 'api' || item.toolset === 'plugins') ? 120_000 : item.toolset === 'use' ? 360_000 : 1_860_000
       // plan and use are always-on direct tools (use collapses all Studio
       // operations into one toolset meta-tool, so direct registration costs a
       // single tool). See piMcpConfig for the session-readability rationale.
@@ -1650,6 +1694,7 @@ export function getCodingAgentManagedMcpServerConfigs(
     if (id === 'codex' || id === 'grok') {
       return [item.name, {
         ...server,
+        ...(id === 'codex' && typeof server.command === 'string' && server.command ? { env_vars: CODEX_MCP_FORWARDED_ENV } : {}),
         startup_timeout_sec: 120,
         ...((item.toolset === 'use' || item.toolset === 'plan') ? { tool_timeout_sec: Math.max(360, Number(server.tool_timeout_sec) || 0) } : {}),
         ...(disabledManaged.has(item.name) ? { enabled: false } : {}),
@@ -1671,7 +1716,7 @@ function piManagedServerToolset(name: string, server: Record<string, unknown>): 
   const env = (server.env && typeof server.env === 'object' ? server.env : {}) as Record<string, unknown>
   if (typeof env.HERMES_MCP_TOOLSET === 'string' && env.HERMES_MCP_TOOLSET) return env.HERMES_MCP_TOOLSET
   const bare = String(name).replace(/^mcp__/, '')
-  const suffix = /-(api|browser|devices|use|interaction|plan)$/.exec(bare)?.[1]
+  const suffix = /-(api|plugins|browser|devices|use|interaction|plan)$/.exec(bare)?.[1]
   if (suffix) return suffix === 'interaction' ? 'plan' : suffix
   return ''
 }
@@ -1863,7 +1908,7 @@ export async function restorePersistedPiProxyTargets(): Promise<number> {
         || (!apiKey || isRetiredProvider(input.provider))) continue
       const restoredInput = { ...input, apiKey }
       delete restoredInput.apiKeyEncrypted
-      restoreCodexProxyTarget(restoredInput, token)
+      registerCodexProxyTarget(restoredInput, { token })
       if (legacyApiKey || encryptedVersion === 1) {
         const migratedInput = { ...input }
         delete migratedInput.apiKey
@@ -1962,7 +2007,7 @@ export async function restorePersistedCodexProxyTargets(): Promise<number> {
       }, null)
       const apiKey = String(resolved.apiKey || '').trim()
       if (!profile || !provider || !model || !baseUrl || (!apiKey || isRetiredProvider(provider))) continue
-      restoreCodexProxyTarget({
+      registerCodexProxyTarget({
         profile,
         provider,
         model,
@@ -1972,7 +2017,7 @@ export async function restorePersistedCodexProxyTargets(): Promise<number> {
         agentId: config.agentId,
         agentSessionId,
         chatSessionId,
-      }, token)
+      }, { token })
       restoredRouteKeys.add(routeKey)
       restoredCount += 1
     } catch {
@@ -2352,8 +2397,10 @@ async function runNpm(args: string[], options: { timeout?: number; env?: NodeJS.
   })
 }
 
-function normalizeError(err: any): string {
-  if (isNodeEnvironmentMissingError(err)) return nodeEnvironmentMissingError().message
+/** `agentName` only where the program that ran was the agent's own CLI (its status check). */
+function normalizeError(err: any, agentName?: string): string {
+  const missing = spawnFailureMessage(classifySpawnError(err), agentName)
+  if (missing) return missing
   const stderr = typeof err?.stderr === 'string' ? err.stderr.trim() : ''
   const stdout = typeof err?.stdout === 'string' ? err.stdout.trim() : ''
   const message = stderr || stdout || err?.message || String(err)
@@ -2361,8 +2408,8 @@ function normalizeError(err: any): string {
 }
 
 function normalizeErrorCode(err: any): string | undefined {
-  return isNodeEnvironmentMissingError(err) ? NODE_ENVIRONMENT_MISSING_CODE
-    : err?.code === 'coding_agent_environment_unavailable' ? err.code : undefined
+  return spawnFailureCode(classifySpawnError(err))
+    || err?.code === 'coding_agent_environment_unavailable' || String(err?.code || '').startsWith('DSH_') ? err.code : undefined
 }
 
 async function findCommandPaths(command: string, env: NodeJS.ProcessEnv): Promise<string[]> {
@@ -2444,6 +2491,7 @@ function commandExecution(command: string, args: string[]): CommandExecution {
   return { command: normalizedCommand, args }
 }
 
+const dshInstall = new DshManagedInstall(join(getWebUiHome(), 'coding-agents/dsh/installations'))
 const dshHost = createDshHost({ commandEnv, findCommandPaths, resolveCommandForExecution, commandExecution, getSourceHome: () => join(getGlobalConfigHome(), '.dsh') })
 export const getNativeDshPluginInventory = dshHost.getNativeDshPluginInventory
 export const dshPluginUi = dshHost.ui
@@ -2519,6 +2567,8 @@ async function commandEnv(): Promise<NodeJS.ProcessEnv> {
     ...getDesktopCommonBinPaths(),
   ])
   prioritizeManagedNpmBin(env, npmBin)
+  const dsh = await dshInstall.info().catch(() => undefined)
+  if (dsh?.command) prioritizeManagedNpmBin(env, dirname(dsh.command))
   return env
 }
 
@@ -2588,6 +2638,7 @@ export function getCodingAgentConfigFileDefinitions(id: string): CodingAgentConf
 
 export async function getCodingAgentStatus(definition: CodingAgentDefinition): Promise<CodingAgentToolStatus> {
   let resolvedCommand = ''
+  const compatibility = definition.id === 'dsh' ? await dshInstall.info().catch(() => undefined) : undefined
   try {
     const env = await commandEnv()
     let environmentError: string | undefined
@@ -2596,7 +2647,9 @@ export async function getCodingAgentStatus(definition: CodingAgentDefinition): P
       catch (error) { environmentError = normalizeError(error) }
     }
     const zcode = definition.id === 'zcode' ? await resolveZcodeCommand(['--version'], env, findCommandPaths) : undefined
-    resolvedCommand = zcode?.path || await resolveCommandForExecution(definition.command, env)
+    resolvedCommand = zcode?.path || (definition.id === 'dsh' && process.platform !== 'win32'
+      ? (await findCommandPaths('dsh', env))[0] || definition.command
+      : await resolveCommandForExecution(definition.command, env))
     const execution = commandExecution(zcode?.command || resolvedCommand, zcode?.args || ['--version'])
     const { stdout, stderr } = await execFileAsync(execution.command, execution.args, {
       encoding: 'utf-8',
@@ -2629,6 +2682,7 @@ export async function getCodingAgentStatus(definition: CodingAgentDefinition): P
       rawVersion,
       source: 'user-cli',
       path: resolvedCommand,
+      ...(compatibility ? { compatibility } : {}),
       ...(environmentError ? { error: environmentError } : {}),
     }
     recordCodingAgentStatus(status)
@@ -2642,7 +2696,8 @@ export async function getCodingAgentStatus(definition: CodingAgentDefinition): P
       rawVersion: '',
       source: commandLocated ? 'user-cli' : 'not-installed',
       path: commandLocated ? resolvedCommand : '',
-      error: normalizeError(err),
+      error: normalizeError(err, definition.name),
+      ...(compatibility ? { compatibility } : {}),
     }
     recordCodingAgentStatus(status)
     return status
@@ -2659,6 +2714,7 @@ function recordCodingAgentStatus(status: CodingAgentToolStatus): void {
     source: status.source,
     path: status.path,
     error: status.error || '',
+    compatibility: status.compatibility,
     installations: [],
   })
 }
@@ -2675,6 +2731,7 @@ export interface CodingAgentUpdateResult {
   latestVersion: string
   updateAvailable: boolean
   message?: string
+  code?: string
 }
 
 export function versionGte(a: string, b: string, includePrerelease = false): boolean {
@@ -2754,24 +2811,26 @@ export async function checkUpdateAgent(id: string): Promise<CodingAgentUpdateRes
       withCodingAgentRegistry(tool.id, ['view', tool.packageName, 'version']),
       { timeout: 15_000, env },
     )
-    const latestVersion = stdout.trim()
+    const latestVersion = id === 'dsh' ? (await dshInstall.info()).pinnedVersion || stdout.trim() : stdout.trim()
     const status = await getCodingAgentStatus(tool)
     const updateAvailable = !!latestVersion && status.installed && !versionGte(status.version, latestVersion, id === 'dsh')
     return { success: true, tool: status, latestVersion, updateAvailable }
   } catch (err: any) {
     const status = await getCodingAgentStatus(tool)
-    return { success: false, tool: status, latestVersion: '', updateAvailable: false, message: normalizeError(err) }
+    return { success: false, tool: status, latestVersion: '', updateAvailable: false, message: normalizeError(err), code: normalizeErrorCode(err) }
   }
 }
 
-export async function installCodingAgent(id: string): Promise<CodingAgentMutationResult> {
+export async function installCodingAgent(id: string, options: DshInstallOptions = {}): Promise<CodingAgentMutationResult> {
   const tool = getCodingAgentDefinition(id)
   if (!tool) {
     const err = new Error('Unknown coding agent')
     ;(err as any).status = 400
     throw err
   }
-  if (installingTools.has(tool.id)) {
+  if (tool.id === 'dsh') validateDshInstallOptions(options)
+  else if (options.version !== undefined || options.rollback !== undefined) throw Object.assign(new Error('Version selection is available for DSH only'), { status: 400 })
+  if (installingTools.has(tool.id) || deletingTools.has(tool.id)) {
     const err = new Error('Install is already running')
     ;(err as any).status = 409
     throw err
@@ -2782,13 +2841,21 @@ export async function installCodingAgent(id: string): Promise<CodingAgentMutatio
     if (isNativeCodingAgent(tool.id)) checkNativeCodingAgentPlatform(tool.id)
     if (codingAgentUsesNpm(tool.id)) {
       const env = await commandEnv()
-      await runNpm(withCodingAgentRegistry(
-        tool.id,
-        ['install', '-g', tool.packageName],
-      ), {
-        timeout: 10 * 60 * 1000,
-        env,
-      })
+      if (tool.id === 'dsh') {
+        await dshHost.management.close()
+        await dshInstall.install(options, {
+          resolveVersion: async spec => (await runNpm(withCodingAgentRegistry('dsh', ['view', `${tool.packageName}@${spec}`, 'version']), { env, timeout: 15_000 })).stdout.trim(),
+          install: async (prefix, version) => { await runNpm(withCodingAgentRegistry('dsh', ['install', '-g', '--prefix', prefix, `${tool.packageName}@${version}`]), { env, timeout: 10 * 60_000 }) },
+          preflight: command => preflightDsh(command, join(dshInstall.root, 'scratch'), { env, commandExecution, sourceHome: process.env.DSH_HOME?.trim() || join(getGlobalConfigHome(), '.dsh') }),
+          existing: async () => {
+            const current = await getCodingAgentStatus(tool)
+            const command = process.platform === 'win32' ? await resolveCommandForExecution('dsh', env) : (await findCommandPaths('dsh', env))[0]
+            return current.installed && command ? { command, version: current.version } : undefined
+          },
+        })
+      } else {
+        await runNpm(withCodingAgentRegistry(tool.id, ['install', '-g', tool.packageName]), { timeout: 10 * 60_000, env })
+      }
       if (tool.id === 'pi' && !userSettingsProvidesPiMcpAdapter(await readPiSettings())) {
         await installBundledPiMcpAdapter()
       }
@@ -2808,7 +2875,7 @@ export async function installCodingAgent(id: string): Promise<CodingAgentMutatio
           ? `Install the Antigravity CLI from ${ANTIGRAVITY_INSTALL_URL}`
         : tool.id === 'cursor'
           ? `Install the Cursor CLI from ${CURSOR_CLI_INSTALL_URL}`
-          : status.error || 'Install completed but the command was not found',
+          : (status.error && status.error !== codingAgentNotInstalledMessage(tool.name) ? status.error : 'Install completed but the command was not found'),
       code: !status.installed && !codingAgentUsesNpm(tool.id) ? 'MANUAL_INSTALL' : undefined,
     }
   } catch (err: any) {
@@ -2833,7 +2900,7 @@ export async function deleteCodingAgent(id: string): Promise<CodingAgentMutation
     ;(err as any).status = 400
     throw err
   }
-  if (deletingTools.has(tool.id)) {
+  if (deletingTools.has(tool.id) || installingTools.has(tool.id)) {
     const err = new Error('Delete is already running')
     ;(err as any).status = 409
     throw err
@@ -2855,7 +2922,8 @@ export async function deleteCodingAgent(id: string): Promise<CodingAgentMutation
   try {
     if (codingAgentUsesNpm(tool.id)) {
       const env = await commandEnv()
-      const packagePrefixes = await getCommandPackagePrefixes(tool, env)
+      if (tool.id === 'dsh') { await dshHost.management.close(); await dshInstall.clear() }
+      const packagePrefixes = await getCommandPackagePrefixes(tool, await commandEnv())
       const uninstallArgsList = packagePrefixes.length > 0
         ? packagePrefixes.map(prefix => ['uninstall', '-g', '--prefix', prefix, tool.packageName])
         : [['uninstall', '-g', tool.packageName]]
@@ -3065,12 +3133,16 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       throw Object.assign(new Error('Native model ID and reasoning effort must select the same variant'), { status: 400 })
     }
     if (!reasoningEffort && !variant) {
-      const catalog = (await getCodingAgentModels({ agent: tool.id })).agents[0]
+      // Only picks a default effort: never hold a launch on a slow or offline CLI.
+      const catalog = (await Promise.race([
+        getCodingAgentModels({ agent: tool.id }).catch(() => null),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), LAUNCH_MODEL_LOOKUP_MS).unref?.()),
+      ]))?.agents[0]
       const selected = catalog?.models.find(entry => !entry.hidden && (model ? entry.id === model : entry.isDefault))
       // Native CLIs have their own capabilities; never guess unsupported CLI flags.
       reasoningEffort = lowestReasoningEffort(selected?.reasoningEfforts || []) || ''
       if (selected?.modelFamily && reasoningEffort) {
-        const target = catalog.models.find(entry => !entry.hidden && entry.provider === selected.provider
+        const target = catalog?.models.find(entry => !entry.hidden && entry.provider === selected.provider
           && entry.modelFamily === selected.modelFamily && entry.reasoningEffort === reasoningEffort)
         if (target) model = target.id
         else reasoningEffort = ''
@@ -3145,7 +3217,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       const mcpFile = tool.id === 'zcode' ? undefined : getLiveConfigFileDefinition(tool.id, 'mcp')
       const content = mcpFile ? await safeReadFile(mcpFile.absolutePath) : ''
       const userMcp = content ? JSON.parse(content).mcpServers || {} : {}
-      const nativeMcpServers = { ...userMcp, ...getCodingAgentManagedMcpServerConfigs(tool.id, scope.profile, input.studioMcpTokenFile) }
+      const nativeMcpServers = mergePluginMcpServers(userMcp, getCodingAgentManagedMcpServerConfigs(tool.id, scope.profile, input.studioMcpTokenFile))
       const execution = tool.id === 'zcode'
         ? await resolveZcodeCommand([], await commandEnv(), findCommandPaths, { preferDesktop: process.platform === 'win32' })
         : { command: tool.command, args: [], env: {} }
@@ -3157,7 +3229,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
         nativeFiles.push(selection.file)
       }
       return { agentId: tool.id, mode, profile: scope.profile, provider: 'global', model, reasoningEffort, rootDir, workspaceDir,
-        command: execution.command, args: execution.args, env: execution.env, files: nativeFiles, nativeSystemPrompt: systemPrompt, nativeMcpServers,
+        command: execution.command, args: execution.args, env: execution.env, files: nativeFiles, nativeSystemPrompt: await withUiSkillsPointer(systemPrompt), nativeMcpServers,
         shellCommand: buildLaunchShellCommand({ workspaceDir, ...execution }) }
     }
 
@@ -3298,7 +3370,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
   const model = String(input.model || '').trim()
   assertProviderAvailable(provider)
   const apiKey = String(input.apiKey || '').trim()
-  assertScopedCodingAgentProviderAllowed(mode, provider)
+  assertScopedCodingAgentProviderAllowed(mode, provider, true)
   if (!model) {
     const err = new Error('Model is required')
     ;(err as any).status = 400
@@ -3324,6 +3396,18 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       }
     : input
   const rootDir = getScopedRuntimeConfigRoot(tool.id, scope, isolatedInput)
+  const stored = input.sessionId ? getSession(input.sessionId) : null
+  if (stored && storedCodingAgentMode(stored) === 'scoped' && stored.agent === persistedAgentId(tool.id)
+    && (stored.profile || 'default') === (input.profile || 'default')
+    && canonicalProviderId(input.profile || 'default', stored.provider || '') === provider) {
+    const oldScope = normalizeConfigScope({ profile: stored.profile, provider: stored.provider || undefined })
+    await migrateSessionRuntime({ target: rootDir, accountId: providerAccountId(input.profile),
+      agentSessionId: isolatedInput.agentSessionId, session: stored,
+      candidates: [
+        getScopedRuntimeConfigRoot(tool.id, oldScope, isolatedInput),
+        getScopedRuntimeConfigRoot(tool.id, oldScope, isolatedInput, join(getWebUiHome(), CODING_AGENT_HOME_DIR, 'model', oldScope.profile, oldScope.provider, tool.id)),
+      ] })
+  }
   const workspaceDir = input.sessionId?.startsWith('person-task-')
     ? requireExistingWorkspaceDirectory(input.workspace || '')
     : resolveLaunchWorkspaceRoot(scope, input.workspace)
@@ -3350,11 +3434,11 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
 
   let nativeMcpServers: Record<string, any> | undefined
   if (nativeCodingAgentSupportsScoped(tool.id)) {
-    const targetInput = { provider, model, baseUrl, apiKey, apiMode, reasoningEffort,
+    const targetInput = { profile: scope.profile, provider, model, baseUrl, apiKey, apiMode, reasoningEffort,
       agentId: tool.id, agentSessionId: isolatedInput.agentSessionId, chatSessionId: isolatedInput.sessionId }
     const target = nativeScopedUsesChatCompletions(tool.id, model)
-      ? registerCodexProxyTarget({ ...targetInput, profile: scope.profile })
-      : registerClaudeCodeProxyTarget(targetInput)
+      ? await registerSavedCodexTarget({ ...targetInput, profile: scope.profile })
+      : await registerSavedClaudeTarget(targetInput)
     const prepared = await prepareNativeScopedRuntime({ agentId: tool.id, rootDir, model,
       baseUrl: target.baseUrl, token: target.token, contextWindow: contextPolicy.contextWindow,
       outputLimit: contextPolicy.outputLimit })
@@ -3363,11 +3447,11 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
     env = prepared.env
     const mcpFile = tool.id === 'zcode' ? undefined : getLiveConfigFileDefinition(tool.id, 'mcp')
     const content = mcpFile ? await safeReadFile(mcpFile.absolutePath) : ''
-    nativeMcpServers = { ...(content ? JSON.parse(content).mcpServers || {} : {}),
-      ...getCodingAgentManagedMcpServerConfigs(tool.id, scope.profile, input.studioMcpTokenFile) }
+    nativeMcpServers = mergePluginMcpServers(content ? JSON.parse(content).mcpServers || {} : {},
+      getCodingAgentManagedMcpServerConfigs(tool.id, scope.profile, input.studioMcpTokenFile))
   } else if (tool.id === 'antigravity') {
     if (!['chat_completions', 'codex_responses', 'anthropic_messages'].includes(apiMode)) throw Object.assign(new Error('Antigravity scoped API mode is unsupported'), { status: 400 })
-    const target = registerCodexProxyTarget({ profile: scope.profile, provider, model, baseUrl, apiKey, apiMode, reasoningEffort,
+    const target = await registerSavedCodexTarget({ profile: scope.profile, provider, model, baseUrl, apiKey, apiMode, reasoningEffort,
       agentId: tool.id, agentSessionId: isolatedInput.agentSessionId, chatSessionId: isolatedInput.sessionId })
     const prepared = await prepareAntigravityRuntime({ home: getGlobalConfigHome(), rootDir, systemPrompt: scopedSystemPrompt,
       managedMcp: getCodingAgentManagedMcpServerConfigs('antigravity', scope.profile, input.studioMcpTokenFile),
@@ -3377,7 +3461,8 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
     args = ['--dangerously-skip-permissions']
   } else if (tool.id === 'claude-code') {
     const proxyTarget = baseUrl && apiKey
-      ? registerClaudeCodeProxyTarget({
+      ? await registerSavedClaudeTarget({
+          profile: scope.profile,
           provider,
           model,
           baseUrl,
@@ -3424,7 +3509,8 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       },
     }
     env = settings.env
-    await writeScopedFile('settings', `${JSON.stringify(settings, null, 2)}\n`)
+    // Studio's per-turn context reaches Claude through a hook, not the user's message (claude-code/turn-context.ts).
+    await writeScopedFile('settings', `${JSON.stringify(withStudioTurnContextHook(settings), null, 2)}\n`)
     const globalMcpPath = getLiveConfigFileDefinition(tool.id, 'mcp')?.absolutePath
     const existingMcpPath = getScopedConfigFileDefinition(tool.id, 'mcp', scope)?.absolutePath
     const globalMcpConfig = globalMcpPath ? await safeReadFile(globalMcpPath) : ''
@@ -3459,7 +3545,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       throw err
     }
     const proxyTarget = baseUrl && apiKey
-      ? registerCodexProxyTarget({
+      ? await registerSavedCodexTarget({
           profile: scope.profile,
           provider,
           model,
@@ -3555,7 +3641,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
     // runs/<hash> directory containing its provider credentials and sessions.
     await ensurePiScopedBaseConfigFiles(scope)
     const proxyTarget = baseUrl && apiKey
-      ? registerCodexProxyTarget({
+      ? await registerSavedCodexTarget({
           profile: scope.profile,
           provider,
           model,
@@ -3631,7 +3717,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
     ]
   } else if (tool.id === 'grok') {
     const proxyTarget = baseUrl && apiKey
-      ? registerCodexProxyTarget({
+      ? await registerSavedCodexTarget({
           profile: scope.profile,
           provider,
           model,
@@ -3687,7 +3773,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
       ...(reasoningEffort ? ['--reasoning-effort', reasoningEffort] : []),
     ]
   } else if (tool.id === 'dsh') {
-    const proxyTarget = registerCodexProxyTarget({
+    const proxyTarget = await registerSavedCodexTarget({
       profile: scope.profile, provider, model, baseUrl, apiKey, apiMode, reasoningEffort,
       agentId: tool.id, agentSessionId: isolatedInput.agentSessionId, chatSessionId: isolatedInput.sessionId,
     })
@@ -3712,7 +3798,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
     env = {}
   } else {
     const proxyTarget = baseUrl && apiKey
-      ? registerCodexProxyTarget({
+      ? await registerSavedCodexTarget({
           profile: scope.profile,
           provider,
           model,
@@ -3803,7 +3889,7 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
           ? join(rootDir, 'AGENTS.md')
         : undefined,
     reasoningEffort,
-    ...(nativeCodingAgentSupportsScoped(tool.id) ? { nativeSystemPrompt: scopedSystemPrompt, nativeMcpServers } : {}),
+    ...(nativeCodingAgentSupportsScoped(tool.id) ? { nativeSystemPrompt: await withUiSkillsPointer(scopedSystemPrompt), nativeMcpServers } : {}),
   }
 }
 
@@ -3836,7 +3922,7 @@ async function startCodingAgentRunInternal(
   const resolvedInput = await resolveStoredProviderLaunchInput(input, existingSession)
   const requestedMode = resolvedCodingAgentLaunchMode(id, resolvedInput.mode)
   const requestedProvider = String(resolvedInput.provider || '').trim().toLowerCase()
-  assertScopedCodingAgentProviderAllowed(requestedMode, requestedProvider)
+  assertScopedCodingAgentProviderAllowed(requestedMode, requestedProvider, true)
   if (id !== 'cursor' && requestedMode !== 'global' && (!String(resolvedInput.baseUrl || '').trim() || !String(resolvedInput.apiKey || '').trim())) {
     const err = new Error('Coding agent provider credentials are missing. Re-select the provider/model or update the provider API key before continuing this session.')
     ;(err as any).status = 400
@@ -3848,7 +3934,7 @@ async function startCodingAgentRunInternal(
       (existingSession.agent === persistedAgentId(id) || !existingSession.agent) &&
       (id !== 'antigravity' || !resolvedInput.workspace || resolvedInput.workspace === existingSession.workspace) &&
       (requestedMode === 'global' || (
-        String(existingSession.provider || '').trim() === String(resolvedInput.provider || '').trim() &&
+        canonicalProviderId(resolvedInput.profile || 'default', String(existingSession.provider || '').trim()) === String(resolvedInput.provider || '').trim() &&
         String(existingSession.model || '').trim() === String(resolvedInput.model || '').trim() &&
         (!String(existingSession.api_mode || '').trim() || String(existingSession.api_mode || '').trim() === String(resolvedInput.apiMode || '').trim())
       ))
@@ -3889,7 +3975,22 @@ async function startCodingAgentRunInternal(
   const persistedProvider = isNativeCodingAgent(id) || id === 'cursor' || id === 'antigravity'
     ? String(launch.provider || 'global').trim() || 'global'
     : String(resolvedInput.provider || launch.provider || '').trim() || launch.provider
+  // A clean-room chat runs its agent inside its own container (see cleanroom/).
+  // The container runs the program by its full path (the same path is shared with it).
+  const roomProgram = isCleanRoom(sessionId) ? cleanRoomProgram(await resolveInteractiveCommand(runtimeCommand)) : null
+  const roomCommand = roomProgram?.command || runtimeCommand
+  // The agent's own web tools stay off in the room unless its settings allow them (cleanroom/web-tools.ts).
+  const roomWeb = roomProgram ? cleanRoomWebTools(sessionId, launch.agentId, launch.env) : null
+  const cleanRoom = roomProgram
+    ? await ensureCleanRoom(sessionId, {
+        workspace: launch.workspaceDir,
+        ...studioConfigMounts([...launch.args, ...(launch.rootDir ? [launch.rootDir] : [])], launch.env),
+        program: roomProgram.dir,
+      }, { env: launch.env, agent: launch.agentId, webConfigFile: roomWeb?.configFile })
+    : ''
+  if (cleanRoom) roomWeb?.apply()
   const started = codingAgentRunManager.start({
+    ownerUserId: providerAccountId(launch.profile),
     agentSessionId,
     agentId: launch.agentId,
     mode: launch.mode,
@@ -3900,11 +4001,11 @@ async function startCodingAgentRunInternal(
     sessionId,
     agentNativeSessionId,
     nativeResume: Boolean(existingNativeSessionId),
-    command: runtimeCommand,
-    args: launch.args,
+    command: cleanRoom ? cleanRoomCommand(cleanRoom, roomCommand) : runtimeCommand,
+    args: cleanRoom && roomWeb ? [...launch.args, ...roomWeb.args] : launch.args,
     shellCommand: launch.shellCommand,
     workspaceDir: launch.workspaceDir,
-    env: runtimeEnv,
+    env: cleanRoom ? launch.env : runtimeEnv,
     promptFile: launch.promptFile,
     nativeSystemPrompt: launch.nativeSystemPrompt,
     nativeMcpServers: launch.nativeMcpServers,
@@ -3986,8 +4087,9 @@ export function sendCodingAgentRunInput(
   systemPrompt?: string,
   images: CodingAgentImageInput[] = [],
   storageInput?: string,
+  turnContext?: string,
 ): { runId: string; messageId?: number } {
-  return codingAgentRunManager.send(sessionId, input, { systemPrompt, images, storageInput })
+  return codingAgentRunManager.send(sessionId, input, { systemPrompt, images, storageInput, turnContext })
 }
 
 export function stopCodingAgentRun(sessionId: string): { stopped: boolean } {
@@ -4001,7 +4103,8 @@ export function invalidateCodingAgentProviderRuntime(profileInput: string, provi
   const profile = normalizeScopeSegment(profileInput, 'default', 'profile')
   const providerIdentity = providerInput ? normalizeProviderIdentity(providerInput) : undefined
   const result = codingAgentRunManager.invalidateMatching(launch => (
-    launch.profile === profile && (providerIdentity ? launch.provider === providerIdentity : launch.mode === 'scoped')
+    launch.ownerUserId === providerAccountId(profile)
+    && launch.profile === profile && (providerIdentity ? launch.provider === providerIdentity : launch.mode === 'scoped')
   ))
   return { invalidatedRuns: result.invalidated, deferredRuns: result.deferred }
 }
@@ -4014,4 +4117,210 @@ export async function openCodingAgentNativeTerminal(id: string, input: CodingAge
     nativeTerminal: true,
     terminal,
   }
+}
+
+/** Stored `sessions.agent` value → coding-agent runtime id. */
+export function codingAgentIdForStoredAgent(agent: string | null | undefined): CodingAgentId | null {
+  const value = String(agent || '').trim()
+  if (!value) return null
+  if (value === 'claude' || value === 'claude_code' || value === 'claude-code') return 'claude-code'
+  return getCodingAgentDefinition(value) ? value as CodingAgentId : null
+}
+
+export function storedAgentIdForCodingAgent(id: string): string {
+  return persistedAgentId(id)
+}
+
+/** Agent-specific arguments that reopen an existing native session interactively. */
+export function nativeResumeArgs(id: string, nativeSessionId: string): { prefix: string[]; suffix: string[] } {
+  if (!nativeSessionId) return { prefix: [], suffix: [] }
+  if (id === 'claude-code') return { prefix: [], suffix: ['--resume', nativeSessionId] }
+  if (id === 'codex') return { prefix: ['resume', nativeSessionId], suffix: [] }
+  // Studio's CodeBuddy and ZCode chats keep the CLI's own session id (ACP / stream-json).
+  if (id === 'codebuddy' || id === 'zcode') return { prefix: [], suffix: ['--resume', nativeSessionId] }
+  return { prefix: [], suffix: [] }
+}
+
+/**
+ * Terminal flags for native CLIs whose Studio launch has none for approvals
+ * (Studio's own runs set approvals per turn): asking is each CLI's terminal
+ * default; "auto" (Studio's act-without-asking) needs the CLI's own flag.
+ */
+export function nativeInteractiveApprovalArgs(id: string, asks: boolean): string[] {
+  if (asks) return []
+  if (id === 'codebuddy') return ['--dangerously-skip-permissions']
+  if (id === 'zcode') return ['--mode', 'yolo']
+  return []
+}
+
+/**
+ * Studio's MCP servers for a native CLI in a terminal (Studio's own runs hand
+ * them over ACP): CodeBuddy reads them from `--mcp-config`, like Claude Code.
+ */
+export async function nativeInteractiveMcpArgs(id: string, launch: { rootDir?: string; nativeMcpServers?: Record<string, any> }): Promise<string[]> {
+  if (id !== 'codebuddy' || !launch.rootDir || !launch.nativeMcpServers || !Object.keys(launch.nativeMcpServers).length) return []
+  const path = join(launch.rootDir, 'herdr-mcp.json')
+  await mkdir(launch.rootDir, { recursive: true })
+  await writeFile(path, `${JSON.stringify({ mcpServers: launch.nativeMcpServers }, null, 2)}\n`, { mode: 0o600 })
+  return ['--mcp-config', path]
+}
+
+export interface CodingAgentInteractiveLaunch {
+  agentId: CodingAgentId
+  command: string
+  args: string[]
+  env: Record<string, string>
+  workspaceDir: string
+  provider: string
+  model: string
+  /** The agent runs in the chat's clean-room container (the command is the docker client). */
+  cleanRoom?: boolean
+  /** The clean room's home folder on the host (`/root` inside): the agent's transcripts. */
+  agentHome?: string
+}
+
+/**
+ * Prepare an interactive terminal launch (no RPC/print mode) with Studio's
+ * provider routing, MCP servers and system prompt. Used by herdr panes.
+ */
+export async function prepareCodingAgentInteractiveLaunch(
+  id: string,
+  input: CodingAgentLaunchInput & { resumeNativeSessionId?: string; yolo?: boolean },
+): Promise<CodingAgentInteractiveLaunch> {
+  const { resumeNativeSessionId, yolo, ...launchInput } = input
+  // A chosen provider (e.g. a llama-swap endpoint) needs its stored URL and key,
+  // exactly as Studio's own runs resolve them; without it the agent would fall
+  // back to its vendor's default API.
+  const routed = launchInput.mode !== 'global' && launchInput.provider && !(launchInput.baseUrl && launchInput.apiKey)
+    ? await resolveStoredProviderLaunchInput({ ...launchInput, sessionId: launchInput.sessionId || '' }, null)
+    : launchInput
+  const launch = await prepareCodingAgentLaunch(id, { ...routed, piOutputMode: id === 'pi' ? 'interactive' : routed.piOutputMode })
+  const resume = nativeResumeArgs(launch.agentId, resumeNativeSessionId || '')
+  const asks = !yolo && agentAsksBeforeActing(launch.agentId)
+  const native = [...nativeInteractiveApprovalArgs(launch.agentId, asks), ...await nativeInteractiveMcpArgs(launch.agentId, launch)]
+  if (launch.agentId === 'claude-code') {
+    // A new install must not land on Claude Code's own first-run questions in the pane.
+    try {
+      answerClaudeFirstRun({
+        configDir: launch.env.CLAUDE_CONFIG_DIR || process.env.CLAUDE_CONFIG_DIR,
+        workspace: launch.workspaceDir,
+        apiKey: launch.env.ANTHROPIC_API_KEY,
+        skipPermissions: [...launch.args, ...native].includes('--dangerously-skip-permissions'),
+      })
+    } catch (error) {
+      logger.warn({ err: error }, '[herdr] could not pre-answer Claude Code first-run questions')
+    }
+  }
+  return {
+    agentId: launch.agentId,
+    // herdr starts panes through a login shell with its own PATH; give it the
+    // exact binary Studio would run (including Studio-managed installs).
+    command: await resolveInteractiveCommand(launch.command),
+    // Agents ask in a terminal too, unless set to act without asking in Studio.
+    args: [...resume.prefix, ...(asks ? withApprovals(launch.args) : launch.args), ...native, ...resume.suffix],
+    env: asks ? withApprovalsEnv(launch.agentId, launch.env) : launch.env,
+    workspaceDir: launch.workspaceDir,
+    provider: launch.provider,
+    model: launch.model,
+  }
+}
+
+/**
+ * The agent program's install folder, shared read-only with a clean room: the
+ * deepest folder holding both the command (e.g. an npm prefix's bin/ link)
+ * and the file it really runs.
+ */
+export function cleanRoomProgramDir(command: string): string | undefined {
+  if (!command || !command.startsWith('/')) return undefined
+  let real = command
+  try { real = realpathSync(command) } catch {}
+  const a = dirname(dirname(command)).split('/')
+  const b = dirname(real).split('/')
+  let shared = 0
+  while (shared < a.length && shared < b.length && a[shared] === b[shared]) shared += 1
+  const root = a.slice(0, shared).join('/')
+  return root && root !== '/' && root.split('/').length > 2 ? root : undefined
+}
+
+/**
+ * The command a clean room runs and the install folder it mounts read-only.
+ * A link into another tree (/usr/bin/claude -> /opt/claude-code/bin/claude)
+ * runs by its real path, with that tree mounted instead.
+ */
+export function cleanRoomProgram(command: string): { command: string; dir?: string } {
+  const dir = cleanRoomProgramDir(command)
+  if (dir || !command.startsWith('/')) return { command, dir }
+  let real = command
+  try { real = realpathSync(command) } catch {}
+  const root = dirname(dirname(real))
+  return real !== command && root.split('/').length > 2 ? { command: real, dir: root } : { command, dir }
+}
+
+/** Interactive launch for an existing Studio chat, reusing its stored provider and model. */
+/** A Studio chat's Claude Code pane context file (claude-code/turn-context.ts, `paneTurnContextFile`). */
+export function chatPaneTurnContextFile(sessionId: string): string {
+  return paneTurnContextFile(join(getWebUiHome(), 'herdr', 'turn-context'), sessionId)
+}
+
+export async function prepareCodingAgentSessionLaunch(sessionId: string, profile?: string): Promise<CodingAgentInteractiveLaunch> {
+  const session = getSession(sessionId)
+  const id = codingAgentIdForStoredAgent(session?.agent)
+  if (!session || !id) throw Object.assign(new Error('Chat is not a coding-agent chat'), { status: 400 })
+  const resolved = await resolveStoredProviderLaunchInput({
+    sessionId,
+    profile: profile || session.profile || 'default',
+    mode: session.agent_mode === 'global' ? 'global' : 'scoped',
+    workspace: session.workspace || undefined,
+    agentNativeSessionId: session.agent_native_session_id || undefined,
+    agentSessionId: session.agent_session_id || undefined,
+  }, session)
+  const cleanRoom = isCleanRoom(sessionId)
+  let launch = await prepareCodingAgentInteractiveLaunch(id, {
+    ...resolved,
+    // The pane resumes the native session; it must not also claim a new one.
+    agentNativeSessionId: undefined,
+    resumeNativeSessionId: session.agent_native_session_id || '',
+    // In a clean room the agent may do anything inside its container.
+    yolo: cleanRoom,
+  })
+  if (launch.agentId === 'claude-code') {
+    // Studio's chat box types into this pane; the hook gives those turns Studio's context.
+    const pane = paneTurnContextLaunch(launch, chatPaneTurnContextFile(sessionId), { cleanRoom })
+    if (pane) launch = { ...launch, args: [...launch.args, ...pane.args], env: { ...launch.env, ...pane.env } }
+  }
+  if (!cleanRoom) return launch
+  // A clean-room chat in a terminal (herdr): the agent runs in the chat's container.
+  const program = cleanRoomProgram(launch.command)
+  const roomWeb = cleanRoomWebTools(sessionId, launch.agentId, launch.env)
+  const container = await ensureCleanRoom(sessionId, {
+    workspace: launch.workspaceDir,
+    ...studioConfigMounts(launch.args, launch.env),
+    program: program.dir,
+  }, { env: launch.env, agent: launch.agentId, webConfigFile: roomWeb.configFile })
+  roomWeb.apply()
+  if (launch.agentId === 'claude-code') {
+    // The clean room's own home (`/root` inside) needs the same first-run answers.
+    try {
+      answerClaudeFirstRun({ home: cleanRoomHome(sessionId), workspace: launch.workspaceDir, apiKey: launch.env.ANTHROPIC_API_KEY, skipPermissions: true })
+    } catch (error) {
+      logger.warn({ err: error, sessionId }, '[herdr] could not pre-answer Claude Code first-run questions in the clean room')
+    }
+  }
+  const exec = cleanRoomExec(container, program.command, [...launch.args, ...roomWeb.args], launch.workspaceDir, launch.env, { tty: true })
+  // The docker client under the agent's name, so herdr sees which agent runs in the pane.
+  const agentName = herdrKindForStudioAgent(launch.agentId)
+  const command = agentName ? cleanRoomTerminalDocker(agentName, String((await commandEnv()).PATH || process.env.PATH || '')) : exec.command
+  return { ...launch, command, args: exec.args, env: {}, cleanRoom: true, agentHome: cleanRoomHome(sessionId) }
+}
+
+/** Absolute path of a bare command on Studio's command PATH, or the command unchanged. */
+async function resolveInteractiveCommand(command: string): Promise<string> {
+  if (!command || /[\\/]/.test(command)) return command
+  if (process.platform === 'win32') return resolveCommandForExecution(command, await commandEnv())
+  const searchPath = String((await commandEnv()).PATH || process.env.PATH || '')
+  for (const dir of searchPath.split(delimiter).filter(Boolean)) {
+    const candidate = join(dir, command)
+    if (existsSync(candidate)) return candidate
+  }
+  return command
 }

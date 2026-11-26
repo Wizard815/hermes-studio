@@ -42,7 +42,9 @@ from bridge_runtime import (
     _resolve_runtime,
     _suppress_bridge_platform_hint,
     _title_user_message,
+    _tool_load_info,
     _tool_names_from_definitions,
+    _tool_search_setting,
 )
 
 CLARIFY_TIMEOUT_SECONDS = 300
@@ -175,6 +177,7 @@ class AgentSession:
     config: dict[str, Any] = field(default_factory=dict)
     running: bool = False
     current_run_id: str | None = None
+    pending_gateway_runtime: dict[str, Any] | None = field(default=None, repr=False)
     lock: threading.RLock = field(default_factory=threading.RLock)
     created_at: float = field(default_factory=time.time)
     last_used_at: float = field(default_factory=time.time)
@@ -209,6 +212,69 @@ class AgentPool:
         self._approval_handlers: dict[str, Callable[..., str]] = {}
         self._exec_ask_depth = 0
         self._exec_ask_previous: str | None = None
+        self._mcp_generation = 0
+        self._pending_mcp_refresh: Callable[[], None] | None = None
+        self._retired_mcp_tools: set[str] = set()
+        # Home Assistant actions waiting for their approval: what a trust rule matches.
+        self._trust_actions: dict[str, dict[str, str]] = {}
+        # First streamed text or reasoning of each session's current model request
+        # (epoch seconds): Studio measures model speed from here, as llama.cpp does.
+        self._first_output_at: dict[str, float] = {}
+
+    def schedule_mcp_refresh(self, refresh: Callable[[], None]) -> bool:
+        with self._lock:
+            self._pending_mcp_refresh = refresh
+            return self.refresh_mcp_if_idle()
+
+    def refresh_mcp_if_idle(self) -> bool:
+        """Shared transports cannot be replaced while any foreground/background task uses them."""
+        with self._lock:
+            refresh = self._pending_mcp_refresh
+            if refresh is None or any(session.running or self.has_active_background_for_session(session.session_id) for session in self._sessions.values()):
+                return False
+            try:
+                refresh()
+            except Exception as exc:
+                print(f"[hermes_bridge] plugin MCP refresh pending: {exc}", file=sys.stderr, flush=True)
+                return False
+            self._pending_mcp_refresh = None
+            self._mcp_generation += 1
+            return True
+
+    def _tool_search_changed(self, session: AgentSession) -> bool:
+        """Studio's tool search switch changed config.yaml: rebuild this idle chat's tools."""
+        try:
+            with _profile_env(session.config.get("profile")):
+                current = _tool_search_setting(_load_cfg())
+        except Exception:
+            return False
+        return session.config.get("tool_search", current) != current
+
+    def _repin_session_tools(self, agent: Any) -> None:
+        """Hermes pins a conversation's tools (and keeps a pinned tool_search bridge) for the
+        prompt cache. After the tool search switch the user wants the new set in this chat, so
+        pin the rebuilt agent's tools through Hermes's own helper."""
+        try:
+            from tools.mcp_tool_agent import persist_agent_tool_names
+
+            persist_agent_tool_names(agent)
+        except Exception as exc:
+            print(f"[hermes_bridge] tool pin refresh skipped: {exc}", file=sys.stderr, flush=True)
+
+    def _filter_retired_mcp_tools(self, agent: Any) -> None:
+        if not self._retired_mcp_tools or not isinstance(getattr(agent, "tools", None), list):
+            return
+        # Native discovery may finish registering a transport after register_mcp_servers returns.
+        # Recheck live registrations after discovery before filtering the new Agent snapshot.
+        try:
+            from tools.mcp_tool import _servers, _lock
+            with _lock:
+                for task in _servers.values():
+                    self._retired_mcp_tools.difference_update(getattr(task, "_registered_tool_names", None) or [])
+                    self._retired_mcp_tools.difference_update(_tool_names_from_definitions(getattr(task, "_tools", [])))
+        except ImportError:
+            pass
+        agent.tools = [tool for tool in agent.tools if not self._retired_mcp_tools.intersection(_tool_names_from_definitions([tool]))]
 
     def _install_usage_hook(self) -> None:
         """Observe exact per-request model usage without requiring a user plugin."""
@@ -230,8 +296,92 @@ class AgentPool:
                 flush=True,
             )
 
+    def _install_home_assistant_hook(self) -> None:
+        """Home Assistant service calls go through Hermes's approval gate (bridge_home_assistant)."""
+        try:
+            from hermes_cli.plugins import get_plugin_manager
+
+            manager = get_plugin_manager()
+            hooks = getattr(manager, "_hooks", None)
+            if not isinstance(hooks, dict):
+                raise RuntimeError("Hermes plugin manager does not expose its hook registry")
+            callbacks = hooks.setdefault("pre_tool_call", [])
+            callback = self._home_assistant_pre_tool_call
+            if callback not in callbacks:
+                callbacks.append(callback)
+            # Gadget tools reach devices through the gateway (bridge_gadget).
+            results = hooks.setdefault("transform_tool_result", [])
+            if self._gadget_tool_result not in results:
+                results.append(self._gadget_tool_result)
+            # The plugin hides its tools outside the gateway process; offer them while it runs.
+            from bridge_gadget import offer_gadget_tools
+            from tools.registry import invalidate_check_fn_cache, registry
+
+            if offer_gadget_tools(registry):
+                invalidate_check_fn_cache()
+        except Exception as exc:
+            print(f"[hermes_bridge] failed to install the Home Assistant and Gadget hooks: {exc}", file=sys.stderr, flush=True)
+
+    def _gadget_tool_result(self, tool_name: str = "", args: Any = None, result: Any = None, **_: Any) -> str | None:
+        from bridge_gadget import needs_desk, studio_gadget_result
+
+        if not needs_desk(tool_name, result):
+            return None
+        try:
+            return studio_gadget_result(tool_name, args)
+        except Exception as exc:
+            return json.dumps({"success": False, "error": f"could not reach the gadget through the Hermes gateway: {exc}"})
+
+    def _home_assistant_pre_tool_call(self, tool_name: str = "", args: Any = None, session_id: str = "", **_: Any) -> dict[str, Any] | None:
+        from bridge_home_assistant import home_assistant_action, home_assistant_servers
+
+        try:
+            servers = home_assistant_servers((_load_cfg() or {}).get("mcp_servers"))
+        except Exception:
+            servers = []
+        action = home_assistant_action(tool_name, args, servers)
+        if action is None:
+            return None
+        with self._lock:
+            self._trust_actions[f"{session_id}\0{action['text']}"] = {"kind": action["kind"], "value": action["value"], "text": action["text"]}
+            while len(self._trust_actions) > 200:
+                self._trust_actions.pop(next(iter(self._trust_actions)))
+        # Hermes asks its approval gate with this text; "session"/"always" answers are kept per service.
+        return {"action": "approve", "message": action["text"], "rule_key": f"homeassistant:{action['value']}"}
+
+    def _take_trust_action(self, session_id: str, description: str) -> dict[str, str] | None:
+        """The Home Assistant action an approval is about (matched by the text the hook gave Hermes)."""
+        with self._lock:
+            for key in (f"{session_id}\0{description}", f"\0{description}"):
+                found = self._trust_actions.pop(key, None)
+                if found:
+                    return found
+            # Hermes may frame the text (a gateway card); it is still in there.
+            for key in list(self._trust_actions):
+                text = key.split("\0", 1)[1]
+                if text and text in description:
+                    return self._trust_actions.pop(key)
+        return None
+
+    def _approval_event_fields(self, session_id: str, command: str, description: str) -> dict[str, Any]:
+        """``command``/``description`` for an approval card, plus ``trust_action`` for Home Assistant."""
+        action = self._take_trust_action(session_id, str(description or "")) if description else None
+        if not action:
+            return {"command": str(command or ""), "description": str(description or "")}
+        return {
+            "command": action["text"],
+            "description": "Home Assistant will act on this. Approve to run it, or deny to block it.",
+            "trust_action": {"kind": action["kind"], "value": action["value"]},
+        }
+
+    def _note_model_output(self, session_id: str) -> None:
+        if session_id and session_id not in self._first_output_at:
+            self._first_output_at[session_id] = time.time()
+
     def _post_api_request_usage_hook(self, **kwargs: Any) -> None:
         session_id = str(kwargs.get("session_id") or "").strip()
+        # One model request has ended: the next one times its own first output.
+        first_output_at = self._first_output_at.pop(session_id, None) if session_id else None
         usage = kwargs.get("usage")
         if not session_id or not isinstance(usage, dict):
             return
@@ -248,6 +398,7 @@ class AgentPool:
             "api_duration": kwargs.get("api_duration"),
             "started_at": kwargs.get("started_at"),
             "ended_at": kwargs.get("ended_at"),
+            "first_output_at": first_output_at,
         })
 
     @staticmethod
@@ -405,6 +556,7 @@ class AgentPool:
         model: str | None = None,
         provider: str | None = None,
         background_delegation_enabled: bool | None = None,
+        gateway_runtime: dict[str, Any] | None = None,
     ) -> AgentSession:
         requested_model = str(model or "").strip()
         requested_provider = str(provider or "").strip()
@@ -413,7 +565,28 @@ class AgentPool:
         # cached AgentSession.
         _refresh_worker_profile_env()
         with self._lock:
+            self.refresh_mcp_if_idle()
             existing = self._sessions.get(session_id)
+            if gateway_runtime and existing is not None and not existing.running:
+                if (gateway_runtime.get("api_key") != getattr(existing.agent, "api_key", None)
+                        or (requested_model and existing.config.get("model") != requested_model)
+                        or (requested_provider and existing.config.get("provider") != requested_provider)):
+                    self._destroy_session(session_id)
+                    existing = None
+            refresh_session = None
+            tool_search_changed = existing is not None and not existing.running and self._tool_search_changed(existing)
+            if (existing is not None and not existing.running
+                    and (existing.config.get("mcp_generation", 0) != self._mcp_generation
+                         or tool_search_changed)
+                    and not self.has_active_background_for_session(session_id)
+                    and (not profile or existing.config.get("profile") == profile)):
+                # Reuse the session and history; only rebuild the idle AIAgent's tool snapshot.
+                refresh_session = existing
+                requested_model = requested_model or str(existing.config.get("model") or "")
+                requested_provider = requested_provider or str(existing.config.get("provider") or "")
+                if background_delegation_enabled is None:
+                    background_delegation_enabled = existing.config.get("background_delegation_enabled")
+                existing = None
             if existing is not None:
                 # If profile changed, destroy old session and recreate
                 profile_changed = bool(profile and existing.config.get("profile") != profile)
@@ -494,7 +667,7 @@ class AgentPool:
                 discovered_mcp_tools = _discover_bridge_mcp_tools()
                 cfg = _load_cfg()
                 resolved_model = requested_model or _resolve_model(cfg)
-                runtime = _resolve_runtime(resolved_model, requested_provider or None)
+                runtime = gateway_runtime or _resolve_runtime(resolved_model, requested_provider or None)
                 agent_cfg = cfg.get("agent") or {}
                 prompt = str(agent_cfg.get("system_prompt", "") or "").strip() or None
 
@@ -529,6 +702,9 @@ class AgentPool:
                     tool_complete_callback=self._tool_complete_callback(session_id),
                     clarify_callback=self._clarify_callback(session_id),
                 )
+                # Some native registries retain definitions after their transport shuts down.
+                # Never advertise those retired names in a newly built model tool snapshot.
+                self._filter_retired_mcp_tools(agent)
                 agent.compression_enabled = False
                 self._install_compression_hook(agent, session_id)
                 self._install_prepersist_dedup_hook(agent)
@@ -554,12 +730,32 @@ class AgentPool:
                         "resumed_message_count": 0,
                         "mcp_tool_count": len(discovered_mcp_tools),
                         "active_mcp_tool_count": len(mcp_tool_names),
+                        "mcp_generation": self._mcp_generation,
+                        "tool_search": _tool_search_setting(cfg),
                         "db_error": self._db.error,
                         # This is an Agent-session policy, not a per-turn flag.
                         # Callers select it when the cached AIAgent is created.
                         "background_delegation_enabled": background_delegation_enabled is not False,
                     },
                 )
+                if refresh_session is not None:
+                    refresh_session.agent = agent
+                    refresh_session.config.update({
+                        "profile": session.config["profile"],
+                        "model": session.config["model"],
+                        "provider": session.config["provider"],
+                        "base_url": session.config["base_url"],
+                        "api_mode": session.config["api_mode"],
+                        "mcp_generation": self._mcp_generation,
+                        "tool_search": session.config["tool_search"],
+                        "mcp_tool_count": len(discovered_mcp_tools),
+                        "active_mcp_tool_count": len(mcp_tool_names),
+                        "mcp_restore_history": True,
+                    })
+                    refresh_session.last_used_at = time.time()
+                    session = refresh_session
+                    if tool_search_changed:
+                        self._repin_session_tools(agent)
                 self._install_boundary_interrupt(session)
                 session.config["boundary_interrupt_supported"] = session.boundary_supported
                 if session.boundary_error:
@@ -580,12 +776,14 @@ class AgentPool:
         model: str,
         provider: str,
         profile: str | None,
+        gateway_runtime: dict[str, Any] | None = None,
     ) -> None:
         requested_model = str(model or "").strip()
         requested_provider = str(provider or "").strip()
         if not requested_model:
             return
         old_model = str(session.config.get("model") or getattr(session.agent, "model", "") or "")
+        session.pending_gateway_runtime = gateway_runtime
         session.config["pending_model_switch"] = {
             "model": requested_model,
             "provider": requested_provider,
@@ -605,6 +803,7 @@ class AgentPool:
         profile: str | None,
         *,
         add_note: bool,
+        gateway_runtime: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         requested_model = str(model or "").strip()
         requested_provider = str(provider or "").strip()
@@ -616,7 +815,7 @@ class AgentPool:
 
         with _profile_env(target_profile):
             _refresh_worker_profile_env()
-            runtime = _resolve_runtime(requested_model, requested_provider or None)
+            runtime = gateway_runtime or _resolve_runtime(requested_model, requested_provider or None)
 
         resolved_provider = str(runtime.get("provider") or requested_provider or "")
         effective_provider = requested_provider or resolved_provider
@@ -649,6 +848,7 @@ class AgentPool:
                 "api_mode": runtime.get("api_mode"),
             })
             session.config.pop("pending_model_switch", None)
+            session.pending_gateway_runtime = None
             session.last_used_at = time.time()
             return {
                 "switched": True,
@@ -684,6 +884,7 @@ class AgentPool:
             "api_mode": runtime.get("api_mode"),
         })
         session.config.pop("pending_model_switch", None)
+        session.pending_gateway_runtime = None
         if add_note:
             session.config["pending_model_switch_note"] = self._model_switch_note(
                 old_model,
@@ -755,6 +956,7 @@ class AgentPool:
                 str(pending.get("provider") or ""),
                 str(pending.get("profile") or session.config.get("profile") or "default"),
                 add_note=False,
+                gateway_runtime=session.pending_gateway_runtime,
             )
         except Exception as exc:
             print(
@@ -780,6 +982,7 @@ class AgentPool:
         model: str,
         provider: str | None = None,
         profile: str | None = None,
+        gateway_runtime: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         requested_model = str(model or "").strip()
         requested_provider = str(provider or "").strip()
@@ -803,6 +1006,7 @@ class AgentPool:
                     requested_model,
                     requested_provider,
                     profile or str(session.config.get("profile") or "default"),
+                    gateway_runtime=gateway_runtime,
                 )
                 return {
                     "session_id": session_id,
@@ -819,6 +1023,7 @@ class AgentPool:
                 requested_provider,
                 profile or str(session.config.get("profile") or "default"),
                 add_note=True,
+                gateway_runtime=gateway_runtime,
             )
 
     def _install_prepersist_dedup_hook(self, agent: Any) -> None:
@@ -966,6 +1171,12 @@ class AgentPool:
 
     def _bridge_context_ready_event(self, session: AgentSession, instructions: str | None, profile: str | None) -> dict[str, Any]:
         info = self._estimate_context_info(session.agent, [], instructions)
+        try:
+            with _profile_env(profile or session.config.get("profile")):
+                cfg = _load_cfg()
+            info.update(_tool_load_info(getattr(session.agent, "tools", None) or [], cfg))
+        except Exception:
+            pass
         event = {
             "event": "bridge.context.ready",
             "session_id": session.session_id,
@@ -987,6 +1198,7 @@ class AgentPool:
         provider: str | None = None,
         workspace: str | None = None,
         background_delegation_enabled: bool | None = None,
+        gateway_runtime: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         session = self.get_or_create(
             session_id,
@@ -994,6 +1206,7 @@ class AgentPool:
             model=model,
             provider=provider,
             background_delegation_enabled=background_delegation_enabled,
+            gateway_runtime=gateway_runtime,
         )
         session_cwd_bound = _bind_session_workspace_cwd(session.session_id, workspace)
         try:
@@ -1245,6 +1458,8 @@ class AgentPool:
 
     def _text_event_callback(self, session_id: str, event_name: str):
         def callback(text):
+            if text:
+                self._note_model_output(session_id)
             self._append_event(session_id, {"event": event_name, "text": str(text)})
 
         return callback
@@ -1394,6 +1609,9 @@ class AgentPool:
             # Text deltas are already captured by the per-run stream_callback
             # passed to run_conversation.  Only consume boundary signals here
             # so registering this callback does not duplicate assistant text.
+            # The first one still starts this request's speed clock.
+            if delta:
+                self._note_model_output(session_id)
 
         return callback
 
@@ -1423,8 +1641,7 @@ class AgentPool:
                 "event": "approval.requested",
                 "run_id": run_id,
                 "approval_id": approval_id,
-                "command": str(command or ""),
-                "description": str(description or ""),
+                **self._approval_event_fields(session_id, command, description),
                 "choices": choices,
                 "allow_permanent": bool(allow_permanent),
                 "timeout_ms": APPROVAL_TIMEOUT_MS,
@@ -1605,8 +1822,7 @@ class AgentPool:
                 "event": "approval.requested",
                 "run_id": run_id,
                 "approval_id": approval_id,
-                "command": str(approval_data.get("command") or ""),
-                "description": str(approval_data.get("description") or ""),
+                **self._approval_event_fields(session_id, str(approval_data.get("command") or ""), str(approval_data.get("description") or "")),
                 "pattern_keys": pattern_keys,
                 "choices": choices,
                 "allow_permanent": True,
@@ -1772,6 +1988,7 @@ class AgentPool:
         source: str | None = None,
         reasoning_effort: str | None = None,
         background_delegation_enabled: bool | None = None,
+        gateway_runtime: dict[str, Any] | None = None,
     ) -> RunRecord:
         session = self.get_or_create(
             session_id,
@@ -1779,11 +1996,13 @@ class AgentPool:
             model=model,
             provider=provider,
             background_delegation_enabled=background_delegation_enabled,
+            gateway_runtime=gateway_runtime,
         )
         # Install after agent construction so any runtime plugin initialization
         # has completed. Rechecking on every run also recovers from a forced
         # plugin reload that clears the manager's callback registry.
         self._install_usage_hook()
+        self._install_home_assistant_hook()
         self._install_boundary_interrupt(session)
         session.config["boundary_interrupt_supported"] = session.boundary_supported
         if session.boundary_error:
@@ -1793,11 +2012,13 @@ class AgentPool:
         with session.lock:
             if session.running:
                 raise RuntimeError(f"session {session_id} is already running")
+            if session.config.pop("mcp_restore_history", False) and conversation_history is None:
+                conversation_history = copy.deepcopy(session.history)
             run_id = uuid.uuid4().hex
             record = RunRecord(run_id=run_id, session_id=session_id)
             with self._lock:
                 self._runs[run_id] = record
-            session.running = True
+                session.running = True
             session.current_run_id = run_id
             session.boundary_phase = "model"
             session.boundary_pending_run_id = None
@@ -1842,6 +2063,7 @@ class AgentPool:
             self._fail_unexpected_run(session, record, exc)
         finally:
             self._fail_unexpected_run(session, record, RuntimeError("Hermes run worker exited without a terminal result"))
+            self.refresh_mcp_if_idle()
 
     def _fail_unexpected_run(self, session: AgentSession | None, record: RunRecord, exc: BaseException) -> None:
         with session.lock if session else self._lock:
@@ -1868,6 +2090,9 @@ class AgentPool:
         with _profile_env(profile):
             _refresh_approval_allowlist()
             _install_execute_code_approval_memory_patch()
+            # Studio tools called by their own name reach their toolset (bridge_studio_toolsets).
+            from bridge_studio_toolsets import install_studio_toolset_routing
+            install_studio_toolset_routing()
             def stream_callback(delta: str) -> None:
                 with self._lock:
                     text = str(delta)
@@ -1883,6 +2108,7 @@ class AgentPool:
                     # the true interleaving.
                     record.deltas.append(text)
                     if text:
+                        self._note_model_output(session.session_id)
                         record.events.append({"event": "stream.delta", "delta": text})
 
             approval_session_token = None

@@ -1,3 +1,4 @@
+import { spawnInCleanRoom } from '../cleanroom'
 import { spawn, type ChildProcess } from 'child_process'
 import { existsSync } from 'fs'
 import { homedir } from 'os'
@@ -37,7 +38,7 @@ export async function compactCodexThread(
     ? windowsCmdShimExecution(command, appArgs)
     : { command, args: appArgs }
 
-  const child: ChildProcess = spawn(execution.command, execution.args, {
+  const child: ChildProcess = spawnInCleanRoom(launch.command, appArgs, { cwd, env: launch.env || {} }) ?? spawn(execution.command, execution.args, {
     cwd,
     env: launch.env,
     stdio: ['pipe', 'pipe', 'pipe'],

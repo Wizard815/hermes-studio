@@ -16,6 +16,7 @@ import CodingAgentMcpPanel from '@/components/coding-agents/CodingAgentMcpPanel.
 import CodingAgentSkillsPanel from '@/components/coding-agents/CodingAgentSkillsPanel.vue'
 import DshAgentPresetsPanel from '@/components/coding-agents/dsh/DshAgentPresetsPanel.vue'
 import DshPluginsPanel from '@/components/coding-agents/dsh/DshPluginsPanel.vue'
+import HerdrSettingsPanel from '@/components/coding-agents/herdr/HerdrSettingsPanel.vue'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -154,7 +155,10 @@ watch([agentId, section], loadSettingsFiles, { immediate: true })
     </header>
     </PageHeader>
 
-    <DshPluginsPanel v-if="section === 'plugins' && validAgentId === 'dsh'" />
+    <div v-if="agentId === 'herdr'" class="coding-agent-herdr-content" data-testid="herdr-agent-settings">
+      <HerdrSettingsPanel />
+    </div>
+    <DshPluginsPanel v-else-if="section === 'plugins' && validAgentId === 'dsh'" />
     <DshAgentPresetsPanel v-else-if="section === 'presets' && validAgentId === 'dsh'" />
     <div v-else-if="section === 'skills'" class="coding-agent-skills-content">
       <CodingAgentSkillsPanel :target="skillTarget" />
@@ -222,6 +226,13 @@ watch([agentId, section], loadSettingsFiles, { immediate: true })
   flex-direction: column;
   overflow: hidden;
   background: var(--theme-content-bg, $bg-main-surface);
+}
+
+.coding-agent-herdr-content {
+  flex: 1;
+  min-height: 0;
+  padding: calc(20px * var(--spacing-scale, 1));
+  overflow: auto;
 }
 
 .coding-agent-skills-content,

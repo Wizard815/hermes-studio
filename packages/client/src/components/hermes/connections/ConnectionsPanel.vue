@@ -6,11 +6,16 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import AppConnectionsPanel from '@/components/hermes/connections/AppConnectionsPanel.vue'
 import McuDevicesPanel from '@/components/hermes/connections/McuDevicesPanel.vue'
+import GadgetStatusPanel from '@/components/hermes/connections/GadgetStatusPanel.vue'
 import RemoteDevicesPanel from '@/components/hermes/connections/RemoteDevicesPanel.vue'
 import OrbConnectionPanel from '@/components/hermes/connections/OrbConnectionPanel.vue'
+import OmiConnectionPanel from '@/components/hermes/connections/OmiConnectionPanel.vue'
+import LlmWikiConnectionPanel from '@/components/hermes/connections/LlmWikiConnectionPanel.vue'
+import AgentWorkPanel from '@/components/hermes/connections/AgentWorkPanel.vue'
+import { useAgentWorkBadge } from '@/composables/useAgentWorkBadge'
 import { desktopBridge } from '@/utils/desktop-bridge'
 
-type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb'
+type ConnectionTab = 'app' | 'mcu' | 'remote' | 'orb' | 'omi' | 'llm-wiki' | 'agent-work'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,10 +24,11 @@ const hasRemoteDevices = desktopBridge()?.isDesktop === true && !!desktopBridge(
 
 function normalizeTab(value: unknown): ConnectionTab {
   if (value === 'remote' && hasRemoteDevices) return value
-  if (value === 'mcu' || value === 'orb') return value
+  if (value === 'mcu' || value === 'orb' || value === 'omi' || value === 'llm-wiki' || value === 'agent-work') return value
   return 'app'
 }
 
+const waitingApprovals = useAgentWorkBadge()
 const activeTab = ref<ConnectionTab>(normalizeTab(route.query.tab))
 
 watch(
@@ -66,10 +72,25 @@ function updateTab(value: string | number) {
         <AppConnectionsPanel />
       </NTabPane>
       <NTabPane name="mcu" :tab="t('connections.tabs.mcu')" display-directive="if">
-        <McuDevicesPanel />
+        <div class="mcu-tab">
+          <GadgetStatusPanel />
+          <McuDevicesPanel class="mcu-tab-devices" />
+        </div>
       </NTabPane>
       <NTabPane name="orb" :tab="t('orb.tab')" display-directive="if">
         <OrbConnectionPanel />
+      </NTabPane>
+      <NTabPane name="omi" :tab="t('omi.tab')" display-directive="if">
+        <OmiConnectionPanel />
+      </NTabPane>
+      <NTabPane name="llm-wiki" :tab="t('llmWiki.tab')" display-directive="if">
+        <LlmWikiConnectionPanel />
+      </NTabPane>
+      <NTabPane name="agent-work" display-directive="if">
+        <template #tab>
+          <span class="agent-work-tab" data-testid="agent-work-tab">{{ t('agentWork.tab') }}<span v-if="waitingApprovals" class="agent-work-badge">{{ waitingApprovals }}</span></span>
+        </template>
+        <AgentWorkPanel />
       </NTabPane>
       <NTabPane v-if="hasRemoteDevices" name="remote" :tab="t('remoteDevices.title')" display-directive="if">
         <RemoteDevicesPanel />
@@ -80,6 +101,36 @@ function updateTab(value: string | number) {
 
 <style scoped lang="scss">
 @use '@/styles/variables' as *;
+
+.agent-work-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-work-badge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: $warning;
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.mcu-tab {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.mcu-tab-devices {
+  flex: 1 0 360px;
+  height: auto;
+}
 
 .connections-panel {
   height: 100%;

@@ -1,3 +1,12 @@
+import { randomUUID } from 'node:crypto'
+import { chatApprovalMode, launchAsks, withApprovals } from '../approvals'
+import { needsApproval, type AgentAction } from '../approval-policy'
+import { trustRequestFromAction, watcherTrusts } from '../../../studio/public/watcher'
+import { CodexAppServerTurn } from '../codex/app-server-turn'
+import { cleanRoomNeedsRestart, parseCleanRoomCommand, spawnInCleanRoom } from '../cleanroom'
+import { STUDIO_TURN_CONTEXT_ENV, inlineTurnContextSettings, settingsFileHasTurnContextHook, writeTurnContextFile } from '../claude-code/turn-context'
+import { startAcpChatTurn } from './acp-chat-turn'
+import type { NativeTurnHost } from './turn-host'
 import { codingAgentWorkingDirectory } from './workspace'
 import { startOpenCodeTurn as startOpenCodeTurnProcess } from '../opencode/chat-turn'
 import { applyOpenCodeLine } from '../opencode/event-adapter'
@@ -97,6 +106,7 @@ try {
 }
 
 export interface CodingAgentRunLaunch {
+  ownerUserId?: number
   agentPreset?: string
   agentSessionId: string
   agentId: string
@@ -211,6 +221,8 @@ export interface ManagedCodingAgentRun {
   printText?: string
   claudeResultUsage?: any
   claudeStreamMessageId?: string
+  /** Claude's stdin while it may still ask for permission (closed with its result). */
+  claudeControlStdin?: NodeJS.WritableStream
   claudeMessageText?: Map<string, string>
   printCompleted?: boolean
   responseStartEmitted?: boolean
@@ -220,6 +232,14 @@ export interface ManagedCodingAgentRun {
   nativeResumeReady?: boolean
   codexToolBlocks?: Map<string, { id: string; name: string; arguments: string; done: boolean }>
   codexChatText?: string
+  /**
+   * This Codex turn runs on its app-server, whose notifications stream the
+   * reply (text, reasoning, tools). The provider proxy then carries only
+   * transport and usage; it is not a second source of chat text.
+   */
+  codexAppServer?: boolean
+  /** Reasoning items whose text arrived as deltas this turn (their completed copy is not added again). */
+  codexReasoningStreamed?: Set<string>
   codexPendingUsage?: any
   codexPendingError?: string
   codexTurnFailed?: boolean
@@ -245,12 +265,57 @@ export interface ManagedCodingAgentRun {
   piTextBuffer?: string
   piCurrentMessageText?: string
   piRpcRequests?: Map<string, PiRpcPendingRequest>
+  /** Approvals this run's agent is waiting on (Studio's approval card answers them). */
+  agentApprovals?: Map<string, AgentApprovalWait>
 }
+
+/** What an agent asks before it acts: shown as Studio's approval card. */
+export interface AgentApprovalRequest {
+  /** What "for this chat" remembers, e.g. "Bash" or "edit". */
+  key: string
+  /** What the agent wants to do, for Studio's rules (ask / guarded mode). */
+  action?: AgentAction
+  title: string
+  description: string
+  command?: string
+}
+
+export type AgentApprovalChoice = 'once' | 'session' | 'deny'
+
+interface AgentApprovalWait {
+  key: string
+  resolve(choice: AgentApprovalChoice): void
+  timer: ReturnType<typeof setTimeout>
+}
+
+/** Grok's options that `grok agent` takes (model and reasoning effort). */
+export function grokAgentOptions(args: readonly string[]): string[] {
+  const kept: string[] = []
+  for (let index = 0; index < args.length; index += 1) {
+    if ((args[index] === '--model' || args[index] === '-m' || args[index] === '--reasoning-effort') && args[index + 1]) {
+      kept.push(args[index], args[index + 1])
+      index += 1
+    }
+  }
+  return kept
+}
+
+/** What OpenCode asks about when it asks before acting. */
+const OPENCODE_ASK = { edit: 'ask', bash: 'ask', webfetch: 'ask', external_directory: 'ask' }
+
+/** An unanswered approval is denied after this long. */
+const AGENT_APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
 
 interface CodingAgentRunSendOptions {
   systemPrompt?: string
   images?: CodingAgentImageInput[]
   storageInput?: string
+  /**
+   * Studio's per-turn context blocks (task plan, session tasks, clarify). Claude Code gets
+   * them through a UserPromptSubmit hook so its session (and a herdr pane's resumed
+   * history) shows only what the user typed; other agents get them after the input.
+   */
+  turnContext?: string
 }
 
 function nowSeconds(): number {
@@ -403,7 +468,7 @@ function hasManagedHermesMcpConfig(run: ManagedCodingAgentRun): boolean {
     if (!piHome) return false
     try {
       const config = readFileSync(join(piHome, 'mcp.json'), 'utf-8')
-      return config.includes('"ekko-studio-api"') && config.includes('"ekko-studio-use"') && config.includes('"ekko-studio-interaction"')
+      return config.includes('"ekko-studio-api"') && config.includes('"ekko-studio-plugins"') && config.includes('"ekko-studio-use"') && config.includes('"ekko-studio-interaction"')
     } catch {
       return false
     }
@@ -413,7 +478,7 @@ function hasManagedHermesMcpConfig(run: ManagedCodingAgentRun): boolean {
     if (!grokHome) return false
     try {
       const config = readFileSync(join(grokHome, 'config.toml'), 'utf-8')
-      return config.includes('[mcp_servers.ekko-studio-api]') && config.includes('[mcp_servers.ekko-studio-use]') && config.includes('[mcp_servers.ekko-studio-interaction]')
+      return config.includes('[mcp_servers.ekko-studio-api]') && config.includes('[mcp_servers.ekko-studio-plugins]') && config.includes('[mcp_servers.ekko-studio-use]') && config.includes('[mcp_servers.ekko-studio-interaction]')
     } catch {
       return false
     }
@@ -423,7 +488,7 @@ function hasManagedHermesMcpConfig(run: ManagedCodingAgentRun): boolean {
     if (!configDir) return false
     try {
       const config = readFileSync(join(configDir, 'opencode.json'), 'utf-8')
-      return config.includes('"ekko-studio-api"') && config.includes('"ekko-studio-use"') && config.includes('"ekko-studio-interaction"')
+      return config.includes('"ekko-studio-api"') && config.includes('"ekko-studio-plugins"') && config.includes('"ekko-studio-use"') && config.includes('"ekko-studio-interaction"')
     } catch {
       return false
     }
@@ -433,7 +498,7 @@ function hasManagedHermesMcpConfig(run: ManagedCodingAgentRun): boolean {
   if (!codexHome) return false
   try {
     const config = readFileSync(join(codexHome, 'config.toml'), 'utf-8')
-    return ['api', 'browser', 'use', 'interaction'].every(toolset => config.includes(`[mcp_servers.ekko-studio-${toolset}]`))
+    return ['api', 'plugins', 'browser', 'use', 'interaction'].every(toolset => config.includes(`[mcp_servers.ekko-studio-${toolset}]`))
   } catch {
     return false
   }
@@ -506,11 +571,42 @@ function decodeChildChunk(chunk: Buffer): string {
   }
 }
 
+/**
+ * How one Claude Code turn gets Studio's context blocks: through the UserPromptSubmit hook
+ * (claude-code/turn-context.ts) when the launch can carry it, else after the input as before
+ * (Windows, clean rooms, or a settings file written before the hook existed).
+ */
+export function claudeTurnContext(
+  run: Pick<ManagedCodingAgentRun, 'id' | 'launch'>,
+  input: string,
+  turnContext: string,
+  platform: NodeJS.Platform = process.platform,
+): { input: string; args: string[]; env: Record<string, string> } {
+  // Never inherit a context file from Studio's own environment (global mode spreads it).
+  const none = { [STUDIO_TURN_CONTEXT_ENV]: '' }
+  const context = String(turnContext || '').trim()
+  if (!context) return { input, args: [], env: none }
+  const settingsIndex = run.launch.args.indexOf('--settings')
+  const ownSettings = settingsIndex >= 0 ? String(run.launch.args[settingsIndex + 1] || '') : ''
+  const hookReady = platform !== 'win32'
+    && !parseCleanRoomCommand(run.launch.command)
+    && (!ownSettings || settingsFileHasTurnContextHook(ownSettings))
+  if (!hookReady) return { input: `${input}\n\n${context}`, args: [], env: none }
+  return {
+    input,
+    args: ownSettings ? [] : ['--settings', inlineTurnContextSettings()],
+    env: { [STUDIO_TURN_CONTEXT_ENV]: writeTurnContextFile(run.id, context, run.launch.promptFile) },
+  }
+}
+
 function spawnCodingAgentChild(command: string, args: string[], options: {
   cwd: string
   env: NodeJS.ProcessEnv
   pipeStdin?: boolean
 }): ChildProcess {
+  // A clean-room chat: the agent runs inside its container (docker exec), with only Studio's env for it.
+  const inRoom = spawnInCleanRoom(command, args, { ...options, pipeStdin: !!options.pipeStdin })
+  if (inRoom) return inRoom
   const normalizedCommand = process.platform === 'win32' ? normalizeWindowsCommandPath(command) : command
   if (process.platform === 'win32' && windowsCommandNeedsShell(command)) {
     const execution = windowsCmdShimExecution(normalizedCommand, args)
@@ -541,7 +637,7 @@ function piAssistantMessageText(message: any): string {
     .join('')
 }
 
-function codingAgentDisplayName(agentId: string): string {
+export function codingAgentDisplayName(agentId: string): string {
   if (isNativeCodingAgent(agentId)) return NATIVE_CODING_AGENTS.find(agent => agent.id === agentId)!.name
   if (agentId === 'antigravity') return 'Antigravity'
   if (agentId === 'cursor') return 'Cursor'
@@ -751,6 +847,8 @@ export class CodingAgentRunManager {
     }
     if (String(run.launch.reasoningEffort || '').trim() !== String(launch.reasoningEffort || '').trim()) return false
     if (!hasManagedHermesMcpConfig(run)) return false
+    // A clean room whose container went away or whose walls changed is made again on the next start.
+    if (parseCleanRoomCommand(run.launch.command) && cleanRoomNeedsRestart(sessionId)) return false
     return true
   }
 
@@ -887,7 +985,9 @@ export class CodingAgentRunManager {
     if (!run) throw new Error('Coding agent session not found')
     if (run.nativeCompletionPending) throw new Error('Coding agent is still completing the previous input')
     if (agentUpdateLocked(run.launch.agentId)) throw new Error('Agent is updating; retry after completion')
-    const text = String(input || '').trim()
+    const turnContext = String(options.turnContext || '').trim()
+    const typed = String(input || '').trim()
+    const text = turnContext && run.launch.agentId !== 'claude-code' ? `${typed}\n\n${turnContext}` : typed
     const images = Array.isArray(options.images) ? options.images : []
     if (!text && images.length === 0) throw new Error('Input is required')
     // Keep native metadata separate from launch configuration: global CLIs can
@@ -918,7 +1018,7 @@ export class CodingAgentRunManager {
       return { runId: run.id, messageId }
     }
     if (run.launch.agentId === 'claude-code') {
-      this.startClaudePrintTurn(run, text, systemPrompt, images)
+      this.startClaudePrintTurn(run, text, systemPrompt, images, turnContext)
       return { runId: run.id, messageId }
     }
     if (run.launch.agentId === 'codex') {
@@ -1155,8 +1255,95 @@ export class CodingAgentRunManager {
     return { invalidated, deferred }
   }
 
+  /** Kinds of action allowed "for this chat" (by chat). */
+  private chatApprovals = new Map<string, Set<string>>()
+
+  /**
+   * An agent wants to act: ask in Studio and wait for the answer. The agent's
+   * own rules decide when it asks; Studio only shows the question. Denied when
+   * nobody answers in time or the run ends.
+   */
+  askApproval(run: ManagedCodingAgentRun, request: AgentApprovalRequest): Promise<AgentApprovalChoice> {
+    const sessionId = run.launch.sessionId
+    // In a clean room the agent may do anything inside its container.
+    if (parseCleanRoomCommand(run.launch.command)) return Promise.resolve('once')
+    // Studio's rules answer what this agent's mode does not ask you about.
+    // A workflow step that requires approval always asks, whatever the agent's mode.
+    const mode = chatApprovalMode(run.launch.agentId, run.launch.sessionId)
+    if (!needsApproval(run.launch.approvalRequired === true && mode !== 'ask' ? 'ask' : mode, request.action, run.launch.workspaceDir)) return Promise.resolve('once')
+    if (this.chatApprovals.get(sessionId)?.has(request.key)) return Promise.resolve('session')
+    // "Trust this" rules (docs/watcher.md) answer what you trusted for this chat, task, agent or folder.
+    const trustRequest = trustRequestFromAction(request.action, request.key)
+    if (watcherTrusts({ sessionId, agentId: run.launch.agentId, folder: run.launch.workspaceDir }, trustRequest, request.command || request.title)) return Promise.resolve('once')
+    const approvalId = `agent-${randomUUID()}`
+    run.agentApprovals ??= new Map()
+    return new Promise(resolve => {
+      const finish = (choice: AgentApprovalChoice, reason?: string) => {
+        const wait = run.agentApprovals?.get(approvalId)
+        if (!wait) return
+        clearTimeout(wait.timer)
+        run.agentApprovals?.delete(approvalId)
+        if (choice === 'session') {
+          const allowed = this.chatApprovals.get(sessionId) ?? new Set<string>()
+          allowed.add(request.key)
+          this.chatApprovals.set(sessionId, allowed)
+        }
+        if (reason) {
+          this.emitToChat(sessionId, 'approval.resolved', { event: 'approval.resolved', session_id: sessionId, approval_id: approvalId, choice, resolved: true, reason })
+        }
+        resolve(choice)
+      }
+      const timer = setTimeout(() => finish('deny', 'No answer in time'), AGENT_APPROVAL_TIMEOUT_MS)
+      timer.unref?.()
+      run.agentApprovals!.set(approvalId, { key: request.key, resolve: choice => finish(choice), timer })
+      this.emitToChat(sessionId, 'approval.requested', {
+        event: 'approval.requested',
+        session_id: sessionId,
+        approval_id: approvalId,
+        title: request.title,
+        description: request.description,
+        ...(request.command ? { command: request.command } : {}),
+        ...(trustRequest ? { trust_action: { kind: trustRequest.kind, value: trustRequest.values[0] } } : {}),
+        choices: ['once', 'session', 'deny'],
+        source: run.launch.agentId,
+        timeout_ms: AGENT_APPROVAL_TIMEOUT_MS,
+        remaining_timeout_ms: AGENT_APPROVAL_TIMEOUT_MS,
+        requested_at: Date.now(),
+      })
+    })
+  }
+
+  /** The run ended: every question still open is denied. */
+  private denyOpenApprovals(run: ManagedCodingAgentRun, reason: string) {
+    for (const [approvalId, wait] of run.agentApprovals || []) {
+      clearTimeout(wait.timer)
+      this.emitToChat(run.launch.sessionId, 'approval.resolved', { event: 'approval.resolved', session_id: run.launch.sessionId, approval_id: approvalId, choice: 'deny', resolved: true, reason })
+      wait.resolve('deny')
+    }
+    run.agentApprovals?.clear()
+  }
+
+  /** `/yolo` turned on: the questions this chat's agent is waiting on are approved. */
+  approveOpenApprovals(sessionId: string, reason: string): number {
+    const run = this.getBySession(sessionId)
+    let approved = 0
+    for (const [approvalId, wait] of [...(run?.agentApprovals || [])]) {
+      this.emitToChat(sessionId, 'approval.resolved', { event: 'approval.resolved', session_id: sessionId, approval_id: approvalId, choice: 'once', resolved: true, reason })
+      wait.resolve('once')
+      approved += 1
+    }
+    return approved
+  }
+
   resolveApproval(sessionId: string, approvalId: string, choice = 'deny'): { handled: boolean; resolved: boolean } {
     const run = this.getBySession(sessionId)
+    const wait = run?.agentApprovals?.get(approvalId)
+    if (run && wait) {
+      const normalized = String(choice || 'deny').trim().toLowerCase()
+      // "always" is kept for this chat; anything unknown denies.
+      wait.resolve(normalized === 'once' ? 'once' : normalized === 'session' || normalized === 'always' ? 'session' : 'deny')
+      return { handled: true, resolved: true }
+    }
     const request = run?.piUiRequests?.get(approvalId)
     if (!run || !request) return { handled: false, resolved: false }
     const normalizedChoice = String(choice || 'deny').trim().toLowerCase()
@@ -1250,6 +1437,13 @@ export class CodingAgentRunManager {
     if (!agentSessionId) return
     const run = this.runs.get(agentSessionId)
     if (!run) return
+    if (run.launch.agentId === 'codex' && run.codexAppServer && !run.acceptingPrintEvent) {
+      // Codex's app-server notifications already stream this reply into the
+      // chat (item/agentMessage/delta, reasoning deltas, items). Accepting the
+      // proxy's copy of the same model output as well showed every token
+      // twice. The proxy still records usage (recordTargetUsage), not chat text.
+      return
+    }
     const responseEvent = this.normalizeCodexChatTextEvent(run, event)
     if (!responseEvent) return
     const storageSafeResponseEvent = truncateCodingAgentToolOutputEvent(responseEvent)
@@ -1597,6 +1791,7 @@ export class CodingAgentRunManager {
       })
     }
     run.piUiRequests?.clear()
+    this.denyOpenApprovals(run, 'Coding agent session closed')
     this.flushTerminalOutput(run)
     if (run.terminalFlushTimer) clearTimeout(run.terminalFlushTimer)
     this.runs.delete(run.id)
@@ -1639,6 +1834,10 @@ export class CodingAgentRunManager {
   }
 
   private startPiRpcProcess(run: ManagedCodingAgentRun) {
+    // Studio's Pi extension asks before commands and file writes (Studio's approval card).
+    if (launchAsks(run.launch)) {
+      run.launch.env = { ...(run.launch.env || {}), HERMES_PI_ASK: '1' }
+    }
     const child = spawnCodingAgentChild(run.launch.command, run.launch.args, {
       cwd: codingAgentWorkingDirectory(run.launch),
       env: run.launch.mode === 'global'
@@ -1847,6 +2046,21 @@ export class CodingAgentRunManager {
           this.writePiRpcCommand(run, { type: 'extension_ui_response', id: approvalId, cancelled: true })
         } catch {}
         return
+      }
+      // Studio's Pi extension asks "Pi wants to use <tool>" with the command or path:
+      // Studio's rules answer what the agent's mode does not ask you about.
+      const piTool = event.method === 'confirm' ? /^Pi wants to use (\w+)$/.exec(String(event.title || ''))?.[1] : undefined
+      if (piTool) {
+        const what = String(event.message || '')
+        const action: AgentAction = piTool === 'bash' || piTool === 'powershell' ? { kind: 'command', command: what } : { kind: 'write', paths: what ? [what] : [] }
+        const mode = chatApprovalMode(run.launch.agentId, run.launch.sessionId)
+        const allowed = !needsApproval(run.launch.approvalRequired === true && mode !== 'ask' ? 'ask' : mode, action, run.launch.workspaceDir)
+          || this.chatApprovals.get(run.launch.sessionId)?.has(`pi:${piTool}`)
+          || watcherTrusts({ sessionId: run.launch.sessionId, agentId: run.launch.agentId, folder: run.launch.workspaceDir }, trustRequestFromAction(action, piTool), what)
+        if (allowed) {
+          try { this.writePiRpcCommand(run, { type: 'extension_ui_response', id: approvalId, confirmed: true }) } catch {}
+          return
+        }
       }
       run.piUiRequests ??= new Map()
       const timeoutMs = Number(event.timeout)
@@ -2083,10 +2297,13 @@ export class CodingAgentRunManager {
     input: string,
     systemPrompt = '',
     images: CodingAgentImageInput[] = [],
+    turnContext = '',
   ) {
     if (childIsRunning(run.currentChild)) {
       throw new Error('Claude Code is still processing the previous input')
     }
+    const turn = claudeTurnContext(run, input, turnContext)
+    input = turn.input
 
     const responseId = `resp_${Date.now()}`
     run.printResponseId = responseId
@@ -2121,11 +2338,16 @@ export class CodingAgentRunManager {
     const promptArgument = hasArg(run.launch.args, '--append-system-prompt-file')
       ? ''
       : normalizeCliPromptArgument(systemPrompt)
-    const inputFormat = images.length > 0 ? 'stream-json' : 'text'
-    const stdinInput = images.length > 0 ? buildClaudeStreamJsonInput(input, images) : input
+    // Claude asks Studio before it acts (its own permission rules decide when):
+    // it sends can_use_tool requests on its control channel and waits.
+    const asks = launchAsks(run.launch)
+    const inputFormat = asks || images.length > 0 ? 'stream-json' : 'text'
+    const stdinInput = inputFormat === 'stream-json' ? buildClaudeStreamJsonInput(input, images) : input
     const args = [
-      ...run.launch.args,
+      ...(asks ? withApprovals(run.launch.args) : run.launch.args),
+      ...(asks ? ['--permission-prompt-tool', 'stdio'] : []),
       ...nativeSessionArgs,
+      ...turn.args,
       ...(promptArgument ? ['--append-system-prompt', promptArgument] : []),
       '-p',
       '--input-format',
@@ -2138,8 +2360,8 @@ export class CodingAgentRunManager {
     const child = spawnCodingAgentChild(run.launch.command, args, {
       cwd: codingAgentWorkingDirectory(run.launch),
       env: run.launch.mode === 'global'
-        ? { ...process.env, ...(run.launch.env || {}) }
-        : isolatedCodingAgentChildEnv(run.launch.env),
+        ? { ...process.env, ...(run.launch.env || {}), ...turn.env }
+        : { ...isolatedCodingAgentChildEnv(run.launch.env), ...turn.env },
       pipeStdin: true,
     })
     run.currentChild = child
@@ -2163,7 +2385,12 @@ export class CodingAgentRunManager {
       child.stdin.on('error', (err) => {
         logger.warn({ err, runId: run.id, sessionId: run.launch.sessionId }, '[coding-agent-run] claude stdin input failed')
       })
-      child.stdin.end(`${stdinInput}\n`)
+      if (asks) {
+        child.stdin.write(`${stdinInput}\n`)
+        run.claudeControlStdin = child.stdin
+      } else {
+        child.stdin.end(`${stdinInput}\n`)
+      }
     }
 
     child.on('error', (err) => {
@@ -2192,6 +2419,8 @@ export class CodingAgentRunManager {
     // `close` fires only after the stdio streams are closed and drained.
     child.on('close', (code) => {
       if (stdoutBuffer.trim()) this.handleClaudePrintLine(run, stdoutBuffer)
+      run.claudeControlStdin = undefined
+      this.denyOpenApprovals(run, 'The agent stopped')
       if (run.currentChildKillTimer) clearTimeout(run.currentChildKillTimer)
       run.currentChildKillTimer = undefined
       run.currentChild = undefined
@@ -2231,6 +2460,36 @@ export class CodingAgentRunManager {
     }
   }
 
+  /** Claude asks before using a tool: Studio's approval card answers. */
+  private async answerClaudePermission(run: ManagedCodingAgentRun, event: any) {
+    const request = event.request || {}
+    const tool = String(request.tool_name || 'tool')
+    const input = request.input && typeof request.input === 'object' ? request.input : {}
+    const command = tool === 'Bash' ? String(input.command || '')
+      : String(input.file_path || input.path || input.notebook_path || input.url || '')
+    const executable = tool === 'Bash' ? command.trim().split(/\s+/)[0] || '' : ''
+    const path = String(input.file_path || input.path || input.notebook_path || '')
+    const action: AgentAction = tool === 'Bash' ? { kind: 'command', command }
+      : ['Read', 'Glob', 'Grep', 'LS', 'NotebookRead', 'WebFetch', 'WebSearch', 'TodoWrite'].includes(tool) ? { kind: 'read', paths: path ? [path] : [] }
+        : ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(tool) ? { kind: 'write', paths: path ? [path] : [] }
+          : { kind: 'other' }
+    const choice = await this.askApproval(run, {
+      action,
+      key: executable ? `${tool}:${executable}` : tool,
+      title: `Claude Code wants to use ${tool}`,
+      description: String(request.description || request.decision_reason || (tool === 'Bash' ? 'Run a command' : `Use ${tool}`)),
+      ...(command ? { command: command.slice(0, 4000) } : {}),
+    })
+    const response = choice === 'deny'
+      ? { behavior: 'deny', message: 'The user denied this in Studio.' }
+      : { behavior: 'allow', updatedInput: input }
+    try {
+      run.claudeControlStdin?.write(`${JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: event.request_id, response } })}\n`)
+    } catch (err) {
+      logger.warn({ err, runId: run.id }, '[coding-agent-run] could not answer Claude permission request')
+    }
+  }
+
   private handleClaudePrintLine(run: ManagedCodingAgentRun, line: string) {
     const trimmed = line.trim()
     if (!trimmed) return
@@ -2240,6 +2499,17 @@ export class CodingAgentRunManager {
     } catch {
       logger.debug({ runId: run.id, line: sanitizeCodingAgentTerminalOutput(trimmed) }, '[coding-agent-run] ignored non-json Claude print line')
       return
+    }
+
+    if (event.type === 'control_request' && event.request?.subtype === 'can_use_tool') {
+      void this.answerClaudePermission(run, event)
+      return
+    }
+    if (event.type === 'control_cancel_request') return
+    // The turn is over: no more questions, so Claude may exit.
+    if (event.type === 'result' && run.claudeControlStdin) {
+      try { run.claudeControlStdin.end() } catch {}
+      run.claudeControlStdin = undefined
     }
 
     if (typeof event.session_id === 'string' && event.session_id.trim()) {
@@ -2693,7 +2963,12 @@ export class CodingAgentRunManager {
   }
 
   private startNativeTurn(run: ManagedCodingAgentRun, input: string, systemPrompt: string, images: CodingAgentImageInput[]) {
-    startNativeChatTurn(run, input, systemPrompt, {
+    startNativeChatTurn(run, input, systemPrompt, this.nativeTurnHost(run), images)
+  }
+
+  private nativeTurnHost(run: ManagedCodingAgentRun): NativeTurnHost {
+    return {
+      askApproval: request => this.askApproval(run, request),
       spawn: spawnCodingAgentChild, isRunning: childIsRunning,
       terminate: terminateChildProcess, forceKill: forceKillChildProcess,
       processError: error => childProcessErrorMessage(error, run.launch.agentId), exitError: (code, stderr) => exitErrorMessage(run.launch.agentId, code, stderr),
@@ -2703,11 +2978,12 @@ export class CodingAgentRunManager {
       toolStarted: item => this.handleCodexItemStarted(run, item), toolCompleted: item => this.handleCodexItemCompleted(run, item),
       completeAfterUsage: (event, payload) => this.emitAndMarkPrintChatRunCompletedAfterUsage(run, event, payload),
       complete: usage => this.completeClaudePrintTurn(run, usage), fail: message => this.failClaudePrintTurn(run, message),
-    }, images)
+    }
   }
 
   private startDshTurn(run: ManagedCodingAgentRun, input: string, systemPrompt: string, images: CodingAgentImageInput[]) {
     startDshChatTurn(run, input, systemPrompt, images, {
+      askApproval: request => this.askApproval(run, request),
       spawn: spawnCodingAgentChild, isRunning: childIsRunning,
       terminate: terminateChildProcess, forceKill: forceKillChildProcess,
       processError: error => childProcessErrorMessage(error, run.launch.agentId), exitError: (code, stderr) => exitErrorMessage('DSH', code, stderr),
@@ -2728,6 +3004,11 @@ export class CodingAgentRunManager {
     images: CodingAgentImageInput[] = [],
   ) {
     if (childIsRunning(run.currentChild)) throw new Error('Grok is still processing the previous input')
+    // Grok asks before acting over its ACP mode (`grok agent stdio`); keep only the agent's options.
+    if (launchAsks(run.launch) && !input.startsWith('/compact')) {
+      startAcpChatTurn({ name: 'Grok', acpArgs: ['stdio'], baseArgs: ['agent', ...grokAgentOptions(run.launch.args)] }, run, input, systemPrompt, this.nativeTurnHost(run), images)
+      return
+    }
 
     const responseId = `resp_${Date.now()}`
     run.printResponseId = responseId
@@ -2891,6 +3172,7 @@ export class CodingAgentRunManager {
     const child = startAntigravityTurnProcess({
       command: run.launch.command,
       baseArgs: run.launch.args,
+      asks: launchAsks(run.launch),
       workspaceDir,
       env: run.launch.mode === 'global'
         ? { ...process.env, ...(run.launch.env || {}) }
@@ -2956,6 +3238,10 @@ export class CodingAgentRunManager {
           return
         }
         if (run.printCompleted) return
+        if (code === 0 && (run.printText || '').trim()) {
+          this.completeClaudePrintTurn(run, run.codexPendingUsage)
+          return
+        }
         this.failAntigravityTurn(run, run.codexPendingError || (code === 0 ? 'Antigravity exited without a terminal result event' : exitErrorMessage('Antigravity', code, run.currentChildStderr)), run.codexPendingUsage)
       },
     })
@@ -3009,6 +3295,7 @@ export class CodingAgentRunManager {
     const child = startCursorTurnProcess({
       command: run.launch.command,
       baseArgs: run.launch.args,
+      asks: launchAsks(run.launch),
       workspaceDir,
       env: run.launch.mode === 'global'
         ? { ...process.env, ...(run.launch.env || {}) }
@@ -3115,6 +3402,23 @@ export class CodingAgentRunManager {
   }
 
   private startOpenCodeTurn(run: ManagedCodingAgentRun, input: string, systemPrompt = '', images: CodingAgentImageInput[] = []) {
+    // OpenCode asks only over ACP (`run` can only auto-approve). Its Studio
+    // config allows every tool; commands, edits and paths outside the folder ask.
+    if (launchAsks(run.launch)) {
+      // `opencode acp` takes no run flags: the model goes into its config instead.
+      const args = [...run.launch.args]
+      const modelAt = args.indexOf('--model')
+      const model = modelAt >= 0 ? args.splice(modelAt, 2)[1] : ''
+      const env: Record<string, string> = { ...(run.launch.env || {}), OPENCODE_PERMISSION: JSON.stringify(OPENCODE_ASK) }
+      if (model) {
+        let config: Record<string, unknown> = {}
+        try { config = JSON.parse(env.OPENCODE_CONFIG_CONTENT || '{}') } catch {}
+        env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ ...config, model })
+      }
+      run.launch.env = env
+      startAcpChatTurn({ name: 'OpenCode', acpArgs: ['acp'], baseArgs: args }, run, input, systemPrompt, this.nativeTurnHost(run), images)
+      return
+    }
     startOpenCodeTurnProcess(run, input, systemPrompt, images, this.openCodeTurnHost(run))
   }
 
@@ -3144,6 +3448,8 @@ export class CodingAgentRunManager {
     run.terminalEventHandled = false
     run.codexToolBlocks = new Map()
     run.codexChatText = ''
+    run.codexAppServer = launchAsks(run.launch)
+    run.codexReasoningStreamed = new Set()
     run.codexPendingUsage = undefined
     run.currentChildStderr = ''
     run.runMarker = undefined
@@ -3161,6 +3467,11 @@ export class CodingAgentRunManager {
     const promptArgument = run.launch.mode === 'scoped' || run.launch.promptFile
       ? ''
       : normalizeCliPromptArgument(systemPrompt)
+    // Codex asks before acting only on its app-server protocol (`exec` cannot ask).
+    if (run.codexAppServer) {
+      this.startCodexAppServerTurn(run, input, promptArgument, images)
+      return
+    }
     const commonArgs = [
       '--json',
       ...CODEX_REASONING_SUMMARY_ARGS,
@@ -3230,32 +3541,88 @@ export class CodingAgentRunManager {
     // model lookup; `exit` can precede the last JSONL bytes.
     child.on(run.launch.mode === 'global' ? 'close' : 'exit', (code: number | null) => {
       if (stdoutBuffer.trim()) this.handleCodexExecLine(run, stdoutBuffer)
-      if (run.currentChildKillTimer) clearTimeout(run.currentChildKillTimer)
-      run.currentChildKillTimer = undefined
-      run.currentChild = undefined
-      logger.info({ runId: run.id, sessionId: run.launch.sessionId, code }, '[coding-agent-run] codex exec exited')
-      const nativeSessionId = run.launch.agentNativeSessionId
-      if (run.launch.mode === 'global' && nativeSessionId && run.nativeTurnStartedAt) {
-        const home = run.launch.env?.CODEX_HOME || process.env.CODEX_HOME || join(getCodingAgentGlobalHome(), '.codex')
-        run.nativeCompletionPending = true
-        run.nativeUsageCompletion = readCodexTurnAccounting(home, nativeSessionId, run.nativeTurnStartedAt).then(([metadata, rows]) => {
-          run.nativeCompletionPending = false
-          if (metadata && run.nativeUsage) Object.assign(run.nativeUsage, metadata)
-          if (rows && run.nativeUsage) run.nativeUsage.codexRows = rows
-          if (run.exited || run.stoppedByUser) {
-            if (rows) {
-              this.captureUsage(run, () => this.recordNativeUsage(run, rows, run.printResponseId || run.id))
-              this.completeUsage(run)
-            }
-            return
+      this.codexChildClosed(run, code)
+    })
+  }
+
+  /** A Codex turn's process ended: read its accounting and finish the turn. */
+  private codexChildClosed(run: ManagedCodingAgentRun, code: number | null) {
+    if (run.currentChildKillTimer) clearTimeout(run.currentChildKillTimer)
+    run.currentChildKillTimer = undefined
+    run.currentChild = undefined
+    logger.info({ runId: run.id, sessionId: run.launch.sessionId, code }, '[coding-agent-run] codex exec exited')
+    const nativeSessionId = run.launch.agentNativeSessionId
+    if (run.launch.mode === 'global' && nativeSessionId && run.nativeTurnStartedAt) {
+      const home = run.launch.env?.CODEX_HOME || process.env.CODEX_HOME || join(getCodingAgentGlobalHome(), '.codex')
+      run.nativeCompletionPending = true
+      run.nativeUsageCompletion = readCodexTurnAccounting(home, nativeSessionId, run.nativeTurnStartedAt).then(([metadata, rows]) => {
+        run.nativeCompletionPending = false
+        if (metadata && run.nativeUsage) Object.assign(run.nativeUsage, metadata)
+        if (rows && run.nativeUsage) run.nativeUsage.codexRows = rows
+        if (run.exited || run.stoppedByUser) {
+          if (rows) {
+            this.captureUsage(run, () => this.recordNativeUsage(run, rows, run.printResponseId || run.id))
+            this.completeUsage(run)
           }
-          this.finishCodexExecTurn(run, code)
-        }).catch(err => {
-          run.nativeCompletionPending = false
-          logger.warn({ err, runId: run.id }, '[coding-agent-run] failed to read native model metadata')
-          if (!run.exited && !run.stoppedByUser) this.finishCodexExecTurn(run, code)
-        })
-      } else this.finishCodexExecTurn(run, code)
+          return
+        }
+        this.finishCodexExecTurn(run, code)
+      }).catch(err => {
+        run.nativeCompletionPending = false
+        logger.warn({ err, runId: run.id }, '[coding-agent-run] failed to read native model metadata')
+        if (!run.exited && !run.stoppedByUser) this.finishCodexExecTurn(run, code)
+      })
+    } else this.finishCodexExecTurn(run, code)
+  }
+
+  /** A Codex turn on its app-server, where Codex asks Studio before it acts. */
+  private startCodexAppServerTurn(run: ManagedCodingAgentRun, input: string, developerInstructions: string, images: CodingAgentImageInput[]) {
+    // The app-server takes Codex's config overrides (-c key=value), not exec's flags.
+    const configArgs: string[] = []
+    for (let index = 0; index < run.launch.args.length; index += 1) {
+      if (run.launch.args[index] === '-c' && run.launch.args[index + 1]) { configArgs.push('-c', run.launch.args[index + 1]); index += 1 }
+    }
+    const child = spawnCodingAgentChild(run.launch.command, ['app-server', ...configArgs], {
+      cwd: codingAgentWorkingDirectory(run.launch),
+      env: run.launch.mode === 'global'
+        ? { ...process.env, ...(run.launch.env || {}) }
+        : isolatedCodingAgentChildEnv(run.launch.env),
+      pipeStdin: true,
+    })
+    run.currentChild = child
+    child.stderr?.on('data', (chunk: Buffer) => {
+      this.touch(run)
+      const text = appendChildStderr(run, chunk)
+      if (text) logger.debug({ runId: run.id, sessionId: run.launch.sessionId, text }, '[coding-agent-run] codex app-server stderr')
+    })
+    child.stdin?.on('error', err => logger.warn({ err, runId: run.id }, '[coding-agent-run] codex app-server stdin failed'))
+    let completed = false
+    const turn = new CodexAppServerTurn(child, {
+      notify: (method, params) => { this.touch(run); this.handleCodexProtocolEvent(run, method, params) },
+      ask: request => this.askApproval(run, request),
+    })
+    const stop = () => {
+      try { child.stdin?.end() } catch {}
+      run.currentChildKillTimer = setTimeout(() => { if (childIsRunning(child)) terminateChildProcess(child) }, 1500)
+    }
+    void turn.run({
+      threadId: run.nativeResumeReady ? run.launch.agentNativeSessionId || undefined : undefined,
+      cwd: run.launch.workspaceDir,
+      text: input,
+      images: images.map(image => String(image.path || '')).filter(Boolean),
+      developerInstructions: developerInstructions || undefined,
+    }).then(() => { completed = true; stop() }).catch(error => {
+      if (!run.stoppedByUser) run.codexPendingError = error instanceof Error ? error.message : String(error)
+      stop()
+    })
+    child.on('error', err => {
+      run.currentChild = undefined
+      logger.warn({ err, runId: run.id }, '[coding-agent-run] codex app-server failed to start')
+      if (!run.printCompleted) this.failCodexExecTurn(run, childProcessErrorMessage(err, run.launch.agentId))
+    })
+    child.on('close', code => {
+      this.denyOpenApprovals(run, 'The agent stopped')
+      this.codexChildClosed(run, completed ? 0 : code || 1)
     })
   }
 
@@ -3358,12 +3725,16 @@ export class CodingAgentRunManager {
       return
     }
     if (
+      method === 'item/reasoning/summaryTextDelta' ||
+      method === 'item/reasoning/textDelta' ||
       method === 'item/reasoning/delta' ||
       method === 'item/reasoningText/delta' ||
       method === 'item/reasoningSummary/delta' ||
       method === 'item/thinking/delta'
     ) {
-      this.appendCodexReasoning(run, this.codexReasoningText(params))
+      const text = this.codexReasoningText(params)
+      if (text && params.itemId) run.codexReasoningStreamed?.add(String(params.itemId))
+      this.appendCodexReasoning(run, text)
       return
     }
     if (method === 'item/started') {
@@ -3449,6 +3820,8 @@ export class CodingAgentRunManager {
   private handleCodexItemCompleted(run: ManagedCodingAgentRun, item: any) {
     const itemType = this.codexItemType(item)
     if (this.isCodexReasoningItem(itemType)) {
+      // Reasoning the app-server already streamed as deltas is not added again whole.
+      if (run.codexReasoningStreamed?.has(String(item.id || ''))) return
       this.appendCodexReasoning(run, this.codexReasoningText(item))
       return
     }
@@ -3518,6 +3891,7 @@ export class CodingAgentRunManager {
   private handleCodexResponseItem(run: ManagedCodingAgentRun, item: any) {
     const itemType = this.codexItemType(item)
     if (this.isCodexReasoningItem(itemType)) {
+      if (run.codexReasoningStreamed?.has(String(item.id || ''))) return
       this.appendCodexReasoning(run, this.codexReasoningText(item))
       return
     }

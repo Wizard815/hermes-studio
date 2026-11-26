@@ -1,0 +1,54 @@
+// Shared look for the Tools, Terminal, Subagents and Maintenance settings tabs.
+// Matches GatewayAutoStartSettings (section title + hint, SettingRow lists).
+@use '@/styles/variables' as *;
+
+.settings-section {
+  margin-top: 16px;
+
+  & + .settings-section {
+    padding-top: calc(16px * var(--spacing-scale, 1));
+    border-top: var(--border-width, 1px) solid var(--border-color);
+  }
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-title {
+  margin: 0 0 6px;
+  font-size: calc(var(--font-size-base, 14px) * 15 / 14);
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.section-hint {
+  margin: 0 0 12px;
+  color: var(--text-color-secondary);
+  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
+}
+
+.muted {
+  color: $text-muted;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.input-md {
+  width: 320px;
+  max-width: 100%;
+}
+
+.input-sm {
+  width: 160px;
+  max-width: 100%;
+}

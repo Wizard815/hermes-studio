@@ -22,6 +22,8 @@ export class DshAcpTurn {
   private buffer = ''
   private decoder = new StringDecoder('utf8')
   private closed = false
+  /** Tool calls the agent announced, by id (titles and inputs for permission questions). */
+  private toolCalls = new Map<string, any>()
   private sessionId = ''
   private attempts = new Map<string, StreamedText>()
   private committed = new Map<string, StreamedText>()
@@ -32,6 +34,8 @@ export class DshAcpTurn {
     config(options: any[]): void
     usage?(event: any): void
     permissionRequired?: boolean
+    /** Ask Studio before DSH acts; without it, permission follows permissionRequired. */
+    askPermission?: (params: any) => Promise<any>
   }) {
     child.stdout?.on('data', (chunk: Buffer) => {
       try {
@@ -91,11 +95,23 @@ export class DshAcpTurn {
         try { this.callbacks.usage?.(message.params) }
         catch (err) { logger.warn({ err }, '[dsh] failed to record native usage') }
       } else if (message.method === 'session/update' && message.params?.sessionId === this.sessionId) {
+        const update = message.params.update
+        if ((update?.sessionUpdate === 'tool_call' || update?.sessionUpdate === 'tool_call_update') && update.toolCallId) {
+          this.toolCalls.set(String(update.toolCallId), { ...this.toolCalls.get(String(update.toolCallId)), ...update })
+        }
         this.receiveUpdate(message.params.update)
       } else if (message.method === DSH_STREAM_METHOD && message.params?.sessionId === this.sessionId) {
         this.receiveStream(message.params.frame)
       } else if (message.id !== undefined) {
-        if (message.method === 'session/request_permission' && message.params?.sessionId === this.sessionId) {
+        if (message.method === 'session/request_permission' && message.params?.sessionId === this.sessionId && this.callbacks.askPermission) {
+          const id = message.id
+          // Some agents (DSH) send only the call's id; its details came with the tool call update.
+          const known = this.toolCalls.get(String(message.params?.toolCall?.toolCallId || ''))
+          const params = known ? { ...message.params, toolCall: { ...known, ...message.params.toolCall } } : message.params
+          void this.callbacks.askPermission(params)
+            .then(result => this.write({ id, result }))
+            .catch(() => this.write({ id, result: { outcome: { outcome: 'cancelled' } } }))
+        } else if (message.method === 'session/request_permission' && message.params?.sessionId === this.sessionId) {
           const kind = this.callbacks.permissionRequired ? 'reject_once' : 'allow_once'
           const option = message.params.options?.find((entry: any) => entry.kind === kind)
           this.write({ id: message.id, result: { outcome: option

@@ -1,4 +1,6 @@
 import { execFile, execFileSync } from 'child_process'
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import { promisify } from 'util'
 import { logger } from '../../../studio/public/logging'
 import { getActiveProfileDir } from '../profiles/profile'
@@ -10,6 +12,148 @@ interface SupervisedGateway {
   hermesBin: string
   profileDir: string
   startedAt: number
+  externalSupervisorFlag: boolean
+}
+
+/**
+ * Exit codes the Hermes gateway uses to talk to its supervisor
+ * (hermes gateway/restart.py): 75 asks to be relaunched (SIGUSR1 from
+ * `hermes gateway restart`, an in-chat /restart, `hermes update`), 78 is a
+ * fatal configuration error that must not be retried.
+ */
+export const GATEWAY_RESTART_EXIT_CODE = 75
+export const GATEWAY_FATAL_CONFIG_EXIT_CODE = 78
+
+export type GatewayExitAction =
+  /** The gateway asked to be relaunched: start it again right away. */
+  | 'restart'
+  /** It died: respawn after a delay, within the crash budget. */
+  | 'crash'
+  /** It exited cleanly: respawn unless another gateway now serves the profile. */
+  | 'stopped'
+  /** Its configuration is fatal: retrying cannot help. */
+  | 'fatal'
+  /** This Hermes does not know `--external-supervisor`: start again without it. */
+  | 'retry-without-flag'
+
+/**
+ * Decide what the supervisor does when its gateway exits.
+ *
+ * A clean exit 0 usually means another `gateway run --replace` took the
+ * gateway over, or someone stopped it. Respawning with `--replace` then killed
+ * the gateway that had just replaced it (Studio fighting other restarters), so
+ * a clean exit is only respawned when no other gateway serves the profile. It
+ * is still respawned then: Hermes's orphan reaper also ends a gateway that is
+ * still starting with a clean exit, and that must not leave zero gateways.
+ */
+export function classifyGatewayExit(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  opts: { ranMs: number; externalSupervisorFlag: boolean },
+): GatewayExitAction {
+  if (code === 2 && opts.externalSupervisorFlag && opts.ranMs < FLAG_REJECTED_WINDOW_MS) return 'retry-without-flag'
+  if (code === GATEWAY_RESTART_EXIT_CODE) return 'restart'
+  if (code === GATEWAY_FATAL_CONFIG_EXIT_CODE) return 'fatal'
+  if (code === 0 && !signal) return 'stopped'
+  return 'crash'
+}
+
+/**
+ * Whether `/proc/<pid>/stat` shows a zombie. A gateway left by an earlier
+ * Studio is reparented to PID 1, and in a container whose PID 1 does not reap
+ * (e.g. `sleep infinity`) it stays a zombie after exiting, which signal 0
+ * still reports as alive.
+ */
+export function procStatIsZombie(stat: string): boolean {
+  const close = stat.lastIndexOf(')')
+  return close >= 0 && stat.slice(close + 1).trim().startsWith('Z')
+}
+
+function isZombie(pid: number): boolean {
+  if (process.platform !== 'linux') return false
+  try {
+    return procStatIsZombie(readFileSync(`/proc/${pid}/stat`, 'utf-8'))
+  } catch {
+    return false
+  }
+}
+
+/** Whether a process is alive (an exited, unreaped zombie is not). */
+export function pidAlive(pid: number): boolean {
+  if (!Number.isFinite(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+  } catch (err: any) {
+    return err?.code === 'EPERM'
+  }
+  return !isZombie(pid)
+}
+
+/** PID of a live gateway Hermes has recorded for the profile, or null. */
+export function recordedLiveGatewayPid(profileDir: string, isAlive: (pid: number) => boolean = pidAlive): number | null {
+  for (const file of ['gateway.pid', 'gateway.lock']) {
+    const path = join(profileDir, file)
+    if (!existsSync(path)) continue
+    try {
+      const data = JSON.parse(readFileSync(path, 'utf-8'))
+      const pid = typeof data?.pid === 'number' ? data.pid : parseInt(String(data?.pid || ''), 10)
+      if (Number.isFinite(pid) && pid > 0 && isAlive(pid)) return pid
+    } catch {}
+  }
+  return null
+}
+
+let gatewayPidAlive: (pid: number) => boolean = pidAlive
+
+/** Whether the gateway Hermes recorded for the profile was launched for an external supervisor. */
+export function recordedGatewayDeclaresExternalSupervisor(profileDir: string, pid: number): boolean {
+  try {
+    const data = JSON.parse(readFileSync(join(profileDir, 'gateway.pid'), 'utf-8'))
+    const recorded = typeof data?.pid === 'number' ? data.pid : parseInt(String(data?.pid || ''), 10)
+    return recorded === pid && Array.isArray(data?.argv) && data.argv.includes('--external-supervisor')
+  } catch {
+    return false
+  }
+}
+
+let otherGatewayProbe: (profileDir: string, exitedPid: number) => number | null = (profileDir, exitedPid) => {
+  const pid = recordedLiveGatewayPid(profileDir)
+  return pid !== null && pid !== exitedPid ? pid : null
+}
+
+/** Hermes binaries that rejected `--external-supervisor` (older Hermes). */
+const externalSupervisorFlagRejected = new Set<string>()
+
+/**
+ * Environment and argv for a Studio-supervised gateway.
+ *
+ * `--external-supervisor` (and its env twin) tells Hermes that Studio owns
+ * the respawn, so every restart Hermes starts by itself (`hermes gateway
+ * restart` spawned by the dashboard after webhooks/enable or WhatsApp setup,
+ * an in-chat /restart, `hermes update`) drains the gateway and exits 75
+ * back to Studio instead of starting a second, unsupervised gateway. The env
+ * marker also pins the gateway to HERMES_HOME instead of the sticky
+ * `active_profile`.
+ *
+ * Studio caps crash respawns itself, so Hermes's own respawn-storm backoff
+ * (a sleep of up to 5 minutes after 5 starts in 2 minutes) is turned off
+ * unless the operator set it: it made a few quick restarts look like a dead
+ * gateway.
+ */
+export function managedGatewayLaunch(
+  profileDir: string,
+  opts: { externalSupervisorFlag: boolean; env?: NodeJS.ProcessEnv },
+): { args: string[]; env: NodeJS.ProcessEnv } {
+  const baseEnv = opts.env ?? process.env
+  const env: NodeJS.ProcessEnv = {
+    ...baseEnv,
+    HERMES_HOME: profileDir,
+    HERMES_GATEWAY_EXTERNAL_SUPERVISOR: '1',
+  }
+  if (baseEnv.HERMES_GATEWAY_MAX_STARTS === undefined) env.HERMES_GATEWAY_MAX_STARTS = '0'
+  const args = ['gateway', 'run', '--replace']
+  if (opts.externalSupervisorFlag) args.push('--external-supervisor')
+  return { args, env }
 }
 
 /**
@@ -22,27 +166,44 @@ interface SupervisedGateway {
  *   call to `startGatewayRunManaged` for the same profile clears it: a fresh
  *   start is already happening, so a respawn would race with it.
  *
- * This is what makes `/restart` safe. The flow is:
- *   1. `/restart` calls `hermes gateway stop` (CLI) which kills our child.
- *   2. That child's exit handler schedules a respawn timer (step T+0).
- *   3. `/restart` then calls `startGatewayRunManaged` for the same profile.
- *   4. That call clears the pending respawn timer (we're starting a new one
- *      anyway) and registers the fresh child.
+ * Restarts:
+ *   - Studio's `/restart` runs `hermes gateway stop` (our child exits 0 and is
+ *     not respawned) and then `startGatewayRunManaged`, which clears any
+ *     pending respawn (e.g. after a stop that had to SIGKILL) before it spawns.
+ *   - A restart Hermes starts itself (`hermes gateway restart`) sees the
+ *     `--external-supervisor` marker, sends SIGUSR1, and the gateway exits 75;
+ *     we relaunch it at once and Hermes waits for that fresh PID.
  *
- * Net result: exactly one new gateway per `/restart`, no orphans.
+ * Net result: exactly one new gateway per restart, no orphans.
  */
 interface ProfileState {
   current: SupervisedGateway | null
   respawnTimer: NodeJS.Timeout | null
   respawnAttempts: number
+  /** A gateway an earlier Studio launched, watched by PID (it is not our child). */
+  adopted: AdoptedGateway | null
+}
+
+interface AdoptedGateway {
+  pid: number
+  hermesBin: string
+  timer: NodeJS.Timeout
 }
 
 const profileState = new Map<string, ProfileState>()
 const stoppingGateways = new Map<number, SupervisedGateway>()
 let managedGatewayShutdownStarted = false
 
+/** How often an adopted gateway (not our child) is checked for exit. */
+const ADOPTED_WATCH_INTERVAL_MS = 1000
 /** Delay before respawning a gateway that exited unexpectedly. */
 const RESPAWN_DELAY_MS = 2000
+/** Delay before relaunching a gateway that asked to be restarted (exit 75). */
+const RESTART_RESPAWN_DELAY_MS = 500
+/** A restart exit this soon after launch is a failed start (e.g. a lost lock race), not a request. */
+const RESTART_MIN_RUN_MS = 5000
+/** argparse exits 2 on an unknown flag; only an early exit can be that. */
+const FLAG_REJECTED_WINDOW_MS = 15000
 const RESPAWN_STABLE_RUN_MS = 30000
 const MAX_RESPAWN_ATTEMPTS = 3
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 2000
@@ -57,7 +218,7 @@ export interface ManagedGatewayShutdownResult {
 function getOrCreateProfileState(profileDir: string): ProfileState {
   let state = profileState.get(profileDir)
   if (!state) {
-    state = { current: null, respawnTimer: null, respawnAttempts: 0 }
+    state = { current: null, respawnTimer: null, respawnAttempts: 0, adopted: null }
     profileState.set(profileDir, state)
   }
   return state
@@ -67,6 +228,12 @@ type KillWindowsProcessTree = (pid: number) => Promise<void>
 type ForceKillWindowsProcessTree = (pid: number) => void
 type ListPosixDescendantPids = (pid: number) => number[]
 type KillPosixPid = (pid: number, signal: NodeJS.Signals) => void
+
+function stopAdoptedWatch(state: ProfileState): void {
+  if (!state.adopted) return
+  clearInterval(state.adopted.timer)
+  state.adopted = null
+}
 
 function clearRespawnTimer(state: ProfileState, profileDir: string): void {
   if (!state.respawnTimer) return
@@ -267,6 +434,7 @@ export async function shutdownManagedGateways(
 
   for (const [profileDir, state] of profileState) {
     clearRespawnTimer(state, profileDir)
+    stopAdoptedWatch(state)
 
     const entry = state.current
     if (!entry) {
@@ -313,6 +481,7 @@ export async function retireManagedGatewayForProfile(
   if (!state) return { signaled: 0, forced: 0, errors: 0 }
 
   clearRespawnTimer(state, profileDir)
+  stopAdoptedWatch(state)
 
   const entry = state.current
   state.current = null
@@ -365,6 +534,7 @@ export function forceStopManagedGateways(
 
   for (const [profileDir, state] of profileState) {
     clearRespawnTimer(state, profileDir)
+    stopAdoptedWatch(state)
     if (state.current) entries.set(state.current.pid, state.current)
     state.current = null
     profileState.delete(profileDir)
@@ -384,6 +554,132 @@ export function forceStopManagedGateways(
     logger.warn('[gateway-runner] force-stopped managed gateway trees count=%s', entries.size)
   }
   return entries.size
+}
+
+/**
+ * Let go of the profile's supervised gateway because something is about to
+ * stop it on purpose (Studio's own restart runs `hermes gateway stop` and then
+ * starts a fresh one). Without this the stop looked like an unexpected exit:
+ * the runner logged a warning, spent a crash-budget attempt and armed a
+ * respawn that raced the restart's own start whenever the stop took longer
+ * than the respawn delay. The released child is still tracked so a Studio
+ * shutdown that lands meanwhile can force it down.
+ */
+export function releaseManagedGatewayForStop(profileDir: string): number | null {
+  const state = profileState.get(profileDir)
+  if (!state) return null
+  clearRespawnTimer(state, profileDir)
+  state.respawnAttempts = 0
+  const adoptedPid = state.adopted?.pid ?? null
+  stopAdoptedWatch(state)
+  const entry = state.current
+  if (!entry) return adoptedPid
+  state.current = null
+  stoppingGateways.set(entry.pid, entry)
+  entry.child.once('exit', (code, signal) => {
+    stoppingGateways.delete(entry.pid)
+    logger.info('[gateway-runner] released gateway stopped (profileDir=%s pid=%s code=%s signal=%s)', profileDir, entry.pid, code, signal)
+  })
+  logger.info('[gateway-runner] releasing gateway for a planned stop profileDir=%s pid=%s', profileDir, entry.pid)
+  return entry.pid
+}
+
+/** Whether this Studio supervises a live gateway (or has one about to respawn) for the profile. */
+export function isManagedGatewaySupervised(profileDir: string): boolean {
+  const state = profileState.get(profileDir)
+  return Boolean(state && (state.current || state.respawnTimer || state.adopted))
+}
+
+/**
+ * Studio is shutting down but its gateways stay up (they are detached), so
+ * messaging keeps working and the next Studio adopts them. Only stop
+ * supervising: no respawn may start after this point.
+ */
+export function detachManagedGatewaysForShutdown(): number {
+  managedGatewayShutdownStarted = true
+  let left = 0
+  for (const [profileDir, state] of profileState) {
+    clearRespawnTimer(state, profileDir)
+    stopAdoptedWatch(state)
+    if (state.current) {
+      left += 1
+      logger.info('[gateway-runner] leaving gateway running for the next Studio profileDir=%s pid=%s', profileDir, state.current.pid)
+    }
+    state.current = null
+  }
+  profileState.clear()
+  return left
+}
+
+/**
+ * Supervise a gateway an earlier Studio launched with `--external-supervisor`
+ * and left running, without restarting it. It is not our child, so its exit
+ * is noticed by watching the PID. Every exit of such a gateway is a hand-back
+ * (Hermes's own restart exits it for its supervisor to relaunch) or a stop
+ * that would otherwise leave the profile with no gateway, so it is relaunched
+ * at once unless another gateway now serves the profile.
+ */
+export function adoptRunningGateway(hermesBin: string, profileDir: string, pid: number): boolean {
+  if (managedGatewayShutdownStarted || !gatewayPidAlive(pid)) return false
+  const state = getOrCreateProfileState(profileDir)
+  if (state.current) return false
+  if (state.adopted?.pid === pid) return true
+  stopAdoptedWatch(state)
+  clearRespawnTimer(state, profileDir)
+  const timer = setInterval(() => {
+    if (gatewayPidAlive(pid)) return
+    if (state.adopted?.pid !== pid) return
+    stopAdoptedWatch(state)
+    if (managedGatewayShutdownStarted) return
+    const other = otherGatewayProbe(profileDir, pid)
+    if (other !== null) {
+      if (recordedGatewayDeclaresExternalSupervisor(profileDir, other)) {
+        logger.info('[gateway-runner] adopted gateway pid=%s was replaced by pid=%s; watching it (profileDir=%s)', pid, other, profileDir)
+        adoptRunningGateway(hermesBin, profileDir, other)
+      } else {
+        logger.info('[gateway-runner] adopted gateway pid=%s exited and pid=%s now serves the profile; not relaunching (profileDir=%s)', pid, other, profileDir)
+      }
+      return
+    }
+    logger.info('[gateway-runner] adopted gateway exited (profileDir=%s pid=%s); relaunching', profileDir, pid)
+    state.respawnTimer = setTimeout(() => {
+      state.respawnTimer = null
+      try {
+        const next = startGatewayRunManaged(hermesBin, { profileDir })
+        logger.info('[gateway-runner] gateway relaunched after adopted exit (oldPid=%s newPid=%s profileDir=%s)', pid, next.pid, profileDir)
+      } catch (err) {
+        logger.error(err, '[gateway-runner] failed to relaunch gateway after adopted exit')
+      }
+    }, RESTART_RESPAWN_DELAY_MS)
+    state.respawnTimer.unref()
+  }, ADOPTED_WATCH_INTERVAL_MS)
+  timer.unref()
+  state.adopted = { pid, hermesBin, timer }
+  logger.info('[gateway-runner] adopted running gateway profileDir=%s pid=%s', profileDir, pid)
+  return true
+}
+
+/** Test seam: forget all supervision state. */
+export function resetManagedGatewayRunnerForTests(): void {
+  for (const state of profileState.values()) {
+    if (state.respawnTimer) clearTimeout(state.respawnTimer)
+    stopAdoptedWatch(state)
+  }
+  profileState.clear()
+  stoppingGateways.clear()
+  externalSupervisorFlagRejected.clear()
+  managedGatewayShutdownStarted = false
+  gatewayPidAlive = pidAlive
+}
+
+/** Test seam: how the runner tells whether a gateway PID is alive. */
+export function setGatewayPidAliveForTests(probe: (pid: number) => boolean): void {
+  gatewayPidAlive = probe
+}
+
+/** Test seam: how the runner finds another live gateway after a clean exit. */
+export function setOtherGatewayProbeForTests(probe: (profileDir: string, exitedPid: number) => number | null): void {
+  otherGatewayProbe = probe
 }
 
 export function startGatewayRunManaged(
@@ -411,11 +707,15 @@ function startGatewayRunManagedInternal(
   // unexpected exit. Without this, `/restart` (stop -> start) would race
   // against the respawn timer and end up with two gateways on the same port.
   clearRespawnTimer(state, profileDir)
+  // `run --replace` replaces an adopted gateway: its exit is ours now.
+  stopAdoptedWatch(state)
   if (!opts.preserveRespawnAttempts) {
     state.respawnAttempts = 0
   }
 
-  const child = spawnHermesWithBin(hermesBin, ['gateway', 'run', '--replace'], {
+  const externalSupervisorFlag = !externalSupervisorFlagRejected.has(hermesBin)
+  const launch = managedGatewayLaunch(profileDir, { externalSupervisorFlag })
+  const child = spawnHermesWithBin(hermesBin, launch.args, {
     // On Windows, detached:true uses DETACHED_PROCESS. That makes
     // CREATE_NO_WINDOW/windowsHide ineffective and exposes the venv
     // Scripts\python.exe console. The server already supervises this child,
@@ -423,10 +723,7 @@ function startGatewayRunManagedInternal(
     detached: process.platform !== 'win32',
     stdio: 'ignore',
     windowsHide: true,
-    env: {
-      ...process.env,
-      HERMES_HOME: profileDir,
-    },
+    env: launch.env,
   })
   child.once('error', (err) => {
     if (child.pid && state.current?.pid === child.pid) state.current = null
@@ -436,7 +733,7 @@ function startGatewayRunManagedInternal(
 
   const pid = child.pid ?? null
   if (pid) {
-    const entry: SupervisedGateway = { pid, child, hermesBin, profileDir, startedAt: Date.now() }
+    const entry: SupervisedGateway = { pid, child, hermesBin, profileDir, startedAt: Date.now(), externalSupervisorFlag }
     state.current = entry
 
     child.on('exit', (code, signal) => {
@@ -445,26 +742,65 @@ function startGatewayRunManagedInternal(
       // want the old child's exit to trigger anything.
       if (state.current?.pid !== pid) return
       state.current = null
-      if (Date.now() - entry.startedAt >= RESPAWN_STABLE_RUN_MS) {
-        state.respawnAttempts = 0
-      }
-      state.respawnAttempts += 1
+      const ranMs = Date.now() - entry.startedAt
+      const action = classifyGatewayExit(code, signal, { ranMs, externalSupervisorFlag })
 
-      if (state.respawnAttempts > MAX_RESPAWN_ATTEMPTS) {
+      if (action === 'fatal') {
+        state.respawnAttempts = 0
         logger.error(
-          '[gateway-runner] gateway exited unexpectedly and reached respawn limit (profileDir=%s pid=%s code=%s signal=%s attempts=%s maxAttempts=%s)',
-          profileDir, pid, code, signal, state.respawnAttempts - 1, MAX_RESPAWN_ATTEMPTS,
+          '[gateway-runner] gateway exited with a fatal configuration error; not respawning (profileDir=%s pid=%s code=%s)',
+          profileDir, pid, code,
         )
         return
       }
 
-      logger.warn(
-        '[gateway-runner] gateway exited unexpectedly (profileDir=%s pid=%s code=%s signal=%s attempt=%s/%s), respawning in %dms',
-        profileDir, pid, code, signal, state.respawnAttempts, MAX_RESPAWN_ATTEMPTS, RESPAWN_DELAY_MS,
-      )
+      let delayMs = RESPAWN_DELAY_MS
+      if (action === 'retry-without-flag') {
+        externalSupervisorFlagRejected.add(hermesBin)
+        delayMs = 0
+        logger.warn(
+          '[gateway-runner] Hermes rejected --external-supervisor (older Hermes?); starting the gateway without it (profileDir=%s pid=%s)',
+          profileDir, pid,
+        )
+      } else if (action === 'restart' && ranMs >= RESTART_MIN_RUN_MS) {
+        // A requested restart is not a crash: it never uses up the crash budget.
+        state.respawnAttempts = 0
+        delayMs = RESTART_RESPAWN_DELAY_MS
+        logger.info(
+          '[gateway-runner] gateway asked to be restarted (profileDir=%s pid=%s code=%s); relaunching',
+          profileDir, pid, code,
+        )
+      } else {
+        if (ranMs >= RESPAWN_STABLE_RUN_MS) state.respawnAttempts = 0
+        state.respawnAttempts += 1
+        if (state.respawnAttempts > MAX_RESPAWN_ATTEMPTS) {
+          logger.error(
+            '[gateway-runner] gateway exited unexpectedly and reached respawn limit (profileDir=%s pid=%s code=%s signal=%s attempts=%s maxAttempts=%s)',
+            profileDir, pid, code, signal, state.respawnAttempts - 1, MAX_RESPAWN_ATTEMPTS,
+          )
+          return
+        }
+        logger.warn(
+          action === 'stopped'
+            ? '[gateway-runner] gateway exited cleanly (profileDir=%s pid=%s code=%s signal=%s attempt=%s/%s); respawning in %dms unless another gateway took over'
+            : '[gateway-runner] gateway exited unexpectedly (profileDir=%s pid=%s code=%s signal=%s attempt=%s/%s), respawning in %dms',
+          profileDir, pid, code, signal, state.respawnAttempts, MAX_RESPAWN_ATTEMPTS, delayMs,
+        )
+      }
 
       state.respawnTimer = setTimeout(() => {
         state.respawnTimer = null
+        if (action === 'stopped') {
+          const other = otherGatewayProbe(profileDir, pid)
+          if (other !== null) {
+            state.respawnAttempts = 0
+            logger.info(
+              '[gateway-runner] gateway exited cleanly and pid=%s now serves the profile; not respawning (profileDir=%s oldPid=%s)',
+              other, profileDir, pid,
+            )
+            return
+          }
+        }
         try {
           const next = startGatewayRunManagedInternal(hermesBin, {
             profileDir,
@@ -475,9 +811,9 @@ function startGatewayRunManagedInternal(
             pid, next.pid, profileDir, state.respawnAttempts, MAX_RESPAWN_ATTEMPTS,
           )
         } catch (err) {
-          logger.error(err, '[gateway-runner] failed to respawn gateway after unexpected exit')
+          logger.error(err, '[gateway-runner] failed to respawn gateway after exit')
         }
-      }, RESPAWN_DELAY_MS)
+      }, delayMs)
       // Don't keep the event loop alive just for a pending respawn.
       state.respawnTimer.unref()
     })

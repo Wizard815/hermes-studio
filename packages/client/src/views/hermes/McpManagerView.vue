@@ -5,10 +5,13 @@ import { computed, onUnmounted, ref } from 'vue'
 import {
   NAlert, NButton, NEmpty, NInput, NModal,
   NRadioGroup, NRadioButton, useMessage,
-  NCheckbox, NScrollbar,
+  NCheckbox, NScrollbar, NTabs, NTabPane,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import McpServerCard from '@/components/hermes/mcp/McpServerCard.vue'
+import McpCatalogPanel from '@/components/hermes/mcp/McpCatalogPanel.vue'
+import McpOAuthConnect from '@/components/hermes/mcp/McpOAuthConnect.vue'
 import { useMcpConfigInput } from '@/composables/useMcpConfigInput'
 import {
   fetchMcpServers, fetchMcpTools, mcpServerAdd, mcpServerRemove,
@@ -23,6 +26,27 @@ const servers = ref<McpServerInfo[]>([])
 const loading = ref(true)
 const error = ref('')
 const searchQuery = ref('')
+// ?tab=catalog opens the catalog (Connections → Omi links to its Omi card).
+const activeTab = ref<'servers' | 'catalog'>(useRoute().query.tab === 'catalog' ? 'catalog' : 'servers')
+
+// Hermes signs in to OAuth MCP servers (catalog installs and servers with auth: oauth).
+const oauthServer = ref('')
+const showOAuth = ref(false)
+function usesOAuth(server: McpServerInfo) {
+  return !!server.raw_config.url && (server.raw_config as Record<string, unknown>).auth === 'oauth'
+}
+function openOAuth(server: McpServerInfo) {
+  oauthServer.value = server.name
+  showOAuth.value = true
+}
+function onCatalogChanged(server?: string) {
+  void loadServers()
+  if (server) scheduleReload()
+}
+function onOAuthConnected(server: string) {
+  message.success(t('hermesExtensions.oauth.connected', { name: server }))
+  void handleReload(server)
+}
 
 const showModal = ref(false)
 const modalMode = ref<'add' | 'edit'>('add')
@@ -411,6 +435,8 @@ async function saveToolsVisibility() {
           {{ error }}
         </NAlert>
 
+        <NTabs v-model:value="activeTab" type="line" animated class="mcp-tabs">
+          <NTabPane name="servers" :tab="t('hermesExtensions.mcpTabs.servers')">
         <div class="summary-grid">
           <div class="summary-card">
             <span class="summary-label">{{ t('mcp.total') }}</span>
@@ -460,9 +486,20 @@ async function saveToolsVisibility() {
             @remove="handleRemove"
             @toggle-enabled="handleToggleEnabled"
             @manage-tools="openToolsModal"
-          />
+          >
+            <template #extra-actions>
+              <NButton v-if="usesOAuth(server)" size="tiny" quaternary type="primary" @click="openOAuth(server)">
+                {{ t('hermesExtensions.oauth.connect') }}
+              </NButton>
+            </template>
+          </McpServerCard>
         </div>
         <NEmpty v-else :description="t('mcp.empty')" />
+          </NTabPane>
+          <NTabPane name="catalog" :tab="t('hermesExtensions.mcpTabs.catalog')" display-directive="show:lazy">
+            <McpCatalogPanel @changed="onCatalogChanged" />
+          </NTabPane>
+        </NTabs>
       </template>
     </div>
 
@@ -490,6 +527,8 @@ async function saveToolsVisibility() {
         </NButton>
       </div>
     </NModal>
+
+    <McpOAuthConnect v-model:show="showOAuth" :server="oauthServer" @connected="onOAuthConnected" />
 
     <!-- Tools Visibility Modal -->
     <NModal v-model:show="showToolsModal" :title="t('mcp.toolsVisibilityTitle')" preset="card" :style="{ width: 'min(480px, calc(100vw - 32px))' }">
@@ -559,6 +598,8 @@ async function saveToolsVisibility() {
 @use '@/styles/mcp-manager' as mcp-manager;
 
 @include mcp-manager.layout;
+
+.mcp-tabs :deep(.n-tab-pane) { padding-top: calc(14px * var(--spacing-scale, 1)); }
 
 .tools-modal-content {
   display: flex;

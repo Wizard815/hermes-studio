@@ -1,7 +1,8 @@
 import { request } from './client'
+import { agentMetadata } from '../utils/agent-catalog'
 import type { ProviderApiMode } from './studio/provider-api-mode'
 
-export type CodingAgentId = 'claude-code' | 'codex' | 'pi' | 'grok' | 'opencode' | 'dsh' | 'cursor' | 'antigravity' | 'qwen' | 'kimi' | 'codebuddy' | 'qoder' | 'copilot' | 'zcode'
+export type CodingAgentId = `plugin:${string}/${string}` | 'claude-code' | 'codex' | 'pi' | 'grok' | 'opencode' | 'dsh' | 'cursor' | 'antigravity' | 'qwen' | 'kimi' | 'codebuddy' | 'qoder' | 'copilot' | 'zcode'
 export type ChatCodingAgentId = CodingAgentId | 'ekko-agent'
 export const CODING_AGENT_API_MODES = [
   'chat_completions',
@@ -62,6 +63,7 @@ export interface CodingAgentToolStatus {
   source?: 'user-cli' | 'not-installed'
   path?: string
   error?: string
+  compatibility?: { pinnedVersion: string; previousVersion: string; adapterRevision: number; verifiedVersion: string }
 }
 
 export interface CodingAgentsStatus {
@@ -95,7 +97,11 @@ export interface CodingAgentModelCatalog {
   cached: boolean
 }
 
-export async function fetchCodingAgentModels(options: { agent?: CodingAgentId; refresh?: boolean } = {}) {
+export async function fetchCodingAgentModels(options: { agent?: CodingAgentId; refresh?: boolean; profile?: string } = {}) {
+  if (options.agent?.startsWith('plugin:')) {
+    const catalog = await request<CodingAgentModelCatalog>(`/api/studio/agents/${encodeURIComponent(options.agent)}/models?refresh=${options.refresh === true}`, options.profile ? { headers: { 'X-Hermes-Profile': options.profile } } : {})
+    return { agents: [{ ...catalog, agentId: options.agent, name: agentMetadata(options.agent)?.name || options.agent, source: 'sdk' as const, checkedAt: new Date().toISOString(), cached: false }] }
+  }
   const params = new URLSearchParams()
   if (options.agent) params.set('agent', options.agent)
   if (options.refresh !== undefined) params.set('refresh', String(options.refresh))
@@ -178,8 +184,8 @@ export async function fetchCodingAgentsStatus(): Promise<CodingAgentsStatus> {
   return request<CodingAgentsStatus>('/api/coding-agents')
 }
 
-export async function installCodingAgent(id: CodingAgentId): Promise<CodingAgentMutationResult> {
-  return request<CodingAgentMutationResult>(`/api/coding-agents/${id}/install`, { method: 'POST' })
+export async function installCodingAgent(id: CodingAgentId, options: { version?: string; rollback?: boolean } = {}): Promise<CodingAgentMutationResult> {
+  return request<CodingAgentMutationResult>(`/api/coding-agents/${id}/install`, { method: 'POST', body: JSON.stringify(options) })
 }
 
 export async function checkCodingAgentUpdate(id: CodingAgentId): Promise<CodingAgentUpdateResult> {
@@ -268,5 +274,30 @@ export interface AgentUpdatePolicyState {
  checkedAt: string
  error?: string
 }
+/** What each agent asks you before acting: ask (commands; the default), guarded (dangerous actions only), auto (never, yolo). */
+export type AgentApprovalMode = 'ask'|'guarded'|'auto'
+export function getAgentApprovals() { return request<{agents:Record<string,AgentApprovalMode>}>('/api/coding-agents/approvals') }
+export function setAgentApproval(id: CodingAgentId, mode: AgentApprovalMode) { return request<{agents:Record<string,AgentApprovalMode>}>('/api/coding-agents/approvals', {method:'PUT',body:JSON.stringify({agents:{[id]:mode}})}) }
 export function getAgentUpdatePolicies() { return request<{agents:Record<string,AgentUpdatePolicyState>}>('/api/coding-agents/update-policies') }
 export function setAgentAutoUpdate(id: CodingAgentId, autoUpdate: boolean) { return request<{agents:Record<string,AgentUpdatePolicyState>}>(`/api/coding-agents/${id}/update-policy`, {method:'PUT',body:JSON.stringify({autoUpdate})}) }
+
+/** Whether a chat is a clean room (its coding agent runs in its own container). */
+export function getCleanRoomStatus(sessionId: string) { return request<{ cleanRoom: boolean; container: string | null }>(`/api/coding-agents/cleanroom/sessions/${encodeURIComponent(sessionId)}`) }
+
+export type CleanRoomCheckState = 'pass' | 'warn' | 'fail' | 'info'
+export interface CleanRoomCheckItem { id: string; state: CleanRoomCheckState; detail: string }
+/** What the room's self-check saw from inside (names only, never values). */
+export interface CleanRoomSelfCheck { at: string; container: string; state: 'pass' | 'warn' | 'fail'; checks: CleanRoomCheckItem[]; error?: string }
+export type CleanRoomLeakKind = 'env' | 'ssh-key' | 'private-key' | 'credentials' | 'token-config' | 'keystore'
+/** Files in the chat's folder that may hold secrets (names only), found before the folder was mounted. */
+export interface CleanRoomLeakReport { at: string; workspace: string; findings: Array<{ path: string; kind: CleanRoomLeakKind }>; truncated: boolean; scanned: number }
+export interface CleanRoomEgressEntry { time: string; host: string; port: number; allowed: boolean; reason?: string; hash?: string }
+export interface CleanRoomEgress { entries: CleanRoomEgressEntry[]; chain: { ok: boolean; lines: number; chained: number; brokenAt?: number } }
+
+const cleanRoomPath = (sessionId: string, tail: string) => `/api/coding-agents/cleanroom/sessions/${encodeURIComponent(sessionId)}/${tail}`
+/** The room's last self-check and leak check. */
+export function getCleanRoomCheck(sessionId: string) { return request<{ selfCheck: CleanRoomSelfCheck | null; leaks: CleanRoomLeakReport | null }>(cleanRoomPath(sessionId, 'check')) }
+/** Run the self-check again in the room's running container. */
+export function rerunCleanRoomCheck(sessionId: string) { return request<{ selfCheck: CleanRoomSelfCheck }>(cleanRoomPath(sessionId, 'check'), { method: 'POST' }) }
+/** The room's outside connection attempts, newest last. */
+export function getCleanRoomEgress(sessionId: string, limit = 200) { return request<CleanRoomEgress>(`${cleanRoomPath(sessionId, 'egress')}?limit=${limit}`) }

@@ -1,5 +1,9 @@
+import { hermesApi } from '../services/hermes-api'
 import type { Context } from 'koa'
 import { bridgeMcpAction } from '../services/mcp/bridge-actions'
+import { getActiveProfileName, getProfileDir } from '../services/profiles/profile'
+import { readConfigYamlForProfile, saveEnvValueForProfile } from '../../studio/public/profile-config'
+import { ensureHomeAssistantSshKey } from '../services/home-assistant/ssh-key'
 
 function getProfile(ctx: Context): string | undefined {
   return (ctx.state as any)?.profile?.name || undefined
@@ -23,9 +27,45 @@ export async function listServers(ctx: Context) {
   }
 }
 
+/**
+ * Secrets for a new server (a token or API key) go to the profile's .env, never
+ * into config.yaml: the config holds only `${MCP_X_API_KEY}`, which Hermes fills
+ * in when it connects. Each key must be MCP_-prefixed and used by the config.
+ * Returns an error message, or null when the secrets are fine.
+ */
+export function checkMcpSecrets(config: Record<string, unknown>, secrets: unknown): string | null {
+  if (secrets === undefined || secrets === null) return null
+  if (typeof secrets !== 'object' || Array.isArray(secrets)) return 'secrets must be an object'
+  const text = JSON.stringify(config)
+  for (const [key, value] of Object.entries(secrets as Record<string, unknown>)) {
+    if (!/^MCP_[A-Z0-9_]{1,80}$/.test(key)) return `Secret name ${key} must look like MCP_NAME_API_KEY`
+    if (typeof value !== 'string' || !value.trim() || /[\r\n]/.test(value)) return `Secret ${key} must be a single line of text`
+    if (!text.includes('${' + key + '}')) return `Secret ${key} is not used by the server config`
+  }
+  return null
+}
+
+/** A remote server's URL must be http(s) with a host; returns an error message or null. */
+export function checkMcpUrl(config: Record<string, unknown>): string | null {
+  if (config.url === undefined) return null
+  const raw = typeof config.url === 'string' ? config.url.trim() : ''
+  let url: URL
+  // `${VAR}` parts (a connect secret) are filled in by Hermes; check the rest.
+  try { url = new URL(raw.replace(/\$\{[A-Z0-9_]+\}/g, 'x')) } catch { return `"${raw}" is not a web address (use http://host:port/path)` }
+  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) return `"${raw}" must start with http:// or https://`
+  return null
+}
+
+/** The server already configured under this name, compared case-insensitively (their secrets share one name in .env). */
+export function existingMcpServer(servers: unknown, name: string): string | null {
+  if (!servers || typeof servers !== 'object') return null
+  const wanted = name.trim().toLowerCase()
+  return Object.keys(servers as Record<string, unknown>).find(key => key.toLowerCase() === wanted) ?? null
+}
+
 export async function addServer(ctx: Context) {
   try {
-    const { name, config } = (ctx.request.body || {}) as Record<string, unknown>
+    const { name, config, secrets } = (ctx.request.body || {}) as Record<string, unknown>
     if (typeof name !== 'string' || !isValidServerName(name)) {
       ctx.status = 400
       ctx.body = { error: 'Valid server name is required' }
@@ -35,6 +75,25 @@ export async function addServer(ctx: Context) {
       ctx.status = 400
       ctx.body = { error: 'config object is required' }
       return
+    }
+    const secretError = checkMcpSecrets(config as Record<string, unknown>, secrets) || checkMcpUrl(config as Record<string, unknown>)
+    if (secretError) {
+      ctx.status = 400
+      ctx.body = { error: secretError }
+      return
+    }
+    const profile = getProfile(ctx) || getActiveProfileName() || 'default'
+    // Before any secret is written: a second server under a taken name would replace the first one's token.
+    const taken = existingMcpServer((await readConfigYamlForProfile(profile).catch(() => ({} as Record<string, any>))).mcp_servers, name)
+    if (taken) {
+      ctx.status = 409
+      ctx.body = { error: `An MCP server named "${taken}" already exists. Choose another name, or edit that server.` }
+      return
+    }
+    if (secrets) {
+      for (const [key, value] of Object.entries(secrets as Record<string, string>)) {
+        await saveEnvValueForProfile(profile, key, value.trim())
+      }
     }
     ctx.body = await bridgeMcpAction('mcp_server_add', { name: name.trim(), config }, getProfile(ctx))
   } catch (err: any) {
@@ -55,6 +114,12 @@ export async function updateServer(ctx: Context) {
     if (!config || typeof config !== 'object') {
       ctx.status = 400
       ctx.body = { error: 'config object is required' }
+      return
+    }
+    const urlError = checkMcpUrl(config as Record<string, unknown>)
+    if (urlError) {
+      ctx.status = 400
+      ctx.body = { error: urlError }
       return
     }
     ctx.body = await bridgeMcpAction('mcp_server_update', { name, config }, getProfile(ctx))
@@ -79,6 +144,31 @@ export async function removeServer(ctx: Context) {
   }
 }
 
+/**
+ * A real connection test: Hermes connects to the server and lists its tools.
+ * The bridge's own check only reads a connection it already holds, so a server
+ * that never connected would look fine with no tools; it is the fallback when
+ * Hermes's API cannot be reached.
+ */
+export async function testMcpServerLive(name: string, profile: string | undefined, deps = {
+  hermes: (path: string, prof?: string) => hermesApi.request('POST', path, new URLSearchParams(), {}, prof),
+  bridge: (prof?: string) => bridgeMcpAction('mcp_server_test', { name }, prof),
+}): Promise<{ ok: boolean; tools: string[]; error?: string }> {
+  try {
+    const result = await deps.hermes(`mcp/servers/${encodeURIComponent(name)}/test`, profile)
+    const body = JSON.parse(result.body.toString('utf8') || '{}')
+    if (result.status < 400 && typeof body.ok === 'boolean') {
+      const tools = Array.isArray(body.tools) ? body.tools.map((tool: any) => typeof tool === 'string' ? tool : String(tool?.name || '')).filter(Boolean) : []
+      return body.ok ? { ok: true, tools } : { ok: false, tools, error: String(body.error || 'The server did not answer') }
+    }
+  } catch { /* Hermes's API unavailable: use the bridge's check */ }
+  const fallback = await deps.bridge(profile) as { ok?: boolean; tools?: string[]; error?: string }
+  if (fallback?.ok && (!fallback.tools || fallback.tools.length === 0)) {
+    return { ok: false, tools: [], error: 'Connected, but the server offered no tools' }
+  }
+  return { ok: !!fallback?.ok, tools: fallback?.tools || [], ...(fallback?.error ? { error: fallback.error } : {}) }
+}
+
 export async function testServer(ctx: Context) {
   try {
     const name = ctx.params.name as string
@@ -87,7 +177,7 @@ export async function testServer(ctx: Context) {
       ctx.body = { error: 'Valid server name is required' }
       return
     }
-    ctx.body = await bridgeMcpAction('mcp_server_test', { name }, getProfile(ctx))
+    ctx.body = await testMcpServerLive(name, getProfile(ctx))
   } catch (err: any) {
     ctx.status = 503
     ctx.body = { error: err.message || 'Failed to test MCP server' }
@@ -116,5 +206,16 @@ export async function reloadMcp(ctx: Context) {
   } catch (err: any) {
     ctx.status = 503
     ctx.body = { error: err.message || 'Failed to reload MCP' }
+  }
+}
+
+/** Studio's SSH key for Home Assistant's SSH add-on: makes it once, returns the public half. */
+export async function homeAssistantSshKey(ctx: Context) {
+  try {
+    const profile = getProfile(ctx) || getActiveProfileName() || 'default'
+    ctx.body = await ensureHomeAssistantSshKey(getProfileDir(profile))
+  } catch (err: any) {
+    ctx.status = 500
+    ctx.body = { error: `Could not make an SSH key: ${err?.message || err}` }
   }
 }

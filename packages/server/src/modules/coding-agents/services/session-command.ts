@@ -5,11 +5,13 @@ import { getModelContextLength } from '../../studio/public/provider-runtime'
 import { calcAndUpdateUsage, getOrCreateSession } from '../../studio/public/run-state'
 import { getUsage } from '../../studio/public/usage'
 import type { SessionState } from '../../studio/contracts/runs/session'
-import { codingAgentRunManager } from './runtime/run-manager'
+import { codingAgentDisplayName, codingAgentRunManager } from './runtime/run-manager'
+import { toggleChatYolo, type AgentApprovalMode } from './approvals'
+import { markCleanRoom } from './cleanroom'
 import { compactStoredCodingAgentSession, startCodingAgentRun } from './index'
 import { isContextWindowExceededError, nativeContextRecoveryMessage, resetNativeSessionAfterContextOverflow } from './context-recovery'
 
-export type CodingAgentCommandName = 'context' | 'compact' | 'usage' | 'status'
+export type CodingAgentCommandName = 'context' | 'compact' | 'usage' | 'status' | 'cleanroom' | 'yolo'
 
 export interface ParsedCodingAgentCommand {
   name: CodingAgentCommandName
@@ -28,6 +30,9 @@ const CODING_AGENT_COMMAND_ALIASES: Record<string, CodingAgentCommandName> = {
   compact: 'compact',
   usage: 'usage',
   status: 'status',
+  cleanroom: 'cleanroom',
+  'clean-room': 'cleanroom',
+  yolo: 'yolo',
 }
 
 export function parseCodingAgentSessionCommand(input: string): ParsedCodingAgentCommand | null {
@@ -41,6 +46,49 @@ export function parseCodingAgentSessionCommand(input: string): ParsedCodingAgent
   return { name, rawName, args: match[2]?.trim() || '' }
 }
 
+export const CLEAN_ROOM_MESSAGE = 'Clean room on: this chat\'s agent now runs inside its own container. It can do anything there without asking, sees only this chat\'s folder, and can only reach Studio and the allowed hosts.'
+
+/**
+ * Make this chat a clean room: its agent runs inside its own container from
+ * the next turn on (a run already going outside is stopped first).
+ */
+export async function enterCleanRoom(sessionId: string): Promise<void> {
+  if (process.platform === 'win32') throw new Error('clean rooms need Docker on Linux or macOS')
+  markCleanRoom(sessionId)
+  if (codingAgentRunManager.hasSession(sessionId)) codingAgentRunManager.stop(sessionId, { reportClosed: false })
+}
+
+const APPROVAL_MODE_TEXT: Record<AgentApprovalMode, string> = {
+  ask: 'asks before running commands and before writing outside this chat\'s folder',
+  guarded: 'asks only before dangerous actions',
+  auto: 'acts without asking',
+}
+
+/**
+ * `/yolo` in a coding-agent chat: switch this chat between "auto" (the agent
+ * acts without asking) and the approval mode it had before. Returns the note
+ * shown in the chat.
+ */
+export function toggleCodingAgentYolo(sessionId: string, agentId: string, running: boolean): { message: string; mode: AgentApprovalMode; previous: AgentApprovalMode; yolo: boolean; approved: number } {
+  const name = codingAgentDisplayName(agentId)
+  const { mode, previous, yolo } = toggleChatYolo(agentId, sessionId)
+  let approved = 0
+  const parts: string[] = []
+  if (yolo) {
+    // What the agent is waiting on right now goes ahead too.
+    approved = codingAgentRunManager.approveOpenApprovals(sessionId, 'YOLO on for this chat')
+    parts.push(`YOLO on for this chat: ${name} now acts without asking (no approval cards).`)
+    if (approved) parts.push(`${approved === 1 ? 'The approval it was waiting on is' : `The ${approved} approvals it was waiting on are`} approved.`)
+    if (running) parts.push('Anything it asks during the turn running now is approved as well; from its next turn it does not ask at all.')
+    parts.push(`Send /yolo again to go back to: ${name} ${APPROVAL_MODE_TEXT[previous]}.`)
+  } else {
+    parts.push(`YOLO off for this chat: ${name} ${APPROVAL_MODE_TEXT[mode]}.`)
+    if (running) parts.push('The turn running now finishes the way it started; asking starts with the next turn.')
+    parts.push('Send /yolo again to let it act without asking.')
+  }
+  return { message: parts.join(' '), mode, previous, yolo, approved }
+}
+
 export function isCodingAgentSessionCommand(input: string): boolean {
   return parseCodingAgentSessionCommand(input) !== null
 }
@@ -50,6 +98,9 @@ export interface CodingAgentSessionCommandData {
   model?: string
   provider?: string
   mode?: 'scoped' | 'global'
+  /** The agent the chat was opened with (a brand-new chat has no run or stored agent yet). */
+  coding_agent_id?: string
+  agent_id?: string
 }
 
 export async function handleCodingAgentSessionCommand(
@@ -180,6 +231,36 @@ export async function handleCodingAgentSessionCommand(
         terminal: !state.isWorking,
         message: `${command.name === 'context' ? 'Context' : 'Usage'} lookup failed: ${err instanceof Error ? err.message : String(err)}`,
       })
+    }
+    return
+  }
+
+  if (command.name === 'cleanroom') {
+    try {
+      await enterCleanRoom(sessionId)
+      emitCommand({ action: 'cleanroom', terminal: true, message: CLEAN_ROOM_MESSAGE })
+    } catch (error) {
+      emitCommand({ action: 'cleanroom', terminal: true, ok: false, message: `Could not make a clean room: ${error instanceof Error ? error.message : String(error)}` })
+    }
+    return
+  }
+
+  if (command.name === 'yolo') {
+    const row = getSession(sessionId)
+    const info = codingAgentRunManager.getRunInfo(sessionId)
+    // Chats store Claude Code as "claude"; its approval mode is keyed by "claude-code".
+    // A brand-new chat has no run or stored agent yet: the agent it was opened with sets its mode.
+    const agentId = info?.agentId || (row?.agent === 'claude' ? 'claude-code' : row?.agent) || String(data.coding_agent_id || data.agent_id || '').trim()
+    const running = Boolean(info?.running) || state.isWorking
+    if (!agentId) {
+      emitCommand({ ok: false, action: 'yolo', terminal: !running, message: 'YOLO: this chat has no coding agent yet. Send a message first, then /yolo.' })
+      return
+    }
+    try {
+      const result = toggleCodingAgentYolo(sessionId, agentId, running)
+      emitCommand({ action: 'yolo', terminal: !running, message: result.message, mode: result.mode, previousMode: result.previous, yolo: result.yolo, approved: result.approved })
+    } catch (err) {
+      emitCommand({ ok: false, action: 'yolo', terminal: !running, message: `YOLO command failed: ${err instanceof Error ? err.message : String(err)}` })
     }
     return
   }

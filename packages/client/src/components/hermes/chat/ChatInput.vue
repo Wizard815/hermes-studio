@@ -5,6 +5,7 @@ import { isBuiltinEkkoSession, isExternalCodingAgentSession, isHermesSession } f
 import { EKKO_SESSION_COMMAND_DEFINITIONS } from '@/utils/hermes/bridge-session-commands'
 import type { Attachment, Session } from '@/stores/hermes/chat'
 import { useChatStore } from '@/stores/hermes/chat'
+import { appendSharedText, pendingComposerShare } from '@/utils/studio-own-share'
 import { useAppStore } from '@/stores/hermes/app'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import { useSettingsStore } from '@/stores/hermes/settings'
@@ -19,7 +20,11 @@ import { useToolTraceVisibility } from '@/composables/useToolTraceVisibility'
 import { extractClipboardFiles } from '@/utils/clipboard-files'
 import VoiceDialogueControls from './VoiceDialogueControls.vue'
 import BundleCreateModal from './BundleCreateModal.vue'
-import { BRIDGE_SESSION_COMMAND_DEFINITIONS } from '@/utils/hermes/bridge-session-commands'
+import { BRIDGE_SESSION_COMMAND_DEFINITIONS, HERDR_SESSION_COMMAND_DEFINITION, STUDIO_SESSION_COMMAND_DEFINITION, isHerdrSessionCommand, isStudioSessionCommand } from '@/utils/hermes/bridge-session-commands'
+import { isStoredSuperAdmin } from '@/api/client'
+import { useHerdrStore } from '@/stores/hermes/herdr'
+import { herdrCanOpenChat } from '@/mission/useFolders'
+import { openChatInHerdr, returnChatToStudio } from '@/utils/mission-url'
 import { clampChatInputHeight, isMobileChatInputViewport } from '@/utils/chat-input-height'
 import { normalizeComposerVoiceTranscript, useComposerVoiceInput } from '@/composables/useComposerVoiceInput'
 import { extractRepresentativeVideoFrames, isVideoFile } from '@/utils/video-frame-extraction'
@@ -276,7 +281,7 @@ const voiceInput = useComposerVoiceInput({
   insertTranscript: insertVoiceTranscriptIntoInput,
 })
 
-const CODING_AGENT_SLASH_COMMANDS = ['context', 'compact', 'usage', 'status']
+const CODING_AGENT_SLASH_COMMANDS = ['context', 'compact', 'usage', 'status', 'yolo', 'cleanroom']
 
 const bridgeCommands = computed<SlashCommandOption[]>(() =>
   BRIDGE_SESSION_COMMAND_DEFINITIONS.map(command => ({
@@ -320,6 +325,12 @@ const isCodingAgentSession = computed(() => isExternalCodingAgentSession(compose
 const isCursorSession = computed(() => (composerSession.value?.codingAgentId === 'cursor' || composerSession.value?.codingAgentId === 'antigravity') || (composerSession.value?.agent === 'cursor' || composerSession.value?.agent === 'antigravity'))
 const showSessionUsage = computed(() => isCodingAgentSession.value)
 const isForkCommandSession = computed(() => !!composerSession.value && !isEkkoSession.value && !isCodingAgentSession.value)
+const herdrStore = useHerdrStore()
+/** `/herdr` elevates this chat to herdr: super admins, herdr on, a chat that can be a herdr space (any agent). */
+const herdrCommandAvailable = computed(() => !props.draft && !props.submit && isStoredSuperAdmin()
+  && herdrStore.enabled && herdrCanOpenChat(composerSession.value))
+/** `/studio` returns an elevated chat to Studio. */
+const studioCommandAvailable = computed(() => herdrCommandAvailable.value && herdrStore.isElevated(composerSession.value?.id))
 const skillPickerItems = computed(() => {
   const byName = new Map<string, SkillInfo>()
   for (const category of skillCategories.value) {
@@ -340,10 +351,11 @@ const skillPickerItems = computed(() => {
 })
 const filteredBridgeCommands = computed(() => {
   const query = slashQuery.value.trim().toLowerCase()
-  const commands = /^person-(main|task)-/.test(composerSession.value?.id || '') ? [] : isEkkoSession.value
+  const agentCommands: SlashCommandOption[] = /^person-(main|task)-/.test(composerSession.value?.id || '') ? [] : isEkkoSession.value
     ? EKKO_SESSION_COMMAND_DEFINITIONS.map(command => ({ ...command, args: command.args || '', description: t(command.descriptionKey) }))
     : isBridgeSession.value
-    ? bridgeCommands.value
+    // Clean rooms are for coding agents (their agent runs in a container).
+    ? bridgeCommands.value.filter(command => command.name !== 'cleanroom')
     : isCodingAgentSession.value
       ? bridgeCommands.value.filter(command => CODING_AGENT_SLASH_COMMANDS.includes(command.name)
         && !(command.name === 'context' && isCursorSession.value)
@@ -352,9 +364,23 @@ const filteredBridgeCommands = computed(() => {
           || composerSession.value?.agent === 'opencode'
           || isCursorSession.value
         )))
+        // "/yolo" switches this chat's agent between acting without asking and its approvals.
+        .map(command => command.name === 'yolo' ? { ...command, description: t('chat.slashCommands.codingAgentYolo') } : command)
       : isForkCommandSession.value
         ? bridgeCommands.value.filter(command => command.name === 'fork')
         : []
+  // "/limits": this chat's run limits, in every chat type (docs/agent-limits.md).
+  const limitsCommand: SlashCommandOption[] = props.draft || /^person-(main|task)-/.test(composerSession.value?.id || '')
+    ? []
+    : [{ key: 'command:limits', name: 'limits', args: '', description: t('runLimits.slashCommand') }]
+  const withLimits = [...agentCommands, ...limitsCommand]
+  const commands = herdrCommandAvailable.value
+    ? [
+        ...withLimits,
+        { ...HERDR_SESSION_COMMAND_DEFINITION, args: '', description: t(HERDR_SESSION_COMMAND_DEFINITION.descriptionKey) },
+        ...(studioCommandAvailable.value ? [{ ...STUDIO_SESSION_COMMAND_DEFINITION, args: '', description: t(STUDIO_SESSION_COMMAND_DEFINITION.descriptionKey) }] : []),
+      ]
+    : withLimits
   if (!query) return commands
   return commands.filter((command) => {
     const name = command.name.toLowerCase()
@@ -565,11 +591,42 @@ function saveDraftForActiveSession(value: string) {
   writeDraft(chatStore.activeSessionId, value)
 }
 
+/** Session whose cancelled attachment send belongs to this composer ('' for a draft composer). */
+function getActiveDraftSessionId() {
+  if (props.draft) return ''
+  return chatStore.activeSessionId || composerSession.value?.id || ''
+}
+
+function restoreCancelledAttachmentDraft() {
+  const sessionId = getActiveDraftSessionId()
+  const draft = chatStore.cancelledAttachmentDrafts.get(sessionId)
+  if (!draft) return
+  chatStore.cancelledAttachmentDrafts.delete(sessionId)
+  // Keep anything typed while the upload was pending as well as the cancelled input.
+  inputText.value = [draft.content, inputText.value].filter(Boolean).join('\n\n')
+  const existingIds = new Set(attachments.value.map(attachment => attachment.id))
+  attachments.value = [...draft.attachments.filter(attachment => !existingIds.has(attachment.id)), ...attachments.value]
+  nextTick(focusComposer)
+}
+
+watch(() => chatStore.cancelledAttachmentDrafts.get(getActiveDraftSessionId()), restoreCancelledAttachmentDraft, { flush: 'post' })
+
+// "Share to Studio" from the Studio Own app: into this chat's input, to check before sending.
+watch(pendingComposerShare, (share) => {
+  if (!share || !props.persistDraft) return
+  pendingComposerShare.value = null
+  inputText.value = appendSharedText(inputText.value, share.text)
+  if (share.files.length) addFiles(share.files)
+  message.info(t('omi.share.received'))
+  nextTick(() => focusComposer())
+}, { immediate: true, flush: 'post' })
+
 // 从 localStorage 读取设置
 onMounted(() => {
   // Persistent: restore this session's draft. Transient: seed from prompt.
   if (props.initialText) inputText.value = props.initialText
   else if (props.persistDraft) loadDraftForActiveSession()
+  restoreCancelledAttachmentDraft()
   syncViewport()
   window.addEventListener('resize', syncViewport)
   nextTick(() => {
@@ -635,7 +692,7 @@ function scrollCommandIntoView() {
 }
 
 function updateSlashState() {
-  if (!isEkkoSession.value && !isBridgeSession.value && !isCodingAgentSession.value && !isForkCommandSession.value) {
+  if (!isEkkoSession.value && !isBridgeSession.value && !isCodingAgentSession.value && !isForkCommandSession.value && !herdrCommandAvailable.value) {
     slashActive.value = false
     return
   }
@@ -1039,6 +1096,16 @@ async function handleSend() {
   }
   const text = inputText.value.trim()
   if (!text && attachments.value.length === 0) return
+  // `/herdr` is Studio's, not the agent's: open this chat in herdr instead of sending it.
+  if (attachments.value.length === 0 && isHerdrSessionCommand(text) && herdrCommandAvailable.value) {
+    await openComposerChatInHerdr()
+    return
+  }
+  // `/studio` too: return this elevated chat to Studio (its herdr space closes).
+  if (attachments.value.length === 0 && isStudioSessionCommand(text) && studioCommandAvailable.value) {
+    await returnComposerChatToStudio()
+    return
+  }
   if (isBridgeSession.value && text === '/skill' && attachments.value.length === 0) {
     void openSkillPicker()
     return
@@ -1071,6 +1138,41 @@ async function handleSend() {
 
   if (textareaRef.value) {
     textareaRef.value.style.height = 'auto'
+  }
+}
+
+async function openComposerChatInHerdr() {
+  const sessionId = composerSession.value?.id
+  if (!sessionId) return
+  inputText.value = ''
+  saveDraftForActiveSession('')
+  slashActive.value = false
+  if (textareaRef.value) textareaRef.value.style.height = 'auto'
+  submitting.value = true
+  try {
+    await openChatInHerdr(sessionId)
+  } catch (error: any) {
+    message.error(t('herdr.elevateFailed', { error: error?.message || String(error) }))
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function returnComposerChatToStudio() {
+  const sessionId = composerSession.value?.id
+  if (!sessionId) return
+  inputText.value = ''
+  saveDraftForActiveSession('')
+  slashActive.value = false
+  if (textareaRef.value) textareaRef.value.style.height = 'auto'
+  submitting.value = true
+  try {
+    await returnChatToStudio(sessionId)
+    message.success(t('herdr.returned'))
+  } catch (error: any) {
+    message.error(t('herdr.returnFailed', { error: error?.message || String(error) }))
+  } finally {
+    submitting.value = false
   }
 }
 

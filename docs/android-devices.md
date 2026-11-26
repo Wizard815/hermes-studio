@@ -180,6 +180,117 @@ other origins.
 The same card has **Omi and phone AI**, a panel in the app that opens the Omi app
 and starts or stops the phone's own model servers in Termux; see [omi.md](omi.md).
 
+## Share to Studio and links
+
+**Share → Studio** works from any app (a browser, Omi, the gallery):
+
+- Text and links, and up to 4 images of 8 MB or less each, are accepted.
+- The app asks **New chat** or **Current chat**. The text and images then wait
+  in that chat's input; nothing is sent until you press Send.
+- If no server is set up yet, the app asks for it first and then offers the
+  share.
+- Larger images, and files that are not images, are left out, and the app says so.
+
+Links open in the app:
+
+- `studio-own://chat/<chat id>` opens that chat.
+- `studio-own://open?url=<a link on your Studio server>` opens that page.
+  A link to any other site is ignored.
+- Plain `https://` links to your Studio server open in the app when it was
+  built for that host:
+  `gradle :app:assembleDebug -PstudioOwnHost=studio.example.com`.
+  Android checks the server's `/.well-known/assetlinks.json`. Set
+  `STUDIO_OWN_ANDROID_CERT_SHA256` on the Studio server to the APK's signing
+  fingerprint (`apksigner verify --print-certs app-debug.apk`). Without it,
+  Android asks which app should open the link, or opens it in the browser.
+- Links to other sites always go to the browser. The app's bridge (Termux,
+  APK installs) is only for your server's pages.
+
+Code: `ShareIntent.kt` and `LinkRoute.kt` (unit tests next to them), and in the
+web app `utils/studio-own-share.ts`.
+
+## Approval alerts
+
+Studio Own can show Studio's approvals as notifications with Approve and
+Reject: pair it in Settings → Android app and pick "Android app" or "Both"
+in Settings → Watcher. See [approval-alerts.md](approval-alerts.md).
+
+## Agents on the phone
+
+Hermes, Ekko and the coding agents get one Studio tool, `ekko_studio_use_phone`
+(Studio MCP, toolset `use`), on top of the same adb layer the page uses. The
+ideas come from the phone-harness Hermes plugin; nothing of it runs here.
+
+- **Off until you pick a device.** Under the screen, **Agents can use
+  <device>** opens one device to agents (`agentDevices` in
+  `android/settings.json`). Other devices do not exist for them.
+- **Look:** `screen` gives the screen as text, one line per element with an id
+  (`[e4] Button "Send" #send (900,1850) tap`); `screenshot` gives a small
+  picture (480 px wide by default) the model can see. `apps`,
+  `notifications` (their text is marked as data, not instructions),
+  `devices`.
+- **Act:** `tap` and `long_press` by element id or pixels, `swipe` (a
+  direction, or from/to), `type` (optionally into a field id), `key` (back,
+  home, enter, ...), `open_app`, `open_url`. Each waits until two screenshots
+  in a row match (at most about 2.5 s), then the agent reads the screen again.
+- **More:** `shell`, `install` (an `.apk` on the Studio machine),
+  `uninstall`, `push`, `pull` (into `<state dir>/android/pulled`).
+
+**Asking first** follows the chat's approval mode (`/yolo`, Agent work's mode;
+a chat with none counts as ask):
+
+| | ask | guarded | auto |
+| --- | --- | --- | --- |
+| Reads (screen, screenshot, apps, notifications, pull) | go ahead | go ahead | go ahead |
+| Taps, swipes, typing, keys, opening apps and links | ask | go ahead | go ahead |
+| Shell, install, uninstall, push; anything in settings, payments or messages apps; buttons such as Pay, Buy, Send, Delete; tel:, sms:, market: links | ask | ask | go ahead |
+
+A question shows on the Android page (**Allow once** / **Deny**, for three
+minutes; then it is denied) and in the watcher's bell with a link to the
+page. Both have **Open chat** for the chat that asked, and the bell's
+"Allowed" / "Denied" alert opens that chat.
+
+**Which chat asks.** Studio works it out, in this order:
+
+1. Ekko, plugin agents and group chats: the chat of the run credential Studio
+   gave the turn. A session id sent with the call cannot change it.
+2. Hermes (and any agent shown Studio's turn context): the turn's
+   `context_id`, which the agent passes as `context_id`. It counts only
+   while that turn runs, in the same profile.
+3. Coding agents (Claude Code, Codex, OpenCode, ...): the chat Studio started
+   the agent for (`HERMES_STUDIO_SESSION_ID`; Codex gets it through
+   `env_vars`, because it passes MCP servers only a short list of variables).
+
+If none of these gives a chat, the question has none: it counts as ask, the
+bell's alert opens only the Android page, and "Trust this" has no "this chat"
+scope.
+
+A watcher trust rule answers it: the value is
+`android:<device>:<app>:<action>`, and `android:<device>:<app>:<action>:danger`
+for an action from the last row, so `android:emulator-5554:*` trusts one
+device and `android:*:com.example.app:*` one app (scope agent, chat or task).
+A rule made from an ordinary tap (`...:tap`) does not cover a "Send" or "Pay"
+tap; one made from a dangerous question covers both.
+
+**On the page:** the agent's last tap or swipe is drawn on the screen for a
+moment with what it did, and **What agents did** lists the last actions with
+Done, Waiting, Denied or Failed. **Take over** keeps agents off the phone
+(they can still look) until **Hand back to agents**.
+
+Code: `services/android/{agent-tools,agent-policy,ui-tree,phone-agent,phone-chat}.ts`,
+routes `POST /api/studio/android/agent`, `GET /api/studio/android/agent`,
+`POST /api/studio/android/agent/approvals/:id`,
+`POST /api/studio/android/devices/:serial/takeover`; page
+`components/hermes/android/AndroidAgentPanel.vue`. Tests:
+`tests/server/android-phone-tools.test.ts` (a fake adb), `tests/server/android-phone-chat.test.ts` (which chat asks),
+`tests/e2e/android-agent.spec.ts`.
+
+Limits: Hermes's Studio MCP process is shared by its chats, so a Hermes call
+without the turn's `context_id` (a small model may leave it out) has no chat
+and counts as ask. The settle check
+costs screenshots; on slow phones a step can still land before the app
+finishes. iPhone is not covered.
+
 ## Limits
 
 - Screens other than an emulator on the Studio machine are screenshots, a few

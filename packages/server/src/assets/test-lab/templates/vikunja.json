@@ -1,0 +1,29 @@
+{
+  "id": "vikunja",
+  "name": "Vikunja",
+  "description": "To-do lists (SQLite). Alice has a private project with a secret task; Bob is a second user.",
+  "image": "vikunja/vikunja:2.7.1",
+  "port": 3456,
+  "sizeMb": 55,
+  "memory": "512m",
+  "env": {
+    "VIKUNJA_SERVICE_PUBLICURL": "http://vikunja:3456/",
+    "VIKUNJA_DATABASE_TYPE": "sqlite",
+    "VIKUNJA_DATABASE_PATH": "/tmp/vikunja/vikunja.db",
+    "VIKUNJA_FILES_BASEPATH": "/tmp/vikunja",
+    "VIKUNJA_SERVICE_ENABLEREGISTRATION": "true"
+  },
+  "health": { "path": "/api/v1/info", "timeoutSeconds": 120 },
+  "logins": [
+    { "username": "alice", "password": "lab-pass-123", "role": "owns a private project" },
+    { "username": "bob", "password": "lab-pass-123", "role": "second user" }
+  ],
+  "seed": [
+    { "name": "Register alice", "method": "POST", "path": "/api/v1/register", "json": { "username": "alice", "email": "alice@lab.test", "password": "lab-pass-123" }, "expect": [200, 201] },
+    { "name": "Register bob", "method": "POST", "path": "/api/v1/register", "json": { "username": "bob", "email": "bob@lab.test", "password": "lab-pass-123" }, "expect": [200, 201] },
+    { "name": "Log in as alice", "method": "POST", "path": "/api/v1/login", "json": { "username": "alice", "password": "lab-pass-123" }, "save": { "token": "token" } },
+    { "name": "Alice's private project", "method": "PUT", "path": "/api/v1/projects", "headers": { "Authorization": "Bearer {{token}}" }, "json": { "title": "Alice private" }, "expect": [200, 201], "save": { "project": "id" } },
+    { "name": "Alice's secret task", "method": "PUT", "path": "/api/v1/projects/{{project}}/tasks", "headers": { "Authorization": "Bearer {{token}}" }, "json": { "title": "Alice's secret task" }, "expect": [200, 201] }
+  ],
+  "notes": "Alice's project \"Alice private\" holds \"Alice's secret task\"; Bob must never see it."
+}

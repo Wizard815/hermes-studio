@@ -1,9 +1,11 @@
+import { withSocketProviderAccount } from '../../public/provider-account'
 import { studioSessionAccount } from '../../contracts/runs/usage'
 import { isPrivatePersonSession } from '../../contracts/person-session'
 import { requirePersonWorkspace } from '../person/workspace'
 import { completeRunUsage } from '../../repositories/run-usage-store'
 import { hermesStudioMcpCapabilities } from './studio-mcp'
 import { withTaskPlanTurnContext } from '../task-plan-runs'
+import { projectService } from '../projects/service'
 /**
  * CLI Bridge run handler — handles runs that use the agent bridge
  * to communicate with Hermes CLI agent.
@@ -15,6 +17,9 @@ import { getFirstSessionMessageByRole, getSession, getSessionMessageCountByRole,
 import { logger, bridgeLogger } from '../../public/logging'
 import { scheduleSessionTitle } from './session-title'
 import { recordBridgeModelUsage } from '../usage/bridge-model-usage'
+import { chatAutoApproves, givenTrustAction as bridgeTrustAction, recordWatcherEvent, watcherTrusts } from '../watcher'
+import { getToolLoad, toolLoadNoticeText } from '../tool-load'
+import { persistSessionCommandMessage } from './session-command'
 import type {
   PrimaryAgentBridgeClient as AgentBridgeClient,
   PrimaryAgentBridgeContextEstimate as AgentBridgeContextEstimate,
@@ -57,8 +62,6 @@ import type { AuthenticatedUser } from '../../public/auth'
 import { ensureHermesRunWorkspace } from './workspace'
 import { observeRunChatPetEvent } from '../../public/pet-events'
 import { completeWorkspaceRunCheckpoint, discardWorkspaceRunCheckpoint, startWorkspaceRunCheckpoint } from './workspace-diff-tracker'
-import { resolveAuthorizedProviderRuntimeCredentials } from '../../public/authorized-provider-runtime'
-import { saveEnvValueForProfile } from '../../public/profile-config'
 
 const BRIDGE_USAGE_FLUSH_DELAY_MS = 200
 const BRIDGE_TITLE_EVENT_POLL_INTERVAL_MS = 500
@@ -392,6 +395,23 @@ function cacheBridgeContext(state: SessionState, data: Record<string, unknown> |
   }
 }
 
+/**
+ * Too many tools for a small model (docs/hermes-tool-load.md): once per chat, a
+ * notice in the chat (never sent to the model) and an info event in the watcher.
+ */
+function noticeHermesToolLoad(sessionId: string, state: SessionState, ev: Record<string, unknown>, profile: string | undefined, emit: (event: string, payload: any) => void) {
+  try {
+    const notice = getToolLoad().observe({ ...ev, sessionId, profile: typeof ev.profile === 'string' ? ev.profile : profile })
+    if (!notice) return
+    const text = toolLoadNoticeText(notice)
+    persistSessionCommandMessage(sessionId, state, text)
+    emit('session.command', { event: 'session.command', command: 'tools', action: 'tool_load', ok: true, terminal: false, message: text, toolLoad: notice })
+    recordWatcherEvent({ kind: 'tool_load', severity: 'info', sessionId, agent: 'hermes', text: `${notice.total} tools in a Hermes chat (profile ${notice.profile}${notice.toolSearchActive ? `, ${notice.deferred} behind tool search` : ''}).` })
+  } catch (err) {
+    logger.warn(err, '[chat-run-socket] tool-load notice failed for %s', sessionId)
+  }
+}
+
 function bridgeContextMatches(
   state: SessionState,
   expected: { profile: string; model?: string | null; provider?: string | null; workspace?: string | null },
@@ -465,7 +485,7 @@ async function ensureBridgeFixedContext(args: {
   }
 }
 
-export async function handleBridgeRun(
+async function handleBridgeRunImpl(
   nsp: ReturnType<Server['of']>,
   socket: Socket,
   data: { task_plan_context_id?: string; input: string | ContentBlock[]; display_input?: string | ContentBlock[] | null; display_role?: 'user' | 'command'; storage_message?: string; session_id?: string; model?: string; provider?: string; model_groups?: RunModelGroup[]; instructions?: string; workspace?: string | null; category_id?: number | null; source?: string; session_source?: 'global_agent' | 'workflow' | 'group_chat'; queue_id?: string; peerExcludeSocketId?: string; reasoning_effort?: string; push_enabled?: boolean; background_delegation_enabled?: boolean; one_shot_model?: boolean; background_delegation_id?: string; background_claim_id?: string; autonomous?: boolean; onEvent?: (event: string, payload: any) => void },
@@ -527,25 +547,10 @@ export async function handleBridgeRun(
     requestedProvider: callbackContext?.provider || data.provider,
     modelGroups: data.model_groups,
     preferRequested: Boolean(callbackContext) || data.one_shot_model === true,
-    preserveAuthorizedProvider: true,
   })
   const resolvedModel = selectedModelConfig.model
   const selectedProvider = selectedModelConfig.provider
-  if (selectedProvider === 'claude-oauth') {
-    // Studio owns OAuth refresh. Resolving here happens before context
-    // estimation can create a cached Python Agent and synchronizes Claude's
-    // fresh access token into the profile ANTHROPIC_TOKEN environment.
-    const credentials = await resolveAuthorizedProviderRuntimeCredentials({
-      profile,
-      provider: selectedProvider,
-      model: resolvedModel,
-    })
-    // Hermes Agent's native Anthropic bridge reads Claude OAuth only from
-    // ANTHROPIC_TOKEN. This is intentionally Claude-specific: no other
-    // authorized provider or provider environment is touched here.
-    await saveEnvValueForProfile(profile, 'ANTHROPIC_TOKEN', credentials.apiKey)
-  }
-  const resolvedProvider = selectedProvider === 'claude-oauth' ? 'anthropic' : selectedProvider
+  const resolvedProvider = selectedProvider
   if (sessionRow && !callbackContext && data.one_shot_model !== true) {
     const updates: { model?: string; provider?: string } = {}
     if (resolvedModel && sessionRow.model !== resolvedModel) updates.model = resolvedModel
@@ -786,7 +791,11 @@ export async function handleBridgeRun(
     const originalBridgeInput = isContentBlockArray(input)
       ? await convertContentBlocksForAgent(input)
       : input
-    const bridgeInput = withTaskPlanTurnContext(originalBridgeInput, data.task_plan_context_id, !data.background_delegation_id && !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || ''))
+    const taskInput = withTaskPlanTurnContext(originalBridgeInput, data.task_plan_context_id, !data.background_delegation_id && !['group_chat', 'workflow', 'global_agent'].includes(data.session_source || data.source || ''))
+    // A project's coordinator (or a thread run through Studio) gets the project's rules and threads.
+    const projectContext = data.background_delegation_id ? '' : await projectService().contextFor(session_id)
+    const bridgeInput = !projectContext ? taskInput
+      : typeof taskInput === 'string' ? `${taskInput}\n\n${projectContext}` : [...taskInput, { type: 'text' as const, text: projectContext }]
     const runMetadata: BridgeRunMetadata = {
       autonomous: data.autonomous === true,
       delegationId: data.background_delegation_id,
@@ -1362,6 +1371,7 @@ async function applyBridgeChunkAsync(
       syncBridgeGeneratedTitle(sessionId, (ev as any).title, emit)
     } else if (evType === 'bridge.context.ready') {
       cacheBridgeContext(state, ev, workspace)
+      noticeHermesToolLoad(sessionId, state, ev, profile, emit)
       const usage = await calcAndUpdateUsage(sessionId, state, emit)
       const snapshotAware = await estimateSnapshotAwareMessageTokens({
         sessionId,
@@ -1543,6 +1553,21 @@ async function applyBridgeChunkAsync(
       replaceState(sessionMap, sessionId, 'moa.aggregating', payload)
       emit('moa.aggregating', payload)
     } else if (evType === 'approval.requested') {
+      // The chat's own mode is auto (a task set to run unattended), or a "Trust this" rule
+      // allows the command (docs/watcher.md): answer once for you, as the Approve button would.
+      const command = typeof ev.command === 'string' ? ev.command : ''
+      // A Home Assistant action names what a trust rule matches (`light.turn_on`), not a command line.
+      const trustAction = bridgeTrustAction((ev as any).trust_action)
+      const trustRequest = trustAction ? { kind: trustAction.kind, values: [trustAction.value] } : command ? { kind: 'command' as const, values: [command] } : null
+      if (ev.approval_id && (chatAutoApproves(sessionId)
+        || watcherTrusts({ sessionId, agentId: 'hermes', folder: workspace || undefined }, trustRequest, command))) {
+        try {
+          const answer = await bridge.approvalRespond(String(ev.approval_id), 'once')
+          if (answer?.resolved) continue
+        } catch (error) {
+          bridgeLogger.warn({ err: error, sessionId }, '[chat-run-socket] could not answer a trusted approval; asking instead')
+        }
+      }
       const requestedAt = Date.now()
       const payload = {
         event: 'approval.requested',
@@ -1550,6 +1575,7 @@ async function applyBridgeChunkAsync(
         approval_id: ev.approval_id,
         command: ev.command,
         description: ev.description,
+        ...(trustAction ? { trust_action: trustAction } : {}),
         choices: ev.choices,
         allow_permanent: ev.allow_permanent,
         timeout_ms: ev.timeout_ms,
@@ -1586,6 +1612,8 @@ async function applyBridgeChunkAsync(
         event: 'clarify.resolved',
         run_id: chunk.run_id,
         clarify_id: ev.clarify_id,
+        resolved: ev.resolved,
+        reason: ev.reason,
       }
       replaceState(sessionMap, sessionId, 'clarify.resolved', payload)
       emit('clarify.resolved', payload)
@@ -2128,3 +2156,5 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
     )
   })
 }
+
+export const handleBridgeRun = withSocketProviderAccount(handleBridgeRunImpl)

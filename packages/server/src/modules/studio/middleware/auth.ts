@@ -1,3 +1,5 @@
+import { gatewayProtocol, gatewayToken } from '../public/model-gateway-adapters'
+import { authenticateInternalModelCredential } from '../public/provider-account'
 import { ownedPersonTaskSession } from '../services/person/task-chat'
 import { isPersonSession, isPrivatePersonSession, ownsPersonSession } from '../contracts/person-session'
 import { getSession } from '../repositories/session-store'
@@ -8,8 +10,12 @@ import { getToken } from '../services/auth/token-auth'
 import { runMcpCredentials } from '../services/auth/run-mcp-credentials'
 import { MODEL_API_KEY_PREFIX, findModelApiKey, touchModelApiKey } from '../services/model-api/keys'
 import { ModelApiError, modelApiErrorBody } from '../services/model-api/errors'
+import { looksLikeOmiKey } from '../services/omi/scope'
+import { checkOmiKey, type OmiKeyIdentity } from '../services/omi/key-auth'
+import { checkPhoneKey, looksLikePhoneKey, type PhoneKeyIdentity } from '../services/approval-alerts/scope'
 import {
   findUserById,
+  getDefaultProfileForUser,
   listUserProfiles,
   touchUserLogin,
   userCanAccessProfile,
@@ -60,6 +66,11 @@ declare module 'koa' {
     profile?: RequestProfile
     serverTokenAuth?: boolean
     modelApiKey?: { id: string; models: string[] }
+    modelGateway?: { userId: number; profile: string }
+    /** Signed in with a Studio key made for Omi (docs/omi.md). */
+    omiKey?: OmiKeyIdentity
+    /** Signed in with a paired phone's key (docs/approval-alerts.md). */
+    phoneKey?: PhoneKeyIdentity
   }
 }
 
@@ -328,7 +339,7 @@ function isAccountModelApiPath(path: string | undefined): boolean {
   return path === '/api/studio/person' || !!path?.startsWith('/api/studio/person/')
     || path === '/api/studio/models/cloud-link' || !!path?.startsWith('/api/studio/models/cloud-link/')
     || path === '/api/studio/models/api-keys' || !!path?.startsWith('/api/studio/models/api-keys/')
-    || path === '/api/ekko-studio/models/v1/models' || path === '/api/ekko-studio/models/v1/responses'
+    || path === '/api/ekko-studio/models/v1/models' || !!gatewayProtocol(path || '')
 }
 
 /** Only session identifiers carry ownership; search text and file paths do not. */
@@ -376,15 +387,28 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
   if (!workerRefs.length && !personRefs.length && await handleSessionShareHttp(ctx, next)) return
 
   const secret = await getJwtSecret()
-  const token = requestToken(ctx)
+  const token = ctx.path.startsWith('/api/ekko-studio/models/') ? gatewayToken(ctx) || requestToken(ctx) : requestToken(ctx)
+  if (token.startsWith('studio_model_')) {
+    const allowed = (ctx.method === 'POST' && !!gatewayProtocol(ctx.path)) || (ctx.method === 'GET' && ctx.path === '/api/ekko-studio/models/v1/models')
+    const credential = allowed ? await authenticateInternalModelCredential(token) : null
+    const owner = credential ? findUserById(credential.userId) : null
+    if (!credential || !owner || owner.status !== 'active') { ctx.status = 401; ctx.body = { error: 'Invalid internal model credential' }; return }
+    ctx.state.user = toAuthenticatedUser(owner)
+    const profile = ctx.get('x-studio-profile') || credential.profile || getDefaultProfileForUser(owner.id)
+    if (ctx.get('x-studio-profile') && owner.role !== 'super_admin' && !userCanAccessProfile(owner.id, profile)) { ctx.status = 403; ctx.body = { error: 'Profile is not available for this user' }; return }
+    ctx.state.modelGateway = { userId: owner.id, profile }
+    ctx.state.profile = { name: profile }
+    await next()
+    return
+  }
   if (token.startsWith(MODEL_API_KEY_PREFIX)) {
     try {
       // Keys never authenticate UI, management, proxy or WebSocket endpoints.
       if (!(ctx.method === 'GET' && ctx.path === '/api/ekko-studio/models/v1/models')
-        && !(ctx.method === 'POST' && ctx.path === '/api/ekko-studio/models/v1/responses')) {
+        && !(ctx.method === 'POST' && !!gatewayProtocol(ctx.path))) {
         throw new ModelApiError('This key only permits Model API requests.', 403)
       }
-      if (ctx.get('authorization') !== `Bearer ${token}`) throw new ModelApiError('Send the API key in the Authorization header.', 401)
+      if (gatewayToken(ctx) !== token) throw new ModelApiError('Send the API key in the Authorization header.', 401)
       const key = findModelApiKey(token)
       if (!key) throw new ModelApiError('Invalid or revoked API key.', 401)
       const user = findUserById(key.userId)
@@ -397,6 +421,36 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
       ctx.status = result.status; ctx.body = result.body
       return
     }
+    await next()
+    return
+  }
+  if (looksLikeOmiKey(token)) {
+    // Omi's key starts and follows Omi's own work chats, nothing else (docs/omi.md).
+    const headerToken = (ctx.headers.authorization || '').match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || ''
+    const check = await checkOmiKey({ method: ctx.method, path: ctx.path, headerToken, token })
+    const owner = check.ok ? findUserById(check.key.userId) : null
+    if (!check.ok || !owner || owner.status !== 'active') {
+      ctx.status = check.ok ? 403 : check.status
+      ctx.body = { error: check.ok ? "The key's owner is disabled or no longer exists." : check.error }
+      return
+    }
+    ctx.state.user = toAuthenticatedUser(owner)
+    ctx.state.omiKey = check.key
+    await next()
+    return
+  }
+  if (looksLikePhoneKey(token)) {
+    // A paired phone reads and answers its owner's approvals, nothing else (docs/approval-alerts.md).
+    const headerToken = (ctx.headers.authorization || '').match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || ''
+    const check = checkPhoneKey({ method: ctx.method, path: ctx.path, headerToken, token })
+    const owner = check.ok ? findUserById(check.key.userId) : null
+    if (!check.ok || !owner || owner.status !== 'active') {
+      ctx.status = check.ok ? 403 : check.status
+      ctx.body = { error: check.ok ? "The phone's owner is disabled or no longer exists." : check.error }
+      return
+    }
+    ctx.state.user = toAuthenticatedUser(owner)
+    ctx.state.phoneKey = check.key
     await next()
     return
   }
@@ -441,6 +495,8 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
       return
     }
     ctx.state.profile = { name: binding.profile }
+    // Which chat and agent made the request (activity records name them).
+    ctx.state.runBinding = { sessionId: binding.sessionId, agentId: binding.agentId }
     await next()
     return
   }

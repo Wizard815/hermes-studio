@@ -1,5 +1,7 @@
+# nousresearch/hermes-agent:latest-desktop also works: it already has the agents'
+# screen (TigerVNC + Xfce, about 0.85 GB more); with :latest, Studio installs it on demand.
 ARG BASE_IMAGE=nousresearch/hermes-agent:latest
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} AS runtime
 
 ARG NODE_VERSION=24.22.1
 
@@ -12,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     make \
     g++ \
+    libkrb5-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN ARCH=$(dpkg --print-architecture) \
@@ -26,17 +29,34 @@ RUN ARCH=$(dpkg --print-architecture) \
     && node --version \
     && npm --version
 
+# Docker command-line client only (no daemon): clean-room chats run their agent in a
+# container on the host's Docker, reached through the mounted /var/run/docker.sock.
+ARG DOCKER_CLI_VERSION=27.5.1
+RUN ARCH=$(uname -m) \
+    && curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_CLI_VERSION}.tgz" -o /tmp/docker.tgz \
+    && tar -xzf /tmp/docker.tgz -C /usr/local/bin --strip-components=1 docker/docker \
+    && rm -f /tmp/docker.tgz \
+    && docker --version
+
+# Build stage: dev dependencies, npm's cache and the build happen here; the image below
+# only gets the built app with its production dependencies (about 1.5 GB smaller).
+FROM runtime AS build
 WORKDIR /app
 
 COPY package*.json ./
 # Increase Node.js memory limit to prevent OOM during build
 ENV NODE_OPTIONS=--max-old-space-size=4096
-RUN npm ci --ignore-scripts && npm rebuild node-pty
+RUN npm ci --ignore-scripts && npm rebuild node-pty && npm cache clean --force
 
 COPY . .
 
-RUN npm run build && npm prune --omit=dev
+RUN npm run build && npm prune --omit=dev && npm cache clean --force
 RUN npm run verify:sharp-runtime
+
+FROM runtime
+WORKDIR /app
+COPY --from=build /app /app
+ENV NODE_OPTIONS=--max-old-space-size=4096
 
 ENV NODE_ENV=production
 ENV HOME=/home/agent
@@ -48,6 +68,8 @@ ENV NPM_CONFIG_PREFIX=/home/agent/.hermes-web-ui/coding-agent/npm
 ENV PATH=/home/agent/.hermes-web-ui/coding-agent/npm/bin:/opt/hermes/.venv/bin:$PATH
 
 EXPOSE 6060
+# Hermes Gadget WebSocket (ws://<host>:8765/gadget); publish it on the LAN only.
+EXPOSE 8765
 EXPOSE 50000-50127/udp
 
 # 强制覆盖基础镜像的默认启动脚本，让镜像本身具备独立运行的能力

@@ -100,6 +100,11 @@ export class TaskPlanRuns {
       && (!binding.snapshot || binding.snapshot.run_id === runId))
   }
 
+  /** The chat whose turn is live under this context id (any Studio turn), or '' when none is. */
+  chatForContext(contextId: string, profile: string): string {
+    return contextId && this.isActive(contextId, profile) ? this.bindings.get(contextId)!.sessionId : ''
+  }
+
   /** Resolve the current turn capability without creating or modifying a plan. */
   sessionForContext(contextId: string, profile: string): string {
     if (!this.isActive(contextId, profile)) throw new TaskPlanError('Turn context is unavailable or has expired', 409)

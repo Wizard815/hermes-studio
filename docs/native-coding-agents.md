@@ -120,6 +120,21 @@ A successful CLI version check still reports the CLI as installed when a runtime
 prerequisite is missing, with the prerequisite error attached to its status.
 Launching reports that specific error instead of attempting a broken run.
 
+### What a failed check says
+
+Every coding agent's status, install, update and delete use the same check
+(`coding-agents/services/spawn-errors.ts`):
+
+| What was not found | Message |
+| --- | --- |
+| The agent's own CLI | "Qwen Code isn't installed. Install it from Agent Manager." |
+| `node` or `npm` (also a `#!/usr/bin/env node` script with no node) | "Node/npm environment was not detected. Please install Node.js and try again." |
+| Another program (a terminal, `curl`, ...) | "xterm was not found. Check that it is installed and on PATH." |
+
+Anything else keeps the program's own error. Before this, any "not found"
+said Node/npm was missing, even with npm on Studio's PATH. Test:
+`tests/server/coding-agent-spawn-errors.test.ts`.
+
 On Windows, ZCode discovery prefers `.cmd`/`.bat` over the extensionless script
 that `where.exe` can also return. Its bundled desktop CJS entrypoint receives
 the full prompt through stdin before running as Node's main module, preserving

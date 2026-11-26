@@ -1,8 +1,8 @@
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 
 export const DESKTOP_BROWSER_IDLE_MS = 10 * 60 * 1000
 export const DESKTOP_BROWSER_METHODS = new Set([
-  'state', 'tabs.list', 'tabs.create', 'tabs.activate', 'tabs.close', 'lease.release',
+  'cdp.attach', 'cdp.send', 'cdp.events', 'state', 'tabs.list', 'tabs.create', 'tabs.activate', 'tabs.close', 'lease.release',
   'navigate', 'navigation.action', 'snapshot', 'text.read', 'interact', 'interact.batch',
   'screenshot', 'console.read', 'console.clear', 'upload', 'wait', 'download.start', 'download.read',
   'dialog', 'network.read', 'network.clear',
@@ -69,6 +69,12 @@ export class DesktopBrowserRelayRegistry {
     if (group.ownerId !== id && idle && !owner?.inFlight) { group.ownerId = id; group.epoch++ }
     this.notify(peer.userId, peer.profile)
   }
+  /** Whether a Desktop is connected for this user/profile, or the run is already bound to one. */
+  hasTarget(userId: number, profile: string, bindingId?: string): boolean {
+    if (bindingId && this.group(userId, profile).bindings.has(bindingId)) return true
+    for (const { peer } of this.peers.values()) if (peer.userId === userId && peer.profile === profile) return true
+    return false
+  }
   async request(userId: number, profile: string, input: Record<string, unknown>, bindingId?: string): Promise<unknown> {
     if (typeof input.method !== 'string' || !DESKTOP_BROWSER_METHODS.has(input.method)) throw new Error('Unsupported browser method')
     const limit = input.method === 'upload' ? MAX_UPLOAD_REQUEST_CHARS : MAX_REQUEST_CHARS
@@ -90,7 +96,7 @@ export class DesktopBrowserRelayRegistry {
     connection.inFlight++
     this.notify(userId, profile)
     try {
-      const result = await connection.peer.request({ method: input.method, params: input.params || {}, operation_id: randomUUID() })
+      const result = await connection.peer.request({ method: input.method, params: input.params || {}, ...(bindingId ? { client_scope: createHash('sha256').update(bindingId).digest('hex') } : {}), operation_id: randomUUID() })
       if (this.peers.get(connection.peer.id) !== connection || group.ownerId !== connection.peer.id) throw new Error('Desktop browser disconnected during operation')
       return result
     } finally {

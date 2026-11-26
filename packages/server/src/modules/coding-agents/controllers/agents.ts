@@ -1,5 +1,8 @@
 import { getAgentUpdateManager, checkAgentUpdateAndPublish, installAgentAndPublish } from '../services/update-manager'
 import type { Context } from 'koa'
+import { readAgentApprovalSettings, writeAgentApprovalSettings } from '../services/approvals'
+import { containerName, isCleanRoom, readCleanRoomEgress, readCleanRoomSettings, readCleanRoomState, removeCleanRoomContainer, runCleanRoomSelfCheck, writeCleanRoomSettings } from '../services/cleanroom'
+import { enterCleanRoom } from '../services/session-command'
 import {
   deleteCodingAgent,
   getCodingAgentsStatus,
@@ -38,7 +41,7 @@ export async function status(ctx: Context) {
 
 export async function install(ctx: Context) {
   try {
-    const result = await installAgentAndPublish(ctx.params.id)
+    const result = await installAgentAndPublish(ctx.params.id, (ctx.request.body || {}) as { version?: string; rollback?: boolean })
     ctx.body = result
   } catch (err: any) {
     ctx.status = err.status || 500
@@ -251,4 +254,77 @@ export async function setUpdatePolicy(ctx: Context) {
     await manager.set(ctx.params.id, (ctx.request.body as any)?.autoUpdate)
     ctx.body = { agents: manager.snapshot() }
   } catch (error) { ctx.status=400;ctx.body={error:error instanceof Error?error.message:'Invalid policy'} }
+}
+
+/** Whether each agent asks in Studio before acting ("ask", the default) or acts without asking ("auto"). */
+export async function approvals(ctx: Context) {
+  ctx.body = readAgentApprovalSettings()
+}
+
+export async function setApprovals(ctx: Context) {
+  try {
+    ctx.body = writeAgentApprovalSettings(ctx.request.body)
+  } catch (err: any) {
+    ctx.status = err?.status || 500
+    ctx.body = { error: err?.message || 'Failed to save approval settings' }
+  }
+}
+
+/** Clean rooms: a chat's coding agent runs inside its own container. */
+export async function cleanRoomSettings(ctx: Context) {
+  ctx.body = readCleanRoomSettings()
+}
+
+export async function setCleanRoomSettings(ctx: Context) {
+  ctx.body = writeCleanRoomSettings(ctx.request.body)
+}
+
+export async function cleanRoomStatus(ctx: Context) {
+  const sessionId = String(ctx.params.sessionId || '')
+  ctx.body = { cleanRoom: isCleanRoom(sessionId), container: isCleanRoom(sessionId) ? containerName(sessionId) : null }
+}
+
+export async function startCleanRoom(ctx: Context) {
+  try {
+    const sessionId = String(ctx.params.sessionId || '')
+    await enterCleanRoom(sessionId)
+    ctx.body = { cleanRoom: true, container: containerName(sessionId) }
+  } catch (err: any) {
+    ctx.status = err?.status || 500
+    ctx.body = { error: err?.message || 'Failed to make a clean room' }
+  }
+}
+
+/** The room's last self-check (what the agent sees from inside) and leak check (secret-looking files in its folder). */
+export async function cleanRoomReport(ctx: Context) {
+  const sessionId = String(ctx.params.sessionId || '')
+  if (!isCleanRoom(sessionId)) { ctx.status = 404; ctx.body = { error: 'Not a clean room' }; return }
+  const { selfCheck = null, leaks = null } = readCleanRoomState(sessionId)
+  ctx.body = { selfCheck, leaks }
+}
+
+/** Run the self-check again in the room's running container. */
+export async function rerunCleanRoomCheck(ctx: Context) {
+  const sessionId = String(ctx.params.sessionId || '')
+  if (!isCleanRoom(sessionId)) { ctx.status = 404; ctx.body = { error: 'Not a clean room' }; return }
+  try {
+    ctx.body = { selfCheck: await runCleanRoomSelfCheck(sessionId) }
+  } catch (err: any) {
+    ctx.status = err?.status || 500
+    ctx.body = { error: err?.message || 'Self-check failed' }
+  }
+}
+
+/** The room's outside connection attempts (newest last) and whether the hash chain holds. */
+export async function cleanRoomEgress(ctx: Context) {
+  const sessionId = String(ctx.params.sessionId || '')
+  if (!isCleanRoom(sessionId)) { ctx.status = 404; ctx.body = { error: 'Not a clean room' }; return }
+  const limit = Math.max(1, Math.min(1000, Number(ctx.query.limit) || 200))
+  ctx.body = readCleanRoomEgress(sessionId, limit)
+}
+
+/** Throw away the chat's container (the next turn starts a fresh one; the chat's folder stays). */
+export async function resetCleanRoom(ctx: Context) {
+  await removeCleanRoomContainer(String(ctx.params.sessionId || ''))
+  ctx.body = { ok: true }
 }

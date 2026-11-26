@@ -104,6 +104,7 @@ const MAX_VISIBLE_TOOLS = 20
           {{ readonlyToolsView ? t('mcp.toolList') : t('mcp.manageTools') }}
         </NButton>
         <NButton size="tiny" quaternary :loading="testing" @click="emit('test', server)">{{ t('mcp.test') }}</NButton>
+        <slot name="extra-actions" :server="server" />
         <NButton v-if="showReload !== false" size="tiny" quaternary @click="emit('reload', server.name)">{{ t('mcp.reload') }}</NButton>
         <NPopconfirm v-if="!readonly || allowReadonlyRemove" @positive-click="emit('remove', server)">
           <template #trigger>

@@ -8,7 +8,7 @@ import { logger } from '../../../studio/public/logging'
 import { getHermesBaseDir, getProfileDir, listProfileNamesFromDisk } from '../profiles/profile'
 import { parseGatewayStatusesFromProfileList } from '../profiles/profile-list-parser'
 import { execHermesWithBin } from '../runtime/process'
-import { retireManagedGatewayForProfile, startGatewayRunManaged } from './runner'
+import { adoptRunningGateway, isManagedGatewaySupervised, pidAlive, releaseManagedGatewayForStop, retireManagedGatewayForProfile, startGatewayRunManaged } from './runner'
 
 const execFileAsync = promisify(execFile)
 const GATEWAY_RUNTIME_FILES = ['gateway.pid', 'gateway.lock', 'gateway_state.json'] as const
@@ -327,13 +327,7 @@ export function gatewayStatusLooksRuntimeLocked(output: string): boolean {
 }
 
 function isProcessAlive(pid: number): boolean {
-  if (!Number.isFinite(pid) || pid <= 0) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (err: any) {
-    return err?.code === 'EPERM'
-  }
+  return pidAlive(pid)
 }
 
 function readJsonPid(path: string): number | null {
@@ -345,6 +339,44 @@ function readJsonPid(path: string): number | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Whether the profile's live gateway was started for an external supervisor
+ * (`gateway run --external-supervisor`, which is how Studio launches it),
+ * read from the PID record Hermes writes.
+ */
+export function gatewayDeclaresExternalSupervisor(profileDir: string): boolean {
+  return externalSupervisorGatewayPid(profileDir) !== null
+}
+
+/** PID of the profile's live gateway when it was launched for an external supervisor, else null. */
+export function externalSupervisorGatewayPid(profileDir: string, isAlive: (pid: number) => boolean = isProcessAlive): number | null {
+  const path = join(profileDir, 'gateway.pid')
+  if (!existsSync(path)) return null
+  try {
+    const data = JSON.parse(readFileSync(path, 'utf-8'))
+    const pid = typeof data?.pid === 'number' ? data.pid : parseInt(String(data?.pid || ''), 10)
+    if (!isAlive(pid)) return null
+    return Array.isArray(data?.argv) && data.argv.some((arg: unknown) => arg === '--external-supervisor') ? pid : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Take over supervision of a gateway an earlier Studio launched and left
+ * running (Studio no longer stops its gateway when it shuts down). It keeps
+ * running untouched; this Studio relaunches it when it exits. Returns whether
+ * it was adopted.
+ */
+export function adoptGatewayLeftByEarlierStudio(hermesBin: string, profile: string, profileDir: string): boolean {
+  if (isManagedGatewaySupervised(profileDir)) return false
+  const pid = externalSupervisorGatewayPid(profileDir)
+  if (pid === null) return false
+  if (!adoptRunningGateway(hermesBin, profileDir, pid)) return false
+  logger.info('[gateway-autostart] adopted gateway left by an earlier Studio profile=%s home=%s pid=%s', profile, profileDir, pid)
+  return true
 }
 
 export function gatewayStateLooksRunningForProfile(profileDir: string): boolean {
@@ -433,6 +465,10 @@ async function stopGatewayForProfile(
     } catch (err) {
       logger.warn(err, '[gateway-autostart] failed to retire managed gateway before stop profile=%s home=%s', profile, profileDir)
     }
+  } else {
+    // The stop below is planned: our supervised child must not be respawned
+    // when it exits.
+    releaseManagedGatewayForStop(profileDir)
   }
 
   try {
@@ -647,16 +683,66 @@ export async function getGatewayRuntimeStatusForProfile(profile: string): Promis
   }
 }
 
+interface GatewayRestartSlot {
+  running: Promise<unknown>
+  queued: Promise<unknown> | null
+}
+
+const gatewayRestartSlots = new Map<string, GatewayRestartSlot>()
+
+/**
+ * Run gateway restarts for one profile one at a time.
+ *
+ * Two restarts that overlap each ran `gateway stop` and then spawned a
+ * gateway, so the second stop could kill the first restart's fresh gateway
+ * mid-start and the two spawns raced for the runtime lock. Now a restart that
+ * arrives while one runs waits for it and then runs once (it may carry a
+ * config change saved after the running one began); any more requests that
+ * arrive meanwhile join that queued restart instead of adding another.
+ */
+export function runSerializedGatewayRestart<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const slot = gatewayRestartSlots.get(key)
+  if (slot?.queued) return slot.queued as Promise<T>
+  if (slot) {
+    const queued: Promise<T> = slot.running.catch(() => undefined).then(() => {
+      slot.running = queued
+      slot.queued = null
+      return fn()
+    })
+    slot.queued = queued
+    queued.catch(() => undefined).finally(() => {
+      if (gatewayRestartSlots.get(key) === slot && slot.running === queued && !slot.queued) gatewayRestartSlots.delete(key)
+    })
+    return queued
+  }
+  const running = fn()
+  const created: GatewayRestartSlot = { running, queued: null }
+  gatewayRestartSlots.set(key, created)
+  running.catch(() => undefined).finally(() => {
+    if (gatewayRestartSlots.get(key) === created && created.running === running && !created.queued) gatewayRestartSlots.delete(key)
+  })
+  return running
+}
+
 export async function restartGatewayForProfile(profile: string): Promise<{
   running: boolean
   profile: string
   targetProfile?: string
   unified?: boolean
 }> {
-  const hermesBin = resolveHermesBin()
   const { gatewayAutoStart } = await readAppConfig()
   const target = resolveGatewayTargetProfile(profile, shouldUseUnifiedGatewayManagement(gatewayAutoStart))
   const profileDir = getProfileDir(target.targetProfile)
+  return runSerializedGatewayRestart(profileDir, () => restartGatewayTarget(target, profileDir))
+}
+
+async function restartGatewayTarget(target: GatewayRuntimeTarget, profileDir: string): Promise<{
+  running: boolean
+  profile: string
+  targetProfile?: string
+  unified?: boolean
+}> {
+  const hermesBin = resolveHermesBin()
   await stopGatewayForProfile(hermesBin, target.targetProfile, profileDir)
 
   try {
@@ -684,7 +770,19 @@ export async function restartGatewayForProfile(profile: string): Promise<{
 
 export async function ensureProfileGatewaysRunning(): Promise<void> {
   const { gatewayAutoStart } = await readAppConfig()
-  if (gatewayAutoStart?.enabled !== true) return
+  if (gatewayAutoStart?.enabled !== true) {
+    // Auto-start is off, so nothing new is started; a gateway an earlier
+    // Studio was supervising is still adopted, or its next restart (which
+    // hands it back to its supervisor) would leave the profile without one.
+    if (shouldUseManagedGatewayRunForAutostart()) {
+      const hermesBin = resolveHermesBin()
+      for (const profile of listProfileNamesFromDisk()) {
+        if (isReservedProfileName(profile)) continue
+        adoptGatewayLeftByEarlierStudio(hermesBin, profile, getProfileDir(profile))
+      }
+    }
+    return
+  }
 
   await recoverWindowsDesktopGatewayOrphansOnce()
 
@@ -720,6 +818,12 @@ export async function ensureProfileGatewaysRunning(): Promise<void> {
       ? true
       : await isGatewayRunningForProfile(hermesBin, profileDir)
     if (running) {
+      const managedRun = shouldUseManagedGatewayRunForAutostart()
+      // A gateway an earlier Studio launched and left running across the
+      // Studio restart. It hands every restart back to its supervisor by
+      // exiting, so this Studio watches it and relaunches it, without
+      // restarting it now (that dropped in-flight conversations).
+      if (managedRun && adoptGatewayLeftByEarlierStudio(hermesBin, profile, profileDir)) continue
       logger.info('[gateway-autostart] gateway already running profile=%s home=%s status=%s', profile, profileDir, status || 'status-check')
       continue
     }

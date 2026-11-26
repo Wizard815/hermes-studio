@@ -1,9 +1,11 @@
+import { agentAsksBeforeActing } from '../approvals'
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseDocument, stringify } from 'yaml'
 import { writeManagedPromptFile } from '../prompt-file'
-import { updateDshMcpServer } from './config'
+import { readDshMcpServers, updateDshMcpServer } from './config'
+import { mergePluginMcpServers } from '../../../studio/public/plugin-mcp'
 import { DSH_STREAM_PLUGIN } from './stream-plugin'
 import { anchorDshPatch, prepareDshWebProfile } from './web-profile'
 import type { CodingAgentContextPolicy } from '../context-policy'
@@ -99,7 +101,10 @@ export async function prepareDshRuntime(input: {
   } catch (error: any) { if (error.code !== 'ENOENT') throw error }
   let patch = await read('cordis.patch.yml')
   if (web) patch = anchorDshPatch(patch, join(input.sourceHome, 'cordis.patch.yml'))
-  for (const [name, config] of Object.entries(input.managedMcp)) patch = updateDshMcpServer(patch, name, config)
+  const existingMcp = Object.fromEntries(readDshMcpServers(patch))
+  const mergedMcp = mergePluginMcpServers(existingMcp, input.managedMcp)
+  for (const name of Object.keys(existingMcp)) if (!Object.hasOwn(mergedMcp, name)) patch = updateDshMcpServer(patch, name, null)
+  for (const [name, config] of Object.entries(input.managedMcp)) if (mergedMcp[name] === config) patch = updateDshMcpServer(patch, name, config)
   await writeFile(join(input.rootDir, 'cordis.patch.yml'), patch || '[]\n', { mode: 0o600 })
   const promptFile = join(input.rootDir, 'AGENTS.md')
   const pluginInstructions = web ? `\n\nDSH plugin configuration source: ${input.sourceHome}\nPlugin installation target: web profile. When invoking dsh plugin, explicitly set DSH_HOME to that source directory and pass --profile web. The inherited DSH_HOME is Studio's private conversation runtime; do not install packages into its profiles/web. Web backend plugins and the source default Agent preset are loaded when Studio next prepares an ACP runtime. Browser plugin interfaces are not hosted by Studio ACP.\n` : ''
@@ -110,13 +115,17 @@ export async function prepareDshRuntime(input: {
   await writeManagedPromptFile(promptFile, input.systemPrompt, (await read('AGENTS.md')) + pluginInstructions + continuation)
   const streamPluginPath = join(input.rootDir, 'studio-stream.mjs')
   await writeFile(streamPluginPath, DSH_STREAM_PLUGIN, { mode: 0o600 })
+  // Asking DSH works in its folder and asks before anything beyond it (DSH asks only to leave its sandbox).
+  const approval = agentAsksBeforeActing('dsh') ? 'ask' : 'never'
+  const sandbox = approval === 'ask' ? 'workspace-write' : 'danger-full-access'
   const overlay: unknown[] = [
     { insert: [{ id: 'ekko-studio-assistant-stream', name: pathToFileURL(streamPluginPath).href }] },
     { id: 'session-persistence-jsonl', config: { root: join(input.rootDir, 'sessions'), compression: 'none' } },
     { id: 'skill-filesystem', config: { customSkillDirs: [join(input.sourceHome, 'skills'), input.sharedSkills] } },
-    { id: 'sandbox-policy', config: { mode: 'danger-full-access' } },
-    { id: 'approval', config: { policy: 'never' } },
-    { id: 'permission', config: { defaultPreset: 'danger-full-access', presets: { 'danger-full-access': { sandbox: 'danger-full-access', approval: 'never' } } } },
+    { id: 'sandbox-policy', config: { mode: sandbox } },
+    // DSH asks Studio before acting unless set to act without asking.
+    { id: 'approval', config: { policy: approval } },
+    { id: 'permission', config: { defaultPreset: 'danger-full-access', presets: { 'danger-full-access': { sandbox, approval } } } },
   ]
   if (web) overlay.push({ id: 'settings', config: { path: join(input.rootDir, 'settings.yaml'), watch: false } })
   if (input.contextPolicy) overlay.push({
@@ -156,7 +165,7 @@ export async function prepareDshRuntime(input: {
   return {
     promptFile,
     args: ['--profile', web?.profile || 'acp', ...(web ? ['--patch', web.patch] : []), '--patch', overlayPath],
-    env: { DSH_HOME: input.rootDir, DSH_PERMISSION_MODE: 'danger-full-access', ...(input.launchPath ? { PATH: input.launchPath } : {}) },
+    env: { DSH_HOME: input.rootDir, DSH_PERMISSION_MODE: sandbox, STUDIO_DSH_APPROVAL: approval, ...(input.launchPath ? { PATH: input.launchPath } : {}) },
     files: ['settings.yaml', 'cordis.patch.yml', 'AGENTS.md', 'studio.patch.yml'].map(path => ({ key: path, path, absolutePath: join(input.rootDir, path) })),
   }
 }

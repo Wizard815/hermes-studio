@@ -12,9 +12,13 @@ export function apply(ctx) {
     const requestId = randomUUID()
     const started = performance.now()
     let usage
+    // Speed is measured from the first streamed output (as llama.cpp reports it),
+    // unless that is under 0.25 s (then the whole request).
+    let firstOutput
     try {
       for await (const chunk of next()) {
         if (chunk.type === 'usage') usage = chunk.usage
+        else if (firstOutput === undefined) firstOutput = performance.now()
         yield chunk
       }
     } finally {
@@ -26,7 +30,7 @@ export function apply(ctx) {
           usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
             cacheReadTokens: usage.cacheReadTokens, cacheWriteTokens: usage.cacheWriteTokens,
             reasoningTokens: usage.reasoningTokens },
-          apiDuration: (performance.now() - started) / 1000,
+          apiDuration: firstOutput !== undefined && performance.now() - firstOutput >= 250 ? (performance.now() - firstOutput) / 1000 : (performance.now() - started) / 1000,
         },
       }) + '\\n') } catch { /* Usage stays unknown when reporting fails. */ }
     }

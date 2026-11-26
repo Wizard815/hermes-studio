@@ -473,6 +473,25 @@ export async function viewportInfo(ctx: Context) {
   }
 }
 
+/** The element under a pinned spot of the live view (pin comments). */
+export async function elementAt(ctx: Context) {
+  const body = ctx.request.body as any
+  const tabId = body?.tab_id
+  const x = Number(body?.x)
+  const y = Number(body?.y)
+  if (!tabId || typeof tabId !== 'string' || !Number.isFinite(x) || !Number.isFinite(y)) {
+    ctx.status = 400
+    ctx.body = { error: 'tab_id, x and y (0 to 1) are required' }
+    return
+  }
+  if (unavailable(ctx)) return
+  try {
+    ctx.body = { element: await getHeadlessBrowserService()!.elementAt(tabId, x, y) }
+  } catch (err: any) {
+    handleError(ctx, err)
+  }
+}
+
 // ─── Screenshot ────────────────────────────────────────────────────
 
 export async function screenshot(ctx: Context) {

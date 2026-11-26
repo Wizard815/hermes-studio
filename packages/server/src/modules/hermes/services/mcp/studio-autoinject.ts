@@ -6,15 +6,16 @@ import { logger } from '../../../studio/public/logging'
 import { updateConfigYamlForProfile } from '../../../studio/public/profile-config'
 import { isPathWithin } from '../runtime/path'
 import { listProfileNamesFromDisk } from '../profiles/profile'
+import { pluginMcpServers } from '../../../studio/public/plugin-mcp'
 
 const LEGACY_SERVER_NAME = 'hermes-studio'
 const MANAGED_SERVERS: ReadonlyArray<{ name: string; toolset: string }> = [
   { name: 'ekko-studio-api', toolset: 'api' },
+  { name: 'ekko-studio-plugins', toolset: 'plugins' },
   { name: 'ekko-studio-browser', toolset: 'browser' },
   { name: 'ekko-studio-use', toolset: 'use' },
   { name: 'ekko-studio-interaction', toolset: 'plan' },
 ]
-const MANAGED_SERVER_NAMES: Set<string> = new Set(MANAGED_SERVERS.map(server => server.name))
 // Hermes Agent applies this per managed MCP server. Keep the long-running
 // `use` toolset above Studio's 30-minute chat-run cap with bounded delivery
 // headroom; unrelated API/browser calls retain the client default.
@@ -234,7 +235,7 @@ function sameConfig(existing: Record<string, any>, desired: Record<string, unkno
     // Without this an entry written before lazy registration was introduced
     // compares equal and never picks the flag up.
     (desired.lazy === undefined || existing.lazy === desired.lazy) &&
-    existing.enabled !== false &&
+    existing.enabled === desired.enabled &&
     isRecord(existing.env) &&
     existing.env.ELECTRON_RUN_AS_NODE === desiredEnv.ELECTRON_RUN_AS_NODE &&
     existing.env.HERMES_WEB_UI_URL === desiredEnv.HERMES_WEB_UI_URL &&
@@ -251,7 +252,9 @@ function sameConfig(existing: Record<string, any>, desired: Record<string, unkno
 async function injectIntoProfile(
   profile: string,
   bundledScript: string | null,
+  managedServers: ReadonlyArray<{ name: string; toolset: string }>,
 ): Promise<BundledMcpInjectionTargetResult> {
+  const managedNames = new Set(managedServers.map(server => server.name))
   return await updateConfigYamlForProfile(profile, current => {
     const cfg = isRecord(current) ? current : {}
     if (!isRecord(cfg.mcp_servers)) cfg.mcp_servers = {}
@@ -271,7 +274,7 @@ async function injectIntoProfile(
     }
 
     for (const [name, server] of Object.entries(cfg.mcp_servers)) {
-      if (MANAGED_SERVER_NAMES.has(name)) continue
+      if (managedNames.has(name)) continue
       if (LEGACY_SERVER_NAMES.has(name) && !isManagedServer(server)) {
         return {
           data: cfg,
@@ -290,7 +293,7 @@ async function injectIntoProfile(
       }
     }
 
-    for (const server of MANAGED_SERVERS) {
+    for (const server of managedServers) {
       const desired = managedConfig(profile, server.name, server.toolset, bundledScript)
       const existing = cfg.mcp_servers[server.name]
       if (!existing) {
@@ -313,17 +316,7 @@ async function injectIntoProfile(
         }
       }
 
-      if (isRecord(existing) && existing.enabled === false) {
-        return {
-          data: cfg,
-          write: changed,
-          result: {
-            profile,
-            status: 'skipped',
-            reason: `existing ${server.name} MCP server is disabled by user`,
-          } satisfies BundledMcpInjectionTargetResult,
-        }
-      }
+      if (existing.enabled === false) desired.enabled = false
 
       if (!sameConfig(existing, desired)) {
         cfg.mcp_servers[server.name] = desired.timeout === undefined && Object.hasOwn(existing, 'timeout')
@@ -346,6 +339,7 @@ async function injectIntoProfile(
 }
 
 export async function injectBundledMcpServer(): Promise<BundledMcpInjectionResult> {
+  const managedServers = [...MANAGED_SERVERS, ...pluginMcpServers()]
   const bundledScript = bundledMcpScriptPath()
   const commandInfo = managedConfig(
     'default',
@@ -354,7 +348,7 @@ export async function injectBundledMcpServer(): Promise<BundledMcpInjectionResul
     bundledScript,
   )
   const result: BundledMcpInjectionResult = {
-    serverNames: MANAGED_SERVERS.map(server => server.name),
+    serverNames: managedServers.map(server => server.name),
     command: String(commandInfo.command),
     targets: [],
   }
@@ -373,7 +367,7 @@ export async function injectBundledMcpServer(): Promise<BundledMcpInjectionResul
   }
 
   for (const profile of listProfileNamesFromDisk()) {
-    result.targets.push(await injectIntoProfile(profile, bundledScript))
+    result.targets.push(await injectIntoProfile(profile, bundledScript, managedServers))
   }
 
   const changed = result.targets.filter(target => target.status === 'injected' || target.status === 'updated')

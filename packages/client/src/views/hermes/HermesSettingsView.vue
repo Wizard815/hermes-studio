@@ -7,12 +7,28 @@ import { NTabPane, NTabs } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import AgentSettings from '@/components/hermes/settings/AgentSettings.vue'
 import GatewayAutoStartSettings from '@/components/hermes/settings/GatewayAutoStartSettings.vue'
+import RecommendedPluginsSettings from '@/components/hermes/settings/RecommendedPluginsSettings.vue'
+import UiSkillsSettings from '@/components/hermes/settings/UiSkillsSettings.vue'
+import RunLimitsSettings from '@/components/hermes/settings/RunLimitsSettings.vue'
+import WatcherSettings from '@/components/hermes/settings/WatcherSettings.vue'
+import CleanRoomSettings from '@/components/hermes/settings/CleanRoomSettings.vue'
+import ApprovalAlertsSettings from '@/components/hermes/settings/ApprovalAlertsSettings.vue'
+import AndroidAppSettings from '@/components/hermes/settings/AndroidAppSettings.vue'
 import MemorySettings from '@/components/hermes/settings/MemorySettings.vue'
 import SessionSettings from '@/components/hermes/settings/SessionSettings.vue'
+import HermesToolsetsSettings from '@/components/hermes/settings/HermesToolsetsSettings.vue'
+import HermesToolSearchSettings from '@/components/hermes/settings/HermesToolSearchSettings.vue'
+import HermesTerminalSettings from '@/components/hermes/settings/HermesTerminalSettings.vue'
+import HermesSubagentSettings from '@/components/hermes/settings/HermesSubagentSettings.vue'
+import HermesMaintenanceSettings from '@/components/hermes/settings/HermesMaintenanceSettings.vue'
+import { isStoredSuperAdmin } from '@/api/client'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import { useSettingsStore } from '@/stores/hermes/settings'
 
-type HermesSettingsTab = 'agent' | 'memory' | 'session'
+type HermesSettingsTab = 'agent' | 'memory' | 'session' | 'watcher' | 'android-app' | 'cleanrooms' | 'tools' | 'terminal' | 'subagents' | 'maintenance'
+// Super administrators only: the watcher and clean rooms (Studio's own), and tabs backed by Hermes Agent's API.
+const HERMES_AGENT_TABS = ['watcher', 'android-app', 'cleanrooms', 'tools', 'terminal', 'subagents', 'maintenance'] as const
+const canUseHermesAgent = isStoredSuperAdmin()
 
 const { t } = useI18n()
 const route = useRoute()
@@ -22,7 +38,9 @@ const settingsStore = useSettingsStore()
 const activeTab = ref<HermesSettingsTab>('agent')
 
 function normalizeTab(value: unknown): HermesSettingsTab {
-  return value === 'memory' || value === 'session' ? value : 'agent'
+  if (value === 'memory' || value === 'session') return value
+  if (canUseHermesAgent && (HERMES_AGENT_TABS as readonly unknown[]).includes(value)) return value as HermesSettingsTab
+  return 'agent'
 }
 
 function handleTabUpdate(tab: HermesSettingsTab) {
@@ -67,6 +85,9 @@ onMounted(() => {
           <NTabPane name="agent" :tab="t('settings.tabs.agent')">
             <AgentSettings />
             <GatewayAutoStartSettings />
+            <RecommendedPluginsSettings v-if="canUseHermesAgent" />
+            <UiSkillsSettings v-if="canUseHermesAgent" />
+            <RunLimitsSettings />
           </NTabPane>
           <NTabPane name="memory" :tab="t('settings.tabs.memory')">
             <MemorySettings />
@@ -74,6 +95,31 @@ onMounted(() => {
           <NTabPane name="session" :tab="t('settings.tabs.session')">
             <SessionSettings />
           </NTabPane>
+          <template v-if="canUseHermesAgent">
+            <NTabPane name="watcher" :tab="t('watcher.settings.tab')" display-directive="show:lazy">
+              <ApprovalAlertsSettings />
+              <WatcherSettings />
+            </NTabPane>
+            <NTabPane name="android-app" :tab="t('androidApp.tab')" display-directive="show:lazy">
+              <AndroidAppSettings />
+            </NTabPane>
+            <NTabPane name="cleanrooms" :tab="t('cleanRooms.title')" display-directive="show:lazy">
+              <CleanRoomSettings />
+            </NTabPane>
+            <NTabPane name="tools" :tab="t('hermesTools.tabs.tools')" display-directive="show:lazy">
+              <HermesToolSearchSettings />
+              <HermesToolsetsSettings />
+            </NTabPane>
+            <NTabPane name="terminal" :tab="t('hermesTools.tabs.terminal')" display-directive="show:lazy">
+              <HermesTerminalSettings />
+            </NTabPane>
+            <NTabPane name="subagents" :tab="t('hermesTools.tabs.subagents')" display-directive="show:lazy">
+              <HermesSubagentSettings />
+            </NTabPane>
+            <NTabPane name="maintenance" :tab="t('hermesTools.tabs.maintenance')" display-directive="show:lazy">
+              <HermesMaintenanceSettings />
+            </NTabPane>
+          </template>
         </NTabs>
       </div>
     </div>
