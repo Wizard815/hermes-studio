@@ -55,6 +55,10 @@ test('Projects: the board shows threads by status, and tasks move, start as thre
     }
     else if (path === '/api/studio/projects') json = { projects: [project()] }
     else if (path === '/api/studio/projects/p1') json = { project: project() }
+    else if (path === '/api/studio/projects/p1/prs') json = { statuses: {
+      'https://github.com/Wizard815/omi-local/pull/41': { state: 'merged', checks: 'passing', mergeable: 'clean', title: 'Omi guide', updatedAt: '' },
+      'https://github.com/Wizard815/argos/pull/12': { state: 'open', checks: 'failing', mergeable: 'dirty', title: 'ROCm', updatedAt: '' },
+    } }
     else if (path === '/api/studio/projects/p1/tasks' && method === 'POST') {
       const task = { id: `k${tasks.length + 1}`, title: input.title, notes: '', column: 'todo', pr: input.pr || '', threadId: '', createdAt: 9, updatedAt: 9 }
       tasks.push(task)
@@ -107,6 +111,12 @@ test('Projects: the board shows threads by status, and tasks move, start as thre
   await expect(column('needsYou').getByTestId('project-board-card-t2')).toBeVisible()
   await expect(column('review').getByTestId('project-board-card-t3')).toContainText('#41')
   await expect(column('todo').getByTestId('project-board-card-k1')).toContainText('#12')
+  // Live PR status from GitHub: state on the link, checks and conflicts beside it.
+  await expect(column('review').getByTestId('project-board-card-t3')).toContainText('#41 · Merged')
+  await expect(board.getByTestId('project-board-checks-t3')).toHaveText('Checks pass')
+  await expect(board.getByTestId('project-board-checks-k1')).toHaveText('Checks fail')
+  await expect(column('todo').getByTestId('project-board-card-k1')).toContainText('Conflicts')
+  await expect(board.getByTestId('project-board-add-pr-k1')).toHaveCount(0)
   await expect(column('todo').getByTestId('project-board-pr-link')).toHaveAttribute('href', 'https://github.com/Wizard815/argos/pull/12')
   // A thread can only move in or out of Done.
   await expect(board.getByTestId('project-board-move-t1').locator('option')).toHaveText(['Move to…', 'Done'])

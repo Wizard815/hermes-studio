@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NButton, NInput } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import {
   addProjectTask,
+  getProjectPrStatuses,
+  type PrResult,
   removeProjectTask,
   setProjectThreadPr,
   setThreadResolved,
@@ -23,6 +25,34 @@ const emit = defineEmits<{ select: [threadId: string]; changed: []; error: [mess
 const { t } = useI18n()
 
 const columns = computed(() => boardCards(props.project))
+
+// Live PR status from GitHub (cached a minute on the server), refreshed while the board shows.
+const PR_POLL_MS = 60_000
+const prStatus = ref<Record<string, PrResult>>({})
+const prLinks = computed(() => [...props.project.threads.map(item => item.pr), ...(props.project.tasks || []).map(item => item.pr)].filter(Boolean).sort().join(' '))
+let prTimer: ReturnType<typeof setInterval> | null = null
+async function loadPrStatus() {
+  if (!prLinks.value) { prStatus.value = {}; return }
+  try { prStatus.value = await getProjectPrStatuses(props.project.id) } catch { /* the links still work without status */ }
+}
+watch(prLinks, () => { void loadPrStatus() })
+onMounted(() => { void loadPrStatus(); prTimer = setInterval(() => { if (document.visibilityState === 'visible') void loadPrStatus() }, PR_POLL_MS) })
+onUnmounted(() => { if (prTimer) clearInterval(prTimer) })
+
+/** The live status of a card's PR, in words, or null while unknown. */
+function prWords(link: string): { state: string; stateKey: string; checks: string; checksKey: string; conflicts: boolean; error: string } | null {
+  const status = prStatus.value[link]
+  if (!status) return null
+  if ('error' in status) return { state: '', stateKey: '', checks: '', checksKey: '', conflicts: false, error: t('projects.board.prError', { error: status.error }) }
+  return {
+    state: t(`projects.board.prState.${status.state}`),
+    stateKey: status.state,
+    checks: status.checks === 'none' ? '' : t(`projects.board.checks.${status.checks}`),
+    checksKey: status.checks,
+    conflicts: status.mergeable === 'dirty',
+    error: '',
+  }
+}
 const adding = ref(false)
 const title = ref('')
 const pr = ref('')
@@ -170,11 +200,14 @@ function prLabel(link: string): string {
           <p v-if="card.kind === 'task' && card.task.notes" class="project-board-notes">{{ card.task.notes }}</p>
           <div class="project-board-chips">
             <span class="project-board-chip">{{ card.kind === 'thread' ? `${t('projects.board.thread')} · ${card.thread.agent}${card.thread.model ? ` · ${card.thread.model}` : ''}` : t('projects.board.task') }}</span>
-            <a v-if="card.pr" class="project-board-chip project-board-chip--pr" :href="card.pr" target="_blank" rel="noopener noreferrer" :title="card.pr" :aria-label="`${t('projects.board.openPr')} ${prLabel(card.pr)}`" data-testid="project-board-pr-link">
+            <a v-if="card.pr" class="project-board-chip project-board-chip--pr" :href="card.pr" target="_blank" rel="noopener noreferrer" :title="card.pr" :aria-label="`${t('projects.board.openPr')} ${prLabel(card.pr)} ${prWords(card.pr)?.state || ''}`" data-testid="project-board-pr-link">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="2" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" /><path d="M6 8v8M18 16V9a3 3 0 0 0-3-3h-4M13 4l-2 2 2 2" /></svg>
-              {{ prLabel(card.pr) }}
+              {{ prLabel(card.pr) }}<template v-if="prWords(card.pr)?.state"> · {{ prWords(card.pr)!.state }}</template>
             </a>
-            <button v-else type="button" class="project-board-chip project-board-chip--add" :data-testid="`project-board-add-pr-${card.id}`" @click="editPr(card)">+ {{ t('projects.board.pr') }}</button>
+            <span v-if="prWords(card.pr)?.checks" class="project-board-chip" :class="`project-board-chip--checks-${prWords(card.pr)!.checksKey}`" :data-testid="`project-board-checks-${card.id}`">{{ prWords(card.pr)!.checks }}</span>
+            <span v-if="prWords(card.pr)?.conflicts" class="project-board-chip project-board-chip--checks-failing">{{ t('projects.board.conflicts') }}</span>
+            <span v-if="prWords(card.pr)?.error" class="project-board-chip project-board-chip--muted" :title="prWords(card.pr)!.error">?</span>
+            <button v-if="!card.pr" type="button" class="project-board-chip project-board-chip--add" :data-testid="`project-board-add-pr-${card.id}`" @click="editPr(card)">+ {{ t('projects.board.pr') }}</button>
           </div>
           <form v-if="prEditing === card.id" class="project-board-pr-form" @submit.prevent="savePr(card)">
             <NInput v-model:value="prDraft" size="tiny" :placeholder="t('projects.board.prPlaceholder')" :input-props="{ 'aria-label': t('projects.board.pr') }" :data-testid="`project-board-pr-input-${card.id}`" />
@@ -314,6 +347,10 @@ function prLabel(link: string): string {
 
   &--pr { border-color: $accent-primary; color: $text-primary; }
   &--add { cursor: pointer; border-style: dashed; }
+  &--checks-passing { border-color: $success; color: $text-primary; }
+  &--checks-failing { border-color: $error; color: $text-primary; }
+  &--checks-pending { border-color: $warning; color: $text-primary; }
+  &--muted { color: $text-muted; }
   &:focus-visible { outline: 2px solid $accent-primary; outline-offset: 1px; }
 }
 .project-board-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }

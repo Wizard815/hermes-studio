@@ -144,3 +144,9 @@ export const addProjectArtifact = async (id: string, input: { title?: string; pa
 
 export const removeProjectArtifact = (id: string, artifactId: string) =>
   request<{ removed: true }>(`${base}/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(artifactId)}`, { method: 'DELETE' })
+
+export interface PrStatus { state: 'open' | 'draft' | 'merged' | 'closed'; checks: 'passing' | 'failing' | 'pending' | 'none'; mergeable: string; title: string; updatedAt: string }
+export type PrResult = PrStatus | { error: string }
+
+export const getProjectPrStatuses = async (id: string) =>
+  (await request<{ statuses: Record<string, PrResult> }>(`${base}/${encodeURIComponent(id)}/prs`)).statuses

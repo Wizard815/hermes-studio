@@ -93,6 +93,13 @@ progress, Needs you, Review and Done. The pane widens while it shows.
   `#41`. A thread that finishes and names a PR link in its last messages gets it
   linked by itself. Add or change one with **+ PR link**, or the coordinator's
   `set_pr`.
+- **Live PR status.** For github.com links, the card shows the PR's state
+  (Open, Draft, Merged, Closed), its checks (Checks pass, Checks fail, Checks
+  running) and Conflicts. Studio asks GitHub with `GH_TOKEN` or `GITHUB_TOKEN`,
+  else `gh auth token`, else no token (public repos only), caches each answer
+  for a minute, and the board refreshes every minute while it shows. A link
+  with no status shows "?"; hover it for why (private repo with no token, rate
+  limit, or not GitHub).
 - The coordinator sees board tasks that are not threads in its context block,
   and can `add_task`, `update_task` and `start_task`.
 
@@ -209,6 +216,7 @@ All routes need a super admin.
 | `PUT /api/studio/projects/:id/threads/:threadId/resolved` | `{ resolved }` |
 | `DELETE /api/studio/projects/:id/threads/:threadId` | Thread leaves the project, chat stays |
 | `PUT /api/studio/projects/:id/threads/:threadId/pr` | `{ pr }`: the thread's PR link, `''` clears it |
+| `GET /api/studio/projects/:id/prs` | Live status of the board's GitHub PRs |
 | `POST /api/studio/projects/:id/artifacts` | Add `{ title?, path? or url?, thread? }` |
 | `DELETE /api/studio/projects/:id/artifacts/:artifactId` | Take one off the list |
 | `POST /api/studio/projects/:id/memory` | Remember `{ text }` |

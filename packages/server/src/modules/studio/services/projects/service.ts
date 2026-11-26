@@ -37,6 +37,7 @@ import {
   type ProjectThread,
   type ProjectThreadStatus,
 } from './store'
+import { PrStatusReader, type PrResult } from './pr-status'
 import { addWorktree, cloneRepo, removeWorktree, repoFolderName, repoRoot, repoUrl, threadBranch } from './worktree'
 
 /**
@@ -84,6 +85,8 @@ export interface ProjectDeps {
   reposRoot?: string
   /** git clone, replaceable in tests. */
   clone?: (url: string, dest: string) => Promise<void>
+  /** Live pull request status, replaceable in tests. */
+  prs?: Pick<PrStatusReader, 'readAll'>
 }
 
 /** Thread states the coordinator is woken for: it finished, stopped, or needs the person. */
@@ -248,6 +251,7 @@ interface PendingWake {
 
 export class ProjectService {
   private readonly pendingWakes = new Map<string, PendingWake>()
+  private prReader: Pick<PrStatusReader, 'readAll'> | null = null
 
   constructor(private readonly deps: ProjectDeps) {}
 
@@ -551,6 +555,16 @@ export class ProjectService {
     if (!project.artifacts.some(item => item.id === artifactId)) fail('No such artifact in this project', 404)
     await this.store.update(project.id, current => ({ ...current, artifacts: current.artifacts.filter(item => item.id !== artifactId) }))
     return { removed: true }
+  }
+
+  /** Live status of every pull request on the project's board (threads and tasks). */
+  async prStatuses(idOrName: string): Promise<Record<string, PrResult>> {
+    const project = await this.store.find(idOrName)
+    if (!project) fail('Project not found', 404)
+    const links = [...project.threads.map(item => item.pr), ...project.tasks.map(item => item.pr)].filter(Boolean)
+    if (!links.length) return {}
+    this.prReader ??= this.deps.prs ?? new PrStatusReader()
+    return this.prReader.readAll(links)
   }
 
   /** Save a fact to the project's memory. */

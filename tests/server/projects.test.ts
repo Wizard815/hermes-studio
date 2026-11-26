@@ -627,3 +627,17 @@ describe('TestProjects_artifacts', () => {
     expect((await service.get(project.id)).artifacts.map(item => item.id)).toEqual([file.id])
   })
 })
+
+describe('TestProjects_prStatuses', () => {
+  it('asks for the status of every PR on the board', async () => {
+    const fake = fakeRuntime()
+    const readAll = vi.fn(async (links: string[]) => Object.fromEntries(links.map(link => [link, { state: 'open', checks: 'passing', mergeable: 'clean', title: '', updatedAt: '' }])))
+    const service = new ProjectService({ store, runtime: () => fake.runtime, prs: { readAll } as any })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    expect(await service.prStatuses(project.id)).toEqual({})
+    const thread = await service.startThread(project.id, { brief: 'x' })
+    await service.setThreadPr(project.id, thread.id, 'https://github.com/o/r/pull/1')
+    await service.addTask(project.id, { title: 'Review', pr: 'https://github.com/o/r/pull/2' })
+    expect(Object.keys(await service.prStatuses(project.id))).toEqual(['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2'])
+  })
+})

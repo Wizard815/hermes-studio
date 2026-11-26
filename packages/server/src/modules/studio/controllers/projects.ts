@@ -98,6 +98,10 @@ export async function setThreadPr(ctx: Context) {
   try { ctx.body = { thread: await projectService().setThreadPr(param(ctx, 'id'), param(ctx, 'threadId'), body(ctx).pr) } } catch (error) { fail(ctx, error) }
 }
 
+export async function prStatuses(ctx: Context) {
+  try { ctx.body = { statuses: await projectService().prStatuses(param(ctx, 'id')) } } catch (error) { fail(ctx, error) }
+}
+
 export async function addArtifact(ctx: Context) {
   try {
     ctx.status = 201
