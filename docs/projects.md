@@ -28,7 +28,7 @@ change: Projects is a second view of the same chat list.
 
 | Part | What it is | Stored in |
 | --- | --- | --- |
-| Project | Name, folder, instructions, default agent | `HERMES_WEB_UI_HOME/projects/projects.json` |
+| Project | Name, folder, instructions, default agent, worktrees and wake-up switches | `HERMES_WEB_UI_HOME/projects/projects.json` |
 | Chat folder | A Studio chat folder with the project's name (an existing folder of that name is reused) | `session_categories` |
 | Coordinator | A Hermes chat in that folder, titled "<name> · coordinator" | `sessions` |
 | Thread | An agent launched in its own herdr space, its chat filed in the folder | the project file + `sessions` |
@@ -46,9 +46,20 @@ project's threads together (see `docs/harness/herdr.md`).
    in the project's chat folder.
 3. The first prompt is the project's instructions, then the brief, then a
    request to end with a summary.
-4. The bridge reports the agent's status (`workStatusChanged`) to the
+4. **Worktrees.** When the project folder is a git repo and the project's
+   worktree switch is on (the default), each thread starts in its own git
+   worktree under `HERMES_WEB_UI_HOME/projects/worktrees/<project>/<thread>`, on
+   a new branch `studio/<title>-<thread id>` from the repo's current HEAD. Its
+   prompt names the branch and says to commit there, and to push or open a pull
+   request only when asked. Threads never see each other's uncommitted changes,
+   and none of them changes the folder's own checkout. To combine work, the
+   coordinator starts a thread that merges the branches. Outside a git repo, or
+   with the switch off, threads share the project folder.
+   A thread that leaves the project loses its worktree if it has no uncommitted
+   changes; its branch and commits stay. A worktree with changes is left alone.
+5. The bridge reports the agent's status (`workStatusChanged`) to the
    project. The list also reads live status from herdr's panes.
-5. For agents herdr detects (Claude Code, Codex), the chat appears once the
+6. For agents herdr detects (Claude Code, Codex), the chat appears once the
    agent reports its session. Until then the thread shows "starting…" and
    cannot be opened.
 
@@ -70,6 +81,14 @@ toolset. Actions: `list`, `start_thread`, `message_thread`, `read_thread`,
   person answers it in the thread.
 - `read_thread` returns the latest messages only. The coordinator sees
   results, not every step.
+- **Wake-ups.** When herdr reports a thread done, idle, stopped or blocked, the
+  coordinator gets a turn by itself (the project's wake-up switch, on by
+  default). Reports are gathered for 5 seconds, so threads that finish together
+  give one turn. The turn is a `<studio_project_event>` with each thread's state
+  and its last message, shown in the chat as "Project update: … is done". If the
+  coordinator is already running (the person is talking to it), the wake-up
+  waits for that run to end, retrying every 15 seconds for up to an hour. A
+  thread that went back to work before the wake-up is left out.
 
 ## API
 
@@ -101,11 +120,18 @@ All routes need a super admin.
 - **Status looks stale:** the list refreshes every 5 seconds while visible.
 - Projects are not shared between Studios yet. See the federation plan.
 
+- **"Could not make a git worktree for the thread":** git refused, usually
+  because the repo has no commit yet or a branch of that name exists. Commit
+  once, or turn the project's worktree switch off.
+- **The coordinator never hears back:** its wake-up switch is off, or Studio's
+  chat runs were not ready. Ask it to check with `read_thread`.
+
 ## Code map
 
 - `modules/studio/services/projects/store.ts`: the project file.
 - `modules/studio/services/projects/service.ts`: projects, threads, context
-  block; the herdr side comes in through `setProjectRuntime`.
+  block, wake-ups; the herdr side comes in through `setProjectRuntime`.
+- `modules/studio/services/projects/worktree.ts`: thread worktrees and branches.
 - `bootstrap/herdr.ts` `projectRuntime()`: launches, status and messages
   through the herdr bridge.
 - `modules/studio/routes/projects.ts`, `controllers/projects.ts`.

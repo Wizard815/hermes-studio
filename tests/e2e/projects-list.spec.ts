@@ -45,7 +45,7 @@ test('Projects: a new project opens its coordinator, a thread starts in herdr an
   await page.getByTestId('projects-new').click()
   await page.getByTestId('project-form-name').locator('input').fill('Homelab')
   await page.getByTestId('project-form-save').click()
-  await expect.poll(() => posts.find(p => p.path === '/api/studio/projects')?.body).toMatchObject({ name: 'Homelab', defaultAgent: 'claude-code' })
+  await expect.poll(() => posts.find(p => p.path === '/api/studio/projects')?.body).toMatchObject({ name: 'Homelab', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true })
   // A new project opens its coordinator chat and stays expanded.
   await expect.poll(() => page.evaluate(() => (window as any).projectsFixture.opened())).toEqual(['coord-1'])
   await expect(page.getByTestId('project-coordinator')).toHaveAttribute('aria-current', 'page')

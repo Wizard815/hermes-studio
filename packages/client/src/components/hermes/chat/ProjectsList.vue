@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { NButton, NForm, NFormItem, NInput, NModal, NPopconfirm, NSelect, useMessage } from 'naive-ui'
+import { NButton, NCheckbox, NForm, NFormItem, NInput, NModal, NPopconfirm, NSelect, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import {
@@ -88,16 +88,17 @@ function threadActive(thread: ProjectThread): boolean {
 }
 
 // --- New / edit project ---
-const projectForm = reactive({ show: false, editing: '' as string, name: '', folder: '', instructions: '', defaultAgent: 'claude-code', saving: false })
+const projectForm = reactive({ show: false, editing: '' as string, name: '', folder: '', instructions: '', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true, saving: false })
 
 function openNewProject() {
-  Object.assign(projectForm, { show: true, editing: '', name: '', folder: '', instructions: '', defaultAgent: 'claude-code', saving: false })
+  Object.assign(projectForm, { show: true, editing: '', name: '', folder: '', instructions: '', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true, saving: false })
 }
 
 function openEditProject(project: Project) {
   Object.assign(projectForm, {
     show: true, editing: project.id, name: project.name, folder: project.folder,
-    instructions: project.instructions, defaultAgent: project.defaultAgent, saving: false,
+    instructions: project.instructions, defaultAgent: project.defaultAgent,
+    worktrees: project.worktrees !== false, wakeCoordinator: project.wakeCoordinator !== false, saving: false,
   })
 }
 
@@ -105,7 +106,7 @@ async function saveProject() {
   if (!projectForm.name.trim()) return
   projectForm.saving = true
   try {
-    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, defaultAgent: projectForm.defaultAgent }
+    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, defaultAgent: projectForm.defaultAgent, worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator }
     const saved = projectForm.editing ? await updateProject(projectForm.editing, input) : await createProject(input)
     projectForm.show = false
     await refresh()
@@ -273,6 +274,12 @@ defineExpose({ refresh })
         </NFormItem>
         <NFormItem :label="t('projects.form.defaultAgent')">
           <NSelect v-model:value="projectForm.defaultAgent" :options="agentOptions" filterable tag />
+        </NFormItem>
+        <NFormItem :show-label="false" :feedback="t('projects.form.worktreesHint')">
+          <NCheckbox v-model:checked="projectForm.worktrees" data-testid="project-form-worktrees">{{ t('projects.form.worktrees') }}</NCheckbox>
+        </NFormItem>
+        <NFormItem :show-label="false">
+          <NCheckbox v-model:checked="projectForm.wakeCoordinator" data-testid="project-form-wake">{{ t('projects.form.wakeCoordinator') }}</NCheckbox>
         </NFormItem>
       </NForm>
       <template #footer>

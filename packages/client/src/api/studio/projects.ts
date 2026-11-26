@@ -11,6 +11,10 @@ export interface ProjectThread {
   paneId: string
   /** '' until herdr reports the agent's session (agents herdr detects). */
   sessionId: string
+  /** Its own git worktree, or the project folder when it has none. */
+  workspace: string
+  /** Its branch when it has its own worktree, else ''. */
+  branch: string
   status: ProjectThreadStatus
   liveStatus: ProjectThreadStatus
   resolved: boolean
@@ -27,6 +31,8 @@ export interface Project {
   categoryId: number | null
   coordinatorSessionId: string
   defaultAgent: string
+  worktrees: boolean
+  wakeCoordinator: boolean
   threads: ProjectThread[]
   counts: { needsYou: number; working: number; done: number; resolved: number }
   createdAt: number
@@ -39,6 +45,8 @@ export interface ProjectInput {
   instructions?: string
   defaultAgent?: string
   profile?: string
+  worktrees?: boolean
+  wakeCoordinator?: boolean
 }
 
 const base = '/api/studio/projects'

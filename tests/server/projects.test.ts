@@ -168,3 +168,107 @@ describe('TestProjects_service', () => {
     expect(threadPrompt({ name: 'Homelab', instructions: '' }, { title: 'T', brief: 'B' })).not.toContain('Project instructions')
   })
 })
+
+describe('TestProjects_worktrees', () => {
+  it('in a git repo each thread gets its own worktree and branch; leaving the project removes a clean one', async () => {
+    const { execFileSync } = await import('node:child_process')
+    const { existsSync } = await import('node:fs')
+    const { writeFile: write } = await import('node:fs/promises')
+    const repo = join(dir, 'repo')
+    execFileSync('git', ['init', '-q', '-b', 'main', repo])
+    await write(join(repo, 'a.txt'), 'a\n')
+    const git = (...args: string[]) => execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...args], { encoding: 'utf8' }).trim()
+    git('add', '-A'); git('commit', '-qm', 'start')
+
+    const fake = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, worktreeRoot: join(dir, 'worktrees') })
+    const project = await service.create({ name: 'Repo', folder: repo })
+    const one = await service.startThread(project.id, { brief: 'Fix the login test' })
+    const two = await service.startThread(project.id, { brief: 'Write the docs', title: 'Docs!' })
+
+    expect(one.branch).toBe(`studio/fix-the-login-test-${one.id}`)
+    expect(two.branch).toBe(`studio/docs-${two.id}`)
+    expect(fake.launches.map(launch => launch.workspace)).toEqual([join(dir, 'worktrees', project.id, one.id), join(dir, 'worktrees', project.id, two.id)])
+    expect(fake.launches[0].prompt).toContain(`own git worktree on the branch ${one.branch}`)
+    expect(git('branch', '--list', '--format=%(refname:short)', 'studio/*').split('\n').sort()).toEqual([one.branch, two.branch].sort())
+    expect(await service.folderFor({ id: project.id, thread: two.id })).toMatchObject({ workspace: two.workspace })
+    expect(await service.contextFor(project.coordinatorSessionId)).toContain(`· ${one.branch}`)
+
+    // A dirty worktree stays; a clean one goes, and its branch stays.
+    await write(join(two.workspace, 'draft.md'), 'wip\n')
+    expect((await service.releaseChat(project.id, two.id)).worktree?.removed).toBe(false)
+    expect(existsSync(two.workspace)).toBe(true)
+    expect((await service.releaseChat(project.id, one.id)).worktree).toEqual({ removed: true })
+    expect(existsSync(one.workspace)).toBe(false)
+    expect(git('branch', '--list', one.branch)).toContain(one.branch)
+  })
+
+  it('outside a git repo, or with worktrees off, threads share the project folder', async () => {
+    const fake = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, worktreeRoot: join(dir, 'worktrees') })
+    const plain = await service.create({ name: 'Plain', folder: dir })
+    const thread = await service.startThread(plain.id, { brief: 'Tidy' })
+    expect(thread).toMatchObject({ workspace: dir, branch: '' })
+    expect(fake.launches[0].prompt).not.toContain('worktree')
+    const off = await service.create({ name: 'Off', folder: dir, worktrees: false })
+    expect(off.worktrees).toBe(false)
+    expect((await service.update(off.id, { worktrees: true })).worktrees).toBe(true)
+  })
+})
+
+describe('TestProjects_wakeCoordinator', () => {
+  function waker() {
+    const runs: any[] = []
+    let busy = false
+    return { runs, setBusy: (value: boolean) => { busy = value }, waker: { busy: () => busy, run: async (input: any) => { runs.push(input) } } }
+  }
+
+  it('wakes the coordinator once with what finished and what needs the person', async () => {
+    const fake = fakeRuntime()
+    const w = waker()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, waker: () => w.waker, wakeDelayMs: 60_000 })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    const one = await service.startThread(project.id, { brief: 'Fix the login test' })
+    const two = await service.startThread(project.id, { brief: 'Upgrade herdr' })
+    db.sessions.set('chat-1', { id: 'chat-1' })
+    db.messages.set('chat-1', [{ role: 'user', content: 'brief' }, { role: 'assistant', content: 'Fixed it on the branch.' }])
+
+    fake.panes.get(one.paneId)!.status = 'done'
+    await service.threadStatusChanged({ id: project.id, thread: one.id }, one.paneId, 'done', 'chat-1')
+    fake.panes.get(two.paneId)!.status = 'blocked'
+    await service.threadStatusChanged({ id: project.id, thread: two.id }, two.paneId, 'blocked')
+    // A repeated report of the same state does not queue again.
+    await service.threadStatusChanged({ id: project.id, thread: one.id }, one.paneId, 'done', 'chat-1')
+
+    // The coordinator is mid-run: the wake waits for it.
+    w.setBusy(true)
+    expect(await service.flushWake(project.id)).toBe(false)
+    w.setBusy(false)
+    expect(await service.flushWake(project.id)).toBe(true)
+    expect(w.runs).toHaveLength(1)
+    expect(w.runs[0]).toMatchObject({ sessionId: project.coordinatorSessionId, profile: 'default', display: 'Project update: “Fix the login test” is done, “Upgrade herdr” needs you.' })
+    expect(w.runs[0].input).toContain('<studio_project_event>')
+    expect(w.runs[0].input).toContain(`${one.id} · Fix the login test · claude-code: finished its turn.`)
+    expect(w.runs[0].input).toContain('Fixed it on the branch.')
+    expect(w.runs[0].input).toContain(`${two.id} · Upgrade herdr · claude-code: needs the person`)
+    expect(await service.flushWake(project.id)).toBe(false)
+  })
+
+  it('skips a thread that went back to work, and projects with wake-ups off', async () => {
+    const fake = fakeRuntime()
+    const w = waker()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, waker: () => w.waker, wakeDelayMs: 60_000 })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    const thread = await service.startThread(project.id, { brief: 'Fix it' })
+    await service.threadStatusChanged({ id: project.id, thread: thread.id }, thread.paneId, 'done')
+    fake.panes.get(thread.paneId)!.status = 'working'
+    expect(await service.flushWake(project.id)).toBe(false)
+    expect(w.runs).toEqual([])
+
+    const quiet = await service.create({ name: 'Quiet', folder: '/srv/q', wakeCoordinator: false })
+    const other = await service.startThread(quiet.id, { brief: 'Fix it' })
+    await service.threadStatusChanged({ id: quiet.id, thread: other.id }, other.paneId, 'done')
+    expect(await service.flushWake(quiet.id)).toBe(false)
+    expect(w.runs).toEqual([])
+  })
+})

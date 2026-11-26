@@ -100,7 +100,7 @@ onUnmounted(() => {
       <AgentStatusIcon :status="threadDisplayStatus(status)" :live="status !== 'idle' && status !== 'gone'" />
       <div class="thread-pane-title">
         <span class="thread-pane-name">{{ thread.title }}</span>
-        <span class="thread-pane-meta">{{ thread.agent }} · {{ t(`projects.groups.${blocked ? 'needsYou' : status === 'done' ? 'done' : 'working'}`) }}</span>
+        <span class="thread-pane-meta" :title="live.workspace">{{ thread.agent }}<template v-if="live.branch"> · {{ live.branch }}</template> · {{ t(`projects.groups.${blocked ? 'needsYou' : status === 'done' ? 'done' : 'working'}`) }}</span>
       </div>
       <NButton size="small" quaternary :disabled="!hasChat" data-testid="thread-pane-open" @click="emit('open', live.sessionId)">
         {{ t('projects.pane.openChat') }}
