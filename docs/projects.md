@@ -138,7 +138,18 @@ All routes need a super admin.
   because the repo has no commit yet or a branch of that name exists. Commit
   once, or turn the project's worktree switch off.
 - **The coordinator never hears back:** its wake-up switch is off, or Studio's
-  chat runs were not ready. Ask it to check with `read_thread`.
+  chat runs were not ready. Ask it to check with `read_thread`. A failed
+  wake-up turn is logged ("Project coordinator wake-up failed") and not
+  retried.
+- **herdr fails to launch the agent:** the thread and its worktree are
+  removed, and the error is shown. Its branch was never used, so nothing is
+  lost.
+- **A project folder inside a repo** (say `apps/web`): each thread starts in
+  the same subfolder of its own checkout.
+- **A message to a resolved thread** reopens it, so its next report reaches
+  the coordinator.
+- **A thread removed while it is open in the pane:** the pane shows all
+  threads instead. If the whole project is removed, the pane closes.
 
 ## Code map
 

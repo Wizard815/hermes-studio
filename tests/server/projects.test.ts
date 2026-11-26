@@ -272,3 +272,119 @@ describe('TestProjects_wakeCoordinator', () => {
     expect(w.runs).toEqual([])
   })
 })
+
+describe('TestProjects_edgeCases', () => {
+  async function gitRepo(withCommit = true) {
+    const { execFileSync } = await import('node:child_process')
+    const { mkdir: mk, writeFile: write } = await import('node:fs/promises')
+    const repo = join(dir, 'repo')
+    execFileSync('git', ['init', '-q', '-b', 'main', repo])
+    const git = (...args: string[]) => execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...args], { encoding: 'utf8' }).trim()
+    if (withCommit) {
+      await mk(join(repo, 'apps', 'web'), { recursive: true })
+      await write(join(repo, 'apps', 'web', 'index.ts'), 'x\n')
+      git('add', '-A'); git('commit', '-qm', 'start')
+    }
+    return { repo, git }
+  }
+
+  it('a launch that fails leaves no thread and no worktree behind', async () => {
+    const { existsSync } = await import('node:fs')
+    const { repo, git } = await gitRepo()
+    const fake = fakeRuntime({ launch: async () => { throw new Error('herdr is not running') } })
+    const service = new ProjectService({ store, runtime: () => fake.runtime, worktreeRoot: join(dir, 'worktrees') })
+    const project = await service.create({ name: 'Repo', folder: repo })
+    await expect(service.startThread(project.id, { brief: 'Fix it' })).rejects.toThrow('herdr is not running')
+    expect((await service.get(project.id)).threads).toEqual([])
+    expect(existsSync(join(dir, 'worktrees', project.id))).toBe(true)
+    expect(git('worktree', 'list').split('\n')).toHaveLength(1)
+  })
+
+  it('a repo with no commits refuses the thread with a 409 and saves nothing', async () => {
+    const { repo } = await gitRepo(false)
+    const fake = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, worktreeRoot: join(dir, 'worktrees') })
+    const project = await service.create({ name: 'Empty', folder: repo })
+    await expect(service.startThread(project.id, { brief: 'Fix it' })).rejects.toMatchObject({ status: 409, message: expect.stringContaining('Could not make a git worktree') })
+    expect((await service.get(project.id)).threads).toEqual([])
+    expect(fake.launches).toEqual([])
+  })
+
+  it('a project folder inside a repo maps to the same subfolder of the thread\'s checkout', async () => {
+    const { repo } = await gitRepo()
+    const fake = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, worktreeRoot: join(dir, 'worktrees') })
+    const project = await service.create({ name: 'Web', folder: join(repo, 'apps', 'web') })
+    const thread = await service.startThread(project.id, { brief: 'Fix the page' })
+    expect(thread.workspace).toBe(join(dir, 'worktrees', project.id, thread.id, 'apps', 'web'))
+    expect(fake.launches[0].workspace).toBe(thread.workspace)
+  })
+
+  it('a title with no latin letters still gets a branch from the thread id', async () => {
+    const { repo } = await gitRepo()
+    const fake = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, worktreeRoot: join(dir, 'worktrees') })
+    const project = await service.create({ name: 'Repo', folder: repo })
+    const thread = await service.startThread(project.id, { brief: 'Fix it', title: '修复 🚀' })
+    expect(thread.branch).toBe(`studio/${thread.id}`)
+  })
+
+  it('a coordinator run that fails is logged, not thrown into the timer', async () => {
+    vi.useFakeTimers()
+    try {
+      const fake = fakeRuntime()
+      const service = new ProjectService({ store, runtime: () => fake.runtime, waker: () => ({ busy: () => false, run: async () => { throw new Error('model down') } }), wakeDelayMs: 10 })
+      const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+      const thread = await service.startThread(project.id, { brief: 'Fix it' })
+      fake.panes.get(thread.paneId)!.status = 'done'
+      const unhandled = vi.fn()
+      process.on('unhandledRejection', unhandled)
+      await service.threadStatusChanged({ id: project.id, thread: thread.id }, thread.paneId, 'done')
+      await vi.advanceTimersByTimeAsync(50)
+      vi.useRealTimers()
+      await new Promise(resolve => setTimeout(resolve, 20))
+      process.off('unhandledRejection', unhandled)
+      expect(unhandled).not.toHaveBeenCalled()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('resolved threads do not wake the coordinator, and reports for unknown threads do nothing', async () => {
+    const fake = fakeRuntime()
+    const runs: any[] = []
+    const service = new ProjectService({ store, runtime: () => fake.runtime, waker: () => ({ busy: () => false, run: async (input: any) => { runs.push(input) } }), wakeDelayMs: 60_000 })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    const thread = await service.startThread(project.id, { brief: 'Fix it' })
+    await service.setResolved(project.id, thread.id, true)
+    fake.panes.get(thread.paneId)!.status = 'done'
+    await service.threadStatusChanged({ id: project.id, thread: thread.id }, thread.paneId, 'done')
+    await service.threadStatusChanged({ id: project.id, thread: 'nope' }, 'w9:p1', 'done')
+    await service.threadStatusChanged({ id: 'missing', thread: thread.id }, thread.paneId, 'done')
+    expect(await service.flushWake(project.id)).toBe(false)
+    expect(runs).toEqual([])
+    expect((await service.get(project.id)).threads).toHaveLength(1)
+    expect(await service.folderFor({ id: project.id, thread: 'nope' })).toMatchObject({ workspace: '/srv/homelab' })
+    expect(await service.folderFor({ id: 'missing' })).toBeNull()
+  })
+
+  it('an unknown agent is refused, and a failed message to a thread reaches the caller', async () => {
+    const fake = fakeRuntime({ message: async () => { throw new Error('pane closed') } })
+    const service = new ProjectService({ store, runtime: () => fake.runtime })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    await expect(service.startThread(project.id, { brief: 'Fix it', agent: 'grok' })).rejects.toMatchObject({ status: 400, message: expect.stringContaining('grok cannot run in herdr') })
+    const thread = await service.startThread(project.id, { brief: 'Fix it' })
+    await expect(service.messageThread(project.id, thread.id, 'go on')).rejects.toThrow('pane closed')
+    await expect(service.messageThread(project.id, thread.id, '   ')).rejects.toMatchObject({ status: 400 })
+    await expect(service.messageThread(project.id, 'nope', 'hi')).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('a message to a resolved thread reopens it', async () => {
+    const fake = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => fake.runtime })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    const thread = await service.startThread(project.id, { brief: 'Fix it' })
+    await service.setResolved(project.id, thread.id, true)
+    await service.messageThread(project.id, thread.id, 'One more thing')
+    expect((await service.get(project.id)).threads[0].resolved).toBe(false)
+    expect(fake.messages).toHaveLength(1)
+  })
+})

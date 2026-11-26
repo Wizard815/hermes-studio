@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
+import { existsSync, realpathSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { getWebUiHome } from '../../public/config'
 import { getChatRunServer } from '../../public/chat-run'
+import { logger } from '../../public/logging'
 import {
   createSession,
   createSessionCategory,
@@ -349,7 +351,7 @@ export class ProjectService {
       })
     } catch (error) {
       await this.store.update(project.id, current => ({ ...current, threads: current.threads.filter(item => item.id !== threadId) }))
-      if (branch) await this.dropWorktree(project, workspace)
+      if (branch) await this.dropWorktree(project, threadId).catch(() => null)
       throw error
     }
     const saved = await this.store.update(project.id, current => ({
@@ -373,22 +375,30 @@ export class ProjectService {
     const repo = await repoRoot(project.folder)
     if (!repo) return shared
     const branch = threadBranch(title, threadId)
-    const workspace = join(this.worktreeRoot(), project.id, threadId)
+    const checkout = this.checkoutPath(project.id, threadId)
     try {
-      await addWorktree(repo, workspace, branch)
+      await addWorktree(repo, checkout, branch)
     } catch (error: any) {
       fail(`Could not make a git worktree for the thread: ${String(error?.stderr || error?.message || error).trim().split('\n')[0]}`, 409)
     }
+    // A project folder inside the repo maps to the same place in the thread's checkout.
+    let inside = ''
+    try { inside = relative(repo, realpathSync(project.folder)) } catch { /* the folder moved: use the checkout root */ }
+    const workspace = inside && !inside.startsWith('..') && existsSync(join(checkout, inside)) ? join(checkout, inside) : checkout
     return { workspace, branch }
+  }
+
+  private checkoutPath(projectId: string, threadId: string): string {
+    return join(this.worktreeRoot(), projectId, threadId)
   }
 
   private worktreeRoot(): string {
     return this.deps.worktreeRoot || join(getWebUiHome(), 'projects', 'worktrees')
   }
 
-  private async dropWorktree(project: Project, workspace: string): Promise<{ removed: boolean; reason?: string }> {
+  private async dropWorktree(project: Project, threadId: string): Promise<{ removed: boolean; reason?: string }> {
     const repo = await repoRoot(project.folder)
-    return repo ? removeWorktree(repo, workspace) : { removed: false, reason: 'The project folder is not a git repo' }
+    return repo ? removeWorktree(repo, this.checkoutPath(project.id, threadId)) : { removed: false, reason: 'The project folder is not a git repo' }
   }
 
   private async thread(idOrName: string, threadId: string): Promise<{ project: Project; view: ProjectView; thread: ThreadView }> {
@@ -407,6 +417,8 @@ export class ProjectService {
     const { thread } = await this.thread(idOrName, threadId)
     if (thread.liveStatus === 'blocked') fail('The thread is waiting for an approval or an answer on its screen. Ask the person to answer it in the thread.', 409)
     await this.requireRuntime().message({ sessionId: thread.sessionId, paneId: thread.paneId, text: body })
+    // New work reopens a resolved thread, so its next report reaches the coordinator.
+    if (thread.resolved) await this.setResolved(idOrName, thread.id, false)
     return { ok: true }
   }
 
@@ -463,7 +475,7 @@ export class ProjectService {
     const { project, thread } = await this.thread(idOrName, threadId)
     await this.store.update(project.id, current => ({ ...current, threads: current.threads.filter(item => item.id !== thread.id) }))
     // Its worktree goes when it has no uncommitted changes; the branch and its commits stay.
-    if (thread.branch && thread.workspace) return { ok: true, worktree: await this.dropWorktree(project, thread.workspace) }
+    if (thread.branch) return { ok: true, worktree: await this.dropWorktree(project, thread.id) }
     return { ok: true }
   }
 
@@ -499,7 +511,12 @@ export class ProjectService {
     const pending = this.pendingWakes.get(projectId) || { events: new Map(), timer: null, tries: 0 }
     pending.events.set(threadId, status)
     this.pendingWakes.set(projectId, pending)
-    if (!pending.timer) pending.timer = setTimeout(() => { void this.flushWake(projectId) }, this.deps.wakeDelayMs ?? WAKE_DELAY_MS)
+    if (!pending.timer) pending.timer = setTimeout(() => this.flushWakeLater(projectId), this.deps.wakeDelayMs ?? WAKE_DELAY_MS)
+  }
+
+  /** A timer's wake-up: a failed coordinator run is logged, never thrown into the timer. */
+  private flushWakeLater(projectId: string): void {
+    this.flushWake(projectId).catch(error => logger.warn({ err: error, projectId }, 'Project coordinator wake-up failed'))
   }
 
   /** Wake the coordinator now with what is pending (tests call it to skip the wait). */
@@ -517,7 +534,7 @@ export class ProjectService {
     // Wait for the coordinator's own run to end; the person may be talking to it.
     if (waker.busy(project.coordinatorSessionId)) {
       if (++pending.tries > WAKE_RETRIES) { this.pendingWakes.delete(projectId); return false }
-      pending.timer = setTimeout(() => { void this.flushWake(projectId) }, WAKE_RETRY_MS)
+      pending.timer = setTimeout(() => this.flushWakeLater(projectId), WAKE_RETRY_MS)
       return false
     }
     this.pendingWakes.delete(projectId)

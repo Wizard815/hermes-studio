@@ -199,6 +199,19 @@ describe.runIf(process.env.LIVE_PROJECTS === '1')('TestProjects_live', () => {
     // main itself is untouched: the threads worked on their own branches.
     expect(await readFile(join(folder, 'src/math.js'), 'utf8')).toMatch(/a - b/)
     expect(final.length).toBeGreaterThan(0)
+
+    // Edge cases: an agent this Studio can't run is refused, and the coordinator says so.
+    const before = (await service.get(project.id))!.threads.length
+    const refused = await turn('Have grok review the README in a new thread, using agent grok. Use exactly that agent id.')
+    expect((await service.get(project.id))!.threads.filter(thread => thread.agent === 'grok')).toEqual([])
+    expect((await service.get(project.id))!.threads.length).toBeLessThanOrEqual(before + 1)
+    expect(refused).toMatch(/grok/i)
+    // A follow-up message to a finished thread runs it again and wakes the coordinator again.
+    const wakesBefore = wakes.length
+    const target = (await service.get(project.id))!.threads.find(thread => thread.agent === 'hermes')!
+    await service.messageThread(project.id, target.id, 'Add one line to the README saying the tests run with `node --test`. Commit it.')
+    await settleAndWake()
+    expect(wakes.length).toBeGreaterThan(wakesBefore)
     await writeFile(process.env.LIVE_LOG || join(home, 'log.txt'), log.join('\n'))
   }, 900_000)
 })

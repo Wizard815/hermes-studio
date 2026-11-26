@@ -60,20 +60,28 @@ async function load() {
     const selected = props.threadId
     const [loaded, thread] = await Promise.all([
       getProject(props.projectId),
-      selected ? readProjectThread(props.projectId, selected) : Promise.resolve(null),
+      selected ? readProjectThread(props.projectId, selected).catch(() => null) : Promise.resolve(null),
     ])
     if (id !== request) return
     project.value = loaded
     error.value = ''
+    // The thread was removed (here or elsewhere): show the project's threads instead.
+    if (selected && !loaded.threads.some(item => item.id === selected)) {
+      emit('select', null)
+      return
+    }
     if (thread) {
       const grew = thread.messages.length !== messages.value.length || thread.messages.at(-1)?.text !== messages.value.at(-1)?.text
       messages.value = thread.messages
       if (grew) await scrollToEnd()
-    } else {
+    } else if (!selected) {
       await loadLastWords(loaded, id)
     }
   } catch (err: any) {
-    if (id === request) error.value = t('projects.failed', { error: err?.message || String(err) })
+    if (id !== request) return
+    // The project itself was removed: nothing left to show.
+    if (err?.status === 404) { emit('close'); return }
+    error.value = t('projects.failed', { error: err?.message || String(err) })
   }
 }
 

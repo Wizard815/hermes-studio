@@ -20,6 +20,7 @@ const history: Record<string, any[]> = {
 test('Projects: a thread opens beside its coordinator, takes a message and opens as the full chat', async ({ page }) => {
   const errors: string[] = []
   const sent: unknown[] = []
+  const removed = new Set<string>()
   page.on('pageerror', error => errors.push(error.message))
   await page.setViewportSize({ width: 1400, height: 900 })
   await page.addInitScript(tok => {
@@ -51,7 +52,8 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
       json = { groups, allProviders: groups, profiles: [], default: 'fixture-model', default_provider: 'fixture' }
     }
     else if (path === '/api/studio/projects') json = { projects: [project] }
-    else if (path === '/api/studio/projects/p1') json = { project }
+    else if (path === '/api/studio/projects/p1') json = { project: { ...project, threads: project.threads.filter(item => !removed.has(item.id)) } }
+    else if (removed.has(path.split('/')[6] || '')) return route.fulfill({ status: 404, json: { error: 'Thread not found in this project' } })
     else if (path === '/api/studio/projects/p1/threads/t2') json = { thread: waiting, messages: [{ role: 'assistant', text: 'Waiting for approval to restart the overseer container.' }] }
     else if (path === '/api/studio/projects/p1/threads/t3') json = { thread: finished, messages: [{ role: 'assistant', text: 'The guide is in docs/omi-setup.md.' }] }
     else if (path === '/api/studio/projects/p1/threads/t1') json = { thread, messages: [{ role: 'user', text: 'Fix the Safari export button.' }, { role: 'assistant', text: 'Found it: Safari has no showSaveFilePicker.' }] }
@@ -125,6 +127,13 @@ test('Projects: a thread opens beside its coordinator, takes a message and opens
   await expect(page.getByTestId('session-project-tag').first()).toBeVisible()
   await page.getByTestId('sidebar-projects').click()
   await expect(pane).toBeVisible()
+  // A thread removed elsewhere while it is open falls back to all threads.
+  await pane.getByTestId('thread-pane-switcher').click()
+  await page.locator('.n-base-select-option', { hasText: 'Write the Omi setup guide' }).click()
+  await expect(pane).toContainText('The guide is in docs/omi-setup.md.')
+  removed.add('t3')
+  await expect(pane.getByTestId('thread-pane-all')).toBeVisible({ timeout: 10_000 })
+  await expect(pane.getByTestId('thread-pane-card-t3')).toHaveCount(0)
   await pane.getByTestId('thread-pane-close').click()
   await expect(pane).toHaveCount(0)
   expect(errors).toEqual([])
