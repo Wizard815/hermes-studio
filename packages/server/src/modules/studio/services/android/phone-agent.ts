@@ -3,6 +3,7 @@ import { getWebUiHome } from '../../public/config'
 import { getWatcher, recordWatcherEvent, watcherTrusts } from '../watcher'
 import { observeApprovalAlertPhoneEvent } from '../approval-alerts'
 import { PhoneTools } from './agent-tools'
+import { phoneAlertLink } from './phone-chat'
 import { androidDeviceManager, compressWithSharp } from './manager'
 
 type Emit = (event: string, payload: unknown) => void
@@ -23,7 +24,7 @@ export const phoneAgent = new PhoneTools({
   },
   trusted: ({ sessionId, agent, value }) => watcherTrusts({ sessionId, agentId: agent }, { kind: 'tool', values: [value] }, value),
   alert: ({ kind, severity, text, sessionId, agent, value }) => recordWatcherEvent({
-    kind, severity, text, sessionId, agent, link: '/android',
+    kind, severity, text, sessionId, agent, link: phoneAlertLink(kind, sessionId),
     ...(kind === 'approval_asked' || kind === 'approval_denied' ? { action: { kind: 'tool', value } } : {}),
   }),
   emit: (event, payload) => {

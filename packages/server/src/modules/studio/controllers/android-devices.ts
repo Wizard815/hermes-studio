@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import { getWebUiHome } from '../public/config'
 import { androidDeviceManager } from '../services/android/manager'
 import { phoneAgent } from '../services/android/phone-agent'
+import { phoneToolChat } from '../services/android/phone-chat'
+import { getChatRunServer } from '../public/chat-run'
 
 function fail(ctx: Context, error: unknown, fallback: string) {
   const err = error as { status?: number; message?: string }
@@ -86,7 +88,12 @@ export async function agentAction(ctx: Context) {
     ctx.body = await phoneAgent.run({
       action: text(input.action),
       arguments: input.arguments && typeof input.arguments === 'object' ? input.arguments as Record<string, unknown> : {},
-      sessionId: text(input.sessionId),
+      sessionId: phoneToolChat({
+        runSessionId: ctx.state.runBinding?.sessionId,
+        contextId: text(input.contextId),
+        claimedSessionId: text(input.sessionId),
+        chatForContext: contextId => getChatRunServer()?.chatForTurnContext(contextId, String(ctx.state.profile?.name || 'default').trim() || 'default') || '',
+      }),
       agent: text(input.agent) || 'agent',
     })
   } catch (error) { fail(ctx, error, 'The phone action failed') }

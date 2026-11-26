@@ -94,6 +94,9 @@ it('injects a separate managed service for Hermes, Ekko and supported coding age
         assert.equal(dedicatedEnv.HERMES_WEB_UI_RUN_TOKEN_FILE,'/test/auth.json');
       }
       assert.deepEqual(configs('zcode'),{});
+      // Codex gives MCP servers only a short env list: the chat id must be forwarded by name.
+      assert.deepEqual(configs('codex','work')['ekko-studio-use'].env_vars,['HERMES_STUDIO_SESSION_ID']);
+      assert.equal(configs('grok','work')['ekko-studio-use'].env_vars,undefined);
       const {setManagedMcpServerEnabled} = require('./packages/server/src/modules/coding-agents/services/mcp-overrides');
       setManagedMcpServerEnabled('codex','work','ekko-studio-plugins',false);
       assert.equal(configs('codex','work')['ekko-studio-plugins'].enabled,false);

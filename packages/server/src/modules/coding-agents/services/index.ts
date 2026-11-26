@@ -140,6 +140,8 @@ const LEGACY_HERMES_MCP_COMMANDS = new Set([
 ])
 const HERMES_MCP_MANAGED_ENV_KEY = 'HERMES_WEB_UI_MANAGED_MCP'
 const HERMES_STUDIO_SESSION_ENV_KEY = 'HERMES_STUDIO_SESSION_ID'
+/** Codex hands its MCP servers only a short list of variables; this one says which chat a Studio tool call is from. */
+const CODEX_MCP_FORWARDED_ENV = [HERMES_STUDIO_SESSION_ENV_KEY]
 const GLOBAL_CODEX_SHADOW_LINK_DIRS = new Set(['memories', 'plugins', 'rules', 'skills', 'vendor_imports', 'visualizations'])
 
 /** Native agents have no skills folder Studio fills: they get a pointer to the UI skills (docs/ui-skills.md). */
@@ -1471,6 +1473,7 @@ function codexMcpConfigToml(
     if (server.env && typeof server.env === 'object' && !Array.isArray(server.env)) {
       lines.push(`env = ${tomlInlineStringTable(server.env as Record<string, string>)}`)
     }
+    if (agentId === 'codex' && typeof server.command === 'string' && server.command) lines.push(`env_vars = ${tomlStringArray(CODEX_MCP_FORWARDED_ENV)}`)
     lines.push('')
     blocks.push(lines.join('\n'))
   }
@@ -1706,6 +1709,7 @@ export function getCodingAgentManagedMcpServerConfigs(
     if (id === 'codex' || id === 'grok') {
       return [item.name, {
         ...server,
+        ...(id === 'codex' && typeof server.command === 'string' && server.command ? { env_vars: CODEX_MCP_FORWARDED_ENV } : {}),
         startup_timeout_sec: 120,
         ...((item.toolset === 'use' || item.toolset === 'plan') ? { tool_timeout_sec: Math.max(360, Number(server.tool_timeout_sec) || 0) } : {}),
         ...(disabledManaged.has(item.name) ? { enabled: false } : {}),

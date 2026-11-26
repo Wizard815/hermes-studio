@@ -7,11 +7,12 @@ const SUPER_ADMIN_TOKEN = `x.${Buffer.from(JSON.stringify({ role: 'super_admin' 
 
 const KINDS = [...WATCHER_KINDS]
 
-async function openFixture(page: Page) {
+async function openFixture(page: Page, extra: any[] = []) {
   const requests: Array<{ method: string; path: string; body: any }> = []
   const errors: string[] = []
   const now = Date.now()
   let events = [
+    ...extra,
     { id: 3, time: now - 30_000, kind: 'approval_denied', severity: 'block', sessionId: 'chat-1', taskId: '', agent: 'claude-code', folder: '/srv/app', text: 'Denied: rm /srv/shared/cache.db', link: '/hermes/session/chat-1', action: { kind: 'command', value: 'rm /srv/shared/cache.db' }, read: false },
     { id: 2, time: now - 60_000, kind: 'cleanroom_blocked', severity: 'block', sessionId: 'chat-2', taskId: '', agent: 'codex', folder: '/srv/app', text: 'Clean room blocked a connection to example.com:443 (not an allowed host)', link: '/hermes/session/chat-2', read: false },
     { id: 1, time: now - 120_000, kind: 'run_limit', severity: 'block', sessionId: 'chat-1', taskId: '', agent: 'claude-code', folder: '/srv/app', text: 'Run stopped by Studio: cost limit reached', link: '/hermes/session/chat-1', read: true },
@@ -99,6 +100,24 @@ test('the bell shows the unread count, lists alerts newest first and marks them 
   // Open chat follows the alert's link.
   await items.first().getByTestId('watcher-open').click()
   await expect.poll(() => page.evaluate(() => (window as any).__route())).toBe('/hermes/session/chat-1')
+  expect(errors).toEqual([])
+})
+
+test('a phone question opens the Android page to answer it, and Open chat opens the chat that asked', async ({ page }) => {
+  const phoneQuestion = { id: 4, time: Date.now() - 5_000, kind: 'approval_asked', severity: 'warn', sessionId: 'chat-3', taskId: '', agent: 'ekko', folder: '', text: 'ekko wants to tap e4 "Send" on Pixel 8. Allow or deny it on the Android page.', link: '/android', action: { kind: 'tool', value: 'android:emulator-5554:com.example.chat:tap:danger' }, read: false }
+  const { errors } = await openFixture(page, [phoneQuestion])
+  await page.goto('/__watcher__')
+  await page.getByTestId('watcher-bell').click()
+  const items = page.getByTestId('watcher-list').first().getByTestId('watcher-item')
+  await expect(items).toHaveCount(4)
+  // Alerts that already link to their chat get no second button.
+  await expect(items.nth(1).getByTestId('watcher-open-chat')).toHaveCount(0)
+  await expect(items.first().getByTestId('watcher-open')).toHaveText('Open')
+  await items.first().getByTestId('watcher-open-chat').click()
+  await expect.poll(() => page.evaluate(() => (window as any).__route())).toBe('/hermes/session/chat-3')
+  await page.getByTestId('watcher-bell').click()
+  await page.getByTestId('watcher-list').first().getByTestId('watcher-item').first().getByTestId('watcher-open').click()
+  await expect.poll(() => page.evaluate(() => (window as any).__route())).toBe('/android')
   expect(errors).toEqual([])
 })
 

@@ -67,6 +67,9 @@ test('a device is closed to agents until the person opens it; then questions, th
   const questions = page.getByTestId('android-agent-questions')
   await expect(questions).toContainText('hermes wants to tap e4 "Send" on Pixel_8_API_35.')
   await expect(questions).toContainText('Why it asks: presses "Send".')
+  // The question names the chat that asked; Open chat goes there.
+  await page.getByTestId('android-agent-open-chat').click()
+  await expect.poll(() => page.evaluate(() => (window as any).__route())).toBe('/hermes/session/chat-1')
   await page.getByTestId('android-agent-allow-once').click()
   await expect.poll(() => requests.find(r => r.path === '/api/studio/android/agent/approvals/q1')?.body).toEqual({ allow: true })
   await expect(questions).toHaveCount(0)

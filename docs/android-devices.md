@@ -244,7 +244,25 @@ a chat with none counts as ask):
 
 A question shows on the Android page (**Allow once** / **Deny**, for three
 minutes; then it is denied) and in the watcher's bell with a link to the
-page. A watcher trust rule answers it: the value is
+page. Both have **Open chat** for the chat that asked, and the bell's
+"Allowed" / "Denied" alert opens that chat.
+
+**Which chat asks.** Studio works it out, in this order:
+
+1. Ekko, plugin agents and group chats: the chat of the run credential Studio
+   gave the turn. A session id sent with the call cannot change it.
+2. Hermes (and any agent shown Studio's turn context): the turn's
+   `context_id`, which the agent passes as `context_id`. It counts only
+   while that turn runs, in the same profile.
+3. Coding agents (Claude Code, Codex, OpenCode, ...): the chat Studio started
+   the agent for (`HERMES_STUDIO_SESSION_ID`; Codex gets it through
+   `env_vars`, because it passes MCP servers only a short list of variables).
+
+If none of these gives a chat, the question has none: it counts as ask, the
+bell's alert opens only the Android page, and "Trust this" has no "this chat"
+scope.
+
+A watcher trust rule answers it: the value is
 `android:<device>:<app>:<action>`, and `android:<device>:<app>:<action>:danger`
 for an action from the last row, so `android:emulator-5554:*` trusts one
 device and `android:*:com.example.app:*` one app (scope agent, chat or task).
@@ -256,16 +274,17 @@ moment with what it did, and **What agents did** lists the last actions with
 Done, Waiting, Denied or Failed. **Take over** keeps agents off the phone
 (they can still look) until **Hand back to agents**.
 
-Code: `services/android/{agent-tools,agent-policy,ui-tree,phone-agent}.ts`,
+Code: `services/android/{agent-tools,agent-policy,ui-tree,phone-agent,phone-chat}.ts`,
 routes `POST /api/studio/android/agent`, `GET /api/studio/android/agent`,
 `POST /api/studio/android/agent/approvals/:id`,
 `POST /api/studio/android/devices/:serial/takeover`; page
 `components/hermes/android/AndroidAgentPanel.vue`. Tests:
-`tests/server/android-phone-tools.test.ts` (a fake adb),
+`tests/server/android-phone-tools.test.ts` (a fake adb), `tests/server/android-phone-chat.test.ts` (which chat asks),
 `tests/e2e/android-agent.spec.ts`.
 
-Limits: Hermes's Studio MCP process is shared by its chats, so a Hermes chat's
-own approval mode is not known there and it counts as ask. The settle check
+Limits: Hermes's Studio MCP process is shared by its chats, so a Hermes call
+without the turn's `context_id` (a small model may leave it out) has no chat
+and counts as ask. The settle check
 costs screenshots; on slow phones a step can still land before the app
 finishes. iPhone is not covered.
 

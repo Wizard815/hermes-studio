@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NButton, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import type { Socket } from 'socket.io-client'
 import {
   answerPhoneAgent, fetchPhoneAgentState, takeOverPhone,
@@ -27,6 +28,9 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n()
 const toast = useMessage()
+const router = useRouter()
+/** The chat that asked (Studio knows it for Ekko, Hermes and coding agents). */
+const openChat = (sessionId: string) => { void router.push(`/hermes/session/${encodeURIComponent(sessionId)}`) }
 const log = ref<PhoneAgentEntry[]>([])
 const approvals = ref<PhoneAgentApproval[]>([])
 const held = ref<string[]>([])
@@ -131,6 +135,7 @@ async function toggleTakeOver() {
         <div class="android-agent-row">
           <NButton size="small" type="primary" :loading="answering === approval.id" data-testid="android-agent-allow-once" @click="answer(approval, true)">{{ t('android.agent.allowOnce') }}</NButton>
           <NButton size="small" :disabled="answering === approval.id" data-testid="android-agent-deny" @click="answer(approval, false)">{{ t('android.agent.deny') }}</NButton>
+          <NButton v-if="approval.sessionId" size="small" quaternary data-testid="android-agent-open-chat" @click="openChat(approval.sessionId)">{{ t('watcher.openChat') }}</NButton>
         </div>
       </div>
       <p class="android-agent-hint">{{ t('android.agent.trustHint') }}</p>
