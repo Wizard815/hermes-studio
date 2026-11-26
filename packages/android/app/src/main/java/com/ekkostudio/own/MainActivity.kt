@@ -2,6 +2,7 @@ package com.ekkostudio.own
 
 import android.annotation.SuppressLint
 import android.app.PendingIntent
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -24,6 +25,7 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -38,6 +40,9 @@ import java.io.InputStream
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
+/** Receives a Termux result: stdout, stderr, exitCode and error, as [Termux.result] builds them. */
+typealias TermuxCallback = (Map<String, Any?>) -> Unit
+
 /**
  * Shell around the Studio web app. The first run asks for the server URL (for
  * example the Cloudflare tunnel address); after that the WebView loads it and the
@@ -46,14 +51,18 @@ import kotlin.concurrent.thread
  * Pages from that server (and only that server) also get `window.StudioOwn`,
  * which runs commands in Termux after the person confirms them here, and an
  * .apk downloaded from the server is installed through Android's installer.
+ *
+ * Text shared to the app (or `ekkostudio-own://chat?text=...`) opens a new
+ * Studio chat with the text in the composer, never sent. The Omi panel opens
+ * the Omi app and starts or stops the phone's AI servers in Termux (docs/omi.md).
  */
 class MainActivity : AppCompatActivity() {
     private var webView: WebView? = null
     private var serverOrigin: String? = null
     private var scriptHandler: ScriptHandler? = null
     private var scriptTermuxInstalled: Boolean? = null
-    private var pendingTermux: Pair<Termux.Command, JavaScriptReplyProxy>? = null
-    private val replies = mutableMapOf<Int, JavaScriptReplyProxy>()
+    private var pendingTermux: Pair<Termux.Command, TermuxCallback>? = null
+    private val replies = mutableMapOf<Int, TermuxCallback>()
     private val requestIds = AtomicInteger(1)
     /** Shared before a server was set up: offered once it is. */
     private var pendingShared: ShareIntent.Shared? = null
@@ -62,14 +71,16 @@ class MainActivity : AppCompatActivity() {
     private var pageReady = false
     /** The Studio page's port, to tell Settings → Android app about approval alerts. */
     private var alertsReply: JavaScriptReplyProxy? = null
+    /** Shared text that arrived before a server was configured. */
+    private var pendingCompose: String? = null
+    private var phoneAiStatus: TextView? = null
 
     private val prefs get() = getSharedPreferences("studio_own", Context.MODE_PRIVATE)
 
     private val termuxResults = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val id = intent.getIntExtra(EXTRA_REQUEST_ID, 0)
-            val reply = replies.remove(id) ?: return
-            reply.postMessage(StudioBridge.resultMessage(Termux.result(intent.getBundleExtra(Termux.RESULT_BUNDLE))))
+            replies.remove(id)?.invoke(Termux.result(intent.getBundleExtra(Termux.RESULT_BUNDLE)))
         }
     }
 
@@ -96,7 +107,8 @@ class MainActivity : AppCompatActivity() {
         // A link to the server opens that page instead of the start page.
         val link = (LinkRoute.resolve(intent?.dataString, saved) as? LinkRoute.Target.InApp)?.url
         if (saved.isNullOrBlank()) showSetup() else showWebView(link ?: saved)
-        if (link == null) handleIntent(intent)
+        // A recreated activity must not replay the share or link it started with.
+        if (link == null && savedInstanceState == null) handleIntent(intent)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -123,6 +135,18 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (intent.action == Intent.ACTION_VIEW) {
+            // ekkostudio-own://chat?text=… and ekkostudio-own://omi (docs/omi.md); not again from Recents.
+            val own = intent.dataString?.let { Incoming.link(it) }
+            if (own != null || intent.dataString?.startsWith(Incoming.SCHEME + ":", ignoreCase = true) == true) {
+                intent.action = null
+                if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
+                when (own) {
+                    is Incoming.Request.Compose -> openCompose(own)
+                    Incoming.Request.OmiPanel -> showOmiPanel()
+                    null -> Unit
+                }
+                return
+            }
             when (val target = LinkRoute.resolve(intent.dataString, server)) {
                 is LinkRoute.Target.InApp -> webView?.loadUrl(target.url) ?: showWebView(target.url)
                 is LinkRoute.Target.Browser -> openInBrowser(target.url)
@@ -197,6 +221,21 @@ class MainActivity : AppCompatActivity() {
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
         } catch (_: Exception) { toast(getString(R.string.download_unsupported)) }
+
+    }
+
+    /** Loads Studio's new-chat page with the text in the composer; the person presses Send. */
+    private fun openCompose(request: Incoming.Request.Compose) {
+        if (request.truncated) toast(getString(R.string.share_truncated))
+        val server = prefs.getString(KEY_SERVER_URL, null)
+        val url = server?.let { Incoming.composeUrl(it, request.text) }
+        if (server == null || url == null) {
+            // Still on the setup screen: open the chat once the server is connected.
+            pendingCompose = request.text
+            return
+        }
+        val view = webView
+        if (view == null) showWebView(server, url) else view.loadUrl(url)
     }
 
     override fun onResume() {
@@ -232,7 +271,9 @@ class MainActivity : AppCompatActivity() {
                     input.error = "Enter a full http(s) address"
                 } else {
                     prefs.edit().putString(KEY_SERVER_URL, url).apply()
-                    showWebView(url)
+                    val compose = pendingCompose?.let { Incoming.composeUrl(url, it) }
+                    pendingCompose = null
+                    showWebView(url, compose ?: url)
                     pendingShared?.let { pendingShared = null; askWhereToShare(it) }
                 }
             }
@@ -244,7 +285,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun showWebView(url: String) {
+    private fun showWebView(url: String, startUrl: String = url) {
         val view = WebView(this).apply {
             tag = "studio_webview"
             settings.javaScriptEnabled = true
@@ -271,7 +312,7 @@ class MainActivity : AppCompatActivity() {
         }
         webView = view
         setContentView(view)
-        view.loadUrl(url)
+        view.loadUrl(startUrl)
     }
 
     // --- Studio page bridge ---------------------------------------------------
@@ -281,12 +322,13 @@ class MainActivity : AppCompatActivity() {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return
         WebViewCompat.addWebMessageListener(view, StudioBridge.PORT_NAME, setOf(origin)) { _, message, _, _, reply ->
             when (val request = StudioBridge.parse(message.data)) {
-                is StudioBridge.Request.RunInTermux -> requestTermux(request.command, reply)
+                is StudioBridge.Request.RunInTermux -> requestTermux(request.command) { reply.postMessage(StudioBridge.resultMessage(it)) }
                 StudioBridge.Request.AlertsStatus -> { alertsReply = reply; sendAlertsState() }
                 is StudioBridge.Request.AlertsPair -> { alertsReply = reply; pairAlerts(prefs.getString(KEY_SERVER_URL, null), request.code, request.name) }
                 is StudioBridge.Request.AlertsMode -> { alertsReply = reply; setAlertsMode(request.mode) }
                 StudioBridge.Request.AlertsUnpair -> { alertsReply = reply; ApprovalAlertControl.unpaired(this); sendAlertsState() }
                 StudioBridge.Request.AlertsBattery -> openBatterySettings()
+                StudioBridge.Request.OmiPanel -> showOmiPanel()
                 null -> Unit
             }
         }
@@ -307,9 +349,9 @@ class MainActivity : AppCompatActivity() {
         if (!first) view.reload()
     }
 
-    private fun requestTermux(command: Termux.Command, reply: JavaScriptReplyProxy) {
+    private fun requestTermux(command: Termux.Command, reply: TermuxCallback) {
         if (!Termux.isInstalled(this)) {
-            reply.postMessage(StudioBridge.resultMessage(mapOf("error" to getString(R.string.termux_missing))))
+            reply(mapOf("error" to getString(R.string.termux_missing)))
             return
         }
         if (ContextCompat.checkSelfPermission(this, Termux.PERMISSION) != PackageManager.PERMISSION_GRANTED) {
@@ -328,11 +370,11 @@ class MainActivity : AppCompatActivity() {
         val (command, reply) = pendingTermux ?: return
         pendingTermux = null
         if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) confirmTermux(command, reply)
-        else reply.postMessage(StudioBridge.resultMessage(mapOf("error" to getString(R.string.termux_permission_denied))))
+        else reply(mapOf("error" to getString(R.string.termux_permission_denied)))
     }
 
     /** Nothing reaches Termux until the person reads the command and taps Run. */
-    private fun confirmTermux(command: Termux.Command, reply: JavaScriptReplyProxy) {
+    private fun confirmTermux(command: Termux.Command, reply: TermuxCallback) {
         val pad = (16 * resources.displayMetrics.density).toInt()
         val body = TextView(this).apply {
             text = getString(R.string.termux_confirm_body, command.workdir, command.script)
@@ -345,13 +387,13 @@ class MainActivity : AppCompatActivity() {
             .setView(body)
             .setPositiveButton(R.string.run) { _, _ -> runTermux(command, reply) }
             .setNegativeButton(android.R.string.cancel) { _, _ ->
-                reply.postMessage(StudioBridge.resultMessage(mapOf("error" to getString(R.string.termux_cancelled))))
+                reply(mapOf("error" to getString(R.string.termux_cancelled)))
             }
             .setCancelable(false)
             .show()
     }
 
-    private fun runTermux(command: Termux.Command, reply: JavaScriptReplyProxy) {
+    private fun runTermux(command: Termux.Command, reply: TermuxCallback) {
         val id = requestIds.getAndIncrement()
         val result = Intent(ACTION_TERMUX_RESULT).setPackage(packageName).putExtra(EXTRA_REQUEST_ID, id)
         // Termux fills in the result extras, so the PendingIntent must be mutable.
@@ -361,7 +403,7 @@ class MainActivity : AppCompatActivity() {
             Termux.start(this, command, PendingIntent.getBroadcast(this, id, result, flags))
         } catch (error: Exception) {
             replies.remove(id)
-            reply.postMessage(StudioBridge.resultMessage(mapOf("error" to (error.message ?: getString(R.string.termux_failed)))))
+            reply(mapOf("error" to (error.message ?: getString(R.string.termux_failed))))
         }
     }
 
@@ -464,6 +506,110 @@ class MainActivity : AppCompatActivity() {
                 val target = (LinkRoute.resolve(openUrl, server) as? LinkRoute.Target.InApp)?.url
                 if (target != null) webView?.loadUrl(target) ?: showWebView(target)
             }
+            .show()
+    }
+
+    // --- Omi and phone AI -----------------------------------------------------
+
+    /** Native panel: open Omi, start/stop the phone's AI servers (confirmed like any Termux command), their status. */
+    private fun showOmiPanel() {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val status = TextView(this).apply {
+            text = getString(R.string.phone_ai_checking)
+            setPadding(0, 0, 0, pad / 2)
+        }
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad / 2, pad, 0)
+            addView(status)
+        }
+        fun button(label: Int, action: () -> Unit) = layout.addView(Button(this).apply {
+            setText(label)
+            isAllCaps = false
+            setOnClickListener { action() }
+        }, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        button(R.string.omi_open_approvals) { openOmi(OmiLink.Target.APPROVALS) }
+        button(R.string.omi_open_tasks) { openOmi(OmiLink.Target.TASKS) }
+        button(R.string.omi_open_capture) { openOmi(OmiLink.Target.CAPTURE) }
+        button(R.string.phone_ai_start) { runPhoneAi(PhoneAi.START) }
+        button(R.string.phone_ai_stop) { runPhoneAi(PhoneAi.STOP) }
+        button(R.string.phone_ai_refresh) { refreshPhoneAiStatus() }
+        phoneAiStatus = status
+        AlertDialog.Builder(this)
+            .setTitle(R.string.omi_panel_title)
+            .setView(ScrollView(this).apply { addView(layout) })
+            .setPositiveButton(android.R.string.ok, null)
+            .setOnDismissListener { if (phoneAiStatus === status) phoneAiStatus = null }
+            .show()
+        refreshPhoneAiStatus()
+    }
+
+    private fun openOmi(target: OmiLink.Target) {
+        val attempts = OmiLink.attempts(
+            target,
+            installed = { packageManager.getLaunchIntentForPackage(it) != null },
+            handlesLink = { pkg, uri -> packageManager.resolveActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).setPackage(pkg), 0) != null },
+        )
+        for (attempt in attempts) {
+            val intent = when (attempt) {
+                is OmiLink.Launch.DeepLink -> Intent(Intent.ACTION_VIEW, Uri.parse(attempt.uri)).setPackage(attempt.packageName)
+                is OmiLink.Launch.App -> packageManager.getLaunchIntentForPackage(attempt.packageName) ?: continue
+            }
+            try {
+                startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            } catch (_: ActivityNotFoundException) {
+            } catch (_: SecurityException) {
+            }
+        }
+        toast(getString(R.string.omi_missing))
+    }
+
+    private fun runPhoneAi(command: Termux.Command) {
+        if (!Termux.isInstalled(this)) {
+            showTermuxHelp()
+            return
+        }
+        requestTermux(command) { result ->
+            when (val outcome = PhoneAi.outcome(result)) {
+                PhoneAi.Outcome.Done -> Unit
+                PhoneAi.Outcome.TermuxNotSetUp -> showTermuxHelp()
+                PhoneAi.Outcome.ScriptMissing -> toast(getString(R.string.phone_ai_script_missing))
+                is PhoneAi.Outcome.Failed -> toast(outcome.message)
+            }
+            refreshPhoneAiStatus()
+            // The servers take a few seconds to listen, longer to load a model.
+            phoneAiStatus?.postDelayed({ refreshPhoneAiStatus() }, 4_000)
+        }
+    }
+
+    private fun refreshPhoneAiStatus() {
+        val view = phoneAiStatus ?: return
+        thread(name = "phone-ai-status") {
+            val status = PhoneAi.status(PhoneAi.probe(PhoneAi.CHAT_URL), PhoneAi.probe(PhoneAi.SPEECH_URL))
+            runOnUiThread {
+                if (phoneAiStatus === view) view.text = getString(R.string.phone_ai_status, stateLabel(status.chat), stateLabel(status.speech))
+            }
+        }
+    }
+
+    private fun stateLabel(state: PhoneAi.State): String = getString(when (state) {
+        PhoneAi.State.OFF -> R.string.phone_ai_off
+        PhoneAi.State.LOADING -> R.string.phone_ai_loading
+        PhoneAi.State.RUNNING -> R.string.phone_ai_running
+    })
+
+    private fun showTermuxHelp() {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val body = TextView(this).apply {
+            text = getString(R.string.termux_setup_body)
+            setTextIsSelectable(true)
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.termux_setup_title)
+            .setView(ScrollView(this).apply { addView(body) })
+            .setPositiveButton(android.R.string.ok, null)
             .show()
     }
 

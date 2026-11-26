@@ -22,7 +22,7 @@ and keep this file small enough to fit into every task context.
 - `docs/android-devices.md` - Android page: adb devices, emulator stream, BlueStacks, phones, Termux bridge in the Android app.
 - `docs/llm-wiki.md` - LLM wiki: the family's Obsidian wiki as a Hermes memory provider per profile (Connections → LLM wiki), token per profile, MCP card.
 - `docs/pondering-orb.md` - Pondering Orb: Connections tab, Orb tools for Studio agents, and Orb sending work to Studio chats.
-- `docs/omi.md` - Omi (omi-local): Connections tab, the scoped Studio key for Omi, results webhook, approvals from Omi, MCP card and Hermes skill.
+- `docs/omi.md` - Omi (omi-local): Connections tab, the scoped Studio key for Omi, results webhook, approvals from Omi, MCP card and Hermes skill; Studio Own and the Omi app on the phone (share/deep-link intents both ways, phone AI in Termux).
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.
 - `docs/projects.md` - Projects in the chat menu: a coordinator chat and threads that run in herdr.
 - `docs/agent-limits.md` - run limits: cost, tokens, time and loop detector per run, for every chat type.

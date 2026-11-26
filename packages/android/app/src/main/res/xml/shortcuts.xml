@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app icon: opens the Omi and phone AI panel (ekkostudio-own://omi). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="omi"
+        android:enabled="true"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:shortcutShortLabel="@string/omi_shortcut">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="ekkostudio-own://omi"
+            android:targetClass="com.ekkostudio.own.MainActivity"
+            android:targetPackage="com.ekkostudio.own" />
+    </shortcut>
+</shortcuts>

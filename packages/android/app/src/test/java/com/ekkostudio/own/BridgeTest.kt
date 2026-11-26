@@ -43,6 +43,13 @@ class BridgeTest {
         assertTrue(script.contains("window.${StudioBridge.PORT_NAME}"))
         assertTrue(script.contains("return true;"))
         assertTrue(script.contains("studio-own:termux-result"))
+        assertTrue(script.contains("openOmiPanel"))
+    }
+
+    @Test
+    fun omiPanelRequestsNeedNoArguments() {
+        assertEquals(StudioBridge.Request.OmiPanel, StudioBridge.parse("""{"type":"omi.panel"}"""))
+        assertEquals(StudioBridge.Request.OmiPanel, StudioBridge.parse("""{"type":"omi.panel","command":"rm -rf ~"}"""))
     }
 
     @Test

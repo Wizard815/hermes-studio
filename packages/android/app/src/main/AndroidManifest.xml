@@ -14,6 +14,9 @@
 
     <queries>
         <package android:name="com.termux" />
+        <!-- Omi (prod and dev flavors): open it with omi:// links or its launcher; see docs/omi.md. -->
+        <package android:name="com.friend.ios" />
+        <package android:name="com.friend.ios.dev" />
     </queries>
 
     <application
@@ -64,6 +67,22 @@
                 <data android:scheme="https" />
                 <data android:host="${studioOwnHost}" />
             </intent-filter>
+            <!-- ekkostudio-own://chat?text=… : a new chat with the text in the composer, from Omi or a link (docs/omi.md). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ekkostudio-own" android:host="chat" />
+            </intent-filter>
+            <!-- ekkostudio-own://omi : the Omi and phone AI panel (also the launcher shortcut). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="ekkostudio-own" android:host="omi" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- Live approval alerts (ApprovalAlertService.kt). specialUse: a self-hosted push connection without Google services. -->

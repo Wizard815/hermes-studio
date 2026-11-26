@@ -96,6 +96,7 @@ import RunLimitsModal from "../run-limits/RunLimitsModal.vue";
 import PageSidebarNav from "@/components/layout/PageSidebarNav.vue";
 import { getStoredUserId, isStoredSuperAdmin } from "@/api/client";
 import { loadNewChatFormPreferences, saveNewChatFormPreferences } from "@/utils/new-chat-form-preferences";
+import { COMPOSE_QUERY_KEY, composeQueryText, withoutComposeQuery } from "@/utils/compose-link";
 import { useDefaultWorkspace } from "@/composables/useDefaultWorkspace";
 import { useChatSurfaceReveal } from "@/composables/useChatSurfaceReveal";
 import ModelCascader from "@/components/hermes/models/ModelCascader.vue";
@@ -2870,6 +2871,22 @@ function handleSessionModelSelect(selection: { model: string; provider: string }
   else void selectSessionModel(selection.model, selection.provider);
 }
 
+// `#/hermes/chat?compose=...` (Studio Own shares, utils/compose-link.ts) opens a new
+// chat with the text in its composer. The query is dropped first, so a reload or
+// Back does not prefill again; the person still presses Send.
+const composeSeed = ref("");
+watch([() => route.query[COMPOSE_QUERY_KEY], () => chatStore.sessionsLoaded], async ([value, loaded]) => {
+  if (props.standalone || props.contentMode !== "chat" || route.name !== "hermes.chat" || !loaded) return;
+  const text = composeQueryText(value);
+  if (text === null) return;
+  await router.replace({ query: withoutComposeQuery(route.query) });
+  await nextTick();
+  composeSeed.value = text;
+  await openNewChatPage();
+}, { immediate: true });
+// The new-chat composer can remount while it is open; the text stays until the page closes.
+watch(showNewChatPage, (open) => { if (!open) composeSeed.value = ""; });
+
 // Wait for route cleanup and session loading before opening the empty state;
 // explicit session links may still be resolving outside the sidebar list.
 // The herdr page does not need a chat: with no chats yet it must still open.
@@ -3668,7 +3685,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
                   :native-effort-choices="isNewChatGlobalCodingAgent ? newChatNativeEffortChoices : undefined"
                   :submit="submitNewChat" :model-label="newChatModelLabel" :model-disabled="newChatLoading || (!isNewChatGlobalCodingAgent && newChatModelsLoading)"
                   :model-expanded="showSessionModelPicker && sessionModelIsDraft"
-                  :persist-draft="false" :initial-text="initialComposerText" @model-click="openSessionModelPicker(null, $event)" />
+                  :persist-draft="false" :initial-text="composeSeed || initialComposerText" @model-click="openSessionModelPicker(null, $event)" />
                 <button v-if="newChatHasNoModels" type="button" class="new-chat-config-hint" @click="openNewChatModelSettings">
                   {{ t('models.noModels') }} · {{ t('models.noProviderPromptAction') }}
                 </button>
