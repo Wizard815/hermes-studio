@@ -8,6 +8,7 @@ import { vscodeMessages } from '../vscode-messages'
 import { herdrMessages } from '../herdr-messages'
 import { spaceFoldersMessages } from '../space-folders-messages'
 import { projectsMessages } from '../projects-messages'
+import { pinCommentMessages } from '../pin-comment-messages'
 import { herdrAppMessages } from '../herdr-app-messages'
 import { commandCenterMessages } from '../command-center-messages'
 import { runLimitsMessages } from '../run-limits-messages'
@@ -38,6 +39,7 @@ export default {
   ...herdrMessages['en'],
   ...spaceFoldersMessages['en'],
   ...projectsMessages['en'],
+  ...pinCommentMessages['en'],
   ...herdrAppMessages['en'],
   ...commandCenterMessages['en'],
   ...runLimitsMessages['en'],

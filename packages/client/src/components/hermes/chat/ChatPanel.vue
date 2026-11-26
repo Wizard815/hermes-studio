@@ -37,6 +37,7 @@ import { inferCodingAgentApiMode, normalizeCodingAgentApiMode, type ChatCodingAg
 import { nativeCatalogModel, nativeModelLabel, nativeModelFamilies, nativeModelPickerId, nativeModelEffortChoices, selectNativeModelEffort } from "@/utils/native-model-families";
 import { agentInstallationState, fetchAgentAvailabilitySnapshot, type AgentAvailabilitySnapshot } from "@/api/agent-status";
 import { useChatStore, type Session, type Attachment } from "@/stores/hermes/chat";
+import { setPinCommentTarget } from "@/utils/pin-comment";
 import { useAppStore } from "@/stores/hermes/app";
 import { useProfilesStore } from "@/stores/hermes/profiles";
 import { useFilesStore } from "@/stores/hermes/files";
@@ -209,8 +210,13 @@ async function refreshProjectAttention() {
 onMounted(() => {
   void refreshProjectAttention();
   projectAttentionTimer = setInterval(() => { void refreshProjectAttention() }, 10_000);
+  // Pin comments on screenshots and the browser go to this chat.
+  setPinCommentTarget(text => chatStore.sendMessage(text));
 });
-onUnmounted(() => { if (projectAttentionTimer) clearInterval(projectAttentionTimer) });
+onUnmounted(() => {
+  if (projectAttentionTimer) clearInterval(projectAttentionTimer);
+  setPinCommentTarget(null);
+});
 function selectPaneThread(threadId: string | null) {
   if (paneThread.value) paneThread.value = { ...paneThread.value, threadId, initial: null };
 }
