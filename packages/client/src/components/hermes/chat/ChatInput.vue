@@ -31,6 +31,7 @@ import { extractRepresentativeVideoFrames, isVideoFile } from '@/utils/video-fra
 import ImagePreviewOverlay from './ImagePreviewOverlay.vue'
 import { readDraft, writeDraft, reloadComposerDrafts, migratePendingDraft } from '@/composables/useComposerDraft'
 import ScreenshotButton from './ScreenshotButton.vue'
+import RepoPackButton from './RepoPackButton.vue'
 
 const chatStore = useChatStore()
 const appStore = useAppStore()
@@ -1424,6 +1425,7 @@ function openAttachmentPreview(attachment: Attachment) {
           </NTooltip>
 
           <ScreenshotButton :key="chatStore.activeSessionId || 'new'" :mobile="isMobileViewport" @capture="file => addFiles([file])" />
+          <RepoPackButton v-if="isStoredSuperAdmin()" :mobile="isMobileViewport" @attach="file => addFiles([file])" />
 
           <NDropdown
             v-if="!hideSettings"

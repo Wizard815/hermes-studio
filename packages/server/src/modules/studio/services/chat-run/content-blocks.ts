@@ -1,4 +1,5 @@
 import type { ContentBlock } from './types'
+import { markdownCopyNote } from '../files/markitdown'
 
 interface CodingAgentImageInput {
   name: string
@@ -48,7 +49,7 @@ export function convertContentBlocksForCodingAgent(input: string | ContentBlock[
       })
       continue
     }
-    textParts.push(`[Attached file: ${block.name || block.path}]\nLocal file path for tools: ${block.path}`)
+    textParts.push(`[Attached file: ${block.name || block.path}]\nLocal file path for tools: ${block.path}${markdownCopyNote(block.path)}`)
   }
 
   return {
@@ -97,7 +98,7 @@ export async function convertContentBlocks(blocks: ContentBlock[]): Promise<Resp
         parts.push({ type: 'input_text', text: `[Image: ${block.path}]` })
       }
     } else if (block.type === 'file') {
-      parts.push({ type: 'input_text', text: `[File: ${block.name || block.path}]` })
+      parts.push({ type: 'input_text', text: `[File: ${block.name || block.path}]${markdownCopyNote(block.path)}` })
     }
   }
 
@@ -128,7 +129,7 @@ export async function convertContentBlocksForAgent(blocks: ContentBlock[]): Prom
     } else if (block.type === 'file') {
       parts.push({
         type: 'text',
-        text: `[Attached file: ${block.name || block.path}]\nLocal file path for tools: ${block.path}`,
+        text: `[Attached file: ${block.name || block.path}]\nLocal file path for tools: ${block.path}${markdownCopyNote(block.path)}`,
       })
     }
   }

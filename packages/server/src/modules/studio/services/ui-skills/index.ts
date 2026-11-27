@@ -176,6 +176,8 @@ export interface ApplyUiSkillsOptions {
   sourceDir?: string
   stateFile?: string
   now?: () => Date
+  /** The DESCRIPTION.md written into a new category folder (another bundle, e.g. homelab skills, has its own). */
+  categoryDescription?: string
 }
 
 /**
@@ -236,7 +238,7 @@ export async function applyUiSkills(targets: UiSkillTarget[], options: ApplyUiSk
         result.updated.push(skill.name)
       }
       if (target.category && result.installed.length && !existsSync(join(dir, 'DESCRIPTION.md'))) {
-        await writeFile(join(dir, 'DESCRIPTION.md'), CATEGORY_DESCRIPTION, 'utf8')
+        await writeFile(join(dir, 'DESCRIPTION.md'), options.categoryDescription || CATEGORY_DESCRIPTION, 'utf8')
       }
     } catch (err: any) {
       result.error = String(err?.message || err).slice(0, 300)
