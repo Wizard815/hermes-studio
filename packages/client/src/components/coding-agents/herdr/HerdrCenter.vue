@@ -55,7 +55,13 @@ const props = withDefaults(defineProps<{
    * palette shows the bar again.
    */
   topbarHidden?: boolean
-}>(), { headerTarget: null, hostMenu: false, topbarHidden: false })
+  /**
+   * Terminal inside Studio (docs/projects.md#herdr-is-the-engine): Studio's
+   * sidebar and chat view stay, herdr's spaces panel is hidden, and a chat
+   * with no agent running shows a note rather than herdr's chat client.
+   */
+  embedded?: boolean
+}>(), { headerTarget: null, hostMenu: false, topbarHidden: false, embedded: false })
 const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': []; back: []; topbar: [shown: boolean] }>()
 /** Below this header width the less-used herdr keys fold into the "more" menu. */
 const HEADER_ROOM = 1560
@@ -295,6 +301,8 @@ function selectPane(paneId: string) {
 }
 /** The open chat's pane; with no herdr chat open (sessionId ''), herdr shows its own focus. */
 const linked = computed(() => (props.sessionId ? panes.value.find(pane => pane.studioSessionId === props.sessionId) ?? null : null))
+/** Terminal in Studio shows agents' terminals only: none for this chat yet (or only its waiting pane). */
+const noAgentHere = computed(() => props.embedded && !!props.sessionId && (!linked.value || waitingPanes.value.has(linked.value.pane_id)))
 
 const KEY_DEFAULTS = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?', sidebar: 'prefix+b' }
 const keys = computed(() => ({ ...KEY_DEFAULTS, ...(herdr.status?.keys || {}) }))
@@ -488,7 +496,7 @@ onBeforeUnmount(() => {
         on a phone everything but Tools does.
       -->
       <Teleport :to="headerTarget || 'body'" :disabled="!headerTarget">
-        <div v-show="active || !headerTarget" class="herdr-center-bar" :class="{ 'in-header': !!headerTarget, 'is-phone': dock.phone.value }" data-testid="herdr-center-bar">
+        <div v-show="!embedded && (active || !headerTarget)" class="herdr-center-bar" :class="{ 'in-header': !!headerTarget, 'is-phone': dock.phone.value }" data-testid="herdr-center-bar">
           <div v-if="machines.length && !dock.phone.value" class="herdr-center-machines" role="radiogroup" :aria-label="t('herdr.machineSwitch')" data-testid="herdr-center-machines">
             <button type="button" role="radio" :aria-checked="!machine" :class="{ active: !machine }" @click="machine = ''">{{ t('herdr.machineLocal') }}</button>
             <button
@@ -651,7 +659,16 @@ onBeforeUnmount(() => {
             </button>
       </div>
       <!-- Nothing in herdr yet: how chats get here, and the way to elevate this one. -->
-      <div v-if="nothingInHerdr" class="herdr-center-body herdr-center-nothing" role="status" data-testid="herdr-center-nothing">
+      <div v-if="noAgentHere" class="herdr-center-body herdr-center-nothing" role="status" data-testid="herdr-center-no-agent">
+        <div class="herdr-nothing-card" data-theme-surface="card">
+          <h2>{{ t('studioTerminal.noAgentTitle') }}</h2>
+          <p>{{ t('studioTerminal.noAgentText') }}</p>
+          <div class="herdr-nothing-actions">
+            <NButton type="primary" data-testid="herdr-center-no-agent-back" @click="emit('back')">{{ t('herdr.backToChat') }}</NButton>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="nothingInHerdr" class="herdr-center-body herdr-center-nothing" role="status" data-testid="herdr-center-nothing">
         <div class="herdr-nothing-card" data-theme-surface="card">
           <h2>{{ t('herdr.nothingTitle') }}</h2>
           <p>{{ t('herdr.nothingText') }}</p>
@@ -679,6 +696,7 @@ onBeforeUnmount(() => {
           :dock-tab="dock.tab.value"
           :connected="herdr.connected"
           :waiting="waitingPanes"
+          :embedded="embedded"
           @open-chat="openFromSidebar"
           @focus-pane="focusFromSidebar"
           @open-machine="(id, pane) => { void openMachine(id, pane) }"

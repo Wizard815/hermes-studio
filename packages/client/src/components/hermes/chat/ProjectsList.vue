@@ -251,7 +251,9 @@ defineExpose({ refresh })
       </button>
       <div class="projects-head-actions">
         <button type="button" class="projects-new" data-testid="projects-studios" :aria-label="t('studios.title')" :title="t('studios.title')" @click="studiosOpen = true">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="3" width="8" height="8" rx="1" /><rect x="14" y="13" width="8" height="8" rx="1" /><path d="M10 7h4a2 2 0 0 1 2 2v4" /></svg>
+          <!-- Two linked screens: other Studios. -->
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="4" width="9" height="7" rx="1" /><rect x="13" y="13" width="9" height="7" rx="1" /><path d="M6.5 11v3h6.5" /></svg>
+          <span>{{ t('studioTerminal.studios') }}</span>
         </button>
         <button type="button" class="projects-new" data-testid="projects-new" @click="openNewProject">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
@@ -462,8 +464,10 @@ defineExpose({ refresh })
 
 .projects-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 2px 4px;
   padding: 2px 8px 6px;
 }
 
@@ -486,6 +490,7 @@ defineExpose({ refresh })
 .projects-back,
 .projects-new {
   display: inline-flex;
+  white-space: nowrap;
   align-items: center;
   gap: 4px;
   min-height: 32px;

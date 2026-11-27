@@ -312,6 +312,16 @@ const herdrHeaderSlot = ref<HTMLElement | null>(null)
  * next chat loads, so the center stays mounted and herdr does not reconnect.
  */
 const herdrSessionId = ref('')
+/**
+ * The project thread open in the pane beside its coordinator: Terminal shows
+ * that thread's agent, not the coordinator chat (docs/projects.md#herdr-is-the-engine).
+ */
+const paneThreadSessionId = computed(() => {
+  if (!threadPaneShown.value || !paneThread.value?.threadId) return ''
+  const project = knownProjects.value.find(item => item.id === paneThread.value!.project.id) ?? paneThread.value.project
+  return project.threads.find(item => item.id === paneThread.value!.threadId)?.sessionId || paneThread.value.initial?.sessionId || ''
+})
+const terminalSessionId = computed(() => paneThreadSessionId.value || herdrSessionId.value)
 watch(() => [chatStore.activeSessionId, herdrChatState.value] as const, ([id, state]) => {
   if (state === 'eligible') herdrSessionId.value = id || ''
   else if (state !== 'unknown') herdrSessionId.value = ''
@@ -332,7 +342,8 @@ const showHerdrCenter = computed(() => centerMode.value === 'herdr' && herdrCent
  * Esc and the palette bring it back; kept per viewer. Phones keep the header.
  */
 const herdrTopBarShown = ref((() => { try { return localStorage.getItem('studio_herdr_topbar') === 'shown' } catch { return false } })())
-const herdrTopBarHidden = computed(() => showHerdrCenter.value && !isMobile.value && !herdrTopBarShown.value)
+// Terminal keeps Studio's own top bar: it is part of Studio, not a separate app.
+const herdrTopBarHidden = computed(() => false)
 // The shell's header row (App.vue) goes too; see global.scss.
 watch(herdrTopBarHidden, hidden => { document.body.classList.toggle('herdr-topbar-hidden', hidden) }, { immediate: true })
 onUnmounted(() => document.body.classList.remove('herdr-topbar-hidden'))
@@ -421,7 +432,8 @@ const showBatchDeleteConfirm = ref(false);
 const isBatchDeleting = ref(false);
 
 /** herdr mode swaps the chat list for its spaces panel; phones have no room for that panel and keep the drawer. */
-const herdrOwnsSidebar = computed(() => showHerdrCenter.value && !isMobile.value)
+// Terminal keeps Studio's own sidebar (chats and projects); herdr's spaces panel is not shown.
+const herdrOwnsSidebar = computed(() => false)
 
 const hasPageSidebar = computed(
   () => !props.standalone && currentMode.value === "chat" && props.contentMode === "chat",
@@ -3676,7 +3688,8 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             <HerdrCenter
               v-if="herdrCenterMounted || showHerdrCenter"
               v-show="showHerdrCenter"
-              :session-id="herdrSessionId"
+              :session-id="terminalSessionId"
+              embedded
               :active="showHerdrCenter"
               ref="herdrCenterRef"
               :header-target="herdrHeaderSlot"

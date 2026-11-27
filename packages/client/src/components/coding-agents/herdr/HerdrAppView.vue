@@ -49,6 +49,8 @@ const props = defineProps<{
   connected: boolean
   /** Chats' waiting panes (no agent running yet). */
   waiting?: ReadonlySet<string>
+  /** Inside Studio's chat page (Terminal): Studio's own sidebar lists the chats, so this one is not shown. */
+  embedded?: boolean
 }>()
 const emit = defineEmits<{
   'open-chat': [chat: SidebarChat, asleep: boolean, paneId: string]
@@ -67,7 +69,7 @@ function readSidebar(): boolean {
 }
 const wideSidebar = ref(readSidebar())
 const drawer = ref(false)
-const sidebarOpen = computed(() => (props.phone ? drawer.value : wideSidebar.value))
+const sidebarOpen = computed(() => !props.embedded && (props.phone ? drawer.value : wideSidebar.value))
 function toggleSidebar() {
   if (props.phone) drawer.value = !drawer.value
   else {
@@ -254,7 +256,7 @@ defineExpose({
 
     <main class="hap-work">
       <div class="hap-tabs" role="tablist" :aria-label="t('herdrApp.newTab')" data-testid="herdr-app-tabs">
-        <button v-if="!sidebarOpen" type="button" class="hap-icon hap-expand" :title="t('herdrApp.showSidebar')" :aria-label="t('herdrApp.showSidebar')" data-testid="herdr-app-expand" @click="toggleSidebar">
+        <button v-if="!sidebarOpen && !embedded" type="button" class="hap-icon hap-expand" :title="t('herdrApp.showSidebar')" :aria-label="t('herdrApp.showSidebar')" data-testid="herdr-app-expand" @click="toggleSidebar">
           <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M9.5 4.5v15" stroke="currentColor" stroke-width="1.6" /></svg>
         </button>
         <div class="hap-tab-list">
