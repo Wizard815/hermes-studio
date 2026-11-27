@@ -4,6 +4,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "Normal replies", emoji: "Emoji replies (fewest tokens)", caveman: "Caveman replies (short words)" },
       chip: { emoji: "Emoji replies", caveman: "Caveman replies" },
+      emojiOn: "Emoji replies on. /emoji turns them off.",
+      emojiOff: "Emoji replies off. /emoji turns them back on.",
       turnOff: "Turn off {style}",
       explain: "Explain",
       continue: "Continue",
@@ -25,6 +27,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "Normale Antworten", emoji: "Emoji-Antworten (wenigste Tokens)", caveman: "Höhlenmensch-Antworten (kurze Wörter)" },
       chip: { emoji: "Emoji-Antworten", caveman: "Höhlenmensch-Antworten" },
+      emojiOn: "Emoji-Antworten an. /emoji schaltet sie aus.",
+      emojiOff: "Emoji-Antworten aus. /emoji schaltet sie wieder an.",
       turnOff: "{style} ausschalten",
       explain: "Erklären",
       continue: "Weiter",
@@ -46,6 +50,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "Respuestas normales", emoji: "Respuestas con emoji (menos tokens)", caveman: "Respuestas cavernícola (palabras cortas)" },
       chip: { emoji: "Respuestas con emoji", caveman: "Respuestas cavernícola" },
+      emojiOn: "Respuestas con emoji activadas. /emoji las desactiva.",
+      emojiOff: "Respuestas con emoji desactivadas. /emoji las vuelve a activar.",
       turnOff: "Desactivar {style}",
       explain: "Explicar",
       continue: "Continuar",
@@ -67,6 +73,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "Réponses normales", emoji: "Réponses emoji (le moins de jetons)", caveman: "Réponses homme des cavernes (mots courts)" },
       chip: { emoji: "Réponses emoji", caveman: "Réponses homme des cavernes" },
+      emojiOn: "Réponses emoji activées. /emoji les désactive.",
+      emojiOff: "Réponses emoji désactivées. /emoji les réactive.",
       turnOff: "Désactiver {style}",
       explain: "Expliquer",
       continue: "Continuer",
@@ -88,6 +96,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "Respostas normais", emoji: "Respostas com emoji (menos tokens)", caveman: "Respostas homem das cavernas (palavras curtas)" },
       chip: { emoji: "Respostas com emoji", caveman: "Respostas homem das cavernas" },
+      emojiOn: "Respostas com emoji ligadas. /emoji desliga.",
+      emojiOff: "Respostas com emoji desligadas. /emoji liga de novo.",
       turnOff: "Desligar {style}",
       explain: "Explicar",
       continue: "Continuar",
@@ -109,6 +119,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "Обычные ответы", emoji: "Ответы эмодзи (меньше всего токенов)", caveman: "Ответы пещерного человека (короткие слова)" },
       chip: { emoji: "Ответы эмодзи", caveman: "Ответы пещерного человека" },
+      emojiOn: "Ответы эмодзи включены. /emoji выключает.",
+      emojiOff: "Ответы эмодзи выключены. /emoji включает снова.",
       turnOff: "Выключить: {style}",
       explain: "Объяснить",
       continue: "Продолжить",
@@ -130,6 +142,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "Normal yanıtlar", emoji: "Emoji yanıtlar (en az token)", caveman: "Mağara adamı yanıtlar (kısa kelimeler)" },
       chip: { emoji: "Emoji yanıtlar", caveman: "Mağara adamı yanıtlar" },
+      emojiOn: "Emoji yanıtlar açık. /emoji kapatır.",
+      emojiOff: "Emoji yanıtlar kapalı. /emoji yeniden açar.",
       turnOff: "{style} kapat",
       explain: "Açıkla",
       continue: "Devam",
@@ -151,6 +165,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "ردود عادية", emoji: "ردود بالإيموجي (أقل رموز)", caveman: "ردود رجل الكهف (كلمات قصيرة)" },
       chip: { emoji: "ردود بالإيموجي", caveman: "ردود رجل الكهف" },
+      emojiOn: "ردود الإيموجي مفعّلة. ‎/emoji يوقفها.",
+      emojiOff: "ردود الإيموجي متوقفة. ‎/emoji يعيد تشغيلها.",
       turnOff: "إيقاف {style}",
       explain: "اشرح",
       continue: "تابع",
@@ -172,6 +188,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "通常の返信", emoji: "絵文字で返信(トークン最少)", caveman: "原始人モード(短い言葉)" },
       chip: { emoji: "絵文字で返信", caveman: "原始人モード" },
+      emojiOn: "絵文字返信オン。/emoji でオフ。",
+      emojiOff: "絵文字返信オフ。/emoji で再びオン。",
       turnOff: "{style}をオフ",
       explain: "説明して",
       continue: "続けて",
@@ -193,6 +211,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "일반 답변", emoji: "이모지 답변 (토큰 최소)", caveman: "원시인 답변 (짧은 말)" },
       chip: { emoji: "이모지 답변", caveman: "원시인 답변" },
+      emojiOn: "이모지 답변 켜짐. /emoji로 끕니다.",
+      emojiOff: "이모지 답변 꺼짐. /emoji로 다시 켭니다.",
       turnOff: "{style} 끄기",
       explain: "설명",
       continue: "계속",
@@ -214,6 +234,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "普通回复", emoji: "表情回复（最省令牌）", caveman: "原始人回复（短词）" },
       chip: { emoji: "表情回复", caveman: "原始人回复" },
+      emojiOn: "表情回复已开启。/emoji 关闭。",
+      emojiOff: "表情回复已关闭。/emoji 重新开启。",
       turnOff: "关闭{style}",
       explain: "解释",
       continue: "继续",
@@ -235,6 +257,8 @@ export const replyStyleMessages = {
     replyStyle: {
       styles: { normal: "一般回覆", emoji: "表情回覆（最省權杖）", caveman: "原始人回覆（短詞）" },
       chip: { emoji: "表情回覆", caveman: "原始人回覆" },
+      emojiOn: "表情回覆已開啟。/emoji 關閉。",
+      emojiOff: "表情回覆已關閉。/emoji 重新開啟。",
       turnOff: "關閉{style}",
       explain: "解釋",
       continue: "繼續",

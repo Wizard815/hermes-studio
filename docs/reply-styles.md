@@ -3,7 +3,7 @@
 Cheaper answers, picked in the chat composer's settings menu (the sliders
 button, under "Show tool calls"):
 
-- **Normal replies**: as before.
+- **Normal replies**: full answers.
 - **Emoji replies (fewest tokens)**: when one emoji says it all, the reply is
   only that emoji. Otherwise the answer is as short as possible in words.
 - **Caveman replies (short words)**: terse answers that keep every technical
@@ -12,6 +12,10 @@ button, under "Show tool calls"):
 While a style is on, a chip next to the composer buttons says so; click it to
 go back to normal. The choice is kept for this browser and applies to every
 chat (Hermes, Ekko and coding agents).
+
+Emoji replies are on by default. Type `/emoji` alone in the composer to turn
+them off, and again to turn them back on (from caveman it switches to emoji).
+Nothing is sent to the model when you do.
 
 ## The ten emoji
 

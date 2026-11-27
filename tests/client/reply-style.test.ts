@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import { REPLY_EMOJI, emojiReply, replyStyleInstruction } from '../../packages/shared/reply-style'
 import { replyStyleMessages } from '../../packages/client/src/i18n/reply-style-messages'
-import { REPLY_STYLE_STORAGE_KEY, replyStyleRunField, setReplyStyle } from '../../packages/client/src/utils/reply-style'
+import { DEFAULT_REPLY_STYLE, REPLY_STYLE_STORAGE_KEY, isEmojiToggleCommand, replyStyle, replyStyleRunField, setReplyStyle, toggleEmojiReplies } from '../../packages/client/src/utils/reply-style'
 import EmojiReplyCard from '../../packages/client/src/components/hermes/chat/EmojiReplyCard.vue'
 
 function keys(value: unknown, prefix = ''): string[] {
@@ -56,7 +56,21 @@ describe('TestReplyStyle_setting', () => {
     expect(localStorage.getItem(REPLY_STYLE_STORAGE_KEY)).toBe('emoji')
     expect(replyStyleRunField()).toEqual({ reply_style: 'emoji' })
     setReplyStyle('normal')
-    expect(localStorage.getItem(REPLY_STYLE_STORAGE_KEY)).toBeNull()
+    expect(localStorage.getItem(REPLY_STYLE_STORAGE_KEY)).toBe('normal')
+  })
+
+  it('defaults to emoji and /emoji toggles it off and on', () => {
+    expect(DEFAULT_REPLY_STYLE).toBe('emoji')
+    expect(toggleEmojiReplies()).toBe('emoji')
+    expect(replyStyle.value).toBe('emoji')
+    expect(toggleEmojiReplies()).toBe('normal')
+    expect(localStorage.getItem(REPLY_STYLE_STORAGE_KEY)).toBe('normal')
+    setReplyStyle('caveman')
+    expect(toggleEmojiReplies()).toBe('emoji')
+    expect(isEmojiToggleCommand(' /emoji ')).toBe(true)
+    expect(isEmojiToggleCommand('/EMOJI')).toBe(true)
+    expect(isEmojiToggleCommand('/emoji please')).toBe(false)
+    expect(isEmojiToggleCommand('emoji')).toBe(false)
   })
 })
 

@@ -55,7 +55,8 @@ export function replyStyleInstruction(style: unknown): string {
     case 'caveman':
       return [
         'Reply style: caveman (the user wants to save tokens).',
-        'Answer first. No greeting, recap, hedging or closing offer. Short words, fragments are fine. One idea per sentence.',
+        'Answer first. No greeting, recap, hedging or closing offer. Short words, fragments are fine. One idea per sentence. Say each point once, then stop.',
+        'Short means fewer words, not less help: still give the command or config the answer needs. Never guess a flag or option you are not sure exists.',
         'Keep every technical fact exact: code, commands, paths, numbers and errors stay verbatim. Never drop not, never, no, only or except.',
         'Use full sentences for security warnings, irreversible steps and questions to the user. Code, commits and files you write stay normal.',
       ].join('\n')

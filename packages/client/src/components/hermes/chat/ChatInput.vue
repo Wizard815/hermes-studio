@@ -32,7 +32,7 @@ import ImagePreviewOverlay from './ImagePreviewOverlay.vue'
 import { readDraft, writeDraft, reloadComposerDrafts, migratePendingDraft } from '@/composables/useComposerDraft'
 import ScreenshotButton from './ScreenshotButton.vue'
 import RepoPackButton from './RepoPackButton.vue'
-import { replyStyle, setReplyStyle } from '@/utils/reply-style'
+import { isEmojiToggleCommand, replyStyle, setReplyStyle, toggleEmojiReplies } from '@/utils/reply-style'
 import { REPLY_STYLES, normalizeReplyStyle } from '../../../../../shared/reply-style'
 
 const chatStore = useChatStore()
@@ -1116,6 +1116,13 @@ async function handleSend() {
   // `/herdr` is Studio's, not the agent's: open this chat in herdr instead of sending it.
   if (attachments.value.length === 0 && isHerdrSessionCommand(text) && herdrCommandAvailable.value) {
     await openComposerChatInHerdr()
+    return
+  }
+  // `/emoji` is Studio's: turn emoji replies on or off (docs/reply-styles.md) instead of sending it.
+  if (attachments.value.length === 0 && isEmojiToggleCommand(text)) {
+    const style = toggleEmojiReplies()
+    inputText.value = ''
+    message.info(t(style === 'emoji' ? 'replyStyle.emojiOn' : 'replyStyle.emojiOff'))
     return
   }
   // `/studio` too: return this elevated chat to Studio (its herdr space closes).
