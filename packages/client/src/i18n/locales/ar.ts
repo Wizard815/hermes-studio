@@ -3684,6 +3684,8 @@ export default {
     connectionFailed: 'فشل الاتصال بخدمة الطرفية',
     connectionClosed: 'تم إغلاق اتصال الطرفية',
     connectionError: 'خطأ في اتصال الطرفية',
+    theme: 'السمة',
+    reconnecting: 'جارٍ إعادة الاتصال…',
   },
 
   // Group Chat

@@ -57,9 +57,20 @@ export class ScreenBrowserService {
   private recheck: NodeJS.Timeout | null = null
   private stopped = false
   readonly brokerRoot: string
+  /** Without the Screen, the chat browser panel's own browser serves the chat's browser tools. */
+  private panelPort: (() => number) | null = null
 
   constructor(private readonly options: ScreenBrowserServiceOptions = {}) {
     this.brokerRoot = options.brokerRoot || join(getWebUiHome(), 'desktop-browser')
+  }
+
+  /**
+   * Drive the browser panel's own browser when the Screen is not installed, so the
+   * chat's model and the panel share one browser (docs/browser-panel.md).
+   */
+  usePanelBrowser(port: () => number): void {
+    this.panelPort = port
+    if (!this.broker && !this.stopped) void this.start().catch(() => undefined)
   }
 
   get running(): boolean {
@@ -98,8 +109,17 @@ export class ScreenBrowserService {
     if (this.broker) return Promise.resolve(true)
     if (this.starting) return this.starting
     this.starting = (async () => {
-      if (!(await this.installed())) return false
-      const manager = new ScreenBrowserManager({ port: this.options.port || (() => screenBrowserPort()) })
+      let port = this.options.port || (() => screenBrowserPort())
+      if (!(await this.installed())) {
+        const panelPort = this.panelPort
+        if (!panelPort || !panelPort()) return false
+        port = async () => {
+          const value = panelPort()
+          if (!value) throw new Error('The browser panel is not running')
+          return value
+        }
+      }
+      const manager = new ScreenBrowserManager({ port })
       const broker = new BrowserBroker(manager, this.brokerRoot, { publishDescriptor: !(await this.desktopPublishes()) })
       await broker.start()
       if (this.stopped) { await broker.stop(); return false }
@@ -128,7 +148,7 @@ export class ScreenBrowserService {
     const limit = input.method === 'upload' ? MAX_UPLOAD_REQUEST_CHARS : MAX_REQUEST_CHARS
     if (JSON.stringify(input).length > limit) throw new Error(`Browser request exceeds ${limit / 1_000_000} MB`)
     if (this.stopped || !(await this.start()) || !this.broker) {
-      throw new Error("No authorized active Desktop browser, and the agents' screen is not installed here.")
+      throw new Error("No authorized active Desktop browser, and neither the agents' screen nor the browser panel is running here.")
     }
     return this.broker.localRequest(clientKey, { method: input.method, params: input.params || {}, operation_id: randomUUID() })
   }

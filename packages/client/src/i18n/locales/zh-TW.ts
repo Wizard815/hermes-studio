@@ -3645,6 +3645,8 @@ export default {
     connectionFailed: '終端機服務連線失敗',
     connectionClosed: '終端機連線已關閉',
     connectionError: '終端機連線錯誤',
+    theme: '主題',
+    reconnecting: '正在重新連線…',
   },
 
   // 群聊

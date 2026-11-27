@@ -218,6 +218,8 @@ function normalizeUrl(input: string): string {
   }
 }
 
+let lastShownPage = ''
+
 async function refreshState(): Promise<void> {
   try {
     const state = await fetchBrowserState()
@@ -247,6 +249,13 @@ async function refreshState(): Promise<void> {
     const active = tabs.value.find(t => t.id === activeTabId.value)
     if (active && !urlInputFocused.value && !isBlankUrl(active.url)) {
       urlBar.value = active.url
+    }
+    // The page under the panel changed without this panel doing it (the chat's
+    // model, a person on the Screen): repaint, even if a change event was missed.
+    const shown = active ? `${active.id}|${active.url}|${active.title}` : ''
+    if (shown && shown !== lastShownPage) {
+      lastShownPage = shown
+      if (!isBlankUrl(active!.url)) void refreshPreview()
     }
   } catch {
     // Silently fail — polling errors are expected when server is down
@@ -347,6 +356,20 @@ async function refreshPreview(): Promise<void> {
   } catch {
     // Preview refresh is best-effort
   }
+}
+
+// The chat's agent acts in bursts (navigate, click, type): repaint at most every
+// 400 ms, and once more after the last change so the final page shows.
+let agentRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let agentRefreshAgain = false
+function scheduleAgentRefresh(): void {
+  if (agentRefreshTimer) { agentRefreshAgain = true; return }
+  agentRefreshTimer = setTimeout(async () => {
+    await refreshState()
+    await refreshPreview()
+    agentRefreshTimer = null
+    if (agentRefreshAgain) { agentRefreshAgain = false; scheduleAgentRefresh() }
+  }, 400)
 }
 
 async function handleManualCapture(): Promise<void> {
@@ -488,6 +511,9 @@ function connectSocket(): void {
 
     socketRef = io(socketUrl, opts)
 
+    // The chat's model is driving this browser: follow it live.
+    socketRef.on('browser.changed', () => { scheduleAgentRefresh() })
+
     socketRef.on('browser.screenshot', (payload: { data: string; tabId: string }) => {
       if (payload?.data) {
         pushScreenshot(payload.data, payload.tabId)
@@ -507,6 +533,7 @@ function connectSocket(): void {
 function disconnectSocket(): void {
   if (socketRef) {
     socketRef.off('browser.screenshot')
+    socketRef.off('browser.changed')
     socketRef.disconnect()
     socketRef = null
   }
@@ -554,6 +581,8 @@ onUnmounted(() => {
     clearInterval(pollingTimer)
     pollingTimer = null
   }
+  if (agentRefreshTimer) clearTimeout(agentRefreshTimer)
+  agentRefreshTimer = null
   disconnectSocket()
 })
 </script>
@@ -585,7 +614,7 @@ onUnmounted(() => {
             :class="{ active: tab.id === activeTabId }"
             @click="handleActivateTab(tab.id)"
           >
-            <span class="browser-tab-title">{{ tab.title || truncateUrl(tab.url) }}</span>
+            <span class="browser-tab-title">{{ tab.title || (isBlankUrl(tab.url) ? t('browser.newTab') : truncateUrl(tab.url)) }}</span>
             <span
               class="browser-tab-close"
               role="button"
