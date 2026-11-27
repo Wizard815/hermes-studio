@@ -25,6 +25,7 @@ import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
 import { homelabToolsMessages } from '../homelab-tools-messages'
+import { sandboxMessages } from '../sandbox-messages'
 import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
@@ -68,6 +69,7 @@ export default {
   ...recommendedPluginsMessages['fr'],
   ...uiSkillsMessages['fr'],
   ...homelabToolsMessages['fr'],
+  ...sandboxMessages['fr'],
   ...replyStyleMessages['fr'],
   ...gadgetMessages['fr'],
   ...toolLoadMessages['fr'],

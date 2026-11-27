@@ -72,6 +72,7 @@ import { codingAgentUiSkillTargets, registerUiSkillTargetProvider, scheduleUiSki
 import { scheduleHomelabSkillsInstall } from '../modules/studio/public/homelab-skills'
 import { closeTestLab, sweepTestLab } from '../modules/studio/public/test-lab'
 import { refreshForgeFromProfile } from '../modules/studio/services/forge'
+import { getSandbox } from '../modules/studio/services/sandbox'
 import { hermesUiSkillTargets } from '../modules/hermes/services/skills/ui-skill-targets'
 import { ekkoUiSkillTargets } from '../modules/ekko/services/ui-skill-targets'
 import { injectManagedEkkoMcpServers } from '../modules/ekko/services/mcp'
@@ -643,6 +644,9 @@ export async function bootstrap() {
   void refreshForgeFromProfile().catch(() => {})
   const forgeTimer = setInterval(() => { void refreshForgeFromProfile().catch(() => {}) }, 60_000)
   forgeTimer.unref()
+  // Sandboxes (docs/sandbox.md): remove the ones whose time is up, every minute.
+  const sandboxTimer = setInterval(() => { void getSandbox().sweep().catch(() => {}) }, 60_000)
+  sandboxTimer.unref()
   additionalShutdownSteps.push({ name: 'Test Lab', close: () => closeTestLab() })
   const closeScreenGateway = screenGateway.attach(servers)
   additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })

@@ -9,7 +9,7 @@ import {
 
 /**
  * Homelab skills (bundled), docs/homelab-skills.md: look-before-build, repo-pack,
- * to-markdown, code-map and the caveman voice. They go to the same agents and
+ * to-markdown, code-map, sandbox and the caveman voice. They go to the same agents and
  * folders as the UI skills, with the same rules (a removed copy stays removed,
  * an edited copy is never overwritten), but in their own `homelab-skills`
  * category and with their own record file and switch.
@@ -17,7 +17,7 @@ import {
 
 export const HOMELAB_SKILLS_ENV = 'STUDIO_HOMELAB_SKILLS'
 export const HOMELAB_SKILLS_CATEGORY = 'homelab-skills'
-const CATEGORY_DESCRIPTION = 'Homelab skills (bundled): look before you build, repo packing, file to Markdown, code map and the caveman voice. Installed once by Studio.\n'
+const CATEGORY_DESCRIPTION = 'Homelab skills (bundled): look before you build, repo packing, file to Markdown, code map, sandboxes and the caveman voice. Installed once by Studio.\n'
 
 export function resolveHomelabSkillsSourceDir(env: NodeJS.ProcessEnv = process.env, baseDir = __dirname): string {
   const override = env.STUDIO_HOMELAB_SKILLS_DIR?.trim()

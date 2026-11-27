@@ -35,6 +35,7 @@ Studio sends it only to the forge's addresses, never to GitHub.
 | Project form, **Where code goes** | Left on **Follow the repo** for a new project with no repo, it becomes **Home forge** when the default home is `forge`. **Follow the repo** tells agents nothing extra. **GitHub** or **Home forge (private)** adds one line to the coordinator's and every thread's prompt, saying where to push and open PRs. Home forge also tells them to keep the work off GitHub. |
 | Board | Forge PR links (`http://<forge>/<owner>/<repo>/pulls/<n>`) show state, checks (from the commit status Forgejo Actions writes) and conflicts. |
 | Test Lab | An app built from git can use a forge repo (`http://<forge>/<owner>/<repo>.git#branch`). Studio clones it with `FORGE_TOKEN` and sends Docker the files, so private repos build and Docker never sees the token. |
+| Sandboxes | `copy_repo` clones a forge repo with `FORGE_TOKEN` (GitHub repos with the GitHub login) and copies the files in. See [sandbox](sandbox.md). |
 | Add a repo (chat) | Lists your forge repos and clones them with the token ([repo-pack.md](repo-pack.md)). |
 | Command Center Inbox | Forge review requests and your own open forge PRs with failed checks. Failed Actions runs are listed for repos written `forge:owner/repo` in **GitHub settings > Watch repositories** (pasting the full forge URL works too). It shows even when `gh` isn't installed. |
 
