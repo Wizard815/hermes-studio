@@ -2,7 +2,8 @@
 
 A project is one coordinator chat plus the threads it starts, like Claude's
 projects. Each thread is an agent that runs in herdr. Normal chats do not
-change: Projects is a second view of the same chat list.
+change: Projects is a second view of the same chat list. Any chat can also
+message another chat without a project: see [chat-messages.md](chat-messages.md).
 
 ## Where it is
 

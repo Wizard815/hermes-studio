@@ -44,6 +44,7 @@ import { androidAppLinkRoutes } from '../modules/studio/routes/android-app-links
 import { agentWorkPublicRoutes, agentWorkRoutes } from '../modules/studio/routes/agent-work'
 import { commandCenterRoutes } from '../modules/studio/routes/command-center'
 import { projectRoutes } from '../modules/studio/routes/projects'
+import { chatMessageRoutes } from '../modules/studio/routes/chat-messages'
 import { federationPublicRoutes, peerRoutes } from '../modules/studio/routes/peers'
 import { runLimitRoutes } from '../modules/studio/routes/run-limits'
 import { toolLoadRoutes } from '../modules/studio/routes/tool-load'
@@ -173,6 +174,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(agentWorkRoutes.routes())
   app.use(commandCenterRoutes.routes())
   app.use(projectRoutes.routes())
+  app.use(chatMessageRoutes.routes())
   app.use(peerRoutes.routes())
   app.use(runLimitRoutes.routes())
   app.use(toolLoadRoutes.routes())
