@@ -80,6 +80,8 @@ import { logger } from '../modules/studio/public/logging'
 import { HeadlessBrowserService, getHeadlessBrowserService, setHeadlessBrowserService } from '../modules/studio/services/headless-browser-service'
 import { createStaticCompressionMiddleware } from '../modules/studio/middleware/static-compression'
 import { createApiCompressionMiddleware } from '../modules/studio/middleware/api-compression'
+import { BrowserScreencast } from '../modules/studio/services/browser-live/screencast'
+import { registerBrowserLiveSocket } from '../modules/studio/sockets/browser-live'
 import { getStaticCacheControl, SPA_ENTRY_CACHE_CONTROL } from '../modules/studio/middleware/static-cache'
 import { upstreamUpkeepProxy } from '../modules/studio/middleware/upstream-upkeep-proxy'
 import { requireUserJwt, resolveUserProfile } from '../modules/studio/middleware/auth'
@@ -793,6 +795,8 @@ export async function bootstrap() {
       await headlessBrowser.start()
     }
     setHeadlessBrowserService(headlessBrowser)
+    const screencast = new BrowserScreencast(tabId => headlessBrowser.tabs.get(tabId)?.page ?? null)
+    registerBrowserLiveSocket(activeGroupChatServer.getIO(), () => screencast)
     if (!headlessBrowser.attached) screenBrowser.usePanelBrowser(() => headlessBrowser.devToolsPort())
     console.log('[bootstrap] browser panel started (%s)', headlessBrowser.attached ? "the Screen's browser" : 'its own browser')
 
@@ -808,7 +812,7 @@ export async function bootstrap() {
 
     additionalShutdownSteps.push({
       name: 'Headless browser',
-      close: () => headlessBrowser.stop(),
+      close: async () => { await screencast.stopAll(); await headlessBrowser.stop() },
     })
   } catch (err: any) {
     console.warn('[bootstrap] headless browser service failed:', err.message)

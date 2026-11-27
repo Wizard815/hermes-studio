@@ -20,9 +20,14 @@ Studio so the panel moves to it.
 
 ## Watching it work
 
-- The panel repaints after every navigation, click, typed text or new tab
-  (`browser.changed` socket event, at most every 250 ms). The page view also
-  catches up on its 5 s tab poll if an event is missed.
+- The page view is live video of the active tab: Chrome's screencast, sent
+  over the `/browser-live` socket only while a panel is open, and only when the
+  page changes (a still page sends nothing). Up to 15 frames a second, JPEG.
+  A click shows in about 50 ms (it was about 550 ms with screenshots).
+- Without the stream (an older server, a proxy that drops websockets) the
+  panel falls back to a screenshot after every navigation, click, typed text
+  or new tab (`browser.changed` socket event, at most every 250 ms). The page
+  view also catches up on its 5 s tab poll if an event is missed.
 - A tab the model opens becomes the panel's tab. Tabs Studio opens in the
   background stay in the background.
 - Pin comments (pin-comments.md) work on whatever page the model left open.
@@ -35,12 +40,17 @@ Studio so the panel moves to it.
 - **"neither the agents' screen nor the browser panel is running":** the
   panel's browser failed to start (no Chromium on the server). Check the Studio
   log for `browser panel`.
+- **The page view is a still picture that only updates after you click:** the
+  live stream is not getting through. Check that the proxy in front of Studio
+  passes websockets for `/socket.io/`.
 - **Not a sandbox:** the model acts in a real browser that may be signed in.
   Purchases and sign-ins still ask you first. Anything in the container can reach the
   loopback DevTools port.
 
 ## Tests
 
+- `tests/server/browser-live-screencast.test.ts`: frames arrive when the page
+  changes, two panels share one stream, and it stops with the last one.
 - `tests/server/browser-follow-agent.test.ts`: the tools' broker drives the
   panel's browser, and the panel follows it.
 - `tests/e2e/browser-chat-agent.live.spec.ts`: a real model with Studio's

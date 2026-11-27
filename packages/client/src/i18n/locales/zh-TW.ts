@@ -1483,6 +1483,7 @@ export default {
     recent: '最近',
     recentCount: '最近會話數量',
     loadMoreSessions: '載入更多工作階段',
+    showMoreChats: '再顯示 {count} 個',
     searchTitle: '搜尋工作階段',
     searchSubtitle: '依標題或訊息內容搜尋',
     searchScope: '搜尋範圍：僅 Web UI 本地工作階段資料庫；不包含唯讀 Hermes 歷史工作階段。',

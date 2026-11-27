@@ -1492,6 +1492,7 @@ export default {
     recent: '最近',
     recentCount: '最近会话数量',
     loadMoreSessions: '加载更多会话',
+    showMoreChats: '再显示 {count} 个',
     searchTitle: '搜索会话',
     searchSubtitle: '按标题或消息内容搜索',
     searchScope: '搜索范围：仅 Web UI 本地会话库；不包含只读 Hermes 历史会话。',

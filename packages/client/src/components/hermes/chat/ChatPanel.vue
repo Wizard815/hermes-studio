@@ -983,6 +983,26 @@ const visibleCategoryGroups = computed(() => categorizedSessions.value.filter(
   (group) => !(group.ancestorKeys || []).some((key) => collapsedCategories.value.has(key)),
 ));
 
+// A folder with hundreds of chats rendered every row at once: on a Studio with
+// 1,500 chats that held the page for about 3 seconds before the open chat could
+// load. Show the first 50 of a folder and more on request; the open chat
+// always shows.
+const SESSION_GROUP_PAGE = 50;
+const sessionGroupShown = ref(new Map<string, number>());
+function shownGroupSessions(key: string, sessions: Session[]): Session[] {
+  const limit = sessionGroupShown.value.get(key) ?? SESSION_GROUP_PAGE;
+  if (sessions.length <= limit) return sessions;
+  const shown = sessions.slice(0, limit);
+  const active = sessions.find((session) => session.id === chatStore.activeSessionId);
+  if (active && !shown.includes(active)) shown.push(active);
+  return shown;
+}
+function showMoreGroupSessions(key: string) {
+  const next = new Map(sessionGroupShown.value);
+  next.set(key, (next.get(key) ?? SESSION_GROUP_PAGE) + 200);
+  sessionGroupShown.value = next;
+}
+
 function openRecentCountModal(event: MouseEvent) {
   event.stopPropagation();
   recentCountDraft.value = sessionBrowserPrefsStore.recentCount;
@@ -3165,7 +3185,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             :style="{ '--tree-depth': group.depth || 0 }"
           >
             <SessionListItem
-              v-for="s in group.sessions"
+              v-for="s in shownGroupSessions(group.key, group.sessions)"
               :key="s.id"
               :session="s"
               :project-role="projectRoles.get(s.id) ?? null"
@@ -3188,6 +3208,14 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               @delete="handleDeleteSession(s.id)"
               @toggle-select="toggleSessionSelection(s)"
             />
+            <button
+              v-if="group.sessions.length > shownGroupSessions(group.key, group.sessions).length"
+              type="button"
+              class="session-group-more"
+              @click="showMoreGroupSessions(group.key)"
+            >
+              {{ t("chat.showMoreChats", { count: group.sessions.length - shownGroupSessions(group.key, group.sessions).length }) }}
+            </button>
           </div>
         </template>
         </template>
@@ -4629,4 +4657,25 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
   gap: calc(4px * var(--spacing-scale, 1));
 }
 
+.session-group-more {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  margin: 2px 0 6px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-component, 6px);
+  background: transparent;
+  color: $text-muted;
+  font: inherit;
+  font-size: calc(var(--font-size-base, 14px) * 12 / 14);
+  text-align: start;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: $bg-secondary;
+    color: $text-primary;
+  }
+}
 </style>

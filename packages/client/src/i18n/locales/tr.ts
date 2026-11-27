@@ -653,6 +653,7 @@ export default {
   },
 
   chat: {
+    showMoreChats: '{count} tane daha göster',
     cleanRoom: 'Temiz oda',
     cleanRoomHint: 'Bu sohbetin ajanı kendi konteynerinde çalışır: orada sormadan her şeyi yapabilir, yalnızca bu sohbetin klasörünü görür ve yalnızca Studio\'ya ve izin verilen sunuculara erişir.',
     cleanRoomPanel: {
