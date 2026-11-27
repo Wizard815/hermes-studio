@@ -11,6 +11,7 @@ import { projectsMessages } from '../projects-messages'
 import { pinCommentMessages } from '../pin-comment-messages'
 import { studiosMessages } from '../studios-messages'
 import { projectStageMessages } from '../project-stage-messages'
+import { studioGroupMessages } from '../studio-group-messages'
 import { herdrAppMessages } from '../herdr-app-messages'
 import { commandCenterMessages } from '../command-center-messages'
 import { runLimitsMessages } from '../run-limits-messages'
@@ -46,6 +47,7 @@ export default {
   ...pinCommentMessages['zh'],
   ...studiosMessages['zh'],
   ...projectStageMessages['zh'],
+  ...studioGroupMessages['zh'],
   ...herdrAppMessages['zh'],
   ...commandCenterMessages['zh'],
   ...runLimitsMessages['zh'],

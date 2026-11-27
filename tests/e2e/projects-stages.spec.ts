@@ -86,6 +86,8 @@ test('Projects: a finished thread is ready for review until opened, a failed one
     await page.keyboard.press('Escape')
     await page.mouse.click(280, 600)
   }
+  // Let the earlier menu finish closing, so the click lands on the new one.
+  await expect(page.locator('.n-dropdown-menu')).toHaveCount(0)
   await page.getByTestId('project-thread-w1').click({ button: 'right' })
   await page.locator('.n-dropdown-menu').getByText('Rename', { exact: true }).click()
   await page.getByTestId('thread-rename-input').locator('input').fill('Busy job, renamed')

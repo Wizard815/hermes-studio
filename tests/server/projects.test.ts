@@ -477,6 +477,31 @@ describe('TestProjects_threadMessages', () => {
     expect(w.runs[0].input).toContain('Can you look at the Argos PR?')
   })
 
+  it('the person messages the coordinator from another app, marked with the app', async () => {
+    const fake = fakeRuntime()
+    const w = waker()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, waker: () => w.waker, wakeDelayMs: 60_000 })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    expect(await service.messageFromApp(project.id, 'FAITH', 'Start the backup check')).toEqual({ queued: true })
+    await expect(service.messageFromApp(project.id, 'FAITH', '  ')).rejects.toMatchObject({ status: 400 })
+    await expect(service.messageFromApp('nope', 'FAITH', 'hi')).rejects.toMatchObject({ status: 404 })
+    expect(await service.flushWake(project.id)).toBe(true)
+    expect(w.runs[0].display).toBe('Project update: you wrote through FAITH.')
+    expect(w.runs[0].input).toContain('From your person, sent through FAITH: Start the backup check')
+  })
+
+  it('a coordinator on another Studio gets told how to answer it, and not to loop', async () => {
+    const fake = fakeRuntime()
+    const w = waker()
+    const service = new ProjectService({ store, runtime: () => fake.runtime, waker: () => w.waker, wakeDelayMs: 60_000 })
+    const project = await service.create({ name: 'Homelab', folder: '/srv/homelab' })
+    await service.messageFromStudio(project.id, 'Garage Studio', 'Run the eval', { studio: 'Garage Studio', project: 'p9', name: 'Evals' })
+    expect(await service.flushWake(project.id)).toBe(true)
+    expect(w.runs[0].input).toContain('its coordinator of the project "Evals"')
+    expect(w.runs[0].input).toContain('message_studio with {"studio": "Garage Studio", "studio_project": "p9"')
+    expect(w.runs[0].input).toContain('never just to thank or acknowledge')
+  })
+
   it('a thread messages another thread, marked with who sent it', async () => {
     const fake = fakeRuntime()
     const service = new ProjectService({ store, runtime: () => fake.runtime })
@@ -503,6 +528,8 @@ describe('TestProjects_threadMessages', () => {
     expect(await callTool('start_thread', { project: project.id, from: one.id, brief: 'More' })).toMatchObject({ status: 403 })
     expect(await callTool('resolve_thread', { project: project.id, from: one.id, thread: two.id })).toMatchObject({ status: 403 })
     expect(await callTool('set_pr', { project: project.id, from: one.id, thread: two.id, pr: 'https://g/p/pull/1' })).toMatchObject({ status: 403 })
+    expect(await callTool('message_studio', { project: project.id, from: one.id, studio: 'Garage', studio_project: 'p1', text: 'hi' })).toMatchObject({ status: 403 })
+    expect(await callTool('studios', { project: project.id, from: one.id })).toMatchObject({ status: 403 })
     expect(await callTool('set_pr', { project: project.id, from: one.id, pr: 'https://g/p/pull/1' })).toMatchObject({ status: 200, body: { thread: { id: one.id, pr: 'https://g/p/pull/1' } } })
     expect(await callTool('message_coordinator', { project: project.id, from: 'ghost', text: 'x' })).toMatchObject({ status: 404 })
     expect(await callTool('message_coordinator', { project: project.id, text: 'x' })).toMatchObject({ status: 400 })

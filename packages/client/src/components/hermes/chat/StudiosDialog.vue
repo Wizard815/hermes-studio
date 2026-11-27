@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { NButton, NForm, NFormItem, NInput, NModal, NPopconfirm, NSelect, useMessage } from 'naive-ui'
+import { NButton, NCheckbox, NForm, NFormItem, NInput, NModal, NPopconfirm, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import {
   addPeerTask,
+  bridgeLog,
   createPairingCode,
+  groupProjects,
   listPeers,
   messagePeerProject,
   pairStudio,
   peerProjects,
   removePeer,
+  setGroupProjects,
   updatePeer,
+  type BridgeLogEntry,
   type SharedProject,
   type StudioPeer,
 } from '@/api/studio/peers'
@@ -19,7 +23,9 @@ import type { Project } from '@/api/studio/projects'
 /**
  * Connected Studios (docs/projects.md#federation): pair with another Studio
  * by a one-time code, approve it, pick the projects it may see, and see and
- * message the projects it shares back.
+ * message the projects it shares back. A Studio group introduces every
+ * member to every other one, and the log shows what crossed between Studios
+ * (docs/projects.md#studio-groups).
  */
 const props = defineProps<{ show: boolean; projects: Project[] }>()
 const emit = defineEmits<{ 'update:show': [value: boolean] }>()
@@ -29,7 +35,10 @@ const message = useMessage()
 const self = ref<{ id: string; label: string } | null>(null)
 const peers = ref<StudioPeer[]>([])
 const code = ref<{ code: string; expiresAt: number } | null>(null)
-const form = reactive({ url: '', code: '', selfUrl: typeof window === 'undefined' ? '' : window.location.origin, saving: false })
+const form = reactive({ url: '', code: '', selfUrl: typeof window === 'undefined' ? '' : window.location.origin, group: false, saving: false })
+const shared = ref<string[]>([])
+const log = ref<BridgeLogEntry[]>([])
+const labelOf = (id: string) => peers.value.find(peer => peer.id === id)?.label || id
 const remote = reactive<Record<string, { loading: boolean; projects: SharedProject[] | null; error: string }>>({})
 const drafts = reactive<Record<string, string>>({})
 const status = ref('')
@@ -45,7 +54,18 @@ async function refresh() {
     const result = await listPeers()
     self.value = result.self
     peers.value = result.peers
+    const [projects, entries] = await Promise.all([groupProjects(), bridgeLog()])
+    shared.value = projects || []
+    log.value = (entries || []).slice().reverse()
   } catch (error) { failed(error) }
+}
+
+async function shareWithGroup(value: string[]) {
+  try { shared.value = await setGroupProjects(value) } catch (error) { failed(error) }
+}
+
+function when(at: number): string {
+  return new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 watch(() => props.show, show => { if (show) void refresh() }, { immediate: true })
@@ -57,7 +77,7 @@ async function makeCode() {
 async function pair() {
   form.saving = true
   try {
-    const peer = await pairStudio({ url: form.url.trim(), code: form.code.trim(), selfUrl: form.selfUrl.trim() })
+    const peer = await pairStudio({ url: form.url.trim(), code: form.code.trim(), selfUrl: form.selfUrl.trim(), group: form.group })
     status.value = t('studios.paired', { label: peer.label })
     form.url = ''
     form.code = ''
@@ -65,10 +85,12 @@ async function pair() {
   } catch (error) { failed(error) } finally { form.saving = false }
 }
 
-async function change(peer: StudioPeer, patch: { approved?: boolean; projects?: string[] }) {
+async function change(peer: StudioPeer, patch: { approved?: boolean; projects?: string[]; group?: boolean }) {
   try {
     const next = await updatePeer(peer.id, patch)
     peers.value = peers.value.map(item => item.id === next.id ? next : item)
+    // Letting a group member in introduces it to the others in the background.
+    if (next.approved && next.group) setTimeout(() => { void refresh() }, 1500)
   } catch (error) { failed(error) }
 }
 
@@ -147,10 +169,20 @@ function expires(at: number): string {
         <NFormItem :label="t('studios.selfUrl')" :feedback="t('studios.selfUrlHint')">
           <NInput v-model:value="form.selfUrl" data-testid="studios-self-url" />
         </NFormItem>
+        <NFormItem :show-label="false" :feedback="t('studioGroup.joinHint')">
+          <NCheckbox v-model:checked="form.group" data-testid="studios-join-group">{{ t('studioGroup.join') }}</NCheckbox>
+        </NFormItem>
         <NButton type="primary" attr-type="submit" :loading="form.saving" :disabled="!form.url.trim() || !form.code.trim() || !form.selfUrl.trim()" data-testid="studios-pair">
           {{ t('studios.pair') }}
         </NButton>
       </NForm>
+    </section>
+
+    <section v-if="peers.some(peer => peer.group)" class="studios-section" data-testid="studios-group">
+      <h3 class="studios-heading">{{ t('studioGroup.title') }}</h3>
+      <NFormItem :label="t('studioGroup.hint')">
+        <NSelect multiple :value="shared" :options="projectOptions" :placeholder="t('studios.shareNone')" data-testid="studios-group-share" @update:value="shareWithGroup" />
+      </NFormItem>
     </section>
 
     <section class="studios-section">
@@ -161,12 +193,20 @@ function expires(at: number): string {
           <div>
             <strong>{{ peer.label }}</strong>
             <span class="studios-hint"> · {{ peer.url }}</span>
+            <span v-if="peer.introducedBy" class="studios-hint"> · {{ t('studioGroup.introducedBy', { label: peer.introducedBy }) }}</span>
           </div>
-          <span class="studios-state" :class="{ 'studios-state--waiting': !peer.approved }">{{ peer.approved ? t('studios.connected') : t('studios.waiting') }}</span>
+          <div class="studios-badges">
+            <span v-if="peer.group" class="studios-state studios-state--group">{{ t('studioGroup.badge') }}</span>
+            <span class="studios-state" :class="{ 'studios-state--waiting': !peer.approved }">{{ peer.approved ? t('studios.connected') : t('studios.waiting') }}</span>
+          </div>
         </div>
         <div class="studios-peer-actions">
           <NButton v-if="!peer.approved" size="small" type="primary" :data-testid="`studios-approve-${peer.id}`" @click="change(peer, { approved: true })">{{ t('studios.approve') }}</NButton>
           <NButton size="small" :data-testid="`studios-load-${peer.id}`" @click="load(peer)">{{ t('studios.load') }}</NButton>
+          <label class="studios-switch">
+            <NSwitch size="small" :value="peer.group" :data-testid="`studios-group-${peer.id}`" @update:value="(value: boolean) => change(peer, { group: value })" />
+            <span>{{ t('studioGroup.member') }}</span>
+          </label>
           <NPopconfirm @positive-click="unpair(peer)">
             <template #trigger>
               <NButton size="small" quaternary :data-testid="`studios-remove-${peer.id}`">{{ t('studios.remove') }}</NButton>
@@ -219,6 +259,17 @@ function expires(at: number): string {
         </div>
       </article>
     </section>
+
+    <section class="studios-section" data-testid="studios-log">
+      <h3 class="studios-heading">{{ t('studioGroup.log') }}</h3>
+      <p v-if="!log.length" class="studios-hint">{{ t('studioGroup.logEmpty') }}</p>
+      <ul v-else class="studios-log">
+        <li v-for="entry in log" :key="`${entry.at}-${entry.peer}-${entry.direction}`">
+          <span class="studios-hint">{{ when(entry.at) }} · {{ entry.direction === 'out' ? t('studioGroup.to', { label: labelOf(entry.peer) }) : t('studioGroup.from', { label: entry.label }) }} · {{ t(`studioGroup.kinds.${entry.kind}`) }} · {{ t(`studioGroup.by.${entry.by}`) }}<template v-if="entry.from"> ({{ entry.from.name }})</template></span>
+          <div>{{ entry.text }}</div>
+        </li>
+      </ul>
+    </section>
   </NModal>
 </template>
 
@@ -262,6 +313,11 @@ function expires(at: number): string {
 .studios-list { margin: 4px 0 8px; padding-left: 18px; font-size: 13px; color: $text-primary; }
 .studios-link { margin-left: 4px; color: $accent-primary; font-size: 12px; }
 .studios-send { display: flex; gap: 6px; }
+.studios-badges { display: flex; gap: 4px; }
+.studios-state--group { color: $text-primary; }
+.studios-switch { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; font-size: 12px; color: $text-secondary; }
+.studios-log { margin: 0; padding: 0; list-style: none; max-height: 240px; overflow-y: auto; font-size: 13px; color: $text-primary; }
+.studios-log li { padding: 4px 0; border-bottom: var(--border-width, 1px) dashed $border-light; overflow-wrap: anywhere; }
 
 @media (max-width: 560px) {
   .studios-pair { grid-template-columns: 1fr; }

@@ -11,7 +11,15 @@ test('Projects: pair Studios, approve and share a project, and message a shared 
   const calls: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   const project = { id: 'p1', name: 'Homelab', folder: '/srv/homelab', instructions: '', profile: 'default', categoryId: 4, coordinatorSessionId: 'coord-1', defaultAgent: 'claude-code', worktrees: true, wakeCoordinator: true, threads: [], tasks: [], memory: [], artifacts: [], counts: { needsYou: 0, working: 0, done: 0, resolved: 0 }, createdAt: 1, updatedAt: 1 }
-  const peers: any[] = [{ id: 'hwui_garage', url: 'http://garage.tailnet.ts.net:8648', label: 'Garage Studio', approved: false, projects: [], createdAt: 1, lastSeenAt: 1 }]
+  const peers: any[] = [
+    { id: 'hwui_garage', url: 'http://garage.tailnet.ts.net:8648', label: 'Garage Studio', approved: false, projects: [], group: false, introducedBy: '', createdAt: 1, lastSeenAt: 1 },
+    { id: 'hwui_attic', url: 'http://attic.tailnet.ts.net:8648', label: 'Attic Studio', approved: true, projects: [], group: true, introducedBy: 'Lab Studio', createdAt: 1, lastSeenAt: 1 },
+  ]
+  let groupShared: string[] = []
+  const log = [
+    { at: 1_700_000_000_000, peer: 'hwui_attic', label: 'Attic Studio', direction: 'in', kind: 'introduced', project: '', text: 'Introduced by Lab Studio', by: 'studio' },
+    { at: 1_700_000_100_000, peer: 'hwui_attic', label: 'Attic Studio', direction: 'out', kind: 'message', project: 'q7', text: 'Run the ROCm eval', by: 'coordinator', from: { project: 'p1', name: 'Homelab' } },
+  ]
   const shared = [{
     id: 'q1', name: 'Overseer', counts: { needsYou: 1, working: 1, done: 0, resolved: 0 },
     threads: [{ id: 't1', title: 'Add Docker collector', agent: 'codex', status: 'working', resolved: false, pr: 'https://github.com/Wizard815/overseer/pull/4' }, { id: 't2', title: 'Fix login', agent: 'claude-code', status: 'blocked', resolved: false, pr: '' }],
@@ -49,9 +57,14 @@ test('Projects: pair Studios, approve and share a project, and message a shared 
     }
     else if (path === '/api/studio/projects') json = { projects: [project] }
     else if (path === '/api/studio/peers') json = { self: { id: 'hwui_office', label: 'Office Studio' }, peers }
+    else if (path === '/api/studio/peers/group') {
+      if (method === 'PUT') groupShared = input.projects
+      json = { projects: groupShared }
+    }
+    else if (path === '/api/studio/peers/log') json = { log }
     else if (path === '/api/studio/peers/code') json = { code: 'K7QM-4XRP', expiresAt: Date.now() + 300_000 }
     else if (path === '/api/studio/peers/pair') {
-      const peer = { id: 'hwui_lab', url: input.url, label: 'Lab Studio', approved: true, projects: [], createdAt: 2, lastSeenAt: 2 }
+      const peer = { id: 'hwui_lab', url: input.url, label: 'Lab Studio', approved: true, projects: [], group: input.group, introducedBy: '', createdAt: 2, lastSeenAt: 2 }
       peers.push(peer)
       json = { peer }
     }
@@ -82,6 +95,7 @@ test('Projects: pair Studios, approve and share a project, and message a shared 
   // Pairing with another Studio by its address and code.
   await dialog.getByTestId('studios-url').locator('input').fill('http://lab.tailnet.ts.net:8648')
   await dialog.getByTestId('studios-code-input').locator('input').fill('ab12-cd34')
+  await dialog.getByTestId('studios-join-group').click()
   await dialog.getByTestId('studios-pair').click()
   await expect(dialog.getByTestId('studios-status')).toContainText('Connected to Lab Studio')
   await expect(dialog.getByTestId('studios-peer-hwui_lab')).toContainText('Connected')
@@ -94,6 +108,21 @@ test('Projects: pair Studios, approve and share a project, and message a shared 
   await garage.getByTestId('studios-share-hwui_garage').click()
   await page.locator('.n-base-select-option', { hasText: 'Homelab' }).click()
   await expect(garage.getByTestId('studios-share-hwui_garage')).toContainText('Homelab')
+  await page.keyboard.press('Escape')
+
+  // The group: an introduced member, a project shared with every member, and the log.
+  const attic = dialog.getByTestId('studios-peer-hwui_attic')
+  await expect(attic).toContainText('Introduced by Lab Studio')
+  await expect(attic).toContainText('Group')
+  await garage.getByTestId('studios-group-hwui_garage').click()
+  await dialog.getByTestId('studios-group-share').click()
+  // The menu that just opened (the earlier one may still be fading out).
+  await page.locator('.n-base-select-option', { hasText: 'Homelab' }).last().click()
+  await expect(dialog.getByTestId('studios-group-share')).toContainText('Homelab')
+  const bridge = dialog.getByTestId('studios-log')
+  await expect(bridge).toContainText('To Attic Studio · message · coordinator (Homelab)')
+  await expect(bridge).toContainText('Run the ROCm eval')
+  await expect(bridge).toContainText('From Attic Studio · joined · group')
 
   // A project the other Studio shares: its board, and a message to its coordinator.
   await page.keyboard.press('Escape')
@@ -110,9 +139,11 @@ test('Projects: pair Studios, approve and share a project, and message a shared 
 
   expect(calls).toEqual([
     'POST /code {}',
-    'POST /pair {"url":"http://lab.tailnet.ts.net:8648","code":"ab12-cd34","selfUrl":"http://127.0.0.1:' + new URL(page.url()).port + '"}',
+    'POST /pair {"url":"http://lab.tailnet.ts.net:8648","code":"ab12-cd34","selfUrl":"http://127.0.0.1:' + new URL(page.url()).port + '","group":true}',
     'PUT /hwui_garage {"approved":true}',
     'PUT /hwui_garage {"projects":["p1"]}',
+    'PUT /hwui_garage {"group":true}',
+    'PUT /group {"projects":["p1"]}',
     'POST /hwui_lab/projects/q1/message {"text":"Can the collector skip paused containers?"}',
   ])
   expect(errors).toEqual([])
