@@ -38,23 +38,6 @@ RUN ARCH=$(uname -m) \
     && rm -f /tmp/docker.tgz \
     && docker --version
 
-# browser-use for browser tasks in the browser panel (docs/browser-tasks.md), in a
-# venv of its own so its pins never meet Hermes's. Build with BROWSER_USE_VERSION=
-# (empty) to leave it out; the panel then says it is not installed.
-ARG BROWSER_USE_VERSION=1.0.4
-RUN if [ -n "${BROWSER_USE_VERSION}" ]; then \
-      UV="$(command -v uv || find /opt/hermes -maxdepth 4 -type f -name uv 2>/dev/null | head -n1 || true)"; \
-      if python3 -m venv /opt/browser-use 2>/dev/null; then \
-        /opt/browser-use/bin/python -m pip install --no-cache-dir "browser-use==${BROWSER_USE_VERSION}"; \
-      elif [ -n "$UV" ]; then \
-        "$UV" venv /opt/browser-use --python python3 && \
-        VIRTUAL_ENV=/opt/browser-use "$UV" pip install --no-cache "browser-use==${BROWSER_USE_VERSION}"; \
-      fi; \
-      /opt/browser-use/bin/python -I -c "import browser_use" \
-        || echo "WARNING: browser-use did not install; browser tasks stay off" >&2; \
-    fi
-ENV BROWSER_USE_PYTHON=/opt/browser-use/bin/python
-
 # Build stage: dev dependencies, npm's cache and the build happen here; the image below
 # only gets the built app with its production dependencies (about 1.5 GB smaller).
 FROM runtime AS build

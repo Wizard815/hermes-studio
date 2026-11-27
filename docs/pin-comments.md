@@ -34,9 +34,6 @@ the where-and-what lines are added to the message text instead.
   address. Captured screenshots open in the same picture view, with Comment.
 - The desktop browser's own element and region annotations still work as
   before.
-- **Browser tasks** ([browser-tasks.md](browser-tasks.md)): a browser-use task
-  runs in the same browser, so you can pin comments on the page it is on, and
-  on the page it leaves when it finishes.
 
 ## What goes wrong
 

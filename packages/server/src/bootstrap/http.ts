@@ -34,7 +34,7 @@ import { dshPluginUi } from '../modules/coding-agents/services'
 import { vscodeGateway, vscodeManager } from '../modules/studio/services/vscode'
 import { screenGateway, screenManager } from '../modules/studio/services/screen'
 import { hermesApi } from '../modules/hermes/services/hermes-api'
-import { startScreenBrowser } from '../modules/studio/services/screen-browser'
+import { screenBrowser, screenBrowserPort, startScreenBrowser } from '../modules/studio/services/screen-browser'
 import './chat-agent-runtime-adapter'
 import './skill-files-adapter'
 import { setGroupChatServer } from '../modules/studio/routes/group-chat'
@@ -773,34 +773,40 @@ export async function bootstrap() {
   })
   console.log('[bootstrap] session deleter started, profile=%s', activeProfile)
 
-  // Headless browser service (for web-only runtime, supplements Electron desktop broker)
+  // The chat's Browser panel. One browser for the panel and the chat's browser
+  // tools (docs/browser-panel.md): with the agents' Screen installed, the panel
+  // shows the Screen's Chrome, which the tools already drive; without it, the
+  // tools drive the panel's own browser through its loopback DevTools port.
   try {
-    const headlessBrowser = new HeadlessBrowserService()
-    await headlessBrowser.start()
+    const screenInstalled = await screenManager.hermesStatus().then(status => !!status?.installed).catch(() => false)
+    let headlessBrowser = screenInstalled
+      ? new HeadlessBrowserService({ cdpEndpoint: async () => `http://127.0.0.1:${await screenBrowserPort()}` })
+      : new HeadlessBrowserService()
+    try {
+      await headlessBrowser.start()
+    } catch (error) {
+      if (!screenInstalled) throw error
+      console.warn('[bootstrap] the Screen browser is not reachable; the browser panel uses its own:', error instanceof Error ? error.message : error)
+      headlessBrowser = new HeadlessBrowserService()
+      await headlessBrowser.start()
+    }
     setHeadlessBrowserService(headlessBrowser)
-    console.log('[bootstrap] headless browser service started')
+    if (!headlessBrowser.attached) screenBrowser.usePanelBrowser(() => headlessBrowser.devToolsPort())
+    console.log('[bootstrap] browser panel started (%s)', headlessBrowser.attached ? "the Screen's browser" : 'its own browser')
 
     // Only screenshots requested by the agent are broadcast to the chat panel.
     headlessBrowser.setOnScreenshotCapture((base64, tabId) => {
       activeGroupChatServer.getIO().emit('browser.screenshot', { data: base64, tabId })
     })
-
-    // browser-use tasks on this browser (docs/browser-tasks.md). The socket
-    // event names the task and its progress only; the panel reads the steps
-    // and the result from the super-admin API.
-    const { BrowserTaskRunner, setBrowserTaskRunner } = await import('../modules/studio/services/browser-task/service')
-    const browserTasks = new BrowserTaskRunner({
-      cdpUrl: () => headlessBrowser.cdpUrl(),
-      setFollowTabs: on => { headlessBrowser.followNewTabs = on },
-      onUpdate: task => {
-        activeGroupChatServer.getIO().emit('browser.task', { id: task.id, status: task.status, steps: task.steps.length })
-      },
+    // The chat's agent drove the browser (or a page loaded): the panel repaints.
+    // Only the tab id goes out; the panel reads the rest from the browser API.
+    headlessBrowser.setOnChange(tabId => {
+      activeGroupChatServer.getIO().emit('browser.changed', { tabId })
     })
-    setBrowserTaskRunner(browserTasks)
 
     additionalShutdownSteps.push({
       name: 'Headless browser',
-      close: async () => { browserTasks.stop(); await headlessBrowser.stop() },
+      close: () => headlessBrowser.stop(),
     })
   } catch (err: any) {
     console.warn('[bootstrap] headless browser service failed:', err.message)

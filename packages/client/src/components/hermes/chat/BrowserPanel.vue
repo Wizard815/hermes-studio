@@ -6,7 +6,6 @@ import {
   NSpin,
   useMessage,
   NTooltip,
-  NSelect,
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import type { Socket } from 'socket.io-client'
@@ -31,12 +30,6 @@ import {
   storedScreenshotUrl,
   deleteStoredScreenshot,
   fetchElementAt,
-  fetchBrowserTask,
-  fetchBrowserTaskModels,
-  startBrowserTask,
-  stopBrowserTask,
-  type BrowserTaskModel,
-  type BrowserTaskState,
   type BrowserTabInfo,
   type ViewportInfo,
 } from '@/api/studio/browser'
@@ -225,6 +218,8 @@ function normalizeUrl(input: string): string {
   }
 }
 
+let lastShownPage = ''
+
 async function refreshState(): Promise<void> {
   try {
     const state = await fetchBrowserState()
@@ -254,6 +249,13 @@ async function refreshState(): Promise<void> {
     const active = tabs.value.find(t => t.id === activeTabId.value)
     if (active && !urlInputFocused.value && !isBlankUrl(active.url)) {
       urlBar.value = active.url
+    }
+    // The page under the panel changed without this panel doing it (the chat's
+    // model, a person on the Screen): repaint, even if a change event was missed.
+    const shown = active ? `${active.id}|${active.url}|${active.title}` : ''
+    if (shown && shown !== lastShownPage) {
+      lastShownPage = shown
+      if (!isBlankUrl(active!.url)) void refreshPreview()
     }
   } catch {
     // Silently fail — polling errors are expected when server is down
@@ -354,6 +356,20 @@ async function refreshPreview(): Promise<void> {
   } catch {
     // Preview refresh is best-effort
   }
+}
+
+// The chat's agent acts in bursts (navigate, click, type): repaint at most every
+// 400 ms, and once more after the last change so the final page shows.
+let agentRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let agentRefreshAgain = false
+function scheduleAgentRefresh(): void {
+  if (agentRefreshTimer) { agentRefreshAgain = true; return }
+  agentRefreshTimer = setTimeout(async () => {
+    await refreshState()
+    await refreshPreview()
+    agentRefreshTimer = null
+    if (agentRefreshAgain) { agentRefreshAgain = false; scheduleAgentRefresh() }
+  }, 400)
 }
 
 async function handleManualCapture(): Promise<void> {
@@ -481,120 +497,6 @@ async function handleViewportKeydown(event: KeyboardEvent): Promise<void> {
   schedulePreviewRefresh(key === 'Enter' ? 900 : 350)
 }
 
-// ─── Browser tasks (browser-use, docs/browser-tasks.md) ────────
-// A task runs on this same browser, so the view, tabs and pin comments follow it.
-
-const TASK_MODEL_KEY = 'studio.browserTask.model'
-const taskSectionShown = ref(false)
-const taskAvailable = ref(false)
-const taskUnavailableReason = ref('')
-const taskText = ref('')
-const taskModel = ref<string | null>(null)
-const taskModels = ref<BrowserTaskModel[]>([])
-const browserTask = ref<BrowserTaskState | null>(null)
-const taskStarting = ref(false)
-const taskRunning = computed(() => browserTask.value?.status === 'running')
-// Shown as "model · provider"; the full id is the value (and the tooltip in the list).
-const taskModelOptions = computed(() => taskModels.value.map(m => ({ label: `${m.model} · ${m.provider}`, value: m.id })))
-const taskFinished = computed(() => !!browserTask.value && browserTask.value.status !== 'running')
-/** The last steps, each with its step number shown once (one step can run several lines of code). */
-const taskStepsShown = computed(() => {
-  const steps = browserTask.value?.steps.slice(-6) ?? []
-  return steps.map((step, i) => ({ ...step, key: `${step.at}-${i}`, label: i > 0 && steps[i - 1].n === step.n ? '' : String(step.n) }))
-})
-const taskElapsed = computed(() => {
-  const task = browserTask.value
-  if (!task?.finishedAt) return ''
-  const seconds = Math.max(1, Math.round((task.finishedAt - task.startedAt) / 1000))
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`
-})
-const taskStatusLabel = computed(() => {
-  switch (browserTask.value?.status) {
-    case 'running': return t('browser.taskRunning', 'Working')
-    case 'completed': return browserTask.value?.success === false ? t('browser.taskUnfinished', 'Finished, not done') : t('browser.taskDone', 'Done')
-    case 'max_steps': return t('browser.taskMaxSteps', 'Stopped at the step limit')
-    case 'timeout': return t('browser.taskTimeout', 'Ran out of time')
-    case 'stopped': return t('browser.taskStopped', 'Stopped')
-    case 'error': return t('browser.taskFailed', 'Failed')
-    default: return ''
-  }
-})
-
-async function loadBrowserTask(): Promise<void> {
-  try {
-    const state = await fetchBrowserTask()
-    taskSectionShown.value = true
-    taskAvailable.value = state.available
-    taskUnavailableReason.value = state.reason || ''
-    browserTask.value = state.task
-  } catch {
-    // Not a super administrator, or an older server: no task bar.
-    taskSectionShown.value = false
-  }
-}
-
-async function loadBrowserTaskModels(): Promise<void> {
-  try {
-    const { models, default: preferred } = await fetchBrowserTaskModels()
-    taskModels.value = models
-    let saved: string | null = null
-    try { saved = localStorage.getItem(TASK_MODEL_KEY) } catch { /* private window */ }
-    const ids = new Set(models.map(m => m.id))
-    taskModel.value = [saved, preferred, models[0]?.id].find((id): id is string => !!id && ids.has(id)) ?? null
-  } catch {
-    taskModels.value = []
-  }
-}
-
-watch(taskModel, id => {
-  if (!id) return
-  try { localStorage.setItem(TASK_MODEL_KEY, id) } catch { /* private window */ }
-})
-
-async function handleRunTask(): Promise<void> {
-  const text = taskText.value.trim()
-  if (!text || !taskModel.value || taskRunning.value || taskStarting.value) return
-  taskStarting.value = true
-  try {
-    browserTask.value = await startBrowserTask(text, taskModel.value)
-    taskText.value = ''
-  } catch (err) {
-    message.error(err instanceof Error ? err.message : String(err))
-  } finally {
-    taskStarting.value = false
-  }
-}
-
-/** Hides a finished task's card (the server keeps it until the next task). */
-function clearTaskCard(): void {
-  if (taskFinished.value) browserTask.value = null
-}
-
-async function handleStopTask(): Promise<void> {
-  try {
-    const { task } = await stopBrowserTask()
-    if (task) browserTask.value = task
-  } catch (err) {
-    message.error(err instanceof Error ? err.message : String(err))
-  }
-}
-
-// While a task runs, read it every 2 s too: the socket event can be missed
-// (a reconnect, a proxy that drops websockets).
-let taskPollTimer: ReturnType<typeof setInterval> | null = null
-watch(taskRunning, running => {
-  if (taskPollTimer) { clearInterval(taskPollTimer); taskPollTimer = null }
-  if (running) taskPollTimer = setInterval(() => { void onBrowserTaskEvent() }, 2000)
-})
-
-/** Each step of a running task: read it, and show the page it left. */
-async function onBrowserTaskEvent(): Promise<void> {
-  if (!taskSectionShown.value) return
-  await loadBrowserTask()
-  await refreshState()
-  void refreshPreview()
-}
-
 // ─── Socket.IO ──────────────────────────────────────────────────
 
 function connectSocket(): void {
@@ -609,13 +511,14 @@ function connectSocket(): void {
 
     socketRef = io(socketUrl, opts)
 
+    // The chat's model is driving this browser: follow it live.
+    socketRef.on('browser.changed', () => { scheduleAgentRefresh() })
+
     socketRef.on('browser.screenshot', (payload: { data: string; tabId: string }) => {
       if (payload?.data) {
         pushScreenshot(payload.data, payload.tabId)
       }
     })
-
-    socketRef.on('browser.task', () => { void onBrowserTaskEvent() })
 
     socketRef.on('connect_error', () => {
       // Graceful degradation — Socket.IO may not be available
@@ -630,7 +533,7 @@ function connectSocket(): void {
 function disconnectSocket(): void {
   if (socketRef) {
     socketRef.off('browser.screenshot')
-    socketRef.off('browser.task')
+    socketRef.off('browser.changed')
     socketRef.disconnect()
     socketRef = null
   }
@@ -664,10 +567,6 @@ onMounted(async () => {
   // Restore persisted screenshots for this chat session
   await loadPersistedScreenshots()
 
-  // The browser-use task bar (super administrators)
-  await loadBrowserTask()
-  if (taskSectionShown.value) void loadBrowserTaskModels()
-
   // Connect Socket.IO for agent-driven screenshot updates
   connectSocket()
 
@@ -678,14 +577,12 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (taskPollTimer) {
-    clearInterval(taskPollTimer)
-    taskPollTimer = null
-  }
   if (pollingTimer) {
     clearInterval(pollingTimer)
     pollingTimer = null
   }
+  if (agentRefreshTimer) clearTimeout(agentRefreshTimer)
+  agentRefreshTimer = null
   disconnectSocket()
 })
 </script>
@@ -717,7 +614,7 @@ onUnmounted(() => {
             :class="{ active: tab.id === activeTabId }"
             @click="handleActivateTab(tab.id)"
           >
-            <span class="browser-tab-title">{{ tab.title || (isBlankUrl(tab.url) ? t('browser.newTab', 'New tab') : truncateUrl(tab.url)) }}</span>
+            <span class="browser-tab-title">{{ tab.title || (isBlankUrl(tab.url) ? t('browser.newTab') : truncateUrl(tab.url)) }}</span>
             <span
               class="browser-tab-close"
               role="button"
@@ -788,83 +685,6 @@ onUnmounted(() => {
             data-testid="browser-pin-comment"
             @click="commenting = !commenting"
           >{{ commenting ? t('pinComment.commenting') : t('pinComment.comment') }}</NButton>
-        </div>
-      </div>
-
-      <!-- Browser task (browser-use): runs on this browser, the view follows it -->
-      <div v-if="taskSectionShown" class="browser-task" data-testid="browser-task">
-        <div class="browser-task-row">
-          <svg class="browser-task-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 3v3M12 18v3M3 12h3M18 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1" />
-          </svg>
-          <NInput
-            v-model:value="taskText"
-            size="small"
-            class="browser-task-input"
-            :placeholder="t('browser.taskPlaceholder', 'Ask the browser to do something…')"
-            :input-props="{ 'aria-label': t('browser.taskLabel', 'Browser task') }"
-            :disabled="taskRunning || !taskAvailable"
-            data-testid="browser-task-input"
-            @keydown.enter.exact.prevent="handleRunTask"
-          />
-          <NButton
-            v-if="!taskRunning"
-            size="small"
-            type="primary"
-            :loading="taskStarting"
-            :disabled="!taskAvailable || !taskText.trim() || !taskModel"
-            data-testid="browser-task-run"
-            @click="handleRunTask"
-          >{{ t('browser.taskRun', 'Run') }}</NButton>
-          <NButton v-else size="small" type="error" secondary data-testid="browser-task-stop" @click="handleStopTask">{{ t('browser.taskStop', 'Stop') }}</NButton>
-        </div>
-        <div class="browser-task-options">
-          <span class="browser-task-options-label">{{ t('browser.taskModel', 'Model') }}</span>
-          <NSelect
-            v-model:value="taskModel"
-            size="tiny"
-            filterable
-            class="browser-task-model"
-            :options="taskModelOptions"
-            :consistent-menu-width="false"
-            :placeholder="t('browser.taskModelPick', 'Pick a model')"
-            :disabled="taskRunning || !taskAvailable"
-            :input-props="{ 'aria-label': t('browser.taskModelLabel', 'Model for browser tasks') }"
-            data-testid="browser-task-model"
-          />
-        </div>
-        <p v-if="!taskAvailable" class="browser-task-note">
-          {{ t('browser.taskUnavailable', 'Browser tasks need browser-use on the server.') }}
-          <span v-if="taskUnavailableReason"> {{ taskUnavailableReason }}</span>
-        </p>
-        <div v-if="browserTask" class="browser-task-log" :class="browserTask.status" role="status" aria-live="polite" data-testid="browser-task-log">
-          <div class="browser-task-status">
-            <NSpin v-if="taskRunning" :size="12" />
-            <span class="browser-task-badge" :class="browserTask.status">{{ taskStatusLabel }}</span>
-            <span class="browser-task-meta">
-              {{ t('browser.taskStepsLabel', 'Steps') }} {{ browserTask.steps.length ? browserTask.steps[browserTask.steps.length - 1].n : 0 }}<template v-if="taskElapsed"> · {{ taskElapsed }}</template><template v-if="browserTask.costUsd != null"> · ${{ browserTask.costUsd.toFixed(4) }}</template>
-            </span>
-            <button
-              v-if="taskFinished"
-              type="button"
-              class="browser-task-clear"
-              :aria-label="t('browser.taskClear', 'Clear')"
-              :title="t('browser.taskClear', 'Clear')"
-              data-testid="browser-task-clear"
-              @click="clearTaskCard"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
-            </button>
-          </div>
-          <p class="browser-task-what" :title="browserTask.task">{{ browserTask.task }}</p>
-          <ul v-if="taskStepsShown.length" class="browser-task-steps">
-            <li v-for="step in taskStepsShown" :key="step.key">
-              <span class="browser-task-step-n">{{ step.label }}</span>
-              <code :title="step.text">{{ step.text }}</code>
-            </li>
-          </ul>
-          <p v-if="browserTask.result" class="browser-task-result" data-testid="browser-task-result">{{ browserTask.result }}</p>
-          <p v-if="browserTask.error && browserTask.status !== 'completed'" class="browser-task-error">{{ browserTask.error }}</p>
         </div>
       </div>
 
@@ -1237,192 +1057,6 @@ onUnmounted(() => {
 }
 
 // ─── Gallery ────────────────────────────────────────────────────
-
-// ─── Browser task (browser-use) ─────────────────────────────────
-
-.browser-task {
-  flex: 0 0 auto;
-  border-bottom: 1px solid $border-color;
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.browser-task-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.browser-task-icon {
-  flex: 0 0 16px;
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: var(--accent-primary);
-  stroke-width: 1.8;
-  stroke-linecap: round;
-}
-
-.browser-task-input {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.browser-task-options {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-left: 22px;
-  min-width: 0;
-}
-
-.browser-task-options-label {
-  font-size: 11px;
-  color: $text-muted;
-  white-space: nowrap;
-}
-
-.browser-task-model {
-  flex: 0 1 260px;
-  min-width: 120px;
-}
-
-.browser-task-note,
-.browser-task-result,
-.browser-task-error,
-.browser-task-what {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.browser-task-note { color: $text-muted; padding-left: 22px; }
-.browser-task-error { color: $error; }
-
-.browser-task-log {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 8px 10px;
-  border: 1px solid $border-color;
-  border-left: 3px solid $border-color;
-  border-radius: $radius-sm;
-  background: rgba(var(--accent-primary-rgb), 0.03);
-
-  &.running { border-left-color: $info; }
-  &.completed { border-left-color: $success; }
-  &.error, &.timeout, &.max_steps { border-left-color: $error; }
-}
-
-.browser-task-status {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 12px;
-  color: $text-secondary;
-  min-width: 0;
-}
-
-.browser-task-meta {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.browser-task-badge {
-  padding: 0 7px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-  white-space: nowrap;
-  color: $text-primary;
-  background: rgba(var(--accent-primary-rgb), 0.08);
-
-  &.running { color: $info; background: rgba(var(--info-rgb, 59, 130, 246), 0.12); }
-  &.completed { color: $success; background: rgba(var(--success-rgb, 34, 197, 94), 0.12); }
-  &.error, &.timeout, &.max_steps { color: $error; background: rgba(var(--error-rgb), 0.1); }
-}
-
-.browser-task-clear {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: 0;
-  border-radius: $radius-sm;
-  background: transparent;
-  color: $text-muted;
-  cursor: pointer;
-
-  svg {
-    width: 12px;
-    height: 12px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
-  }
-
-  &:hover { color: $text-primary; background: rgba(var(--accent-primary-rgb), 0.1); }
-  &:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 1px; }
-}
-
-.browser-task-what {
-  color: $text-muted;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.browser-task-steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  font-size: 11px;
-  color: $text-secondary;
-  max-height: 96px;
-  overflow: auto;
-
-  li {
-    display: flex;
-    gap: 6px;
-    min-width: 0;
-    line-height: 17px;
-  }
-
-  code {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-family: $font-code;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-}
-
-.browser-task-step-n {
-  flex: 0 0 18px;
-  text-align: right;
-  color: $text-muted;
-  font-variant-numeric: tabular-nums;
-}
-
-.browser-task-result {
-  white-space: pre-wrap;
-  max-height: 120px;
-  overflow: auto;
-  color: $text-primary;
-  padding-top: 5px;
-  border-top: 1px dashed $border-color;
-}
 
 .browser-gallery-section {
   flex: 0 0 auto;

@@ -6,7 +6,6 @@ import {
   listScreenshots as listStoredScreenshots,
   readScreenshotFile,
 } from '../services/browser-screenshot-store'
-import { BrowserTaskError, findBrowserUsePython, getBrowserTaskRunner, listTaskModels } from '../services/browser-task/service'
 
 // ---------------------------------------------------------------------------
 // Browser Controller — REST endpoints for the headless browser service
@@ -664,48 +663,3 @@ export async function deleteScreenshot(ctx: Context) {
   ctx.body = { ok: true }
 }
 
-
-// ─── Browser tasks (browser-use, docs/browser-tasks.md) ────────────
-
-function taskError(ctx: Context, err: any) {
-  ctx.status = err instanceof BrowserTaskError ? err.status : 500
-  ctx.body = { error: err?.message || 'Browser task failed' }
-}
-
-export async function taskState(ctx: Context) {
-  const runner = getBrowserTaskRunner()
-  if (!runner) { ctx.status = 503; ctx.body = { available: false }; return }
-  const check = findBrowserUsePython()
-  ctx.body = { available: !!check.python, version: check.version, reason: check.python ? undefined : check.error, task: runner.state() }
-}
-
-export async function taskModels(ctx: Context) {
-  try {
-    ctx.body = { models: await listTaskModels(), default: process.env.BROWSER_TASK_MODEL || null }
-  } catch (err: any) {
-    taskError(ctx, err)
-  }
-}
-
-export async function startTask(ctx: Context) {
-  const runner = getBrowserTaskRunner()
-  if (!runner) { ctx.status = 503; ctx.body = { error: 'The browser is not running.' }; return }
-  const body = (ctx.request.body || {}) as any
-  try {
-    ctx.body = await runner.start({
-      task: body.task,
-      model: body.model || process.env.BROWSER_TASK_MODEL || '',
-      maxSteps: typeof body.max_steps === 'number' ? body.max_steps : undefined,
-      timeout: typeof body.timeout === 'number' ? body.timeout : undefined,
-      vision: body.vision !== false,
-    })
-  } catch (err: any) {
-    taskError(ctx, err)
-  }
-}
-
-export async function stopTask(ctx: Context) {
-  const runner = getBrowserTaskRunner()
-  if (!runner) { ctx.status = 503; ctx.body = { error: 'The browser is not running.' }; return }
-  ctx.body = { task: runner.stop() }
-}

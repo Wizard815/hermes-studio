@@ -116,6 +116,10 @@ const CLIENT_INACTIVE_THRESHOLD_MS = 24 * 60 * 60 * 1000
 const MAX_SNAPSHOT_NODES = 300
 const MAX_SNAPSHOT_TEXT = 24_000
 const MAX_CONCURRENT_OPS = 4
+/** Broker methods after which the panel repaints. */
+const CHANGING_METHODS: ReadonlySet<string> = new Set([
+  'tabs.create', 'tabs.activate', 'tabs.close', 'navigate', 'navigation.action', 'interact',
+])
 
 /** Selector for elements exposed as actionable nodes in snapshots. */
 const INTERACTIVE_SELECTOR = [
@@ -319,6 +323,9 @@ export class HeadlessBrowserService {
   private concurrentOps = 0
   private brokerRoot: string
   private onScreenshotCapture?: (base64: string, tabId: string) => void
+  private onChange?: (tabId: string | null) => void
+  private changeTimer: NodeJS.Timeout | null = null
+  private creatingTab = false
 
   /**
    * When set, the service drives an existing Chrome over CDP (the agents'
@@ -331,8 +338,6 @@ export class HeadlessBrowserService {
   /** The launched browser's profile (removed on stop) and its DevTools endpoint. */
   private profileDir = ''
   private ownCdpUrl = ''
-  /** While a browser task runs, tabs it opens become the active tab, so the panel follows it. */
-  followNewTabs = false
 
   constructor(options?: { brokerRoot?: string; cdpEndpoint?: () => Promise<string> }) {
     this.brokerRoot = options?.brokerRoot || join(process.env.HOME || '/home/codebox', '.hermes-web-ui', 'desktop-browser')
@@ -346,16 +351,43 @@ export class HeadlessBrowserService {
   }
 
   /**
-   * The DevTools endpoint of the browser the panel shows, for another CDP client
-   * (browser-use tasks) to drive the same tabs. Empty when not started.
+   * The DevTools port of the browser the panel launched itself, so the chat's
+   * browser tools (the Browser Broker, docs/browser-panel.md) drive the same
+   * tabs. 0 when attached to the Screen's browser or not started.
    */
-  async cdpUrl(): Promise<string> {
-    if (!this.connected) return ''
-    return this.cdpEndpoint ? await this.cdpEndpoint() : this.ownCdpUrl
+  devToolsPort(): number {
+    if (!this.connected || this.attached || !this.ownCdpUrl) return 0
+    return Number(new URL(this.ownCdpUrl).port) || 0
   }
 
   setOnScreenshotCapture(fn: (base64: string, tabId: string) => void): void {
     this.onScreenshotCapture = fn
+  }
+
+  /**
+   * Called (at most every 250 ms) when the browser changes under the panel: the
+   * chat's model navigated, clicked, typed or opened a tab with its browser
+   * tools, or a page loaded. The panel then repaints, so a person watches the
+   * chat's model work live.
+   */
+  setOnChange(fn: (tabId: string | null) => void): void {
+    this.onChange = fn
+  }
+
+  private changed(): void {
+    if (!this.onChange || this.changeTimer) return
+    this.changeTimer = setTimeout(() => {
+      this.changeTimer = null
+      try { this.onChange?.(this.activeTabId) } catch { /* a listener must not break the browser */ }
+    }, 250)
+    this.changeTimer.unref?.()
+  }
+
+  /** A tab another CDP client (the chat's browser tools) or a page opened: the panel shows it. */
+  private onNewPage(page: Page): void {
+    if (this.creatingTab || this.tabFor(page)) return
+    this._registerPage(page, true)
+    this.changed()
   }
 
   async start(): Promise<any> {
@@ -372,7 +404,7 @@ export class HeadlessBrowserService {
       this.context = browser.contexts()[0] || await browser.newContext()
       for (const page of this.context.pages()) this._registerPage(page, false)
       // Tabs a person opens on the screen become tabs here too.
-      this.context.on('page', page => { if (!this.tabFor(page)) this._registerPage(page, this.followNewTabs) })
+      this.context.on('page', page => this.onNewPage(page))
       browser.on('disconnected', () => {
         if (this.browser !== browser) return
         this.browser = null
@@ -387,8 +419,8 @@ export class HeadlessBrowserService {
       return this.descriptor
     }
 
-    // A persistent context, so pages a CDP client opens (browser-use tasks,
-    // docs/browser-tasks.md) land in the context Studio watches and become tabs.
+    // A persistent context, so pages a CDP client opens (the chat's browser tools,
+    // docs/browser-panel.md) land in the context Studio watches and become tabs.
     // The DevTools port listens on loopback only; Chrome writes it to the profile.
     this.profileDir = mkdtempSync(join(tmpdir(), 'studio-browser-'))
     const launchOptions = {
@@ -414,9 +446,9 @@ export class HeadlessBrowserService {
     }
     this.browser = this.context.browser()
     this.ownCdpUrl = readDevToolsUrl(this.profileDir)
-    // The launch tab, and tabs a CDP client opens.
+    // The launch tab; tabs a CDP client opens become tabs through onNewPage.
     for (const page of this.context.pages()) this._registerPage(page, false)
-    this.context.on('page', page => { if (!this.tabFor(page)) this._registerPage(page, this.followNewTabs) })
+    this.context.on('page', page => this.onNewPage(page))
 
     const first = this.getAllTabs()[0]
     if (first) { this.activeTabId = first.id; await refreshTabMeta(first) }
@@ -859,6 +891,7 @@ export class HeadlessBrowserService {
           return { status: 400, body: { error: `Unknown Browser Broker method: ${method}`, operationId } }
       }
 
+      if (CHANGING_METHODS.has(method)) this.changed()
       return result
     } catch (error: any) {
       return {
@@ -885,7 +918,9 @@ export class HeadlessBrowserService {
       }
     }
 
-    const page = await this.context.newPage()
+    this.creatingTab = true
+    let page: Page
+    try { page = await this.context.newPage() } finally { this.creatingTab = false }
     const tab = this.tabFor(page) || this._registerPage(page, activate)
     if (activate) this.activeTabId = tab.id
 
@@ -936,14 +971,17 @@ export class HeadlessBrowserService {
       tabGeneration: 0,
     }
 
-    // Navigations Studio did not start (a browser-use task, a person on the
-    // Screen) still show in the panel's tabs and address bar.
+    // Navigations Studio did not start (the chat's browser tools, a link, a
+    // person on the Screen) still show in the panel's tabs and address bar.
     page.on('framenavigated', frame => {
-      if (frame === page.mainFrame()) tab.url = page.url()
+      if (frame !== page.mainFrame()) return
+      tab.url = page.url()
+      this.changed()
     })
     page.on('load', () => {
       tab.url = page.url()
       page.title().then(title => { tab.title = sanitizeString(title, 500) }).catch(() => {})
+      this.changed()
     })
 
     this.tabs.set(tabId, tab)
