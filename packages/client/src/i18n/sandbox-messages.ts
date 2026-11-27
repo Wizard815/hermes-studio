@@ -13,7 +13,27 @@ export const sandboxMessages = {
       "loadFailed": "Sandboxes could not load: {error}. Check that Docker is reachable, then press Refresh.",
       "refresh": "Refresh",
       "removed": "Sandbox removed",
-      "removeFailed": "Could not remove the sandbox: {error}"
+      "removeFailed": "Could not remove the sandbox: {error}",
+      "net": {
+        "title": "Internet for sandboxes",
+        "intro": "Sandboxes with internet can't reach your LAN or the internet directly. Their only way out is Studio's proxy, which checks each site and logs every call.",
+        "mode": "Which sites",
+        "allowlist": "Only the allowed sites",
+        "blocklist": "Any site except the blocked ones",
+        "log": "Any public site (log only)",
+        "allow": "Allowed sites, one per line. Each covers its subdomains.",
+        "block": "Blocked sites, one per line",
+        "save": "Save rules",
+        "saved": "Rules saved. Running sandboxes use them now.",
+        "saveFailed": "Could not save the rules: {error}",
+        "calls": "Recent calls",
+        "onlyBlocked": "Only refused calls",
+        "noCalls": "No calls yet.",
+        "allowed": "allowed",
+        "refused": "refused",
+        "lanNote": "Your LAN and other private addresses are always refused, even in log-only mode.",
+        "loadFailed": "Could not load the calls: {error}. Check that Docker is reachable."
+      }
     }
   },
   "de": {
@@ -29,7 +49,27 @@ export const sandboxMessages = {
       "loadFailed": "Sandboxes konnten nicht geladen werden: {error}. Prüfe, ob Docker erreichbar ist, und drücke Aktualisieren.",
       "refresh": "Aktualisieren",
       "removed": "Sandbox entfernt",
-      "removeFailed": "Sandbox konnte nicht entfernt werden: {error}"
+      "removeFailed": "Sandbox konnte nicht entfernt werden: {error}",
+      "net": {
+        "title": "Internet für Sandboxes",
+        "intro": "Sandboxes mit Internet erreichen weder dein LAN noch das Internet direkt. Ihr einziger Weg nach draußen ist der Proxy von Studio, der jede Seite prüft und jeden Aufruf protokolliert.",
+        "mode": "Welche Seiten",
+        "allowlist": "Nur die erlaubten Seiten",
+        "blocklist": "Jede Seite außer den gesperrten",
+        "log": "Jede öffentliche Seite (nur protokollieren)",
+        "allow": "Erlaubte Seiten, eine pro Zeile. Jede gilt auch für ihre Subdomains.",
+        "block": "Gesperrte Seiten, eine pro Zeile",
+        "save": "Regeln speichern",
+        "saved": "Regeln gespeichert. Laufende Sandboxes nutzen sie sofort.",
+        "saveFailed": "Die Regeln konnten nicht gespeichert werden: {error}",
+        "calls": "Letzte Aufrufe",
+        "onlyBlocked": "Nur abgelehnte Aufrufe",
+        "noCalls": "Noch keine Aufrufe.",
+        "allowed": "erlaubt",
+        "refused": "abgelehnt",
+        "lanNote": "Dein LAN und andere private Adressen werden immer abgelehnt, auch im Modus „nur protokollieren“.",
+        "loadFailed": "Die Aufrufe konnten nicht geladen werden: {error}. Prüfe, ob Docker erreichbar ist."
+      }
     }
   },
   "es": {
@@ -45,7 +85,27 @@ export const sandboxMessages = {
       "loadFailed": "No se pudieron cargar las sandboxes: {error}. Comprueba que Docker esté accesible y pulsa Actualizar.",
       "refresh": "Actualizar",
       "removed": "Sandbox eliminada",
-      "removeFailed": "No se pudo eliminar la sandbox: {error}"
+      "removeFailed": "No se pudo eliminar la sandbox: {error}",
+      "net": {
+        "title": "Internet para los sandboxes",
+        "intro": "Los sandboxes con internet no llegan directamente a tu LAN ni a internet. Su única salida es el proxy de Studio, que revisa cada sitio y registra cada llamada.",
+        "mode": "Qué sitios",
+        "allowlist": "Solo los sitios permitidos",
+        "blocklist": "Cualquier sitio salvo los bloqueados",
+        "log": "Cualquier sitio público (solo registrar)",
+        "allow": "Sitios permitidos, uno por línea. Cada uno incluye sus subdominios.",
+        "block": "Sitios bloqueados, uno por línea",
+        "save": "Guardar reglas",
+        "saved": "Reglas guardadas. Los sandboxes en marcha ya las usan.",
+        "saveFailed": "No se pudieron guardar las reglas: {error}",
+        "calls": "Llamadas recientes",
+        "onlyBlocked": "Solo llamadas rechazadas",
+        "noCalls": "Aún no hay llamadas.",
+        "allowed": "permitida",
+        "refused": "rechazada",
+        "lanNote": "Tu LAN y otras direcciones privadas siempre se rechazan, incluso en modo solo registrar.",
+        "loadFailed": "No se pudieron cargar las llamadas: {error}. Comprueba que Docker esté accesible."
+      }
     }
   },
   "fr": {
@@ -61,7 +121,27 @@ export const sandboxMessages = {
       "loadFailed": "Impossible de charger les sandboxes : {error}. Vérifiez que Docker est joignable, puis appuyez sur Actualiser.",
       "refresh": "Actualiser",
       "removed": "Sandbox supprimée",
-      "removeFailed": "Impossible de supprimer la sandbox : {error}"
+      "removeFailed": "Impossible de supprimer la sandbox : {error}",
+      "net": {
+        "title": "Internet pour les sandboxes",
+        "intro": "Les sandboxes avec internet n’atteignent ni votre réseau local ni internet directement. Leur seule sortie est le proxy de Studio, qui vérifie chaque site et journalise chaque appel.",
+        "mode": "Quels sites",
+        "allowlist": "Seulement les sites autorisés",
+        "blocklist": "Tout site sauf ceux bloqués",
+        "log": "Tout site public (journal seulement)",
+        "allow": "Sites autorisés, un par ligne. Chacun couvre ses sous-domaines.",
+        "block": "Sites bloqués, un par ligne",
+        "save": "Enregistrer les règles",
+        "saved": "Règles enregistrées. Les sandboxes en cours les utilisent déjà.",
+        "saveFailed": "Impossible d’enregistrer les règles : {error}",
+        "calls": "Appels récents",
+        "onlyBlocked": "Seulement les appels refusés",
+        "noCalls": "Aucun appel pour l’instant.",
+        "allowed": "autorisé",
+        "refused": "refusé",
+        "lanNote": "Votre réseau local et les autres adresses privées sont toujours refusés, même en mode journal seulement.",
+        "loadFailed": "Impossible de charger les appels : {error}. Vérifiez que Docker est joignable."
+      }
     }
   },
   "pt": {
@@ -77,7 +157,27 @@ export const sandboxMessages = {
       "loadFailed": "Não foi possível carregar as sandboxes: {error}. Verifique se o Docker está acessível e clique em Atualizar.",
       "refresh": "Atualizar",
       "removed": "Sandbox removida",
-      "removeFailed": "Não foi possível remover a sandbox: {error}"
+      "removeFailed": "Não foi possível remover a sandbox: {error}",
+      "net": {
+        "title": "Internet para os sandboxes",
+        "intro": "Sandboxes com internet não alcançam sua LAN nem a internet diretamente. A única saída é o proxy do Studio, que verifica cada site e registra cada chamada.",
+        "mode": "Quais sites",
+        "allowlist": "Só os sites permitidos",
+        "blocklist": "Qualquer site exceto os bloqueados",
+        "log": "Qualquer site público (só registrar)",
+        "allow": "Sites permitidos, um por linha. Cada um vale para seus subdomínios.",
+        "block": "Sites bloqueados, um por linha",
+        "save": "Salvar regras",
+        "saved": "Regras salvas. Os sandboxes em execução já as usam.",
+        "saveFailed": "Não foi possível salvar as regras: {error}",
+        "calls": "Chamadas recentes",
+        "onlyBlocked": "Só chamadas recusadas",
+        "noCalls": "Nenhuma chamada ainda.",
+        "allowed": "permitida",
+        "refused": "recusada",
+        "lanNote": "Sua LAN e outros endereços privados são sempre recusados, mesmo no modo só registrar.",
+        "loadFailed": "Não foi possível carregar as chamadas: {error}. Verifique se o Docker está acessível."
+      }
     }
   },
   "ru": {
@@ -93,7 +193,27 @@ export const sandboxMessages = {
       "loadFailed": "Не удалось загрузить песочницы: {error}. Проверьте, что Docker доступен, и нажмите «Обновить».",
       "refresh": "Обновить",
       "removed": "Песочница удалена",
-      "removeFailed": "Не удалось удалить песочницу: {error}"
+      "removeFailed": "Не удалось удалить песочницу: {error}",
+      "net": {
+        "title": "Интернет для песочниц",
+        "intro": "Песочницы с интернетом не могут напрямую выйти ни в вашу локальную сеть, ни в интернет. Их единственный выход — прокси Studio, который проверяет каждый сайт и записывает каждый запрос.",
+        "mode": "Какие сайты",
+        "allowlist": "Только разрешённые сайты",
+        "blocklist": "Любые сайты, кроме заблокированных",
+        "log": "Любые публичные сайты (только журнал)",
+        "allow": "Разрешённые сайты, по одному в строке. Каждый включает свои поддомены.",
+        "block": "Заблокированные сайты, по одному в строке",
+        "save": "Сохранить правила",
+        "saved": "Правила сохранены. Работающие песочницы уже их используют.",
+        "saveFailed": "Не удалось сохранить правила: {error}",
+        "calls": "Последние запросы",
+        "onlyBlocked": "Только отклонённые запросы",
+        "noCalls": "Запросов пока нет.",
+        "allowed": "разрешён",
+        "refused": "отклонён",
+        "lanNote": "Ваша локальная сеть и другие частные адреса всегда отклоняются, даже в режиме «только журнал».",
+        "loadFailed": "Не удалось загрузить запросы: {error}. Проверьте, что Docker доступен."
+      }
     }
   },
   "tr": {
@@ -109,7 +229,27 @@ export const sandboxMessages = {
       "loadFailed": "Sandbox'lar yüklenemedi: {error}. Docker'a erişilebildiğini kontrol edip Yenile'ye basın.",
       "refresh": "Yenile",
       "removed": "Sandbox kaldırıldı",
-      "removeFailed": "Sandbox kaldırılamadı: {error}"
+      "removeFailed": "Sandbox kaldırılamadı: {error}",
+      "net": {
+        "title": "Sanal alanlar için internet",
+        "intro": "İnternetli sanal alanlar yerel ağınıza da internete de doğrudan ulaşamaz. Tek çıkışları, her siteyi denetleyen ve her isteği kaydeden Studio proxy'sidir.",
+        "mode": "Hangi siteler",
+        "allowlist": "Yalnızca izin verilen siteler",
+        "blocklist": "Engellenenler dışında her site",
+        "log": "Her genel site (yalnızca kayıt)",
+        "allow": "İzin verilen siteler, satır başına bir tane. Her biri alt alan adlarını da kapsar.",
+        "block": "Engellenen siteler, satır başına bir tane",
+        "save": "Kuralları kaydet",
+        "saved": "Kurallar kaydedildi. Çalışan sanal alanlar artık bunları kullanıyor.",
+        "saveFailed": "Kurallar kaydedilemedi: {error}",
+        "calls": "Son istekler",
+        "onlyBlocked": "Yalnızca reddedilen istekler",
+        "noCalls": "Henüz istek yok.",
+        "allowed": "izin verildi",
+        "refused": "reddedildi",
+        "lanNote": "Yerel ağınız ve diğer özel adresler, yalnızca kayıt modunda bile her zaman reddedilir.",
+        "loadFailed": "İstekler yüklenemedi: {error}. Docker'a ulaşılabildiğini kontrol edin."
+      }
     }
   },
   "ar": {
@@ -125,7 +265,27 @@ export const sandboxMessages = {
       "loadFailed": "تعذّر تحميل بيئات الاختبار: {error}. تحقق من إمكانية الوصول إلى Docker ثم اضغط تحديث.",
       "refresh": "تحديث",
       "removed": "أُزيلت بيئة الاختبار",
-      "removeFailed": "تعذّرت إزالة بيئة الاختبار: {error}"
+      "removeFailed": "تعذّرت إزالة بيئة الاختبار: {error}",
+      "net": {
+        "title": "الإنترنت لبيئات الاختبار",
+        "intro": "لا تصل بيئات الاختبار المتصلة بالإنترنت إلى شبكتك المحلية ولا إلى الإنترنت مباشرة. طريقها الوحيد هو وكيل Studio الذي يفحص كل موقع ويسجّل كل طلب.",
+        "mode": "أي مواقع",
+        "allowlist": "المواقع المسموح بها فقط",
+        "blocklist": "أي موقع عدا المحظورة",
+        "log": "أي موقع عام (تسجيل فقط)",
+        "allow": "المواقع المسموح بها، واحد في كل سطر. يشمل كل منها نطاقاته الفرعية.",
+        "block": "المواقع المحظورة، واحد في كل سطر",
+        "save": "حفظ القواعد",
+        "saved": "حُفظت القواعد. تستخدمها بيئات الاختبار العاملة الآن.",
+        "saveFailed": "تعذّر حفظ القواعد: {error}",
+        "calls": "الطلبات الأخيرة",
+        "onlyBlocked": "الطلبات المرفوضة فقط",
+        "noCalls": "لا توجد طلبات بعد.",
+        "allowed": "مسموح",
+        "refused": "مرفوض",
+        "lanNote": "تُرفض شبكتك المحلية والعناوين الخاصة الأخرى دائمًا، حتى في وضع التسجيل فقط.",
+        "loadFailed": "تعذّر تحميل الطلبات: {error}. تحقّق من إمكانية الوصول إلى Docker."
+      }
     }
   },
   "ja": {
@@ -141,7 +301,27 @@ export const sandboxMessages = {
       "loadFailed": "サンドボックスを読み込めませんでした: {error}。Docker に接続できるか確認して、更新を押してください。",
       "refresh": "更新",
       "removed": "サンドボックスを削除しました",
-      "removeFailed": "サンドボックスを削除できませんでした: {error}"
+      "removeFailed": "サンドボックスを削除できませんでした: {error}",
+      "net": {
+        "title": "サンドボックスのインターネット",
+        "intro": "インターネット付きのサンドボックスは、LAN にもインターネットにも直接つながりません。外に出る道は Studio のプロキシだけで、サイトごとに確認し、すべての通信を記録します。",
+        "mode": "許可するサイト",
+        "allowlist": "許可したサイトだけ",
+        "blocklist": "ブロックしたサイト以外すべて",
+        "log": "すべての公開サイト（記録のみ）",
+        "allow": "許可するサイト（1 行に 1 つ。サブドメインも含みます）",
+        "block": "ブロックするサイト（1 行に 1 つ）",
+        "save": "ルールを保存",
+        "saved": "ルールを保存しました。実行中のサンドボックスにもすぐ適用されます。",
+        "saveFailed": "ルールを保存できませんでした: {error}",
+        "calls": "最近の通信",
+        "onlyBlocked": "拒否された通信だけ",
+        "noCalls": "まだ通信はありません。",
+        "allowed": "許可",
+        "refused": "拒否",
+        "lanNote": "LAN とその他のプライベートアドレスは、記録のみモードでも常に拒否されます。",
+        "loadFailed": "通信を読み込めませんでした: {error}。Docker に接続できるか確認してください。"
+      }
     }
   },
   "ko": {
@@ -157,7 +337,27 @@ export const sandboxMessages = {
       "loadFailed": "샌드박스를 불러오지 못했습니다: {error}. Docker에 연결되는지 확인한 뒤 새로고침을 누르세요.",
       "refresh": "새로고침",
       "removed": "샌드박스를 삭제했습니다",
-      "removeFailed": "샌드박스를 삭제하지 못했습니다: {error}"
+      "removeFailed": "샌드박스를 삭제하지 못했습니다: {error}",
+      "net": {
+        "title": "샌드박스 인터넷",
+        "intro": "인터넷이 켜진 샌드박스는 LAN이나 인터넷에 직접 닿지 않습니다. 밖으로 나가는 길은 Studio 프록시뿐이며, 사이트마다 확인하고 모든 요청을 기록합니다.",
+        "mode": "허용할 사이트",
+        "allowlist": "허용한 사이트만",
+        "blocklist": "차단한 사이트를 뺀 모든 사이트",
+        "log": "모든 공개 사이트(기록만)",
+        "allow": "허용할 사이트, 한 줄에 하나. 하위 도메인도 포함됩니다.",
+        "block": "차단할 사이트, 한 줄에 하나",
+        "save": "규칙 저장",
+        "saved": "규칙을 저장했습니다. 실행 중인 샌드박스에 바로 적용됩니다.",
+        "saveFailed": "규칙을 저장하지 못했습니다: {error}",
+        "calls": "최근 요청",
+        "onlyBlocked": "거부된 요청만",
+        "noCalls": "아직 요청이 없습니다.",
+        "allowed": "허용",
+        "refused": "거부",
+        "lanNote": "LAN과 다른 사설 주소는 기록만 모드에서도 항상 거부됩니다.",
+        "loadFailed": "요청을 불러오지 못했습니다: {error}. Docker에 연결되는지 확인하세요."
+      }
     }
   },
   "zh": {
@@ -173,7 +373,27 @@ export const sandboxMessages = {
       "loadFailed": "无法加载沙盒：{error}。请确认 Docker 可访问，然后点击刷新。",
       "refresh": "刷新",
       "removed": "沙盒已删除",
-      "removeFailed": "无法删除沙盒：{error}"
+      "removeFailed": "无法删除沙盒：{error}",
+      "net": {
+        "title": "沙盒的互联网",
+        "intro": "联网的沙盒无法直接访问你的局域网或互联网。它们唯一的出口是 Studio 的代理，代理会检查每个站点并记录每次请求。",
+        "mode": "允许哪些站点",
+        "allowlist": "只允许列表中的站点",
+        "blocklist": "除屏蔽列表外的所有站点",
+        "log": "所有公共站点（仅记录）",
+        "allow": "允许的站点，每行一个，包括其子域名。",
+        "block": "屏蔽的站点，每行一个",
+        "save": "保存规则",
+        "saved": "规则已保存，运行中的沙盒立即生效。",
+        "saveFailed": "无法保存规则：{error}",
+        "calls": "最近的请求",
+        "onlyBlocked": "只看被拒绝的请求",
+        "noCalls": "还没有请求。",
+        "allowed": "允许",
+        "refused": "拒绝",
+        "lanNote": "局域网和其他私有地址始终被拒绝，即使在仅记录模式下也是如此。",
+        "loadFailed": "无法加载请求：{error}。请检查 Docker 是否可以访问。"
+      }
     }
   },
   "zh-TW": {
@@ -189,7 +409,27 @@ export const sandboxMessages = {
       "loadFailed": "無法載入沙盒：{error}。請確認 Docker 可存取，然後點擊重新整理。",
       "refresh": "重新整理",
       "removed": "沙盒已刪除",
-      "removeFailed": "無法刪除沙盒：{error}"
+      "removeFailed": "無法刪除沙盒：{error}",
+      "net": {
+        "title": "沙盒的網際網路",
+        "intro": "連網的沙盒無法直接連到你的區域網路或網際網路。唯一的出口是 Studio 的代理，代理會檢查每個網站並記錄每次請求。",
+        "mode": "允許哪些網站",
+        "allowlist": "只允許清單中的網站",
+        "blocklist": "封鎖清單以外的所有網站",
+        "log": "所有公開網站（僅記錄）",
+        "allow": "允許的網站，每行一個，包含其子網域。",
+        "block": "封鎖的網站，每行一個",
+        "save": "儲存規則",
+        "saved": "規則已儲存，執行中的沙盒立即套用。",
+        "saveFailed": "無法儲存規則：{error}",
+        "calls": "最近的請求",
+        "onlyBlocked": "只看被拒絕的請求",
+        "noCalls": "還沒有請求。",
+        "allowed": "允許",
+        "refused": "拒絕",
+        "lanNote": "區域網路和其他私有位址一律拒絕，即使在僅記錄模式下也一樣。",
+        "loadFailed": "無法載入請求：{error}。請確認可以連到 Docker。"
+      }
     }
   }
 }

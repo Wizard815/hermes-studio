@@ -19,3 +19,34 @@ const base = '/api/studio/sandbox'
 
 export const fetchSandboxes = () => request<{ sandboxes: SandboxSummary[] }>(base)
 export const removeSandbox = (id: string) => request<{ sandbox: string; removed: boolean }>(`${base}/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
+/** What sandboxes with internet may reach through Studio's proxy (docs/sandbox.md). */
+export interface EgressRules {
+  mode: 'allowlist' | 'blocklist' | 'log'
+  allow: string[]
+  block: string[]
+}
+
+export interface EgressCall {
+  time: number
+  sandbox: string
+  ip: string
+  method: string
+  host: string
+  port: number
+  allowed: boolean
+  result: string
+  bytesOut: number
+  bytesIn: number
+}
+
+export const fetchEgressRules = () => request<{ rules: EgressRules }>(`${base}/egress`)
+export const saveEgressRules = (rules: Partial<EgressRules>) => request<{ rules: EgressRules }>(`${base}/egress`, { method: 'PUT', body: JSON.stringify(rules) })
+export const fetchNetworkLog = (opts: { sandbox?: string; blocked?: boolean; limit?: number } = {}) => {
+  const q = new URLSearchParams()
+  if (opts.sandbox) q.set('sandbox', opts.sandbox)
+  if (opts.blocked) q.set('blocked', '1')
+  if (opts.limit) q.set('limit', String(opts.limit))
+  const qs = q.toString()
+  return request<{ rules: EgressRules; calls: EgressCall[] }>(`${base}/network-log${qs ? `?${qs}` : ''}`)
+}

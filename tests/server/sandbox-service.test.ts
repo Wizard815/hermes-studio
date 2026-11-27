@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { create as tarCreate, extract as tarExtract } from 'tar'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { LABEL_EXPIRES, LABEL_INSTANCE, LABEL_SANDBOX, sandboxBody, type SandboxDocker, type SandboxSpec } from '../../packages/server/src/modules/studio/services/sandbox/docker'
 import { DISTROS, SandboxService } from '../../packages/server/src/modules/studio/services/sandbox/service'
+import { EGRESS_IMAGE } from '../../packages/server/src/modules/studio/services/sandbox/egress'
 import { sandboxDockerSocket } from '../../packages/server/src/modules/studio/services/system/docker'
 
 /** A Docker that keeps each container's files in a host folder, so archives and exec are real. */
@@ -28,6 +29,9 @@ class FakeSandboxDocker {
     this.images.add(image)
   }
   async tag(source: string, target: string) { this.tags.push(`${source}->${target}`); this.images.add(target) }
+  networks = new Map<string, { internal: boolean; labels: Record<string, string> }>()
+  own = new Map<string, { name: string; body: any; root: string; running: boolean; networks: string[] }>()
+  proxyLog = ''
   async create(spec: SandboxSpec) {
     const id = `c${++this.n}`
     const root = mkdtempSync(join(tmpdir(), 'fake-sandbox-'))
@@ -35,13 +39,25 @@ class FakeSandboxDocker {
     this.containers.set(id, { spec, root, state: 'running' })
     return id
   }
+  async ensureNetwork(name: string, labels: Record<string, string>, internal: boolean) {
+    if (!this.networks.has(name)) this.networks.set(name, { internal, labels })
+  }
+  async createContainer(name: string, body: any) {
+    const id = `p${++this.n}`
+    this.own.set(id, { name, body, root: mkdtempSync(join(tmpdir(), 'fake-proxy-')), running: false, networks: [] })
+    return id
+  }
+  async start(id: string) { this.own.get(id)!.running = true }
+  async connect(network: string, id: string) { this.own.get(id)!.networks.push(network) }
+  async ipOn(id: string) { return `10.9.0.${id.slice(1)}` }
   async exec(id: string, command: string, opts: { workdir?: string; timeoutSeconds: number }) {
     this.execs.push({ id, command, ...opts })
+    if (this.own.has(id) && command.startsWith('tail ')) return { exitCode: 0, output: this.proxyLog }
     if (this.nextExec) { const r = this.nextExec; this.nextExec = null; return r }
     return { exitCode: 0, output: `ran: ${command}\n` }
   }
   async putArchive(id: string, path: string, tar: Buffer) {
-    const dest = join(this.containers.get(id)!.root, path)
+    const dest = join((this.containers.get(id) || this.own.get(id))!.root, path)
     mkdirSync(dest, { recursive: true })
     const src = join(dest, '.incoming.tar')
     writeFileSync(src, tar)
@@ -54,7 +70,10 @@ class FakeSandboxDocker {
     for await (const c of tarCreate({ cwd: join(root, path, '..'), portable: true }, [path.split('/').pop()!]) as AsyncIterable<Buffer>) chunks.push(Buffer.from(c))
     return Buffer.concat(chunks)
   }
-  async inspect() { return null }
+  async inspect(idOrName: string) {
+    for (const [Id, c] of this.own) if (Id === idOrName || c.name === idOrName) return { Id, State: { Running: c.running }, Config: { Labels: c.body.Labels } }
+    return null
+  }
   async list(instance: string) {
     return [...this.containers.entries()].filter(([, c]) => c.spec.labels[LABEL_INSTANCE] === instance)
       .map(([Id, c]) => ({ Id, Labels: c.spec.labels, State: c.state, Image: c.spec.image }))
@@ -79,10 +98,12 @@ function service(extra: Partial<ConstructorParameters<typeof SandboxService>[0]>
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'sandbox-home-'))
   docker = new FakeSandboxDocker()
+  docker.images.add(EGRESS_IMAGE) // the proxy image; pulls below are the sandboxes' own
   clock = 1_000_000
 })
 afterEach(() => {
   for (const c of docker.containers.values()) rmSync(c.root, { recursive: true, force: true })
+  for (const c of docker.own.values()) rmSync(c.root, { recursive: true, force: true })
   rmSync(home, { recursive: true, force: true })
 })
 
@@ -192,6 +213,44 @@ describe('SandboxService', () => {
     expect(await s.remove({ sandbox: b.id })).toEqual({ sandbox: b.id, removed: true })
     expect(await s.list()).toEqual([])
     expect([...docker.containers.values()].map(c => c.spec.labels[LABEL_SANDBOX])).toEqual([other.id])
+  })
+
+  it('gives internet only through one shared proxy on an internal network', async () => {
+    const s = service()
+    docker.images.add('alpine:3.22').add(EGRESS_IMAGE)
+    const [a, b] = await Promise.all([s.create({ distro: 'alpine' }), s.create({ distro: 'alpine' })])
+    expect(docker.own.size).toBe(1)
+    const [[proxyId, proxy]] = [...docker.own.entries()]
+    expect(proxy).toMatchObject({ name: 'studio-sandbox-egress-inst', running: true, networks: ['studio-sandbox-net-inst'] })
+    expect(proxy.body.HostConfig.Binds).toEqual([])
+    expect(docker.networks.get('studio-sandbox-net-inst')).toMatchObject({ internal: true })
+    for (const c of docker.containers.values()) {
+      expect(c.spec.network).toBe('studio-sandbox-net-inst')
+      expect(c.spec.env).toMatchObject({ HTTPS_PROXY: 'http://egress-proxy:3128', http_proxy: 'http://egress-proxy:3128' })
+    }
+    const conf = readFileSync(join(proxy.root, 'etc/squid/studio/squid.conf'), 'utf8')
+    expect(conf).toMatch(/acl allowed dstdomain .*\.pypi\.org/)
+    expect(conf).not.toMatch(/allowed dstdomain[^\n]*openai/)
+    // offline sandboxes need no proxy
+    expect((await s.create({ distro: 'alpine', network: 'none' })).network).toBe('none')
+    expect([...docker.containers.values()].at(-1)!.spec.network).toBe('none')
+    // the log names the sandbox each address belongs to, and keeps calls after a sandbox is gone
+    const ipA = await docker.ipOn([...docker.containers.keys()][0])
+    docker.proxyLog = `1795800000.100 ${ipA} CONNECT pypi.org 443 TCP_TUNNEL/200 900 12000\n` +
+      `1795800001.200 ${ipA} CONNECT api.openai.com 443 TCP_DENIED/403 300 0\n`
+    const log = await s.networkLog({}) as any
+    expect(log.calls.map((c: any) => [c.sandbox, c.host, c.allowed])).toEqual([[a.id, 'api.openai.com', false], [a.id, 'pypi.org', true]])
+    expect((await s.networkLog({ blocked: true })).calls).toHaveLength(1)
+    expect((await s.networkLog({ sandbox: b.id })).calls).toHaveLength(0)
+    await s.remove({ sandbox: a.id })
+    expect((await s.networkLog({ sandbox: a.id })).calls).toHaveLength(2)
+    // new rules reach the running proxy at once
+    const rules = await s.setEgressRules({ mode: 'blocklist', block: ['*.huggingface.co', 'https://api.openai.com/v1'] })
+    expect(rules).toMatchObject({ mode: 'blocklist', block: ['api.openai.com', 'huggingface.co'] })
+    expect(readFileSync(join(proxy.root, 'etc/squid/studio/squid.conf'), 'utf8')).toMatch(/http_access allow all/)
+    expect(docker.execs.at(-1)).toMatchObject({ id: proxyId, command: expect.stringContaining('squid -k reconfigure') })
+    expect(s.egressRules().mode).toBe('blocklist')
+    expect((await s.tool('network_log', {}) as any).rules.mode).toBe('blocklist')
   })
 
   it('says Docker is missing instead of failing oddly', async () => {

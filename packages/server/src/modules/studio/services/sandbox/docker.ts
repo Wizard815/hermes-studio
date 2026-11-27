@@ -9,8 +9,8 @@ export interface SandboxSpec {
   name: string
   image: string
   labels: Record<string, string>
-  /** 'bridge' (internet, no access to Studio's other networks) or 'none' (no network at all). */
-  network: 'bridge' | 'none'
+  /** 'none' (no network at all) or the internal network whose only way out is the egress proxy (egress.ts). */
+  network: string
   memoryBytes: number
   nanoCpus: number
   pidsLimit: number
@@ -122,6 +122,49 @@ export class SandboxDocker {
     if (res.status === 404) throw Object.assign(new Error(`${path} does not exist in the sandbox`), { status: 404 })
     if (res.status !== 200) throw engineError(res.status, res.body)
     return res.body
+  }
+
+  /** Makes the network if it doesn't exist. `internal`: no gateway, so nothing on it reaches outside. */
+  async ensureNetwork(name: string, labels: Record<string, string>, internal: boolean): Promise<void> {
+    const res = await this.api('GET', `/networks/${encodeURIComponent(name)}`)
+    if (res.status === 200) {
+      const info = JSON.parse(res.body.toString('utf8'))
+      if (internal && !info.Internal) throw new Error(`Docker network ${name} exists but is not internal: remove it so Studio can make it again`)
+      return
+    }
+    if (res.status !== 404) throw engineError(res.status, res.body)
+    const made = await this.api('POST', '/networks/create', { Name: name, Driver: 'bridge', Internal: internal, Labels: labels, CheckDuplicate: true })
+    if (made.status !== 201 && made.status !== 409) throw engineError(made.status, made.body)
+  }
+
+  /** Creates a container from a full Engine API body, without starting it. */
+  async createContainer(name: string, body: Record<string, unknown>): Promise<string> {
+    const created = await this.json('POST', `/containers/create?name=${encodeURIComponent(name)}`, body, [201])
+    return String(created.Id)
+  }
+
+  async start(id: string): Promise<void> {
+    const res = await this.api('POST', `/containers/${encodeURIComponent(id)}/start`)
+    if (res.status !== 204 && res.status !== 304) throw engineError(res.status, res.body)
+  }
+
+  async connect(network: string, id: string, aliases: string[]): Promise<void> {
+    const res = await this.api('POST', `/networks/${encodeURIComponent(network)}/connect`, { Container: id, EndpointConfig: { Aliases: aliases } })
+    if (res.status !== 200 && !(res.status === 403 && /already exists/i.test(res.body.toString('utf8')))) throw engineError(res.status, res.body)
+  }
+
+  /** The container's address on `network`, or ''. */
+  async ipOn(id: string, network: string): Promise<string> {
+    const info = await this.inspect(id)
+    return String(info?.NetworkSettings?.Networks?.[network]?.IPAddress || '')
+  }
+
+  /** Removes a container Studio made for its own use (the egress proxy), if it carries this instance's label. */
+  async removeOwn(id: string, instance: string): Promise<void> {
+    const info = await this.inspect(id)
+    if (!info || info.Config?.Labels?.[LABEL_INSTANCE] !== instance) return
+    const res = await this.api('DELETE', `/containers/${encodeURIComponent(id)}?force=1&v=1`)
+    if (res.status !== 204 && res.status !== 404) throw engineError(res.status, res.body)
   }
 
   async inspect(id: string): Promise<any | null> {

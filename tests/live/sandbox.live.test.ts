@@ -129,6 +129,40 @@ describe.skipIf(!live)('sandboxes on real Docker: edge cases', () => {
     expect((await s.list()).length).toBe(before)
   }, 120_000)
 
+  it('internet goes only through the proxy: allowlist, LAN by name, no DNS, no direct route, all logged', async () => {
+    const box = (await s.create({ distro: 'alpine', minutes: 10, purpose: 'egress' })).id
+    const sh = async (command: string) => (await s.exec({ sandbox: box, command, timeoutSeconds: 120 })).output.trim()
+    // A box whose own TLS is inspected (like the cloud CI box) gives its CA with LIVE_EXTRA_CA.
+    if (process.env.LIVE_EXTRA_CA) {
+      await s.writeFile({ sandbox: box, path: '/tmp/extra-ca.crt', content: require('node:fs').readFileSync(process.env.LIVE_EXTRA_CA, 'utf8') })
+      await sh('cat /tmp/extra-ca.crt >> /etc/ssl/certs/ca-certificates.crt')
+    }
+    expect(await sh('apk add -q curl >/dev/null 2>&1 && echo ok')).toBe('ok') // dl-cdn.alpinelinux.org is on the allowlist
+    const code = (url: string, extra = '') => sh(`curl -s ${extra} -m 10 -o /dev/null -w "%{http_code}" ${url}; echo " $?"`)
+    expect(await code('https://pypi.org/simple/')).toBe('200 0')
+    expect(await code('https://api.openai.com/v1/models')).toBe('000 56') // CONNECT refused with 403
+    expect(await code('https://huggingface.co/')).toBe('000 56')
+    expect(await code('https://1.1.1.1/', '--noproxy "*"')).toMatch(/^000 (7|28)$/) // no route but the proxy
+    expect(await code('http://192.168.1.10/')).toBe('403 0')
+    expect(await sh('nslookup -timeout=2 example.com >/dev/null 2>&1; echo $?')).not.toBe('0') // no DNS to leak data through
+    // log-only mode still refuses names that point at private addresses
+    await s.setEgressRules({ mode: 'log' })
+    try {
+      expect(await code('https://example.com/')).toBe('200 0')
+      // resolves to 127.0.0.1: refused (403), or 503 where the resolver already drops loopback answers
+      expect(await code('http://127.0.0.1.nip.io/')).toMatch(/^(403|503) 0$/)
+      expect(await code('http://192.168.1.10.nip.io/')).toBe('403 0') // resolves to 192.168.1.10
+    } finally { await s.setEgressRules({ mode: 'allowlist' }) }
+    expect(await code('https://example.com/')).toBe('000 56')
+    const calls = (await s.networkLog({ sandbox: box, limit: 500 })).calls
+    const seen = (host: string) => calls.find(c => c.host === host)
+    expect(seen('pypi.org')).toMatchObject({ allowed: true, sandbox: box })
+    expect(seen('api.openai.com')).toMatchObject({ allowed: false, result: 'TCP_DENIED/403' })
+    expect(seen('192.168.1.10.nip.io')).toMatchObject({ allowed: false, result: 'TCP_DENIED/403' })
+    expect(calls.some(c => c.host === '1.1.1.1')).toBe(false)
+    await s.remove({ sandbox: box })
+  }, 300_000)
+
   it('network none really has no network', async () => {
     const off = await s.create({ distro: 'alpine', network: 'none', minutes: 5 })
     const r = await s.exec({ sandbox: off.id, command: 'ip -o link | grep -v " lo:" | wc -l; wget -q -T 3 -O- http://1.1.1.1 >/dev/null 2>&1; echo $?' })

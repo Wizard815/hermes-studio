@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, posix } from 'node:path'
@@ -9,12 +9,13 @@ import { create as tarCreate, Parser as TarParser } from 'tar'
 import { forgeConfig, forgeGitEnv, onForge, type ForgeConfig } from '../forge'
 import { pullReference } from '../test-lab/templates'
 import { LABEL_EXPIRES, LABEL_INSTANCE, LABEL_SANDBOX, SandboxDocker } from './docker'
+import { cleanRules, DEFAULT_RULES, EGRESS_ALIAS, EGRESS_CONF_DIR, EGRESS_IMAGE, EGRESS_LOG, parseAccessLog, proxyEnv, squidConfig, type EgressEntry, type EgressRules } from './egress'
 
 /**
  * Throwaway containers on Studio's own machine (docs/sandbox.md): an agent makes one
  * from an image, runs commands in it, copies files and repos in and out, and removes
- * it, or Studio removes it when its time is up. Network: 'internet' (Docker's default
- * bridge: the internet, none of Studio's own networks) or 'none'.
+ * it, or Studio removes it when its time is up. Network: 'internet' (an internal network
+ * whose only way out is the egress proxy, which checks and logs every call: egress.ts) or 'none'.
  */
 
 const run = promisify(execFile)
@@ -22,6 +23,8 @@ const ID = /^[a-z0-9]{10}$/
 const MAX_OUTPUT = 64 * 1024
 const MAX_FILE = 1024 * 1024
 const MAX_SANDBOXES = 8
+const MAX_LOG_BYTES = 5 * 1024 * 1024
+const LABEL_ROLE = 'studio.sandbox.role'
 
 /** Distros and toolchains by name (create's `distro`); any other image works by name too (`image`). */
 export const DISTROS: Record<string, { image: string; label: string; install: string }> = {
@@ -83,25 +86,28 @@ function tail(text: string): { text: string; truncated: boolean } {
   return { text: text.slice(-MAX_OUTPUT), truncated: true }
 }
 
+type Indexed = SandboxInfo & { containerId: string; ip?: string }
+
 export class SandboxService {
   constructor(private readonly deps: SandboxDeps) {}
+  private egressReady: Promise<string> | null = null
 
   private now() { return this.deps.now?.() ?? Date.now() }
   private indexFile() { return join(this.deps.home(), 'sandboxes.json') }
 
-  private read(): Record<string, SandboxInfo & { containerId: string }> {
+  private read(): Record<string, Indexed> {
     try { return JSON.parse(readFileSync(this.indexFile(), 'utf8')) } catch { return {} }
   }
 
   /** Read, change and write the index with no await in between, so concurrent calls never undo each other. */
-  private change(fn: (index: Record<string, SandboxInfo & { containerId: string }>) => void) {
+  private change(fn: (index: Record<string, Indexed>) => void) {
     const index = this.read()
     fn(index)
     this.write(index)
     return index
   }
 
-  private write(index: Record<string, SandboxInfo & { containerId: string }>) {
+  private write(index: Record<string, Indexed>) {
     mkdirSync(this.deps.home(), { recursive: true })
     const tmp = `${this.indexFile()}.${process.pid}.tmp`
     writeFileSync(tmp, JSON.stringify(index, null, 2))
@@ -123,7 +129,7 @@ export class SandboxService {
     const index = this.read()
     const live = this.deps.docker.available() ? await this.deps.docker.list(this.deps.instance).catch(() => []) : []
     const states = new Map(live.map(c => [c.Labels?.[LABEL_SANDBOX] || '', c.State || '']))
-    return Object.values(index).map(({ containerId: _c, ...item }) => ({ ...item, state: states.get(item.id) || 'gone' }))
+    return Object.values(index).map(({ containerId: _c, ip: _ip, ...item }) => ({ ...item, state: states.get(item.id) || 'gone' }))
       .sort((a, b) => b.createdAt - a.createdAt)
   }
 
@@ -143,15 +149,19 @@ export class SandboxService {
     const id = randomBytes(5).toString('hex')
     const createdAt = this.now()
     const expiresAt = createdAt + minutes * 60_000
+    // Internet goes only through the egress proxy: no route to the LAN, and every call is logged.
+    if (network === 'internet') await this.ensureEgress()
     const containerId = await this.deps.docker.create({
-      name: `studio-sandbox-${id}`, image, network: network === 'none' ? 'none' : 'bridge',
+      name: `studio-sandbox-${id}`, image, network: network === 'none' ? 'none' : this.egressNetwork(),
       labels: { [LABEL_SANDBOX]: id, [LABEL_INSTANCE]: this.deps.instance, [LABEL_EXPIRES]: String(expiresAt) },
       memoryBytes: Math.round(memoryGb * 1024 ** 3), nanoCpus: Math.round(cpus * 1e9), pidsLimit: 4096,
+      ...(network === 'internet' ? { env: proxyEnv() } : {}),
     })
-    const item = { id, containerId, image, imageId: await this.deps.docker.imageId(image).catch(() => ''), network, purpose: str(input.purpose, 300),
-      createdAt, expiresAt, state: 'running', repos: [] as string[] } as SandboxInfo & { containerId: string }
+    const ip = network === 'internet' ? await this.deps.docker.ipOn(containerId, this.egressNetwork()).catch(() => '') : ''
+    const item: Indexed = { id, containerId, ip, image, imageId: await this.deps.docker.imageId(image).catch(() => ''), network, purpose: str(input.purpose, 300),
+      createdAt, expiresAt, state: 'running', repos: [] as string[] }
     this.change(index => { index[id] = item })
-    const { containerId: _c, ...out } = item
+    const { containerId: _c, ip: _ip, ...out } = item
     return out
   }
 
@@ -278,6 +288,8 @@ export class SandboxService {
   /** Removes sandboxes whose time is up, and forgets ones whose container is gone. */
   async sweep(): Promise<string[]> {
     if (!this.deps.docker.available()) return []
+    // Before removing anything, so the log still knows which sandbox each address was.
+    await this.collectEgress().catch(() => 0)
     const known = this.read()
     const removed: string[] = []
     const live = await this.deps.docker.list(this.deps.instance)
@@ -302,6 +314,101 @@ export class SandboxService {
     return removed
   }
 
+  private egressNetwork() { return `studio-sandbox-net-${this.deps.instance}` }
+  private egressName() { return `studio-sandbox-egress-${this.deps.instance}` }
+  private rulesFile() { return join(this.deps.home(), 'egress.json') }
+  private logFile() { return join(this.deps.home(), 'egress.jsonl') }
+
+  /** What sandboxes with internet may reach (Settings on the Sandboxes card; default: the allowlist). */
+  egressRules(): EgressRules {
+    try { return cleanRules(JSON.parse(readFileSync(this.rulesFile(), 'utf8'))) } catch { return cleanRules(DEFAULT_RULES) }
+  }
+
+  async setEgressRules(input: Record<string, unknown>): Promise<EgressRules> {
+    const rules = cleanRules(input as Partial<Record<keyof EgressRules, unknown>>, this.egressRules())
+    mkdirSync(this.deps.home(), { recursive: true })
+    writeFileSync(this.rulesFile(), JSON.stringify(rules, null, 2))
+    // A running proxy takes the new rules at once; otherwise the next sandbox with internet starts it with them.
+    const proxy = this.deps.docker.available() ? await this.deps.docker.inspect(this.egressName()).catch(() => null) : null
+    if (proxy?.State?.Running) {
+      await this.writeSquidConfig(String(proxy.Id), rules)
+      const done = await this.deps.docker.exec(String(proxy.Id), `squid -k reconfigure -f ${EGRESS_CONF_DIR}/squid.conf`, { workdir: '/', timeoutSeconds: 30 })
+      if (done.exitCode !== 0) throw new SandboxError(`The proxy did not take the new rules: ${done.output.trim().slice(-300)}`, 502)
+    }
+    return rules
+  }
+
+  private async writeSquidConfig(containerId: string, rules: EgressRules) {
+    const dir = await mkdtemp(join(tmpdir(), 'studio-sandbox-egress-'))
+    try {
+      await mkdir(join(dir, 'studio'))
+      await writeFile(join(dir, 'studio', 'squid.conf'), squidConfig(rules))
+      await this.deps.docker.putArchive(containerId, posix.dirname(EGRESS_CONF_DIR), await pack(dir, ['studio']))
+    } finally { await rm(dir, { recursive: true, force: true }) }
+  }
+
+  /** The internal network and its proxy, made once and shared by every sandbox with internet. */
+  private ensureEgress(): Promise<string> {
+    this.egressReady ??= this.startEgress().catch(error => { this.egressReady = null; throw error })
+    return this.egressReady
+  }
+
+  private async startEgress(): Promise<string> {
+    const docker = this.deps.docker
+    const labels = { [LABEL_INSTANCE]: this.deps.instance, [LABEL_ROLE]: 'egress' }
+    await docker.ensureNetwork(this.egressNetwork(), labels, true)
+    let proxy = await docker.inspect(this.egressName())
+    if (!proxy) {
+      if (!(await docker.hasImage(EGRESS_IMAGE))) await this.pullImage(EGRESS_IMAGE)
+      const id = await docker.createContainer(this.egressName(), {
+        Image: EGRESS_IMAGE, Labels: labels, Cmd: ['-f', `${EGRESS_CONF_DIR}/squid.conf`, '-NYC'],
+        HostConfig: { NetworkMode: 'bridge', RestartPolicy: { Name: 'unless-stopped' }, Memory: 256 * 1024 ** 2, PidsLimit: 512, Binds: [] },
+      })
+      await this.writeSquidConfig(id, this.egressRules())
+      await docker.connect(this.egressNetwork(), id, [EGRESS_ALIAS])
+      proxy = { Id: id, State: { Running: false } }
+    }
+    if (!proxy.State?.Running) await docker.start(String(proxy.Id))
+    return String(proxy.Id)
+  }
+
+  /** Moves new lines of the proxy's log into egress.jsonl, naming the sandbox each came from. */
+  async collectEgress(): Promise<number> {
+    if (!this.deps.docker.available()) return 0
+    const proxy = await this.deps.docker.inspect(this.egressName()).catch(() => null)
+    if (!proxy?.State?.Running) return 0
+    const raw = await this.deps.docker.exec(String(proxy.Id), `tail -n 5000 ${EGRESS_LOG} 2>/dev/null || true`, { workdir: '/', timeoutSeconds: 30 })
+    const byIp = new Map(Object.values(this.read()).filter(item => item.ip).map(item => [item.ip!, item.id]))
+    const stateFile = join(this.deps.home(), 'egress-state.json')
+    let last = 0
+    try { last = Number(JSON.parse(readFileSync(stateFile, 'utf8')).last) || 0 } catch { /* first run */ }
+    const fresh = parseAccessLog(raw.output, ip => byIp.get(ip) || '').filter(entry => entry.time > last)
+    if (!fresh.length) return 0
+    mkdirSync(this.deps.home(), { recursive: true })
+    try {
+      if (statSync(this.logFile()).size > MAX_LOG_BYTES) {
+        const kept = readFileSync(this.logFile(), 'utf8').split('\n').filter(Boolean)
+        writeFileSync(this.logFile(), kept.slice(Math.floor(kept.length / 2)).join('\n') + '\n')
+      }
+    } catch { /* no log yet */ }
+    appendFileSync(this.logFile(), fresh.map(entry => JSON.stringify(entry)).join('\n') + '\n')
+    writeFileSync(stateFile, JSON.stringify({ last: fresh.at(-1)!.time }))
+    return fresh.length
+  }
+
+  /** Calls sandboxes made through the proxy, newest first: all, one sandbox's, or only refused ones. */
+  async networkLog(input: Record<string, unknown> = {}) {
+    await this.collectEgress().catch(() => 0)
+    const sandbox = str(input.sandbox, 40)
+    const limit = Math.min(500, Math.max(1, Number(input.limit) || 100))
+    let entries: EgressEntry[] = []
+    try {
+      entries = readFileSync(this.logFile(), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as EgressEntry)
+    } catch { /* nothing logged yet */ }
+    const picked = entries.filter(entry => (!sandbox || entry.sandbox === sandbox) && (!input.blocked || !entry.allowed)).reverse().slice(0, limit)
+    return { rules: this.egressRules(), calls: picked }
+  }
+
   /** The agent tool: one entry point per action (bin/ekko-studio-mcp.mjs, ekko_studio_use_sandbox). */
   async tool(action: string, input: Record<string, unknown>) {
     switch (action) {
@@ -313,7 +420,8 @@ export class SandboxService {
       case 'copy_repo': return this.copyRepo(input)
       case 'extend': return this.extend(input)
       case 'remove': return this.remove(input)
-      default: throw new SandboxError(`Unknown sandbox action ${action}: list, create, exec, write_file, read_file, copy_repo, extend or remove`)
+      case 'network_log': return this.networkLog(input)
+      default: throw new SandboxError(`Unknown sandbox action ${action}: list, create, exec, write_file, read_file, copy_repo, extend, remove or network_log`)
     }
   }
 }
