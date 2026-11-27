@@ -255,12 +255,61 @@ How it is secured:
   unknown keys and changed bodies get a 401.
 - **Unpair** removes the Studio here and tells the other side to forget this
   one too.
-- Starting threads on another Studio's herdr ("remote herdr") is not built:
-  a paired Studio can only message the coordinator, which decides.
+- A paired Studio never starts threads on another Studio's herdr directly. It
+  messages that project's coordinator, which decides what runs there.
 
-The coordinator tool has no federation actions; the person uses the Studios
-dialog. Paired Studios are kept in `projects/peers.json` under the Web UI home
-(mode 600).
+Paired Studios, the group, and the log are kept in `projects/peers.json`
+under the Web UI home (mode 600).
+
+## Studio groups
+
+To link many Studios (say 6) so all of them can talk, pair each one into a
+group instead of pairing every pair by hand.
+
+1. On Studio 1, **Make a pairing code**.
+2. On Studio 2, connect with that code and tick **Add it to this Studio's
+   group**.
+3. On Studio 1, approve Studio 2 and turn on **In the group**.
+4. Repeat for Studios 3 to 6, all with Studio 1's codes.
+
+When Studio 1 lets a group member in, its bridge introduces it to every
+other member, and each member answers with the members it knows. Within a
+second, every Studio knows the other five, marked "Introduced by Studio 1".
+Two groups merge when one member of each pairs with the other.
+
+The trust rule: joining a group means trusting every member's approvals. A
+Studio takes introductions only from approved members of its own group.
+Plain pairs (group off) never introduce anyone. A Studio you unpair stays
+gone: introductions do not bring it back, but pairing it again by code does.
+
+**Share with the whole group:** **This Studio's group** lists projects every
+group member may see and message, on top of the per-Studio picks.
+
+**Coordinators talk across Studios.** The coordinator tool has three
+actions, which threads cannot use:
+
+| Action | Arguments | What it does |
+|---|---|---|
+| `studios` | none | Connected Studios and the projects each shares with this one |
+| `message_studio` | `studio` (name or id), `studio_project`, `text` | Messages that project's coordinator |
+| `studio_task` | `studio`, `studio_project`, `title`, `notes` | Adds a task to its board |
+
+The other coordinator is told which project wrote and how to answer. It may
+answer that project for 24 hours, even if it is not shared with its Studio.
+It is told to answer only with a result or a question, never just to
+acknowledge.
+
+Each Studio's bridge guards the links:
+
+- A project's coordinators may send 30 messages or tasks to one Studio an
+  hour. The person in the dialog is not limited.
+- A Studio takes 120 messages or tasks from one Studio an hour.
+- **Between Studios** in the dialog shows the last messages, tasks and
+  introductions, with who sent them and from which project.
+
+The person can also write to a local coordinator from another app (FAITH, a
+script) with `POST /api/studio/projects/:id/message {text, app}`. It wakes
+the coordinator as "From your person, sent through FAITH".
 
 ## The coordinator
 
@@ -324,12 +373,15 @@ Paired Studios (super admin):
 | --- | --- |
 | `GET /api/studio/peers` | This Studio's id and label, and paired Studios |
 | `POST /api/studio/peers/code` | A one-time pairing code `{ code, expiresAt }` |
-| `POST /api/studio/peers/pair` | Pair `{ url, code, selfUrl, label? }` |
-| `PUT /api/studio/peers/:peerId` | `{ approved?, label?, url?, projects? }`: approve, rename, or pick shared projects |
+| `POST /api/studio/peers/pair` | Pair `{ url, code, selfUrl, label?, group? }` |
+| `PUT /api/studio/peers/:peerId` | `{ approved?, label?, url?, projects?, group? }`: approve, rename, pick shared projects, or put it in the group |
+| `GET`/`PUT /api/studio/peers/group` | `{ projects }` shared with every group member |
+| `GET /api/studio/peers/log?limit=` | What crossed between Studios, newest last |
 | `DELETE /api/studio/peers/:peerId` | Unpair on both sides |
 | `GET /api/studio/peers/:peerId/projects` | The projects that Studio shares with this one |
 | `POST /api/studio/peers/:peerId/projects/:projectId/message` | `{ text }` to its coordinator |
 | `POST /api/studio/peers/:peerId/projects/:projectId/tasks` | `{ title, notes? }` on its board |
+| `POST /api/studio/projects/:id/message` | `{ text, app }`: the person writes to the coordinator from another app |
 
 Between Studios (no login; signed with the sender's device key, headers
 `x-studio-peer`, `x-studio-nonce`, `x-studio-timestamp`, `x-studio-signature`):
@@ -367,6 +419,13 @@ Between Studios (no login; signed with the sender's device key, headers
   Studio at the root of its address.
 - **A shared project shows nothing:** the other side shared no projects with
   this Studio yet.
+- **A group member never meets the others:** it was approved with **In the
+  group** off on one side. Turn it on in both Studios.
+- **An introduced Studio isn't answering:** it was introduced at the address
+  the introducing Studio uses, which may be a LAN address the others cannot
+  reach. Pair over Tailscale addresses, or fix its address in peers.json.
+- **429 "Coordinators here sent 30 messages":** two coordinators are likely
+  looping. Read **Between Studios**, and tell one coordinator to stop.
 
 - **"Could not make a git worktree for the thread":** git refused, usually
   because the repo has no commit yet or a branch of that name exists. Commit
