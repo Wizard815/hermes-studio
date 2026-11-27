@@ -175,6 +175,7 @@ onBeforeUnmount(() => {
   width: 100%;
   min-height: 0;
   border: 0;
+  /* theme-exception: external -- VS Code's own dark canvas shows while its page loads in the frame */
   background: #1e1e1e;
 }
 

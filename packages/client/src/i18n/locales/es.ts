@@ -1449,6 +1449,7 @@ export default {
     recent: 'Recientes',
     recentCount: 'Cantidad de sesiones recientes',
     loadMoreSessions: 'Cargar más sesiones',
+    showMoreChats: 'Mostrar {count} más',
     newChat: 'Nuevo chat',
     newChatCardTitle: "Cada idea merece un buen compañero.",
     newChatCardSubtitle: "Elige un Agent para iniciar tu próxima conversación.",

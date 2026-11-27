@@ -113,7 +113,7 @@ function updateTab(value: string | number) {
   padding: 0 5px;
   border-radius: 9px;
   background: $warning;
-  color: #fff;
+  color: var(--text-on-accent);
   font-size: 11px;
   line-height: 18px;
   text-align: center;

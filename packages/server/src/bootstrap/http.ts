@@ -34,6 +34,7 @@ import { dshPluginUi } from '../modules/coding-agents/services'
 import { vscodeGateway, vscodeManager } from '../modules/studio/services/vscode'
 import { screenGateway, screenManager } from '../modules/studio/services/screen'
 import { hermesApi } from '../modules/hermes/services/hermes-api'
+import { findHermesCli } from '../modules/hermes/services/herdr-launch'
 import { screenBrowser, screenBrowserPort, startScreenBrowser } from '../modules/studio/services/screen-browser'
 import './chat-agent-runtime-adapter'
 import './skill-files-adapter'
@@ -82,6 +83,9 @@ import { PersonPresenceSocketServer } from '../modules/studio/sockets/person-pre
 import { logger } from '../modules/studio/public/logging'
 import { HeadlessBrowserService, getHeadlessBrowserService, setHeadlessBrowserService } from '../modules/studio/services/headless-browser-service'
 import { createStaticCompressionMiddleware } from '../modules/studio/middleware/static-compression'
+import { createApiCompressionMiddleware } from '../modules/studio/middleware/api-compression'
+import { BrowserScreencast } from '../modules/studio/services/browser-live/screencast'
+import { registerBrowserLiveSocket } from '../modules/studio/sockets/browser-live'
 import { getStaticCacheControl, SPA_ENTRY_CACHE_CONTROL } from '../modules/studio/middleware/static-cache'
 import { upstreamUpkeepProxy } from '../modules/studio/middleware/upstream-upkeep-proxy'
 import { requireUserJwt, resolveUserProfile } from '../modules/studio/middleware/auth'
@@ -551,6 +555,7 @@ export async function bootstrap() {
   // Raise body limits above the default 1mb: profile avatars and MiMo voice-clone
   // reference audio are posted as base64 data URLs before reaching handlers.
   app.use(createRequestBodyParser())
+  app.use(createApiCompressionMiddleware())
   app.use(createPluginHttpMiddleware(getPluginManager))
   console.log('[bootstrap] cors + bodyParser registered')
 
@@ -648,6 +653,7 @@ export async function bootstrap() {
   const sandboxTimer = setInterval(() => { void getSandbox().sweep().catch(() => {}) }, 60_000)
   sandboxTimer.unref()
   additionalShutdownSteps.push({ name: 'Test Lab', close: () => closeTestLab() })
+  screenManager.useCliFinder(() => findHermesCli())
   const closeScreenGateway = screenGateway.attach(servers)
   additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })
   // A screen installed before this container was rebuilt is installed again.
@@ -804,6 +810,8 @@ export async function bootstrap() {
       await headlessBrowser.start()
     }
     setHeadlessBrowserService(headlessBrowser)
+    const screencast = new BrowserScreencast(tabId => headlessBrowser.tabs.get(tabId)?.page ?? null)
+    registerBrowserLiveSocket(activeGroupChatServer.getIO(), () => screencast)
     if (!headlessBrowser.attached) screenBrowser.usePanelBrowser(() => headlessBrowser.devToolsPort())
     console.log('[bootstrap] browser panel started (%s)', headlessBrowser.attached ? "the Screen's browser" : 'its own browser')
 
@@ -819,7 +827,7 @@ export async function bootstrap() {
 
     additionalShutdownSteps.push({
       name: 'Headless browser',
-      close: () => headlessBrowser.stop(),
+      close: async () => { await screencast.stopAll(); await headlessBrowser.stop() },
     })
   } catch (err: any) {
     console.warn('[bootstrap] headless browser service failed:', err.message)

@@ -1449,6 +1449,7 @@ export default {
     recent: 'Zuletzt',
     recentCount: 'Anzahl letzter Sitzungen',
     loadMoreSessions: 'Weitere Sitzungen laden',
+    showMoreChats: '{count} weitere anzeigen',
     newChat: 'Neuer Chat',
     newChatCardTitle: "Jede Idee verdient einen guten Partner.",
     newChatCardSubtitle: "Wähle einen Agent für dein nächstes Gespräch.",

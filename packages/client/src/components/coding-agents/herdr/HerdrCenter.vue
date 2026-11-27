@@ -1005,6 +1005,7 @@ onBeforeUnmount(() => {
     right: 0;
     bottom: 0;
     width: min(360px, 88vw);
+    /* theme-exception: state -- the drawer's edge shadow over the terminal, as the Spaces drawer has */
     box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18);
   }
 }
@@ -1034,6 +1035,7 @@ onBeforeUnmount(() => {
   position: absolute;
   z-index: 4;
   inset: 0;
+  /* theme-exception: state -- dims the terminal under the open Tools drawer, like the Spaces drawer */
   background: rgba(0, 0, 0, 0.28);
 }
 

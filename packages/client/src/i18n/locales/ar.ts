@@ -1493,6 +1493,7 @@ export default {
     recent: 'الأخيرة',
     recentCount: 'عدد الجلسات الأخيرة',
     loadMoreSessions: 'تحميل جلسات أكثر',
+    showMoreChats: 'عرض {count} أخرى',
     searchTitle: 'البحث في الجلسات',
     searchSubtitle: 'ابحث بالعنوان أو بمحتوى الرسالة',
     searchScope: 'نطاق البحث: قاعدة بيانات جلسات واجهة الويب المحلية فقط. جلسات سجل Hermes للقراءة فقط غير مضمّنة.',

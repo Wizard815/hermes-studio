@@ -1395,6 +1395,7 @@ export default {
     recent: 'Недавние',
     recentCount: 'Количество недавних сессий',
     loadMoreSessions: 'Загрузить ещё сеансы',
+    showMoreChats: 'Показать ещё {count}',
     searchTitle: 'Поиск сеансов',
     searchSubtitle: 'Поиск по заголовку или содержимому сообщений',
     searchScope: 'Область поиска: только локальная библиотека сеансов Web UI; сеансы истории Hermes только для чтения не включаются.',

@@ -50,7 +50,7 @@ const rows = computed(() => props.lines.map(text => ({ text, level: logLineLevel
   padding: 10px 12px;
   border: var(--border-width, 1px) solid $border-light;
   border-radius: $radius-sm;
-  background: $bg-secondary;
+  background: rgba(var(--text-primary-rgb), 0.04);
   font-family: $font-code;
   font-size: calc(var(--font-size-base, 14px) * 12 / 14);
   line-height: 1.5;

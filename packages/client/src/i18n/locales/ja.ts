@@ -1449,6 +1449,7 @@ export default {
     recent: '最近',
     recentCount: '最近のセッション数',
     loadMoreSessions: 'さらにセッションを読み込む',
+    showMoreChats: 'さらに {count} 件を表示',
     newChat: '新しいチャット',
     newChatCardTitle: "どんなアイデアにも、頼れるパートナーを。",
     newChatCardSubtitle: "Agent を選んで、新しい会話を始めましょう。",

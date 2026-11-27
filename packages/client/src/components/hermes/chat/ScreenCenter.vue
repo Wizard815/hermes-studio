@@ -312,10 +312,10 @@ onBeforeUnmount(() => {
   padding: 1px 8px;
   border-radius: 10px;
   font-size: 11.5px;
-  background: rgba(127, 127, 127, 0.15);
+  background: rgba(var(--text-primary-rgb), 0.08);
 
-  &[data-holder='you'] { background: $error; color: #fff; }
-  &[data-holder='other'] { background: $warning; color: #000; }
+  &[data-holder='you'] { background: $error; color: var(--text-on-accent); }
+  &[data-holder='other'] { background: $warning; color: var(--text-on-accent); }
 }
 
 .screen-reason {
@@ -384,6 +384,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  /* theme-exception: external -- letterbox behind the remote screen video stays dark in every theme */
   background: #111;
   overflow: hidden;
 }

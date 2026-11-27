@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { findHermesCli } from '../../../hermes/services/herdr-launch'
 import { getWebUiHome } from '../../public/config'
 
 /**
@@ -86,11 +85,15 @@ export class ScreenManager {
   private starting: Promise<void> | null = null
   private error: string | null = null
   private log: string[] = []
+  private findCli: () => string | null = () => null
 
   constructor(private readonly stateFile = join(getWebUiHome(), 'screen', 'state.json')) {}
 
   get home(): string { return hermesHome() }
-  get cli(): string | null { return findHermesCli() }
+  get cli(): string | null { return this.findCli() }
+
+  /** Bootstrap supplies the Hermes CLI lookup, since Studio must not import Hermes. */
+  useCliFinder(find: () => string | null): void { this.findCli = find }
   get python(): string | null { return hermesPython(this.cli) }
 
   private remember(text: string) {

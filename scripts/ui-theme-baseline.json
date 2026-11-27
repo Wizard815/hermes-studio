@@ -1223,14 +1223,7 @@
       "unowned-background | .browser-gallery-delete | background: rgba(0, 0, 0, 0.6)": 1,
       "literal-color | .browser-gallery-delete | color: #fff": 1,
       "literal-color | .browser-gallery-delete:hover | background: rgba(220, 60, 60, 0.9)": 1,
-      "literal-color | .browser-gallery-thumb:hover | box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)": 1,
-      "literal-color | .browser-lightbox | background: rgba(0, 0, 0, 0.85)": 1,
-      "unowned-background | .browser-lightbox | background: rgba(0, 0, 0, 0.85)": 1,
-      "literal-color | .browser-lightbox-close | background: rgba(255, 255, 255, 0.1)": 1,
-      "unowned-background | .browser-lightbox-close | background: rgba(255, 255, 255, 0.1)": 1,
-      "literal-color | .browser-lightbox-close | color: #fff": 1,
-      "literal-color | .browser-lightbox-close:hover | background: rgba(255, 255, 255, 0.2)": 1,
-      "literal-color | .browser-lightbox-image | box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5)": 1
+      "literal-color | .browser-gallery-thumb:hover | box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)": 1
     },
     "packages/client/src/components/hermes/files/FileTree.vue": {
       "unowned-background | .tree-error | background-color: rgba(var(--danger-color-rgb, 220, 38, 38), 0.08)": 1

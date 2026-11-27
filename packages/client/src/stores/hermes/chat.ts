@@ -5743,13 +5743,15 @@ function createChatState(scopedSessionId?: string) {
   // on the VM via CLI/Telegram while this client is in the foreground). Only
   // runs when the tab is visible and not streaming, so it's cheap and never
   // disrupts an active run. visibilitychange (above) handles the wake-from-hidden
-  // case; this covers the "left it open and watching" case.
+  // case; this covers the "left it open and watching" case. Changes made through
+  // Studio are pushed (onListChanged below), so this is only a fallback, and it
+  // returns the whole list (about 1 KB a chat), so it runs every 30 s.
   if (!scopedSessionId && typeof window !== 'undefined') {
     const refreshTimer = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
       if (isStreaming.value) return
       void refreshSessionListOnly()
-    }, 12_000)
+    }, 30_000)
     onScopeDispose(() => window.clearInterval(refreshTimer))
 
     // Push-based list sync: chats created or deleted anywhere (another tab, MCP,

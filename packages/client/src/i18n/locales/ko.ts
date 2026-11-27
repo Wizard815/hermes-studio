@@ -1449,6 +1449,7 @@ export default {
     recent: '최근',
     recentCount: '최근 세션 수',
     loadMoreSessions: '세션 더 불러오기',
+    showMoreChats: '{count}개 더 보기',
     newChat: '새 채팅',
     newChatCardTitle: "모든 아이디어에는 좋은 파트너가 필요합니다.",
     newChatCardSubtitle: "Agent를 선택하고 새로운 대화를 시작하세요.",

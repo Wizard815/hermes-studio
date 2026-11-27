@@ -257,7 +257,7 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
   padding: 0 6px;
   border-radius: 10px;
   background: $warning;
-  color: #fff;
+  color: var(--text-on-accent);
   font-size: 12px;
   text-align: center;
 }
@@ -318,7 +318,7 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 11px;
-  background: $bg-secondary;
+  background: rgba(var(--text-primary-rgb), 0.04);
   color: $text-secondary;
 
   &[data-status='blocked'] { color: $error; }

@@ -324,7 +324,7 @@ defineExpose({ load })
   margin-bottom: calc(16px * var(--spacing-scale, 1));
   border: var(--border-width, 1px) solid $border-color;
   border-radius: $radius-md;
-  background: $bg-secondary;
+  background: rgba(var(--text-primary-rgb), 0.04);
   flex-shrink: 0;
 }
 

@@ -331,6 +331,6 @@ void loadServerConfigs()
 .required { color: $error; }
 .post-install {
   margin: 0; white-space: pre-wrap; font-size: calc(var(--font-size-base, 14px) * 12 / 14);
-  padding: 10px; border-radius: $radius-md; background: $bg-secondary; color: $text-secondary; max-height: 200px; overflow: auto;
+  padding: 10px; border-radius: $radius-md; background: rgba(var(--text-primary-rgb), 0.04); color: $text-secondary; max-height: 200px; overflow: auto;
 }
 </style>

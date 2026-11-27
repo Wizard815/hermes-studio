@@ -145,7 +145,8 @@ it('does not create missing manual directories or substitute a default for inacc
   expect(runtime.createDefaultWorkspace).not.toHaveBeenCalled(); expect(count()).toBe(0)
 })
 
-it.skipIf(process.platform === 'win32')('rejects a manual directory without read/write/traverse permission', async () => {
+// root ignores directory permissions, so the check cannot fail there.
+it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('rejects a manual directory without read/write/traverse permission', async () => {
   const selected = join(root, 'no-permission'); mkdirSync(selected); chmodSync(selected, 0)
   try { await expect(create({ workspace: selected })).rejects.toMatchObject({ code: 'WORKSPACE_UNAVAILABLE' }); expect(count()).toBe(0) }
   finally { chmodSync(selected, 0o700) }

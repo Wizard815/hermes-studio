@@ -14,7 +14,9 @@ other hosts Studio uses `markitdown` if it is on PATH, else
 are passed as before.
 
 The `/to-markdown` skill and the markitdown MCP server do the same for files
-and pages the agent finds itself.
+and pages the agent finds itself. The browser tool
+`ekko_studio_browser_read_page` uses it to turn the page open in the Browser
+panel into Markdown (browser-panel.md).
 
 ## Turn it off
 

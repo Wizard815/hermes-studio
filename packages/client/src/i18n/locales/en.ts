@@ -1503,6 +1503,7 @@ export default {
     recent: 'Recent',
     recentCount: 'Recent session count',
     loadMoreSessions: 'Load more sessions',
+    showMoreChats: 'Show {count} more',
     searchTitle: 'Search Sessions',
     searchSubtitle: 'Search by title or message content',
     searchScope: 'Search scope: Web UI local session database only. Read-only Hermes history sessions are not included.',

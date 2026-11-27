@@ -86,7 +86,7 @@ function handleNavigate(entry: NavigationEntry) {
   padding: 0 4px;
   border-radius: 8px;
   background: $warning;
-  color: #fff;
+  color: var(--text-on-accent);
   font-size: 10px;
   line-height: 16px;
   text-align: center;
