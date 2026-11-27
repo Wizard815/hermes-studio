@@ -1,4 +1,5 @@
 import { hermesAgent } from './agent-api'
+import { request } from '../client'
 
 /**
  * Hermes Agent's MCP catalog and plugins hub, through Studio's private Hermes
@@ -496,4 +497,86 @@ export function pluginActionProblem(result: PluginActionResult): string | null {
   if (result.scan_blocked) return 'scan'
   if (result.ok === false) return result.error || 'failed'
   return null
+}
+
+// ---- MCP directory (docs/mcp-directory.md) -------------------------------------
+
+export interface McpDirectoryConfig { command: string; args: string[] }
+
+export interface McpDirectoryEntry {
+  name: string
+  url: string
+  category: string
+  description: string
+  official: boolean
+  languages: string[]
+  scopes: Array<'local' | 'cloud' | 'embedded'>
+  os: string[]
+  install?: string
+  config?: McpDirectoryConfig
+}
+
+export interface McpRecommendedEntry {
+  name: string
+  title: string
+  url: string
+  description: string
+  licence: string
+  config: McpDirectoryConfig
+  needs: string
+}
+
+export interface McpDirectoryResponse {
+  source: { repo: string; licence: string }
+  fetchedAt: string
+  recommended: McpRecommendedEntry[]
+  categories: Array<{ name: string; count: number }>
+  total: number
+  entries: McpDirectoryEntry[]
+}
+
+export interface McpDirectoryFilter {
+  q?: string
+  category?: string
+  scope?: '' | 'local' | 'cloud' | 'embedded'
+  official?: boolean
+  ready?: boolean
+  offset?: number
+  limit?: number
+  refresh?: boolean
+}
+
+export function fetchMcpDirectory(filter: McpDirectoryFilter = {}) {
+  const params = new URLSearchParams()
+  if (filter.q?.trim()) params.set('q', filter.q.trim())
+  if (filter.category) params.set('category', filter.category)
+  if (filter.scope) params.set('scope', filter.scope)
+  if (filter.official) params.set('official', '1')
+  if (filter.ready) params.set('ready', '1')
+  if (filter.offset) params.set('offset', String(filter.offset))
+  if (filter.limit) params.set('limit', String(filter.limit))
+  if (filter.refresh) params.set('refresh', '1')
+  const query = params.toString()
+  return request<McpDirectoryResponse>(`/api/hermes/mcp/directory${query ? `?${query}` : ''}`)
+}
+
+/** A server name Hermes accepts, from a list name like "owner/repo-mcp" or "@scope/pkg". */
+export function directoryServerName(name: string): string {
+  const last = name.split('/').filter(Boolean).pop() || name
+  return last.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').replace(/-mcp(-server)?$|^mcp-(server-)?/g, '') || 'server'
+}
+
+/**
+ * What Hermes is asked when the person picks "Set up with Hermes" on an entry:
+ * read the README, then add the server with its config tools. Nothing is sent
+ * until the person presses Send.
+ */
+export function directorySetupPrompt(entry: Pick<McpDirectoryEntry, 'name' | 'url' | 'description' | 'install'>): string {
+  return [
+    `Set up the MCP server "${entry.name}" for me: ${entry.url}`,
+    entry.description ? `What it does: ${entry.description}` : '',
+    entry.install ? `The list says it installs with: ${entry.install}` : '',
+    'Read its README first. Tell me what it needs (API keys, an app running, Docker) and what it can do on my machine, and ask me before you install or run anything.',
+    'Then add it to my Hermes MCP servers with `hermes mcp add` (or by editing mcp_servers in config.yaml), with secrets in .env only, and test that its tools load.',
+  ].filter(Boolean).join('\n\n')
 }

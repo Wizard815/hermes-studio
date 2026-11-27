@@ -31,6 +31,9 @@ import { extractRepresentativeVideoFrames, isVideoFile } from '@/utils/video-fra
 import ImagePreviewOverlay from './ImagePreviewOverlay.vue'
 import { readDraft, writeDraft, reloadComposerDrafts, migratePendingDraft } from '@/composables/useComposerDraft'
 import ScreenshotButton from './ScreenshotButton.vue'
+import RepoPackButton from './RepoPackButton.vue'
+import { isEmojiToggleCommand, replyStyle, setReplyStyle, toggleEmojiReplies } from '@/utils/reply-style'
+import { REPLY_STYLES, normalizeReplyStyle } from '../../../../../shared/reply-style'
 
 const chatStore = useChatStore()
 const appStore = useAppStore()
@@ -580,6 +583,16 @@ const inputSettingsOptions = computed<DropdownOption[]>(() => [
       'aria-hidden': 'true',
     }, toolTraceVisible.value ? '✓' : ''),
   },
+  // docs/reply-styles.md: cheaper answers. One of the three is always ticked.
+  { type: 'divider', key: 'replyStyleDivider' },
+  ...REPLY_STYLES.map(style => ({
+    label: t(`replyStyle.styles.${style}`),
+    key: `replyStyle:${style}`,
+    icon: () => h('span', {
+      class: ['settings-check', { active: replyStyle.value === style }],
+      'aria-hidden': 'true',
+    }, replyStyle.value === style ? '✓' : ''),
+  })),
 ])
 
 function loadDraftForActiveSession() {
@@ -644,6 +657,10 @@ function handleInputSettingsSelect(key: string | number) {
   if (key === 'toolTrace') {
     toggleToolTraceVisible()
     return
+  }
+
+  if (typeof key === 'string' && key.startsWith('replyStyle:')) {
+    setReplyStyle(normalizeReplyStyle(key.slice('replyStyle:'.length)))
   }
 }
 
@@ -1101,6 +1118,13 @@ async function handleSend() {
     await openComposerChatInHerdr()
     return
   }
+  // `/emoji` is Studio's: turn emoji replies on or off (docs/reply-styles.md) instead of sending it.
+  if (attachments.value.length === 0 && isEmojiToggleCommand(text)) {
+    const style = toggleEmojiReplies()
+    inputText.value = ''
+    message.info(t(style === 'emoji' ? 'replyStyle.emojiOn' : 'replyStyle.emojiOff'))
+    return
+  }
   // `/studio` too: return this elevated chat to Studio (its herdr space closes).
   if (attachments.value.length === 0 && isStudioSessionCommand(text) && studioCommandAvailable.value) {
     await returnComposerChatToStudio()
@@ -1424,6 +1448,15 @@ function openAttachmentPreview(attachment: Attachment) {
           </NTooltip>
 
           <ScreenshotButton :key="chatStore.activeSessionId || 'new'" :mobile="isMobileViewport" @capture="file => addFiles([file])" />
+          <RepoPackButton v-if="isStoredSuperAdmin()" :mobile="isMobileViewport" @attach="file => addFiles([file])" />
+          <button
+            v-if="replyStyle !== 'normal'"
+            type="button"
+            class="reply-style-chip"
+            data-testid="reply-style-chip"
+            :aria-label="t('replyStyle.turnOff', { style: t(`replyStyle.styles.${replyStyle}`) })"
+            @click="setReplyStyle('normal')"
+          >{{ t(`replyStyle.chip.${replyStyle}`) }} <span aria-hidden="true">×</span></button>
 
           <NDropdown
             v-if="!hideSettings"
@@ -1774,6 +1807,12 @@ function openAttachmentPreview(attachment: Attachment) {
 
 <style scoped lang="scss">
 @use '@/styles/variables' as *;
+.reply-style-chip {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 0 8px;
+  border: var(--border-width, 1px) solid $border-color; border-radius: 999px;
+  background: transparent; color: $text-secondary; font-size: calc(var(--font-size-base, 14px) * 12 / 14); cursor: pointer;
+}
+.reply-style-chip:focus-visible { outline: 2px solid $accent-primary; outline-offset: 2px; }
 
 .chat-input-area {
   position: relative;

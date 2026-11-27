@@ -24,6 +24,8 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -65,6 +67,8 @@ export default {
   ...testLabMessages['ru'],
   ...recommendedPluginsMessages['ru'],
   ...uiSkillsMessages['ru'],
+  ...homelabToolsMessages['ru'],
+  ...replyStyleMessages['ru'],
   ...gadgetMessages['ru'],
   ...toolLoadMessages['ru'],
   sessionTasks: {
@@ -3339,6 +3343,8 @@ export default {
     connectionFailed: 'Не удалось подключиться к службе терминала',
     connectionClosed: 'Соединение с терминалом закрыто',
     connectionError: 'Ошибка соединения с терминалом',
+    theme: 'Тема',
+    reconnecting: 'Переподключение…',
   },
 
 

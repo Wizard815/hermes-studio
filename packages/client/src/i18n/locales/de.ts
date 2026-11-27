@@ -24,6 +24,8 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -65,6 +67,8 @@ export default {
   ...testLabMessages['de'],
   ...recommendedPluginsMessages['de'],
   ...uiSkillsMessages['de'],
+  ...homelabToolsMessages['de'],
+  ...replyStyleMessages['de'],
   ...gadgetMessages['de'],
   ...toolLoadMessages['de'],
   sessionTasks: {
@@ -3190,6 +3194,8 @@ jobTriggered: 'Job ausgelost',
     connectionFailed: 'Terminaldienstverbindung fehlgeschlagen',
     connectionClosed: 'Terminalverbindung geschlossen',
     connectionError: 'Terminalverbindungsfehler',
+    theme: 'Design',
+    reconnecting: 'Verbindung wird wiederhergestellt…',
   },
 
   // Usage

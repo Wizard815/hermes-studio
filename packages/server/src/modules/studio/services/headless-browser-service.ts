@@ -7,7 +7,8 @@
  */
 
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
-import { mkdirSync, writeFileSync, renameSync as fsRenameSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, renameSync as fsRenameSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Browser, BrowserContext, chromium as ChromiumType, Page } from 'playwright'
 
@@ -23,6 +24,14 @@ function systemChromium(): string | undefined {
   try { candidates.push(readFileSync('/etc/hermes/chromium-executable-path', 'utf8').trim()) } catch { /* not Hermes's image */ }
   candidates.push('/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/opt/pw-browsers/chromium/chrome-linux/chrome')
   return candidates.find(path => !!path && !/headless/i.test(path) && existsSync(path))
+}
+
+/** Chrome's DevTools address, from the DevToolsActivePort file it writes to its profile. */
+function readDevToolsUrl(profileDir: string): string {
+  try {
+    const port = Number(readFileSync(join(profileDir, 'DevToolsActivePort'), 'utf8').split('\n')[0])
+    return Number.isInteger(port) && port > 0 ? `http://127.0.0.1:${port}` : ''
+  } catch { return '' }
 }
 
 function requirePlaywrightChromium(): PlaywrightChromium {
@@ -107,6 +116,10 @@ const CLIENT_INACTIVE_THRESHOLD_MS = 24 * 60 * 60 * 1000
 const MAX_SNAPSHOT_NODES = 300
 const MAX_SNAPSHOT_TEXT = 24_000
 const MAX_CONCURRENT_OPS = 4
+/** Broker methods after which the panel repaints. */
+const CHANGING_METHODS: ReadonlySet<string> = new Set([
+  'tabs.create', 'tabs.activate', 'tabs.close', 'navigate', 'navigation.action', 'interact',
+])
 
 /** Selector for elements exposed as actionable nodes in snapshots. */
 const INTERACTIVE_SELECTOR = [
@@ -310,6 +323,9 @@ export class HeadlessBrowserService {
   private concurrentOps = 0
   private brokerRoot: string
   private onScreenshotCapture?: (base64: string, tabId: string) => void
+  private onChange?: (tabId: string | null) => void
+  private changeTimer: NodeJS.Timeout | null = null
+  private creatingTab = false
 
   /**
    * When set, the service drives an existing Chrome over CDP (the agents'
@@ -319,6 +335,9 @@ export class HeadlessBrowserService {
   private readonly cdpEndpoint?: () => Promise<string>
   /** Attached to someone else's browser: never close its pages or the browser. */
   readonly attached: boolean
+  /** The launched browser's profile (removed on stop) and its DevTools endpoint. */
+  private profileDir = ''
+  private ownCdpUrl = ''
 
   constructor(options?: { brokerRoot?: string; cdpEndpoint?: () => Promise<string> }) {
     this.brokerRoot = options?.brokerRoot || join(process.env.HOME || '/home/codebox', '.hermes-web-ui', 'desktop-browser')
@@ -331,8 +350,44 @@ export class HeadlessBrowserService {
     return !!this.browser && this.browser.isConnected()
   }
 
+  /**
+   * The DevTools port of the browser the panel launched itself, so the chat's
+   * browser tools (the Browser Broker, docs/browser-panel.md) drive the same
+   * tabs. 0 when attached to the Screen's browser or not started.
+   */
+  devToolsPort(): number {
+    if (!this.connected || this.attached || !this.ownCdpUrl) return 0
+    return Number(new URL(this.ownCdpUrl).port) || 0
+  }
+
   setOnScreenshotCapture(fn: (base64: string, tabId: string) => void): void {
     this.onScreenshotCapture = fn
+  }
+
+  /**
+   * Called (at most every 250 ms) when the browser changes under the panel: the
+   * chat's model navigated, clicked, typed or opened a tab with its browser
+   * tools, or a page loaded. The panel then repaints, so a person watches the
+   * chat's model work live.
+   */
+  setOnChange(fn: (tabId: string | null) => void): void {
+    this.onChange = fn
+  }
+
+  private changed(): void {
+    if (!this.onChange || this.changeTimer) return
+    this.changeTimer = setTimeout(() => {
+      this.changeTimer = null
+      try { this.onChange?.(this.activeTabId) } catch { /* a listener must not break the browser */ }
+    }, 250)
+    this.changeTimer.unref?.()
+  }
+
+  /** A tab another CDP client (the chat's browser tools) or a page opened: the panel shows it. */
+  private onNewPage(page: Page): void {
+    if (this.creatingTab || this.tabFor(page)) return
+    this._registerPage(page, true)
+    this.changed()
   }
 
   async start(): Promise<any> {
@@ -349,7 +404,7 @@ export class HeadlessBrowserService {
       this.context = browser.contexts()[0] || await browser.newContext()
       for (const page of this.context.pages()) this._registerPage(page, false)
       // Tabs a person opens on the screen become tabs here too.
-      this.context.on('page', page => { if (!this.tabFor(page)) this._registerPage(page, false) })
+      this.context.on('page', page => this.onNewPage(page))
       browser.on('disconnected', () => {
         if (this.browser !== browser) return
         this.browser = null
@@ -364,32 +419,40 @@ export class HeadlessBrowserService {
       return this.descriptor
     }
 
+    // A persistent context, so pages a CDP client opens (the chat's browser tools,
+    // docs/browser-panel.md) land in the context Studio watches and become tabs.
+    // The DevTools port listens on loopback only; Chrome writes it to the profile.
+    this.profileDir = mkdtempSync(join(tmpdir(), 'studio-browser-'))
     const launchOptions = {
       headless: true,
+      viewport: { width: 1280, height: 720 },
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--remote-debugging-address=127.0.0.1',
+        '--remote-debugging-port=0',
       ],
     }
     try {
-      this.browser = await chromium.launch(launchOptions)
+      this.context = await chromium.launchPersistentContext(this.profileDir, launchOptions)
     } catch (error) {
       // Studio ships playwright-core without browsers: use the Chrome on the
       // machine (Hermes's image records its own in /etc/hermes).
       const executablePath = systemChromium()
       if (!executablePath) throw error
-      this.browser = await chromium.launch({ ...launchOptions, executablePath })
+      this.context = await chromium.launchPersistentContext(this.profileDir, { ...launchOptions, executablePath })
     }
+    this.browser = this.context.browser()
+    this.ownCdpUrl = readDevToolsUrl(this.profileDir)
+    // The launch tab; tabs a CDP client opens become tabs through onNewPage.
+    for (const page of this.context.pages()) this._registerPage(page, false)
+    this.context.on('page', page => this.onNewPage(page))
 
-    this.context = await this.browser.newContext({
-      viewport: { width: 1280, height: 720 },
-    })
-
-    // Auto-create first empty tab
-    const firstTab = await this._createTab(null, true)
-    await refreshTabMeta(firstTab)
+    const first = this.getAllTabs()[0]
+    if (first) { this.activeTabId = first.id; await refreshTabMeta(first) }
+    else await refreshTabMeta(await this._createTab(null, true))
 
     await this._writeDescriptor()
 
@@ -420,6 +483,11 @@ export class HeadlessBrowserService {
     if (this.browser) {
       await this.browser.close().catch(() => {})
       this.browser = null
+    }
+    this.ownCdpUrl = ''
+    if (this.profileDir) {
+      rmSync(this.profileDir, { recursive: true, force: true })
+      this.profileDir = ''
     }
   }
 
@@ -823,6 +891,7 @@ export class HeadlessBrowserService {
           return { status: 400, body: { error: `Unknown Browser Broker method: ${method}`, operationId } }
       }
 
+      if (CHANGING_METHODS.has(method)) this.changed()
       return result
     } catch (error: any) {
       return {
@@ -849,7 +918,9 @@ export class HeadlessBrowserService {
       }
     }
 
-    const page = await this.context.newPage()
+    this.creatingTab = true
+    let page: Page
+    try { page = await this.context.newPage() } finally { this.creatingTab = false }
     const tab = this.tabFor(page) || this._registerPage(page, activate)
     if (activate) this.activeTabId = tab.id
 
@@ -899,6 +970,19 @@ export class HeadlessBrowserService {
       crashed: false,
       tabGeneration: 0,
     }
+
+    // Navigations Studio did not start (the chat's browser tools, a link, a
+    // person on the Screen) still show in the panel's tabs and address bar.
+    page.on('framenavigated', frame => {
+      if (frame !== page.mainFrame()) return
+      tab.url = page.url()
+      this.changed()
+    })
+    page.on('load', () => {
+      tab.url = page.url()
+      page.title().then(title => { tab.title = sanitizeString(title, 500) }).catch(() => {})
+      this.changed()
+    })
 
     this.tabs.set(tabId, tab)
     if (activate || !this.activeTabId) {

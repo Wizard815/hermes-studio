@@ -36,6 +36,8 @@ vi.mock('../../packages/server/src/modules/hermes/services/terminal/runtime', ()
 vi.mock('../../packages/server/src/modules/hermes/services/terminal/tmux-sessions', () => ({
   tmuxAvailable: () => true,
   tmuxSessionName: (chat: string, index: number) => `hermes_${chat}_${index}`,
+  isSessionForChat: (name: string, chat: string) =>
+    name.startsWith(`hermes_${chat}_`) && /^\d+$/.test(name.slice(`hermes_${chat}_`.length)),
   nextSessionIndex: (chat: string) => (tmux.sessions.get(chat)?.length ?? 0) + 1,
   listChatSessions: (chat: string) => (tmux.sessions.get(chat) ?? []).map(name => ({ name })),
   ensureTmuxSession: (name: string) => {
@@ -209,5 +211,65 @@ describe('terminal socket liveness and session restore', () => {
     expect(session.scrollback).not.toContain('\x1b[c')
     expect(session.scrollback).not.toContain('\x1b[>c')
     expect(session.scrollback).toContain('prompt$ \x1b[1mbold\x1b[0m')
+  })
+
+  it("refuses to switch to or close another chat's terminal, or any other tmux session", async () => {
+    const other = open('other-chat')
+    await ready(other.socket)
+    await vi.waitFor(() => expect(other.of('restored')).toHaveLength(1))
+    const victim = 'hermes_other-chat_1'
+
+    const client = open('mine')
+    await ready(client.socket)
+    await vi.waitFor(() => expect(client.of('restored')).toHaveLength(1))
+
+    client.send({ type: 'switch', sessionId: victim })
+    client.send({ type: 'close', sessionId: victim })
+    client.send({ type: 'close', sessionId: 'some-host-session' })
+    client.send({ type: 'switch', sessionId: { toString: 'x' } })
+    await vi.waitFor(() => expect(client.of('error')).toHaveLength(4))
+    expect(client.of('switched')).toHaveLength(0)
+    expect(tmux.sessions.get('other-chat')).toContain(victim)
+
+    // Its own terminals still switch and close.
+    client.send({ type: 'create' })
+    await vi.waitFor(() => expect(client.of('created')).toHaveLength(1))
+    client.send({ type: 'switch', sessionId: 'hermes_mine_1' })
+    await vi.waitFor(() => expect(client.of('switched')).toHaveLength(1))
+    client.send({ type: 'close', sessionId: 'hermes_mine_2' })
+    await vi.waitFor(() => expect(tmux.sessions.get('mine')).toEqual(['hermes_mine_1']))
+  })
+
+  it('types JSON-looking text into the shell instead of swallowing it as a control frame', async () => {
+    const client = open('json-chat')
+    await ready(client.socket)
+    await vi.waitFor(() => expect(client.of('restored')).toHaveLength(1))
+    await vi.waitFor(() => expect(ptyMock.instances).toHaveLength(1))
+    const pty = ptyMock.instances[0]
+
+    client.socket.send('{}')
+    client.socket.send('{"name":"demo","version":1}')
+    client.socket.send('{not json')
+    client.send({ type: 'input', data: '{"type":"close"}' })
+    await vi.waitFor(() => expect(pty.write).toHaveBeenCalledTimes(4))
+    expect(pty.write.mock.calls.map((call: any[]) => call[0])).toEqual([
+      '{}',
+      '{"name":"demo","version":1}',
+      '{not json',
+      '{"type":"close"}',
+    ])
+  })
+
+  it('keeps resize within sane bounds', async () => {
+    const client = open('resize-chat')
+    await ready(client.socket)
+    await vi.waitFor(() => expect(client.of('restored')).toHaveLength(1))
+    await vi.waitFor(() => expect(ptyMock.instances).toHaveLength(1))
+    const pty = ptyMock.instances[0]
+
+    client.send({ type: 'resize', cols: 1e9, rows: 'abc' })
+    client.send({ type: 'resize', cols: 120.7, rows: 40 })
+    await vi.waitFor(() => expect(pty.resize).toHaveBeenCalledTimes(2))
+    expect(pty.resize.mock.calls).toEqual([[1000, 1], [120, 40]])
   })
 })

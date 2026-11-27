@@ -24,6 +24,8 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -65,6 +67,8 @@ export default {
   ...testLabMessages['zh'],
   ...recommendedPluginsMessages['zh'],
   ...uiSkillsMessages['zh'],
+  ...homelabToolsMessages['zh'],
+  ...replyStyleMessages['zh'],
   ...gadgetMessages['zh'],
   ...toolLoadMessages['zh'],
   sessionTasks: {
@@ -3750,6 +3754,8 @@ export default {
     connectionFailed: '终端服务连接失败',
     connectionClosed: '终端连接已关闭',
     connectionError: '终端连接错误',
+    theme: '主题',
+    reconnecting: '正在重新连接…',
   },
 
   // 群聊

@@ -13,6 +13,7 @@ import {
 } from '../../studio/public/security'
 import {
   ensureTmuxSession,
+  isSessionForChat,
   killTmuxSession,
   listChatSessions,
   nextSessionIndex,
@@ -23,6 +24,12 @@ import {
 import { stripTerminalQueries } from '../services/terminal/replay-scrub'
 
 function shellName(shell: string): string { return shell.split('/').pop() || 'shell' }
+
+/** Terminal columns or rows from the client: a whole number from 1 to 1000. */
+function clampSize(value: unknown): number {
+  const n = Math.floor(Number(value))
+  return Number.isFinite(n) ? Math.min(1000, Math.max(1, n)) : 1
+}
 
 // ─── Shared attach registry ─────────────────────────────────────
 //
@@ -241,7 +248,14 @@ export function setupTerminalWebSocket(
       if (client) client.pty.write(data)
     }
 
-    function handleControl(parsed: any) {
+    // A socket only reaches its own chat's terminals: never another chat's tmux
+    // sessions, or any other tmux session on the host.
+    const ownSession = (sessionId: unknown): sessionId is string =>
+      typeof sessionId === 'string' && isSessionForChat(sessionId, chatSessionId)
+
+    /** Handles a control frame; false when the frame is not one (it is typed input). */
+    function handleControl(parsed: any): boolean {
+      if (!parsed || typeof parsed !== 'object' || typeof parsed.type !== 'string') return false
       switch (parsed.type) {
         case 'create': {
           const name = tmuxSessionName(chatSessionId, nextSessionIndex(chatSessionId))
@@ -249,7 +263,7 @@ export function setupTerminalWebSocket(
             ensureTmuxSession(name, resolveTerminalCwd())
           } catch (err: any) {
             sendControl({ type: 'error', message: err.message })
-            return
+            return true
           }
           const client = bind(name)
           activeId = name
@@ -260,9 +274,9 @@ export function setupTerminalWebSocket(
 
         case 'switch': {
           const { sessionId } = parsed
-          if (!attaches.has(sessionId) && !tmuxSessionExists(sessionId)) {
+          if (!ownSession(sessionId) || (!attaches.has(sessionId) && !tmuxSessionExists(sessionId))) {
             sendControl({ type: 'error', message: 'Session not found' })
-            return
+            return true
           }
           const client = bind(sessionId)
           activeId = sessionId
@@ -274,6 +288,10 @@ export function setupTerminalWebSocket(
 
         case 'close': {
           const { sessionId } = parsed
+          if (!ownSession(sessionId)) {
+            sendControl({ type: 'error', message: 'Session not found' })
+            return true
+          }
           const client = attaches.get(sessionId)
           if (client) {
             try { client.pty.kill() } catch { /* ignore */ }
@@ -286,11 +304,11 @@ export function setupTerminalWebSocket(
         }
 
         case 'resize': {
-          if (!activeId) return
+          if (!activeId) return true
           const client = attaches.get(activeId)
-          if (!client) return
-          const cols = Math.max(1, parsed.cols || 0)
-          const rows = Math.max(1, parsed.rows || 0)
+          if (!client) return true
+          const cols = clampSize(parsed.cols)
+          const rows = clampSize(parsed.rows)
           client.cols = cols
           client.rows = rows
           try { client.pty.resize(cols, rows) } catch { /* ignore */ }
@@ -301,17 +319,21 @@ export function setupTerminalWebSocket(
           if (typeof parsed.data === 'string') writeRaw(parsed.data)
           break
         }
+
+        default:
+          return false
       }
+      return true
     }
 
     ws.on('message', (raw: any) => {
       const msg = Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw)
       if (msg.charCodeAt(0) === 0x7B) {
-        try {
-          handleControl(JSON.parse(msg))
-        } catch {
-          writeRaw(msg)
-        }
+        // Typed or pasted text that happens to be JSON ('{}', a config) is input,
+        // not a control frame: only the known types above are controls.
+        let parsed: unknown
+        try { parsed = JSON.parse(msg) } catch { parsed = undefined }
+        if (!handleControl(parsed)) writeRaw(msg)
         return
       }
       writeRaw(msg)
