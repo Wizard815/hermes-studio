@@ -3194,6 +3194,8 @@ jobTriggered: 'Job ausgelost',
     connectionFailed: 'Terminaldienstverbindung fehlgeschlagen',
     connectionClosed: 'Terminalverbindung geschlossen',
     connectionError: 'Terminalverbindungsfehler',
+    theme: 'Design',
+    reconnecting: 'Verbindung wird wiederhergestellt…',
   },
 
   // Usage

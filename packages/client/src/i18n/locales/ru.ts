@@ -3343,6 +3343,8 @@ export default {
     connectionFailed: 'Не удалось подключиться к службе терминала',
     connectionClosed: 'Соединение с терминалом закрыто',
     connectionError: 'Ошибка соединения с терминалом',
+    theme: 'Тема',
+    reconnecting: 'Переподключение…',
   },
 
 

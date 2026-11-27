@@ -3193,6 +3193,8 @@ export default {
     connectionFailed: '터미널에 연결하지 못했습니다',
     connectionError: '연결 오류',
     connectionClosed: '연결이 닫혔습니다',
+    theme: '테마',
+    reconnecting: '다시 연결하는 중…',
   },
 
   // 사용량

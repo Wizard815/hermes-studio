@@ -652,6 +652,8 @@ export default {
   terminal: {
     sessions: 'Oturumlar', newTab: 'Yeni terminal', closeSession: 'Bu oturum kapatılsın mı?', sessionExited: 'Sonlandı',
     processExited: '{code} koduyla sonlandı', noSessions: 'Terminal oturumu yok', connectionFailed: 'Terminal hizmeti bağlantısı başarısız oldu', connectionClosed: 'Terminal bağlantısı kapandı', connectionError: 'Terminal bağlantısı hatası',
+    theme: 'Tema',
+    reconnecting: 'Yeniden bağlanıyor…',
   },
 
   chat: {
