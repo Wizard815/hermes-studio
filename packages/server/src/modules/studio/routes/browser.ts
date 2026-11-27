@@ -1,5 +1,6 @@
 import Router from '@koa/router'
 import * as ctrl from '../controllers/browser'
+import { requireSuperAdmin } from '../middleware/auth'
 
 export const browserRoutes = new Router()
 
@@ -44,3 +45,10 @@ browserRoutes.get('/api/studio/browser/screenshots', ctrl.listScreenshots)
 browserRoutes.post('/api/studio/browser/screenshots', ctrl.addScreenshot)
 browserRoutes.get('/api/studio/browser/screenshots/:id', ctrl.getScreenshotImage)
 browserRoutes.delete('/api/studio/browser/screenshots/:id', ctrl.deleteScreenshot)
+
+// Browser tasks (browser-use): the model runs Python against the browser, so
+// super administrators only (docs/browser-tasks.md).
+browserRoutes.get('/api/studio/browser/task', requireSuperAdmin, ctrl.taskState)
+browserRoutes.get('/api/studio/browser/task/models', requireSuperAdmin, ctrl.taskModels)
+browserRoutes.post('/api/studio/browser/task', requireSuperAdmin, ctrl.startTask)
+browserRoutes.post('/api/studio/browser/task/stop', requireSuperAdmin, ctrl.stopTask)

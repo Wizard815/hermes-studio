@@ -296,3 +296,41 @@ export async function fetchElementAt(tabId: string, x: number, y: number): Promi
   })
   return (result as any)?.element ?? null
 }
+
+// ─── Browser tasks (browser-use, docs/browser-tasks.md) ──────────
+
+export interface BrowserTaskStep { n: number; text: string; at: number }
+export interface BrowserTaskState {
+  id: string
+  task: string
+  model: string
+  status: 'running' | 'completed' | 'max_steps' | 'timeout' | 'stopped' | 'error'
+  steps: BrowserTaskStep[]
+  startedAt: number
+  finishedAt?: number
+  result?: string
+  success?: boolean | null
+  costUsd?: number | null
+  error?: string | null
+}
+export interface BrowserTaskModel { id: string; provider: string; model: string }
+
+/** Whether tasks can run here (super administrators with browser-use installed), and the last task. */
+export async function fetchBrowserTask(): Promise<{ available: boolean; reason?: string; task: BrowserTaskState | null }> {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/task`)
+}
+
+export async function fetchBrowserTaskModels(): Promise<{ models: BrowserTaskModel[]; default: string | null }> {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/task/models`)
+}
+
+export async function startBrowserTask(task: string, model: string): Promise<BrowserTaskState> {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/task`, {
+    method: 'POST',
+    body: JSON.stringify({ task, model }),
+  })
+}
+
+export async function stopBrowserTask(): Promise<{ task: BrowserTaskState | null }> {
+  return fetchJson(`${getBaseUrlValue()}/api/studio/browser/task/stop`, { method: 'POST' })
+}

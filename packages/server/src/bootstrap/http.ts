@@ -785,9 +785,22 @@ export async function bootstrap() {
       activeGroupChatServer.getIO().emit('browser.screenshot', { data: base64, tabId })
     })
 
+    // browser-use tasks on this browser (docs/browser-tasks.md). The socket
+    // event names the task and its progress only; the panel reads the steps
+    // and the result from the super-admin API.
+    const { BrowserTaskRunner, setBrowserTaskRunner } = await import('../modules/studio/services/browser-task/service')
+    const browserTasks = new BrowserTaskRunner({
+      cdpUrl: () => headlessBrowser.cdpUrl(),
+      setFollowTabs: on => { headlessBrowser.followNewTabs = on },
+      onUpdate: task => {
+        activeGroupChatServer.getIO().emit('browser.task', { id: task.id, status: task.status, steps: task.steps.length })
+      },
+    })
+    setBrowserTaskRunner(browserTasks)
+
     additionalShutdownSteps.push({
       name: 'Headless browser',
-      close: () => headlessBrowser.stop(),
+      close: async () => { browserTasks.stop(); await headlessBrowser.stop() },
     })
   } catch (err: any) {
     console.warn('[bootstrap] headless browser service failed:', err.message)
