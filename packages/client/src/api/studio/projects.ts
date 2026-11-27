@@ -52,6 +52,7 @@ export interface Project {
   /** The git URL the folder was cloned from, '' when none. */
   repo?: string
   instructions: string
+  forge?: '' | 'github' | 'forge'
   profile: string
   categoryId: number | null
   coordinatorSessionId: string
@@ -73,6 +74,7 @@ export interface ProjectInput {
   name?: string
   folder?: string
   instructions?: string
+  forge?: '' | 'github' | 'forge'
   defaultAgent?: string
   defaultModel?: string
   repo?: string

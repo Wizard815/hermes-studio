@@ -13,6 +13,8 @@ export interface GithubItem {
   number?: number
   at: number
   detail?: string
+  /** Where it lives; absent means GitHub. */
+  source?: 'github' | 'forge'
 }
 
 export interface GithubInbox {
@@ -24,6 +26,8 @@ export interface GithubInbox {
   items: GithubItem[]
   error?: string
   checkedAt: number
+  /** The homelab forge (Forgejo/Gitea), when FORGE_URL is set on the Studio host. */
+  forge?: { url: string; login?: string; error?: string }
 }
 
 export interface AgentContext {

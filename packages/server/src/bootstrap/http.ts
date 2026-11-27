@@ -72,6 +72,8 @@ import { setupGlobalEkkoAgent } from './ekko'
 import { codingAgentUiSkillTargets, registerUiSkillTargetProvider, scheduleUiSkillsInstall } from '../modules/studio/public/ui-skills'
 import { scheduleHomelabSkillsInstall } from '../modules/studio/public/homelab-skills'
 import { closeTestLab, sweepTestLab } from '../modules/studio/public/test-lab'
+import { refreshForgeFromProfile } from '../modules/studio/services/forge'
+import { getSandbox } from '../modules/studio/services/sandbox'
 import { hermesUiSkillTargets } from '../modules/hermes/services/skills/ui-skill-targets'
 import { ekkoUiSkillTargets } from '../modules/ekko/services/ui-skill-targets'
 import { injectManagedEkkoMcpServers } from '../modules/ekko/services/mcp'
@@ -643,6 +645,13 @@ export async function bootstrap() {
   // Test Lab (docs/test-lab.md): runs left behind on Docker (older than a day, or cut short by a restart).
   const testLabTimer = setTimeout(() => { void sweepTestLab() }, 10_000)
   testLabTimer.unref()
+  // The forge (docs/forge.md): without FORGE_URL, the active Hermes profile's forgejo settings, read again each minute.
+  void refreshForgeFromProfile().catch(() => {})
+  const forgeTimer = setInterval(() => { void refreshForgeFromProfile().catch(() => {}) }, 60_000)
+  forgeTimer.unref()
+  // Sandboxes (docs/sandbox.md): remove the ones whose time is up, every minute.
+  const sandboxTimer = setInterval(() => { void getSandbox().sweep().catch(() => {}) }, 60_000)
+  sandboxTimer.unref()
   additionalShutdownSteps.push({ name: 'Test Lab', close: () => closeTestLab() })
   screenManager.useCliFinder(() => findHermesCli())
   const closeScreenGateway = screenGateway.attach(servers)

@@ -10,8 +10,8 @@ export const testLabMessages = {
       "checkAgain": "Check again",
       "requirements": {
         "title": "Test Lab needs Docker",
-        "what": "Studio cannot reach Docker. Mount the Docker socket into the Studio container (docker-compose.yml, under the Studio service), then restart Studio:",
-        "permits": "This gives Studio full control of Docker on this host: it can start, stop and remove any container and read their files. Only mount it if you trust everyone who can sign in as a super admin.",
+        "what": "Studio cannot reach the Docker that Test Lab and sandboxes run on. Start the sandbox-docker service from docker-compose.yml and set this on the Studio service, then restart Studio:",
+        "permits": "Do not mount the host's /var/run/docker.sock instead. Agents run commands in Studio's container, so they could take over the host. The sidecar holds only Test Lab runs and sandboxes.",
         "labels": "Test Lab itself only creates and removes containers, networks and volumes labelled studio.testlab.run, and never touches anything else.",
         "error": "Docker said: {error}"
       },
@@ -143,8 +143,8 @@ export const testLabMessages = {
       "checkAgain": "重新检查",
       "requirements": {
         "title": "Test Lab 需要 Docker",
-        "what": "Studio 无法连接 Docker。请把 Docker 套接字挂载到 Studio 容器（docker-compose.yml 中的 Studio 服务），然后重启 Studio：",
-        "permits": "这会让 Studio 完全控制本机的 Docker：可以启动、停止、删除任何容器并读取其文件。只有在信任所有超级管理员时才挂载。",
+        "what": "Studio 无法连接 Test Lab 和沙盒所用的 Docker。请启动 docker-compose.yml 中的 sandbox-docker 服务，并在 Studio 服务中设置以下内容，然后重启 Studio：",
+        "permits": "不要改为挂载主机的 /var/run/docker.sock。智能体会在 Studio 容器中运行命令，因此可能接管主机。该附属容器只包含 Test Lab 运行和沙盒。",
         "labels": "Test Lab 本身只创建和删除带有 studio.testlab.run 标签的容器、网络和卷，不会动其他任何东西。",
         "error": "Docker 返回：{error}"
       },
@@ -276,8 +276,8 @@ export const testLabMessages = {
       "checkAgain": "重新檢查",
       "requirements": {
         "title": "Test Lab 需要 Docker",
-        "what": "Studio 無法連線到 Docker。請將 Docker 通訊端掛載到 Studio 容器（docker-compose.yml 中的 Studio 服務），然後重新啟動 Studio：",
-        "permits": "這會讓 Studio 完全控制這台主機的 Docker：可以啟動、停止、刪除任何容器並讀取其檔案。只有在信任所有超級管理員時才掛載。",
+        "what": "Studio 無法連線到 Test Lab 和沙盒所用的 Docker。請啟動 docker-compose.yml 中的 sandbox-docker 服務，並在 Studio 服務中設定以下內容，然後重新啟動 Studio：",
+        "permits": "不要改為掛載主機的 /var/run/docker.sock。代理會在 Studio 容器中執行指令，因此可能接管主機。此附屬容器只包含 Test Lab 執行和沙盒。",
         "labels": "Test Lab 本身只建立和刪除帶有 studio.testlab.run 標籤的容器、網路與磁碟區，不會動到其他東西。",
         "error": "Docker 回應：{error}"
       },
@@ -409,8 +409,8 @@ export const testLabMessages = {
       "checkAgain": "もう一度確認",
       "requirements": {
         "title": "Test Lab には Docker が必要です",
-        "what": "Studio から Docker に接続できません。Docker ソケットを Studio コンテナにマウントし（docker-compose.yml の Studio サービス）、Studio を再起動してください:",
-        "permits": "これにより Studio はこのホストの Docker を完全に操作できます。どのコンテナでも起動・停止・削除し、ファイルを読めます。すべてのスーパー管理者を信頼できる場合だけマウントしてください。",
+        "what": "Studio から Test Lab とサンドボックス用の Docker に接続できません。docker-compose.yml の sandbox-docker サービスを起動し、Studio サービスに次を設定してから Studio を再起動してください:",
+        "permits": "代わりにホストの /var/run/docker.sock をマウントしないでください。エージェントは Studio のコンテナでコマンドを実行するため、ホストを乗っ取れてしまいます。サイドカーには Test Lab の実行とサンドボックスしかありません。",
         "labels": "Test Lab 自体は studio.testlab.run ラベルの付いたコンテナ、ネットワーク、ボリュームだけを作成・削除し、それ以外には触れません。",
         "error": "Docker の応答: {error}"
       },
@@ -542,8 +542,8 @@ export const testLabMessages = {
       "checkAgain": "다시 확인",
       "requirements": {
         "title": "Test Lab에는 Docker가 필요합니다",
-        "what": "Studio가 Docker에 연결할 수 없습니다. Docker 소켓을 Studio 컨테이너에 마운트한 뒤(docker-compose.yml의 Studio 서비스) Studio를 다시 시작하세요:",
-        "permits": "이렇게 하면 Studio가 이 호스트의 Docker를 완전히 제어합니다. 모든 컨테이너를 시작, 중지, 삭제하고 파일을 읽을 수 있습니다. 모든 최고 관리자를 신뢰할 때만 마운트하세요.",
+        "what": "Studio가 Test Lab과 샌드박스가 쓰는 Docker에 연결할 수 없습니다. docker-compose.yml의 sandbox-docker 서비스를 시작하고 Studio 서비스에 다음을 설정한 뒤 Studio를 다시 시작하세요:",
+        "permits": "대신 호스트의 /var/run/docker.sock을 마운트하지 마세요. 에이전트가 Studio 컨테이너에서 명령을 실행하므로 호스트를 장악할 수 있습니다. 사이드카에는 Test Lab 실행과 샌드박스만 있습니다.",
         "labels": "Test Lab 자체는 studio.testlab.run 레이블이 붙은 컨테이너, 네트워크, 볼륨만 만들고 지우며 다른 것은 건드리지 않습니다.",
         "error": "Docker 응답: {error}"
       },
@@ -675,8 +675,8 @@ export const testLabMessages = {
       "checkAgain": "Erneut prüfen",
       "requirements": {
         "title": "Test Lab braucht Docker",
-        "what": "Studio erreicht Docker nicht. Binde den Docker-Socket in den Studio-Container ein (docker-compose.yml, beim Studio-Dienst) und starte Studio neu:",
-        "permits": "Damit hat Studio volle Kontrolle über Docker auf diesem Host: Es kann jeden Container starten, stoppen und entfernen und dessen Dateien lesen. Binde ihn nur ein, wenn du allen Super-Admins vertraust.",
+        "what": "Studio erreicht das Docker nicht, auf dem Test Lab und Sandboxes laufen. Starte den Dienst sandbox-docker aus docker-compose.yml, setze dies beim Studio-Dienst und starte Studio neu:",
+        "permits": "Binde stattdessen nicht /var/run/docker.sock des Hosts ein. Agenten führen Befehle im Studio-Container aus und könnten so den Host übernehmen. Der Sidecar enthält nur Test-Lab-Läufe und Sandboxes.",
         "labels": "Test Lab selbst erstellt und entfernt nur Container, Netzwerke und Volumes mit dem Label studio.testlab.run und rührt nichts anderes an.",
         "error": "Docker meldet: {error}"
       },
@@ -808,8 +808,8 @@ export const testLabMessages = {
       "checkAgain": "Comprobar de nuevo",
       "requirements": {
         "title": "Test Lab necesita Docker",
-        "what": "Studio no puede acceder a Docker. Monta el socket de Docker en el contenedor de Studio (docker-compose.yml, en el servicio de Studio) y reinicia Studio:",
-        "permits": "Esto da a Studio control total de Docker en este equipo: puede iniciar, detener y eliminar cualquier contenedor y leer sus archivos. Móntalo solo si confías en todos los superadministradores.",
+        "what": "Studio no puede conectar con el Docker de Test Lab y los sandboxes. Inicia el servicio sandbox-docker de docker-compose.yml, define esto en el servicio de Studio y reinicia Studio:",
+        "permits": "No montes en su lugar /var/run/docker.sock del host. Los agentes ejecutan comandos en el contenedor de Studio, así que podrían tomar el control del host. El sidecar solo contiene ejecuciones de Test Lab y sandboxes.",
         "labels": "Test Lab solo crea y elimina contenedores, redes y volúmenes con la etiqueta studio.testlab.run, y no toca nada más.",
         "error": "Docker dice: {error}"
       },
@@ -941,8 +941,8 @@ export const testLabMessages = {
       "checkAgain": "Vérifier à nouveau",
       "requirements": {
         "title": "Test Lab a besoin de Docker",
-        "what": "Studio n'atteint pas Docker. Montez le socket Docker dans le conteneur Studio (docker-compose.yml, sous le service Studio), puis redémarrez Studio :",
-        "permits": "Cela donne à Studio le contrôle total de Docker sur cet hôte : il peut démarrer, arrêter et supprimer n'importe quel conteneur et lire ses fichiers. Ne le montez que si vous faites confiance à tous les super-administrateurs.",
+        "what": "Studio ne joint pas le Docker de Test Lab et des sandboxes. Démarrez le service sandbox-docker de docker-compose.yml, ajoutez ceci au service Studio, puis redémarrez Studio :",
+        "permits": "Ne montez pas plutôt /var/run/docker.sock de l’hôte. Les agents lancent des commandes dans le conteneur de Studio et pourraient prendre le contrôle de l’hôte. Le sidecar ne contient que les exécutions Test Lab et les sandboxes.",
         "labels": "Test Lab ne crée et ne supprime que les conteneurs, réseaux et volumes portant le label studio.testlab.run, et ne touche à rien d'autre.",
         "error": "Docker indique : {error}"
       },
@@ -1074,8 +1074,8 @@ export const testLabMessages = {
       "checkAgain": "Verificar de novo",
       "requirements": {
         "title": "O Test Lab precisa do Docker",
-        "what": "O Studio não alcança o Docker. Monte o socket do Docker no contêiner do Studio (docker-compose.yml, no serviço do Studio) e reinicie o Studio:",
-        "permits": "Isso dá ao Studio controle total do Docker neste host: ele pode iniciar, parar e remover qualquer contêiner e ler seus arquivos. Monte apenas se confiar em todos os superadministradores.",
+        "what": "O Studio não alcança o Docker do Test Lab e dos sandboxes. Inicie o serviço sandbox-docker do docker-compose.yml, defina isto no serviço do Studio e reinicie o Studio:",
+        "permits": "Não monte o /var/run/docker.sock do host no lugar. Os agentes executam comandos no contêiner do Studio e poderiam assumir o host. O sidecar contém apenas execuções do Test Lab e sandboxes.",
         "labels": "O Test Lab só cria e remove contêineres, redes e volumes com o rótulo studio.testlab.run e não toca em mais nada.",
         "error": "O Docker diz: {error}"
       },
@@ -1207,8 +1207,8 @@ export const testLabMessages = {
       "checkAgain": "Проверить снова",
       "requirements": {
         "title": "Test Lab нужен Docker",
-        "what": "Studio не может связаться с Docker. Подключите сокет Docker в контейнер Studio (docker-compose.yml, в сервисе Studio) и перезапустите Studio:",
-        "permits": "Это даёт Studio полный контроль над Docker на этом хосте: запуск, остановку и удаление любых контейнеров и чтение их файлов. Подключайте, только если доверяете всем суперадминистраторам.",
+        "what": "Studio не может подключиться к Docker для Test Lab и песочниц. Запустите сервис sandbox-docker из docker-compose.yml, задайте это в сервисе Studio и перезапустите Studio:",
+        "permits": "Не подключайте вместо этого /var/run/docker.sock хоста. Агенты выполняют команды в контейнере Studio и могли бы захватить хост. В sidecar-контейнере только запуски Test Lab и песочницы.",
         "labels": "Сам Test Lab создаёт и удаляет только контейнеры, сети и тома с меткой studio.testlab.run и не трогает ничего другого.",
         "error": "Ответ Docker: {error}"
       },
@@ -1340,8 +1340,8 @@ export const testLabMessages = {
       "checkAgain": "Yeniden kontrol et",
       "requirements": {
         "title": "Test Lab Docker'a ihtiyaç duyar",
-        "what": "Studio Docker'a ulaşamıyor. Docker soketini Studio konteynerine bağlayın (docker-compose.yml, Studio servisinin altında) ve Studio'yu yeniden başlatın:",
-        "permits": "Bu, Studio'ya bu makinede Docker üzerinde tam denetim verir: herhangi bir konteyneri başlatabilir, durdurabilir, kaldırabilir ve dosyalarını okuyabilir. Yalnızca tüm süper yöneticilere güveniyorsanız bağlayın.",
+        "what": "Studio, Test Lab ve sanal alanların çalıştığı Docker'a ulaşamıyor. docker-compose.yml içindeki sandbox-docker hizmetini başlatın, bunu Studio hizmetine ekleyin ve Studio'yu yeniden başlatın:",
+        "permits": "Bunun yerine ana makinenin /var/run/docker.sock dosyasını bağlamayın. Ajanlar komutları Studio kapsayıcısında çalıştırır, bu yüzden ana makineyi ele geçirebilirler. Yan kapsayıcıda yalnızca Test Lab çalıştırmaları ve sanal alanlar bulunur.",
         "labels": "Test Lab yalnızca studio.testlab.run etiketli konteyner, ağ ve birimleri oluşturur ve kaldırır; başka hiçbir şeye dokunmaz.",
         "error": "Docker'ın yanıtı: {error}"
       },
@@ -1473,8 +1473,8 @@ export const testLabMessages = {
       "checkAgain": "تحقق مرة أخرى",
       "requirements": {
         "title": "يحتاج Test Lab إلى Docker",
-        "what": "لا يستطيع Studio الوصول إلى Docker. اربط مقبس Docker داخل حاوية Studio (في docker-compose.yml ضمن خدمة Studio) ثم أعد تشغيل Studio:",
-        "permits": "يمنح هذا Studio تحكمًا كاملًا في Docker على هذا الجهاز: يمكنه تشغيل أي حاوية وإيقافها وحذفها وقراءة ملفاتها. لا تربطه إلا إذا كنت تثق بكل المشرفين الأعلى.",
+        "what": "لا يصل Studio إلى Docker الذي يعمل عليه Test Lab وبيئات الاختبار. شغّل خدمة sandbox-docker من docker-compose.yml، وأضف هذا إلى خدمة Studio، ثم أعد تشغيل Studio:",
+        "permits": "لا تربط ‎/var/run/docker.sock الخاص بالمضيف بدلًا من ذلك. ينفّذ الوكلاء الأوامر في حاوية Studio، لذا قد يسيطرون على المضيف. الحاوية المرافقة تضم فقط تشغيلات Test Lab وبيئات الاختبار.",
         "labels": "لا ينشئ Test Lab ولا يحذف إلا الحاويات والشبكات والمجلدات التي تحمل الوسم studio.testlab.run، ولا يلمس أي شيء آخر.",
         "error": "رد Docker: {error}"
       },

@@ -1,5 +1,6 @@
 import { failure, parseJson, runCli, type CliRunner } from './cli'
 import type { CommandCenterSettings } from './settings'
+import { forgeConfig, forgeGet, type ForgeConfig, type ForgeFetch } from '../forge'
 
 /**
  * GitHub for the Inbox, through the `gh` CLI the server is signed in with
@@ -7,6 +8,10 @@ import type { CommandCenterSettings } from './settings'
  * pull requests of the signed-in account whose checks failed, review requests,
  * and, for repositories named in the settings, workflows whose latest run on
  * a branch failed. Off when `gh` is missing or signed out.
+ *
+ * The homelab forge (Forgejo/Gitea, FORGE_URL + FORGE_TOKEN; docs/forge.md)
+ * adds the same three kinds of item from its API, for repositories named in
+ * the settings as `forge:owner/repo`.
  */
 
 export interface GithubItem {
@@ -19,6 +24,8 @@ export interface GithubItem {
   /** Milliseconds since the epoch. */
   at: number
   detail?: string
+  /** Where it lives; absent means GitHub. */
+  source?: 'github' | 'forge'
 }
 
 export interface GithubInbox {
@@ -31,6 +38,8 @@ export interface GithubInbox {
   items: GithubItem[]
   error?: string
   checkedAt: number
+  /** The homelab forge, when FORGE_URL is set on the Studio host. */
+  forge?: { url: string; login?: string; error?: string }
 }
 
 const QUERY = `query($n: Int!) {
@@ -96,6 +105,66 @@ export function failedRuns(repo: string, runs: any[]): GithubItem[] {
     }))
 }
 
+const FAILED = new Set(['failure', 'timed_out', 'startup_failure'])
+
+/**
+ * Forgejo Actions runs of one forge repository (`/actions/tasks`, newest
+ * first): a workflow and branch whose latest finished run failed.
+ */
+export function failedForgeRuns(repo: string, runs: any[], forgeUrl: string): GithubItem[] {
+  const latest = new Map<string, any>()
+  for (const run of Array.isArray(runs) ? runs : []) {
+    if (['running', 'waiting', 'blocked'].includes(String(run?.status || ''))) continue
+    const key = `${run?.workflow_id || run?.name || ''}|${run?.head_branch || ''}`
+    const known = latest.get(key)
+    if (!known || time(run.created_at) > time(known.created_at)) latest.set(key, run)
+  }
+  return [...latest.values()]
+    .filter(run => FAILED.has(String(run.status || '')))
+    .map(run => ({
+      id: `ci:forge-run:${repo}:${run.id}`,
+      kind: 'ci' as const,
+      repo,
+      title: String(run.display_title || run.name || 'Workflow run'),
+      url: String(run.url || `${forgeUrl}/${repo}/actions`),
+      at: time(run.created_at),
+      detail: [run.workflow_id || run.name, run.head_branch].filter(Boolean).join(' · '),
+      source: 'forge' as const,
+    }))
+}
+
+/** Review requests and the account's own open PRs whose checks failed, from the forge. */
+export async function forgeInbox(forge: ForgeConfig, repos: string[], fetcher?: ForgeFetch): Promise<{ login: string; items: GithubItem[] }> {
+  const me = await forgeGet(forge, '/user', fetcher)
+  const items: GithubItem[] = []
+  const issue = (pr: any) => ({ repo: String(pr?.repository?.full_name || ''), number: Number(pr?.number), title: String(pr?.title || ''), url: String(pr?.html_url || ''), at: time(pr?.updated_at) })
+  const reviews = await forgeGet(forge, '/repos/issues/search?type=pulls&state=open&review_requested=true&limit=30', fetcher)
+  for (const raw of Array.isArray(reviews) ? reviews : []) {
+    const pr = issue(raw)
+    if (!pr.repo || !pr.url) continue
+    items.push({ id: `review:forge:${pr.repo}#${pr.number}`, kind: 'review', ...pr, detail: raw?.user?.login ? `from ${raw.user.login}` : undefined, source: 'forge' })
+  }
+  const mine = await forgeGet(forge, '/repos/issues/search?type=pulls&state=open&created=true&limit=15', fetcher)
+  for (const raw of Array.isArray(mine) ? mine : []) {
+    const pr = issue(raw)
+    if (!pr.repo) continue
+    try {
+      const full = await forgeGet(forge, `/repos/${pr.repo}/pulls/${pr.number}`, fetcher)
+      const status = full?.head?.sha ? await forgeGet(forge, `/repos/${pr.repo}/commits/${full.head.sha}/status`, fetcher) : null
+      if (status?.total_count && (status.state === 'failure' || status.state === 'error')) {
+        items.push({ id: `ci:forge-pr:${pr.repo}#${pr.number}`, kind: 'ci', ...pr, detail: 'checks failed', source: 'forge' })
+      }
+    } catch { /* one PR the token can't read doesn't hide the rest */ }
+  }
+  for (const repo of repos) {
+    try {
+      const runs = await forgeGet(forge, `/repos/${repo}/actions/tasks?limit=30`, fetcher)
+      items.push(...failedForgeRuns(repo, runs?.workflow_runs || [], forge.url))
+    } catch { /* a repo without Actions, or out of reach */ }
+  }
+  return { login: String(me?.login || ''), items }
+}
+
 export class GithubFeed {
   private cache: { key: string; value: GithubInbox } | null = null
 
@@ -103,15 +172,31 @@ export class GithubFeed {
     private readonly run: CliRunner = runCli,
     private readonly now: () => number = Date.now,
     private readonly ttlMs = 60_000,
+    private readonly forge: () => ForgeConfig | null = forgeConfig,
+    private readonly forgeFetch?: ForgeFetch,
   ) {}
 
   async inbox(settings: CommandCenterSettings, options: { refresh?: boolean } = {}): Promise<GithubInbox> {
     const { enabled, repos } = settings.github
     const key = JSON.stringify(settings.github)
     if (!options.refresh && this.cache?.key === key && this.now() - this.cache.value.checkedAt < this.ttlMs) return this.cache.value
-    const value = await this.load(enabled, repos)
+    const gh = repos.filter(repo => !repo.startsWith('forge:'))
+    const onForge = repos.filter(repo => repo.startsWith('forge:')).map(repo => repo.slice('forge:'.length))
+    const value = await this.withForge(await this.load(enabled, gh), enabled, onForge)
     this.cache = { key, value }
     return value
+  }
+
+  private async withForge(inbox: GithubInbox, enabled: boolean, repos: string[]): Promise<GithubInbox> {
+    const forge = this.forge()
+    if (!forge || !enabled) return inbox
+    if (!forge.token) return { ...inbox, forge: { url: forge.url, error: 'Set FORGE_TOKEN on the Studio host to see the forge in the Inbox' } }
+    try {
+      const { login, items } = await forgeInbox(forge, repos, this.forgeFetch)
+      return { ...inbox, forge: { url: forge.url, login }, items: [...inbox.items, ...items].sort((a, b) => b.at - a.at) }
+    } catch (error: any) {
+      return { ...inbox, forge: { url: forge.url, error: String(error?.message || error) } }
+    }
   }
 
   private async load(enabled: boolean, repos: string[]): Promise<GithubInbox> {

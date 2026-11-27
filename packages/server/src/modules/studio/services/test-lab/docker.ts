@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { hostname } from 'node:os'
-import { dockerEngine, dockerSocket, engineError, demuxLogs } from '../system/docker'
+import { dockerEngine, sandboxDockerSocket, engineError, demuxLogs } from '../system/docker'
 
 /**
  * Docker for Test Lab (docs/test-lab.md), over the Engine API socket.
@@ -94,13 +94,13 @@ function streamError(body: Buffer): string | null {
 export interface RemovalResult { containers: string[]; networks: string[]; volumes: string[]; images: string[] }
 
 export class LabDocker {
-  constructor(private readonly socketPath: () => string | null = () => dockerSocket()) {}
+  constructor(private readonly socketPath: () => string | null = () => sandboxDockerSocket()) {}
 
   socket(): string | null { return this.socketPath() }
 
   private async api(method: string, path: string, body?: unknown, timeoutMs?: number) {
     const socket = this.socketPath()
-    if (!socket) throw Object.assign(new Error('Docker is not reachable: mount /var/run/docker.sock into Studio'), { status: 503 })
+    if (!socket) throw Object.assign(new Error('Docker is not reachable: run the sandbox-docker sidecar and set STUDIO_SANDBOX_DOCKER_HOST (docs/sandbox.md)'), { status: 503 })
     return dockerEngine(socket, method, path, body, timeoutMs)
   }
 
@@ -156,6 +156,16 @@ export class LabDocker {
     const query = [`remote=${encodeURIComponent(gitUrl)}`, `t=${encodeURIComponent(image)}`, `labels=${encodeURIComponent(JSON.stringify(labels))}`, 'rm=1', 'forcerm=1',
       ...(dockerfile ? [`dockerfile=${encodeURIComponent(dockerfile)}`] : [])].join('&')
     const res = await this.api('POST', `/build?${query}`, undefined, 60 * 60_000)
+    if (res.status !== 200) throw engineError(res.status, res.body)
+    const failed = streamError(res.body)
+    if (failed) throw new Error(failed)
+  }
+
+  /** `docker build -` from a tar build context (a private forge repo Studio cloned itself). */
+  async buildContext(context: Buffer, image: string, labels: Record<string, string>, dockerfile?: string): Promise<void> {
+    const query = [`t=${encodeURIComponent(image)}`, `labels=${encodeURIComponent(JSON.stringify(labels))}`, 'rm=1', 'forcerm=1',
+      ...(dockerfile ? [`dockerfile=${encodeURIComponent(dockerfile)}`] : [])].join('&')
+    const res = await this.api('POST', `/build?${query}`, context, 60 * 60_000)
     if (res.status !== 200) throw engineError(res.status, res.body)
     const failed = streamError(res.body)
     if (failed) throw new Error(failed)

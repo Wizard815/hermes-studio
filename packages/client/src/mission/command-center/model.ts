@@ -116,6 +116,8 @@ export interface InboxItem {
   workId?: string
   jobId?: string
   url?: string
+  /** On the homelab forge rather than GitHub. */
+  forge?: boolean
 }
 
 const KIND_ORDER: Record<InboxKind, number> = { approval: 0, blocked: 1, job: 2, ci: 3, review: 4, done: 5 }
@@ -172,9 +174,11 @@ export function buildInbox(input: InboxInput): InboxItem[] {
     const at = Date.parse(job.last_run_at || '') || 0
     add({ key: `job:${job.job_id || job.id}`, kind: 'job', title: job.name || job.job_id, detail: job.last_error || job.last_status || '', at, jobId: job.job_id || job.id })
   }
-  if (input.github?.enabled && input.github.signedIn) {
+  if (input.github?.enabled) {
     for (const item of input.github.items) {
-      add({ key: `gh:${item.id}`, kind: item.kind, title: item.title, detail: [item.repo + (item.number ? `#${item.number}` : ''), item.detail].filter(Boolean).join(' · '), at: item.at, url: item.url })
+      const forge = item.source === 'forge'
+      if (!forge && !input.github.signedIn) continue
+      add({ key: `gh:${item.id}`, kind: item.kind, title: item.title, detail: [(forge ? 'forge: ' : '') + item.repo + (item.number ? `#${item.number}` : ''), item.detail].filter(Boolean).join(' · '), at: item.at, url: item.url, ...(forge ? { forge: true } : {}) })
     }
   }
   return items.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || b.at - a.at)

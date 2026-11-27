@@ -108,6 +108,8 @@ import { androidDeviceRoutes } from '../modules/studio/routes/android-devices'
 import { systemRoutes } from '../modules/studio/routes/system'
 import { chatImportRoutes } from '../modules/studio/routes/chat-import'
 import { testLabRoutes } from '../modules/studio/routes/test-lab'
+import { sandboxRoutes } from '../modules/studio/routes/sandbox'
+import { forgeSettingsRoutes } from '../modules/studio/routes/forge-settings'
 
 /**
  * Register all routes on the Koa app.
@@ -161,6 +163,8 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(systemRoutes.routes())
   app.use(chatImportRoutes.routes())
   app.use(testLabRoutes.routes())
+  app.use(sandboxRoutes.routes())
+  app.use(forgeSettingsRoutes.routes())
   app.use(codingAgentRoutes.routes())
   app.use(agentStatusRoutes.routes())
   app.use(themeRoutes.routes())
