@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { NAlert, NButton, NCheckbox, NInput, NModal, NSelect, NTooltip } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { fetchGithubRepos, packRepo, packedRepoFile, type GithubRepoSummary } from '@/api/studio/repo-pack'
+import { fetchGithubRepos, packRepo, packedRepoFile, type ForgeRepoSummary, type GithubRepoSummary } from '@/api/studio/repo-pack'
 
 /**
  * Add a repo to a chat (docs/repo-pack.md): pick one of your GitHub repos or
@@ -22,7 +22,9 @@ const busy = ref(false)
 const error = ref('')
 const repos = ref<GithubRepoSummary[]>([])
 const connected = ref<boolean | null>(null)
+const forgeRepos = ref<ForgeRepoSummary[]>([])
 
+const forgeOptions = computed(() => forgeRepos.value.map(item => ({ label: `${item.fullName}${item.private ? ' 🔒' : ''}`, value: item.url })))
 const repoOptions = computed(() => repos.value.map(item => ({ label: `${item.fullName}${item.private ? ' 🔒' : ''}`, value: item.fullName })))
 
 async function show() {
@@ -33,6 +35,7 @@ async function show() {
     const result = await fetchGithubRepos()
     connected.value = result.connected
     repos.value = result.repos
+    forgeRepos.value = result.forge?.repos || []
   } catch {
     connected.value = false
   }
@@ -77,6 +80,10 @@ async function pack() {
         <NSelect :value="null" :options="repoOptions" filterable :placeholder="t('repoPack.pickRepo')" size="small" @update:value="(value: string) => { repo = value }" />
       </label>
       <p v-else-if="connected === false" class="hint">{{ t('repoPack.noToken') }}</p>
+      <label v-if="forgeRepos.length" class="field">
+        <span class="label">{{ t('repoPack.forgeRepos') }}</span>
+        <NSelect :value="null" :options="forgeOptions" filterable :placeholder="t('repoPack.pickRepo')" size="small" @update:value="(value: string) => { repo = value }" />
+      </label>
       <label class="field">
         <span class="label">{{ t('repoPack.repo') }}</span>
         <NInput v-model:value="repo" size="small" placeholder="owner/name or https://github.com/owner/name" :input-props="{ 'aria-label': t('repoPack.repo') }" />

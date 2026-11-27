@@ -37,6 +37,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "Local", cloud: "Cloud", embedded: "Embedded" },
     },
     repoPack: {
+      forgeRepos: "Your forge repos",
       button: "Add a repo",
       title: "Add a repo to this message",
       intro: "Studio packs the repo into one Markdown file with repomix and attaches it, so the model can read the whole codebase. Big repos take a minute.",
@@ -91,6 +92,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "Lokal", cloud: "Cloud", embedded: "Embedded" },
     },
     repoPack: {
+      forgeRepos: "Deine Forge-Repos",
       button: "Repo hinzufügen",
       title: "Ein Repo zu dieser Nachricht hinzufügen",
       intro: "Studio packt das Repo mit repomix in eine Markdown-Datei und hängt sie an, damit das Modell den ganzen Code lesen kann. Große Repos dauern eine Minute.",
@@ -145,6 +147,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "Local", cloud: "Nube", embedded: "Embebido" },
     },
     repoPack: {
+      forgeRepos: "Tus repos del forge",
       button: "Añadir un repo",
       title: "Añadir un repo a este mensaje",
       intro: "Studio empaqueta el repo en un archivo Markdown con repomix y lo adjunta, para que el modelo lea todo el código. Los repos grandes tardan un minuto.",
@@ -199,6 +202,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "Local", cloud: "Cloud", embedded: "Embarqué" },
     },
     repoPack: {
+      forgeRepos: "Tes dépôts du forge",
       button: "Ajouter un dépôt",
       title: "Ajouter un dépôt à ce message",
       intro: "Studio regroupe le dépôt dans un fichier Markdown avec repomix et le joint, pour que le modèle lise tout le code. Les gros dépôts prennent une minute.",
@@ -253,6 +257,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "Local", cloud: "Nuvem", embedded: "Embarcado" },
     },
     repoPack: {
+      forgeRepos: "Seus repos do forge",
       button: "Adicionar um repo",
       title: "Adicionar um repo a esta mensagem",
       intro: "O Studio empacota o repo em um arquivo Markdown com repomix e o anexa, para o modelo ler o código todo. Repos grandes levam um minuto.",
@@ -307,6 +312,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "Локально", cloud: "Облако", embedded: "Встраиваемый" },
     },
     repoPack: {
+      forgeRepos: "Ваши репозитории на forge",
       button: "Добавить репозиторий",
       title: "Добавить репозиторий к сообщению",
       intro: "Studio упаковывает репозиторий в один Markdown-файл с помощью repomix и прикрепляет его, чтобы модель прочитала весь код. Большие репозитории занимают минуту.",
@@ -361,6 +367,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "Yerel", cloud: "Bulut", embedded: "Gömülü" },
     },
     repoPack: {
+      forgeRepos: "Forge depoların",
       button: "Depo ekle",
       title: "Bu mesaja bir depo ekle",
       intro: "Studio depoyu repomix ile tek bir Markdown dosyasına paketler ve ekler, böylece model tüm kodu okuyabilir. Büyük depolar bir dakika sürer.",
@@ -415,6 +422,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "محلي", cloud: "سحابي", embedded: "مدمج" },
     },
     repoPack: {
+      forgeRepos: "مستودعاتك على forge",
       button: "إضافة مستودع",
       title: "إضافة مستودع إلى هذه الرسالة",
       intro: "يحزم Studio المستودع في ملف Markdown واحد باستخدام repomix ويرفقه، ليقرأ النموذج الشيفرة كلها. المستودعات الكبيرة تستغرق دقيقة.",
@@ -469,6 +477,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "ローカル", cloud: "クラウド", embedded: "組み込み" },
     },
     repoPack: {
+      forgeRepos: "あなたの forge リポジトリ",
       button: "リポジトリを追加",
       title: "このメッセージにリポジトリを追加",
       intro: "Studio が repomix でリポジトリを 1 つの Markdown ファイルにまとめて添付するので、モデルがコード全体を読めます。大きなリポジトリは 1 分ほどかかります。",
@@ -523,6 +532,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "로컬", cloud: "클라우드", embedded: "임베디드" },
     },
     repoPack: {
+      forgeRepos: "내 forge 저장소",
       button: "저장소 추가",
       title: "이 메시지에 저장소 추가",
       intro: "Studio가 repomix로 저장소를 하나의 Markdown 파일로 묶어 첨부하므로 모델이 전체 코드를 읽을 수 있습니다. 큰 저장소는 1분쯤 걸립니다.",
@@ -577,6 +587,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "本地", cloud: "云端", embedded: "嵌入式" },
     },
     repoPack: {
+      forgeRepos: "你的 forge 仓库",
       button: "添加仓库",
       title: "给这条消息添加一个仓库",
       intro: "Studio 用 repomix 把仓库打包成一个 Markdown 文件并附上，模型就能读完整个代码库。大仓库需要一分钟左右。",
@@ -631,6 +642,7 @@ export const homelabToolsMessages = {
       scopeTag: { local: "本機", cloud: "雲端", embedded: "嵌入式" },
     },
     repoPack: {
+      forgeRepos: "你的 forge 儲存庫",
       button: "加入儲存庫",
       title: "為這則訊息加入一個儲存庫",
       intro: "Studio 用 repomix 把儲存庫打包成一個 Markdown 檔並附上，模型就能讀完整個程式碼庫。大型儲存庫需要一分鐘左右。",

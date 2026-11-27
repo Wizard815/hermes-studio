@@ -1,6 +1,6 @@
 import type { Context } from 'koa'
 import { logger } from '../public/logging'
-import { RepoPackError, listGithubRepos, packRepo } from '../services/repo-pack'
+import { RepoPackError, listForgeRepos, listGithubRepos, packRepo } from '../services/repo-pack'
 
 /** Add a repo to a chat (docs/repo-pack.md). */
 export async function pack(ctx: Context) {
@@ -21,10 +21,10 @@ export async function pack(ctx: Context) {
 }
 
 export async function repos(ctx: Context) {
-  try {
-    ctx.body = await listGithubRepos()
-  } catch (err: any) {
-    ctx.status = err instanceof RepoPackError ? err.status : 502
-    ctx.body = { error: err?.message || 'Could not list GitHub repos' }
-  }
+  // Each source fails on its own: a forge that is down still leaves the GitHub list, and the other way round.
+  const [github, forge] = await Promise.all([
+    listGithubRepos().catch((err: any) => ({ connected: false, repos: [], error: err?.message || 'Could not list GitHub repos' })),
+    listForgeRepos().catch((err: any) => ({ configured: true, connected: false, url: '', repos: [], error: err?.message || 'Could not list forge repos' })),
+  ])
+  ctx.body = { ...github, forge }
 }

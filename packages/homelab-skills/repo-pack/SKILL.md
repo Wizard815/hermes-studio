@@ -43,6 +43,21 @@ npx -y repomix@1.19.0 --remote <owner>/<repo> --remote-branch <ref> --style mark
 npx -y repomix@1.19.0 <path> --include "src/**,docs/**" --ignore "**/*.lock" --style markdown --output /tmp/repo-pack/<name>.md
 ```
 
+**Repos on the family forge (Forgejo).** Its address is `skills.config.forgejo.url`
+in config.yaml, its token `FORGE_TOKEN` in `~/.hermes/.env`, other addresses of
+it in `FORGE_HOSTS`. Clone it yourself with the token as a one-off git header
+(never in the URL or the command line), then pack the folder:
+
+```bash
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.<forge url>/.extraheader" \
+GIT_CONFIG_VALUE_0="Authorization: token $FORGE_TOKEN" \
+git clone --depth 1 <forge url>/<owner>/<repo>.git /tmp/repo-pack/src/<repo>
+npx -y repomix@1.19.0 /tmp/repo-pack/src/<repo> --style markdown --compress --output /tmp/repo-pack/<repo>.md
+```
+
+If the `forgejo` skill is installed, `forge.py --url <forge url> git -- clone <url> <dir>`
+does the clone for you. Plain http is fine for the LAN forge.
+
 Studio's chat composer also has an **Add a repo** button (next to the attach button): it packs
 the repo on the server and attaches the file to the message, so you will see
 an attached `.md` file whose path you can read directly.

@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { forgeGitEnv, forgeOrigin, loadForgeSettings, maskToken, type ForgeSettings } from './forge'
 
 /**
  * Add a repo to a chat (docs/repo-pack.md): repomix packs a GitHub repo into one
@@ -29,7 +30,7 @@ export class RepoPackError extends Error {
 }
 
 /** `owner/repo`, a github.com link (tree/blob paths and .git allowed) or another https git URL, else null. */
-export function normalizeRepo(input: string): { url: string; label: string; github?: { owner: string; repo: string; ref?: string } } | null {
+export function normalizeRepo(input: string, forge: ForgeSettings | null = null): { url: string; label: string; github?: { owner: string; repo: string; ref?: string }; forge?: string; forgeRef?: string } | null {
   const text = input.trim()
   const short = /^([\w.-]+)\/([\w.-]+)$/.exec(text)
   const gh = short || /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(?:tree|blob)\/([^/?#]+))?\/?(?:[?#].*)?$/i.exec(text)
@@ -41,9 +42,17 @@ export function normalizeRepo(input: string): { url: string; label: string; gith
   }
   try {
     const url = new URL(text)
-    if (url.protocol !== 'https:' || url.username || url.password) return null
-    const label = url.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '')
-    return label ? { url: url.toString(), label } : null
+    if (url.username || url.password) return null
+    // The LAN forge may be plain http; anything else must be https.
+    const forgeAt = forgeOrigin(url, forge)
+    if (url.protocol !== 'https:' && !(forgeAt && url.protocol === 'http:')) return null
+    const path = url.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '')
+    // A Forgejo web link to a branch (owner/repo/src/branch/<ref>) clones as owner/repo.
+    const forgeTree = forgeAt ? /^([^/]+)\/([^/]+)(?:\/src\/branch\/([^/]+))?/.exec(path) : null
+    if (forgeTree && forgeAt) {
+      return { url: `${forgeAt}/${forgeTree[1]}/${forgeTree[2]}.git`, label: `${forgeTree[1]}/${forgeTree[2]}`, forge: forgeAt, forgeRef: forgeTree[3] }
+    }
+    return path ? { url: url.toString(), label: path } : null
   } catch {
     return null
   }
@@ -99,28 +108,32 @@ export async function githubToken(): Promise<string> {
 
 export interface RepoPackDeps {
   token?: () => Promise<string>
+  forge?: () => Promise<ForgeSettings | null>
   runner?: typeof run
 }
 
 export async function packRepo(request: RepoPackRequest, deps: RepoPackDeps = {}): Promise<RepoPackResult> {
-  const target = normalizeRepo(String(request.repo || ''))
-  if (!target) throw new RepoPackError('Give a GitHub repo as owner/name or a link, or another https git URL.')
-  const ref = request.ref?.trim() || target.github?.ref
+  const forge = await (deps.forge || loadForgeSettings)().catch(() => null)
+  const target = normalizeRepo(String(request.repo || ''), forge)
+  if (!target) throw new RepoPackError('Give a GitHub repo as owner/name or a link, your forge\'s repo link, or another https git URL.')
+  const ref = request.ref?.trim() || target.github?.ref || target.forgeRef
   const dir = await mkdtemp(join(tmpdir(), 'studio-repo-pack-'))
   const fileName = `${target.label.replace(/[^\w.-]+/g, '_')}${ref ? `@${ref.replace(/[^\w.-]+/g, '_')}` : ''}.repomix.md`
   const output = join(dir, fileName)
   try {
     const args = repomixArgs({ ...request, ref }, target.url, output)
-    const token = target.github ? await (deps.token || githubToken)() : ''
-    const env = { ...process.env, ...githubGitEnv(token), NO_COLOR: '1' }
+    const token = target.github ? await (deps.token || githubToken)() : target.forge ? forge?.token || '' : ''
+    const gitEnv = target.forge ? forgeGitEnv(target.forge, token) : githubGitEnv(token)
+    const env = { ...process.env, ...gitEnv, NO_COLOR: '1' }
     try {
       await (deps.runner || run)('npx', args, env, PACK_TIMEOUT_MS)
     } catch (err: any) {
-      const detail = String(err?.stderr || err?.stdout || err?.message || '').split('\n').map(line => line.trim()).filter(Boolean).slice(-3).join(' ')
+      const detail = maskToken(String(err?.stderr || err?.stdout || err?.message || ''), token).split('\n').map(line => line.trim()).filter(Boolean).slice(-3).join(' ')
       if (err?.code === 'ENOENT') throw new RepoPackError('Node.js (npx) is not installed on the Studio host, so repomix cannot run.', 500)
       if (err?.killed) throw new RepoPackError('Packing took longer than 5 minutes. Try an include pattern for just the folders you need.', 504)
       if (/not found|could not read|authentication|403|404/i.test(detail)) {
-        throw new RepoPackError(token ? `git could not read ${target.label}. Check the name and that the token can see it.` : `git could not read ${target.label}. If it is private, set GH_TOKEN on the Studio host.`, 404)
+        const fix = target.forge ? 'set FORGE_TOKEN in the Hermes profile\'s .env' : 'set GH_TOKEN on the Studio host'
+        throw new RepoPackError(token ? `git could not read ${target.label}. Check the name and that the token can see it.` : `git could not read ${target.label}. If it is private, ${fix}.`, 404)
       }
       throw new RepoPackError(`repomix failed: ${detail.slice(0, 300) || 'no output'}`, 502)
     }
@@ -151,5 +164,26 @@ export async function listGithubRepos(deps: { token?: () => Promise<string>; fet
       fullName: String(repo.full_name), private: !!repo.private, description: String(repo.description || ''),
       pushedAt: String(repo.pushed_at || ''), defaultBranch: String(repo.default_branch || ''),
     })),
+  }
+}
+
+export interface ForgeRepoSummary { fullName: string; private: boolean; url: string }
+
+/** The person's repos on the family Forgejo, when the profile has its address and FORGE_TOKEN. */
+export async function listForgeRepos(deps: { forge?: () => Promise<ForgeSettings | null>; fetcher?: typeof fetch } = {}): Promise<{ configured: boolean; connected: boolean; url: string; repos: ForgeRepoSummary[] }> {
+  const forge = await (deps.forge || loadForgeSettings)().catch(() => null)
+  if (!forge) return { configured: false, connected: false, url: '', repos: [] }
+  if (!forge.token) return { configured: true, connected: false, url: forge.url, repos: [] }
+  const res = await (deps.fetcher || fetch)(`${forge.url}/api/v1/user/repos?limit=50`, {
+    headers: { Authorization: `token ${forge.token}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (!res.ok) throw new RepoPackError(res.status === 401 ? 'The forge did not accept FORGE_TOKEN.' : `The forge answered ${res.status}`, 502)
+  const data = await res.json() as any[]
+  return {
+    configured: true,
+    connected: true,
+    url: forge.url,
+    repos: data.map(repo => ({ fullName: String(repo.full_name), private: !!repo.private, url: String(repo.html_url || `${forge.url}/${repo.full_name}`) })),
   }
 }

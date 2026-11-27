@@ -22,6 +22,16 @@ With a token, the dialog lists your repos and private ones can be packed. The
 token reaches git through the environment (`GIT_CONFIG_*`), never the command
 line. Without one, only public repos work.
 
+## Repos on the family forge (Forgejo)
+
+When the active Hermes profile has `skills.config.forgejo.url` in config.yaml
+and `FORGE_TOKEN` in its `.env`, the dialog also lists your forge repos, and
+forge links work, plain http included (`http://192.168.20.5:3030/owner/repo`,
+or a `/src/branch/<ref>` link). `FORGE_HOSTS` (comma separated) names other
+addresses of the same forge, such as `forgejo:3000`. The token goes only to the
+forge, as a one-off git header; github.com always stays GitHub, and git output
+shown to you has the token masked.
+
 The same thing is available to agents as the `/repo-pack` skill
 ([homelab skills](homelab-skills.md)) and as the repomix MCP server
 ([MCP directory](mcp-directory.md)).
@@ -33,6 +43,8 @@ with `{ repo, ref?, include?, compress? }`.
 
 - **"git could not read owner/name. If it is private, set GH_TOKEN"**: the repo
   is private or misspelled.
+- **"If it is private, set FORGE_TOKEN in the Hermes profile's .env"**: a forge
+  repo without a token, or one the token cannot see.
 - **"more than 20 MB"**: the repo is too big for one attachment. Use an include
   pattern.
 - **"Node.js (npx) is not installed"**: only on a Studio built without Node;
