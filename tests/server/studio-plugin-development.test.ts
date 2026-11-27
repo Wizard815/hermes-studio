@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdtemp, mkdir, readFile, writeFile, rm, readdir, access, realpath, cp, stat, utimes } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { PluginDevelopment } from '../../packages/server/src/modules/studio/services/plugins/development'
@@ -282,6 +283,13 @@ it('does not reactivate after a concurrent disable, unregister, stale revision o
   await expect(development.start(who, 'notes', manager.snapshot().revision)).rejects.toThrow('administrator disabled')
 })
 
+// A killed process whose parent is gone stays a zombie until PID 1 reaps it,
+// and some container init processes never do. A zombie no longer runs.
+function processRunning(pid: number) {
+  try { process.kill(pid, 0) } catch { return false }
+  try { return readFileSync(`/proc/${pid}/stat`, 'utf8').replace(/^.*\) /, '')[0] !== 'Z' } catch { return true }
+}
+
 it('stops an in-flight build and its child compiler when the development host closes', async () => {
   const { source, manager, development } = await fixture()
   const pkg = JSON.parse(await readFile(join(source, 'package.json'), 'utf8')); pkg.scripts.build = 'node compile.mjs'
@@ -292,7 +300,7 @@ it('stops an in-flight build and its child compiler when the development host cl
   await vi.waitFor(async () => access(join(source, 'compiler-pid')))
   const pid = Number(await readFile(join(source, 'compiler-pid'), 'utf8'))
   await development.close(); await rejected
-  await vi.waitFor(() => { expect(() => process.kill(pid, 0)).toThrow() })
+  await vi.waitFor(() => { expect(processRunning(pid)).toBe(false) })
   expect(manager.snapshot().plugins).toHaveLength(0)
 })
 

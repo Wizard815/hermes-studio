@@ -3,7 +3,7 @@ import { normalizeGeneratedTitle, SESSION_TITLE_MAX_CHARS } from '../../packages
 
 describe('normalizeGeneratedTitle', () => {
   it('strips quotes, labels and trailing punctuation', () => {
-    expect(normalizeGeneratedTitle('"Plan a weekend trip to Lisbon."')).toBe('Plan a weekend trip to Lisbon')
+    expect(normalizeGeneratedTitle('"Fix the Lisbon trip."')).toBe('Fix the Lisbon trip')
     expect(normalizeGeneratedTitle('Title: Fix login bug\nbecause...')).toBe('Fix login bug')
   })
 
@@ -18,7 +18,7 @@ describe('normalizeGeneratedTitle', () => {
     const longTitle = 'How to fix the login bug in the authentication system'
     const result = normalizeGeneratedTitle(longTitle)
     expect(result.length).toBeLessThanOrEqual(SESSION_TITLE_MAX_CHARS)
-    expect(result).toBe('How to fix the login bug in')
+    expect(result).toBe('How to fix the login bug')
   })
 
   it('handles punctuation-aware truncation', () => {

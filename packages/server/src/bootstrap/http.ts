@@ -34,6 +34,7 @@ import { dshPluginUi } from '../modules/coding-agents/services'
 import { vscodeGateway, vscodeManager } from '../modules/studio/services/vscode'
 import { screenGateway, screenManager } from '../modules/studio/services/screen'
 import { hermesApi } from '../modules/hermes/services/hermes-api'
+import { findHermesCli } from '../modules/hermes/services/herdr-launch'
 import { screenBrowser, screenBrowserPort, startScreenBrowser } from '../modules/studio/services/screen-browser'
 import './chat-agent-runtime-adapter'
 import './skill-files-adapter'
@@ -643,6 +644,7 @@ export async function bootstrap() {
   const testLabTimer = setTimeout(() => { void sweepTestLab() }, 10_000)
   testLabTimer.unref()
   additionalShutdownSteps.push({ name: 'Test Lab', close: () => closeTestLab() })
+  screenManager.useCliFinder(() => findHermesCli())
   const closeScreenGateway = screenGateway.attach(servers)
   additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })
   // A screen installed before this container was rebuilt is installed again.

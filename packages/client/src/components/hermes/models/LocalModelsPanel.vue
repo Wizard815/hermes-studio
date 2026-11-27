@@ -422,7 +422,7 @@ onUnmounted(() => { alive = false; if (pollTimer) clearTimeout(pollTimer) })
 
 .lm-card {
   padding: calc(12px * var(--spacing-scale, 1));
-  background: $bg-secondary; border: var(--border-width, 1px) solid $border-color; border-radius: $radius-sm;
+  background: rgba(var(--text-primary-rgb), 0.04); border: var(--border-width, 1px) solid $border-color; border-radius: $radius-sm;
   h4 { margin: 0 0 6px; font-size: calc(var(--font-size-base, 14px) * 13 / 14); color: $text-primary; }
   p { margin: 0 0 4px; font-size: calc(var(--font-size-base, 14px) * 12 / 14); color: $text-secondary; }
 }
@@ -443,7 +443,7 @@ onUnmounted(() => { alive = false; if (pollTimer) clearTimeout(pollTimer) })
 .lm-row {
   display: flex; align-items: center; gap: calc(10px * var(--spacing-scale, 1));
   padding: calc(10px * var(--spacing-scale, 1)) calc(12px * var(--spacing-scale, 1));
-  background: $bg-secondary; border: var(--border-width, 1px) solid $border-color; border-radius: $radius-sm;
+  background: rgba(var(--text-primary-rgb), 0.04); border: var(--border-width, 1px) solid $border-color; border-radius: $radius-sm;
 }
 
 .lm-row-button { width: 100%; text-align: start; font: inherit; color: inherit; cursor: pointer; }

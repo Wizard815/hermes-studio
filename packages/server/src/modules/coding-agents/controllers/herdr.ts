@@ -1,6 +1,6 @@
 import type { Context } from 'koa'
 import { gzipSync } from 'node:zlib'
-import { upstreamWorkRef } from '../../studio/services/upstream/client'
+import { upstreamWorkRef } from '../../studio/public/upstream-work'
 import { herdrAppLayoutScript, herdrManager, HERDR_INTEGRATIONS } from '../services/herdr/manager'
 import { readFile } from 'node:fs/promises'
 import { herdrKindForStudioAgent } from '../services/herdr/protocol'

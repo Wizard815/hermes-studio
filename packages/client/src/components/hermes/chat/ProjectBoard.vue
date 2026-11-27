@@ -267,7 +267,7 @@ function prLabel(link: string): string {
   padding: 8px;
   border: var(--border-width, 1px) solid $border-light;
   border-radius: var(--radius-component, 8px);
-  background-color: $bg-secondary;
+  background-color: rgba(var(--text-primary-rgb), 0.04);
   overflow-y: auto;
 
   &--over { border-color: $accent-primary; }

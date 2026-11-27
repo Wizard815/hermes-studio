@@ -1,7 +1,5 @@
 import { getDb } from '../../infrastructure/database'
 import { getOrbClient } from '../orb/client'
-import { getActiveProfileName } from '../../../hermes/services/profiles/profile'
-import { readProfileEnv, readSetupRecord } from '../../../hermes/controllers/mattermost-setup'
 import { logger } from '../../public/logging'
 import { AgentWorkStore } from './store'
 import { AgentWorkSettingsFile } from './settings'
@@ -26,18 +24,25 @@ export function watchAgentWork(work: AgentWork, change: 'created' | 'status' | '
   }
 }
 
+/** What agent work reads from the Hermes profile; bootstrap supplies it, since Studio must not import Hermes. */
+export interface AgentWorkHermesProfile {
+  activeProfile(): string | null | undefined
+  env(profile: string): Record<string, string>
+  mattermostSetup(profile: string): { team: { id: string }; user: { id: string } } | null
+}
+
 let service: AgentWorkService | null = null
 let timers: ReturnType<typeof setInterval>[] = []
 
 /** Process-wide agent work service; bootstrap sets the settings file under HERMES_WEB_UI_HOME. */
-export function configureAgentWork(settingsFile: string): AgentWorkService {
+export function configureAgentWork(settingsFile: string, hermes: AgentWorkHermesProfile): AgentWorkService {
   closeAgentWork()
   const db = getDb()
   if (!db) throw new Error('Agent work needs SQLite (Node 22.5 or newer)')
   const settings = new AgentWorkSettingsFile(settingsFile)
-  const profile = () => getActiveProfileName() || 'default'
+  const profile = () => hermes.activeProfile() || 'default'
   const mattermost = new MattermostRest(() => {
-    const env = readProfileEnv(profile())
+    const env = hermes.env(profile())
     return { url: String(env.MATTERMOST_URL || '').trim().replace(/\/+$/, ''), token: String(env.MATTERMOST_TOKEN || '').trim() }
   })
   service = new AgentWorkService({
@@ -45,7 +50,7 @@ export function configureAgentWork(settingsFile: string): AgentWorkService {
     settings,
     mattermost,
     setupRecord: () => {
-      const record = readSetupRecord(profile())
+      const record = hermes.mattermostSetup(profile())
       return record ? { teamId: record.team.id, userId: record.user.id } : null
     },
     orb: new OrbShare(getOrbClient),
