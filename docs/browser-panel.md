@@ -55,4 +55,7 @@ Studio so the panel moves to it.
   panel's browser, and the panel follows it.
 - `tests/e2e/browser-chat-agent.live.spec.ts`: a real model with Studio's
   browser MCP drives the panel (`LIVE_BROWSER_CHAT=1`, `BROWSER_CHAT_VIDEO=1`;
-  Node needs `NODE_USE_ENV_PROXY=1` behind a proxy).
+  Node needs `NODE_USE_ENV_PROXY=1` behind a proxy). `LIVE_BROWSER_CHAT_MODEL`,
+  `_ASK`, `_TURNS` and `_EXPECT` change the model and the errand. Tencent's
+  `tencent/hy4-flash` searched Wikipedia and read three news articles in 35
+  turns for about $0.003.

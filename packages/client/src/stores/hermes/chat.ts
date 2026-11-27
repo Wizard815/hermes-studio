@@ -1,3 +1,4 @@
+import { replyStyleRunField } from '@/utils/reply-style'
 import { deploymentUrl } from '@/utils/deployment-url'
 import { chatSessionAgentAvatar, PERSON_AVATAR } from '@/utils/chat-agent-avatar'
 import { deleteSessionMessages, type MessageDeletionResult } from '@/api/studio/sessions'
@@ -4075,6 +4076,7 @@ function createChatState(scopedSessionId?: string) {
         // An absent override preserves the agent's native reasoning setting.
         reasoning_effort: activeSession.value?.reasoningEffort || undefined,
         push_enabled: activeSession.value?.pushEnabled !== false,
+        ...replyStyleRunField(),
       }
       if (shouldSendInitialSessionConfig && activeSession.value) {
         activeSession.value.messageCount = Math.max(activeSession.value.messageCount || 0, 1)

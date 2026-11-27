@@ -69,6 +69,7 @@ import {
 import { ensureAppRelayHostClient } from '../modules/studio/services/app-relay/connection'
 import { setupGlobalEkkoAgent } from './ekko'
 import { codingAgentUiSkillTargets, registerUiSkillTargetProvider, scheduleUiSkillsInstall } from '../modules/studio/public/ui-skills'
+import { scheduleHomelabSkillsInstall } from '../modules/studio/public/homelab-skills'
 import { closeTestLab, sweepTestLab } from '../modules/studio/public/test-lab'
 import { hermesUiSkillTargets } from '../modules/hermes/services/skills/ui-skill-targets'
 import { ekkoUiSkillTargets } from '../modules/ekko/services/ui-skill-targets'
@@ -635,6 +636,9 @@ export async function bootstrap() {
   registerUiSkillTargetProvider('coding-agents', () => codingAgentUiSkillTargets())
   const uiSkillsTimer = setTimeout(() => { void scheduleUiSkillsInstall() }, Number(process.env.STUDIO_UI_SKILLS_DELAY_MS || 5_000))
   uiSkillsTimer.unref()
+  // Homelab skills (docs/homelab-skills.md) right after, to the same folders in their own category.
+  const homelabSkillsTimer = setTimeout(() => { void scheduleHomelabSkillsInstall() }, Number(process.env.STUDIO_UI_SKILLS_DELAY_MS || 5_000) + 2_000)
+  homelabSkillsTimer.unref()
   // Test Lab (docs/test-lab.md): runs left behind on Docker (older than a day, or cut short by a restart).
   const testLabTimer = setTimeout(() => { void sweepTestLab() }, 10_000)
   testLabTimer.unref()

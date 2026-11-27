@@ -9612,6 +9612,32 @@
         }
       }
     },
+    "/api/hermes/mcp/directory": {
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Get directory",
+        "description": "GET /api/hermes/mcp/directory",
+        "operationId": "directory",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
     "/api/hermes/mcp/home-assistant/ssh-key": {
       "post": {
         "tags": [

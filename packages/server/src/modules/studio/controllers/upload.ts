@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { getActiveProfileName } from '../public/profile-config'
 import { getProfileUploadDir } from '../services/files/upload-paths'
+import { writeMarkdownCopy } from '../services/files/markitdown'
 import { MultipartParseError, parseMultipartBoundary, parseMultipartFilename, splitMultipart } from '../http/multipart'
 import { drainRejectedRequest, nonDestroyingRequestBody } from '../http/request-body'
 
@@ -80,6 +81,7 @@ export async function handleUpload(ctx: any) {
     const savedPath = join(uploadDir, savedName)
     if (ctx.state?.sessionShare) authorizeSessionShare(ctx.state.sessionShare, 'upload')
     await writeFile(savedPath, data)
+    await writeMarkdownCopy(savedPath)
     results.push({ name: filename, path: savedPath })
   }
   ctx.body = { files: results }
