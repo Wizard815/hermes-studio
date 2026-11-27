@@ -18,7 +18,10 @@ import { ScreenBrowserService } from '../../packages/server/src/modules/studio/s
 const live = process.env.LIVE_BROWSER_CHAT === '1'
 const BASE_URL = process.env.LIVE_BROWSER_CHAT_BASE_URL || 'https://openrouter.ai/api/v1'
 const MODEL = process.env.LIVE_BROWSER_CHAT_MODEL || 'anthropic/claude-haiku-5.5'
-const ASK = 'Open https://example.com in the browser, click its "Learn more" link, and tell me the title of the page you land on.'
+const ASK = process.env.LIVE_BROWSER_CHAT_ASK || 'Open https://example.com in the browser, click its "Learn more" link, and tell me the title of the page you land on.'
+const EXPECT = new RegExp(process.env.LIVE_BROWSER_CHAT_EXPECT || 'Example Domains', 'i')
+const EXPECT_URL = new RegExp(process.env.LIVE_BROWSER_CHAT_EXPECT_URL || 'iana\\.org')
+const MAX_TURNS = Number(process.env.LIVE_BROWSER_CHAT_TURNS || 16)
 const shotDir = process.env.BROWSER_CHAT_SHOTS || ''
 const token = `fixture.${Buffer.from(JSON.stringify({ sub: '1', role: 'super_admin' })).toString('base64url')}.fixture`
 const session = { id: 'chat-1', title: 'One model, one browser', profile: 'default', source: 'web', agent: 'hermes', model: MODEL, started_at: 1, last_active: 1, message_count: 1 }
@@ -56,7 +59,7 @@ class McpClient {
 test.describe(() => {
   test.skip(!live, 'set LIVE_BROWSER_CHAT=1')
   test('One model: the chat model drives the Browser panel with its own browser tools', async ({ page }) => {
-    test.setTimeout(300_000)
+    test.setTimeout(Number(process.env.LIVE_BROWSER_CHAT_TIMEOUT || 300) * 1000)
     const home = mkdtempSync(join(tmpdir(), 'browser-chat-'))
     mkdirSync(join(home, 'desktop-browser'), { mode: 0o700 })
     const panel = new HeadlessBrowserService({ brokerRoot: join(home, 'panel') })
@@ -140,19 +143,23 @@ test.describe(() => {
         { role: 'user', content: ASK },
       ]
       let answer = ''
+      let spent = 0
       const calls: string[] = []
-      for (let turn = 0; turn < 16 && !answer; turn++) {
+      for (let turn = 0; turn < MAX_TURNS && !answer; turn++) {
         const response = await fetch(`${BASE_URL}/chat/completions`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${process.env.LIVE_BROWSER_CHAT_KEY || 'none'}` },
-          body: JSON.stringify({ model: MODEL, messages, tools: functions, max_tokens: 800 }),
+          body: JSON.stringify({ model: MODEL, messages, tools: functions, max_tokens: 1500 }),
         })
         expect(response.ok, await response.clone().text()).toBe(true)
-        const message = (await response.json()).choices[0].message
+        const reply = await response.json()
+        if (reply.usage?.cost != null) spent += Number(reply.usage.cost)
+        const message = reply.choices[0].message
         messages.push(message)
         if (!message.tool_calls?.length) { answer = String(message.content || ''); break }
         for (const call of message.tool_calls) {
           calls.push(`${call.function.name} ${call.function.arguments}`)
+          if (process.env.BROWSER_CHAT_DEBUG === '1') console.log('[call]', call.function.name, call.function.arguments)
           const result = await client.call('tools/call', { name: call.function.name, arguments: JSON.parse(call.function.arguments || '{}') })
           const text = (result.content || []).filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
           messages.push({ role: 'tool', tool_call_id: call.id, content: text.slice(0, 12_000) })
@@ -161,10 +168,11 @@ test.describe(() => {
       }
       console.log('[live] tool calls\n' + calls.join('\n'))
       console.log('[live] answer:', answer)
-      expect(answer).toMatch(/Example Domains/i)
+      console.log('[live] model', MODEL, 'turns', messages.filter(m => m.role === 'assistant').length, 'cost $' + spent.toFixed(4))
+      expect(answer).toMatch(EXPECT)
 
       // The panel shows where the chat's model went, with no second model involved.
-      await expect(page.locator('.browser-url-input input')).toHaveValue(/iana\.org/, { timeout: 15_000 })
+      await expect(page.locator('.browser-url-input input')).toHaveValue(EXPECT_URL, { timeout: 15_000 })
       await expect(page.locator('.browser-screenshot-image')).toBeVisible()
       await page.waitForTimeout(1500)
       await shot(page, 'browser-chat-done.png')
