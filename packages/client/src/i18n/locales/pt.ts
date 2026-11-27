@@ -3190,6 +3190,8 @@ jobTriggered: 'Job acionado',
     connectionFailed: 'Falha ao conectar ao terminal',
     connectionError: 'Erro de conexão',
     connectionClosed: 'Conexão fechada',
+    theme: 'Tema',
+    reconnecting: 'Reconectando…',
   },
 
   // Usage

@@ -3189,6 +3189,8 @@ export default {
     connectionFailed: 'ターミナルに接続できませんでした',
     connectionError: '接続エラー',
     connectionClosed: '接続が閉じられました',
+    theme: 'テーマ',
+    reconnecting: '再接続中…',
   },
 
   // 使用統計

@@ -19,6 +19,9 @@ const token = `fixture.${Buffer.from(JSON.stringify({ sub: '1', role: 'super_adm
 const session = { id: 'chat-1', title: 'Browser tasks', profile: 'default', source: 'web', agent: 'hermes', model: 'fixture-model', started_at: 1, last_active: 1, message_count: 1 }
 const history = [{ id: 1, role: 'assistant', content: 'The browser panel is on the right.', timestamp: 1 }]
 
+// BROWSER_TASK_VIDEO=1 records the whole run (Playwright's video, in the test's output folder).
+test.use({ video: process.env.BROWSER_TASK_VIDEO === '1' ? { mode: 'on', size: { width: 1500, height: 940 } } : 'retain-on-failure' })
+
 async function shot(page: Page, name: string) {
   await page.screenshot({ path: shotDir ? join(shotDir, name) : test.info().outputPath(name) })
 }
@@ -104,7 +107,7 @@ test.describe(() => {
       await page.getByRole('tab', { name: 'Browser' }).click()
       const bar = page.getByTestId('browser-task')
       await expect(bar).toBeVisible({ timeout: 30_000 })
-      await expect(page.getByTestId('browser-task-model')).toContainText(MODEL_ID)
+      await expect(page.getByTestId('browser-task-model')).toContainText(MODEL)
 
       await page.getByTestId('browser-task-input').locator('input').fill('Open https://example.com, click its "Learn more" link, and answer with the title of the page you land on.')
       await page.getByTestId('browser-task-run').click()
@@ -134,6 +137,9 @@ test.describe(() => {
       const sent = frames.find(frame => frame.includes('Comment on https://www.iana.org'))!
       expect(sent).toMatch(/element under the pin|<(main|div|p|h1|article)/i)
       console.log('[live] task', JSON.stringify({ ...runner.state(), steps: runner.state()?.steps.map(s => s.text) }))
+      // A finished task's card clears.
+      await page.getByTestId('browser-task-clear').click()
+      await expect(page.getByTestId('browser-task-log')).toBeHidden()
       expect(errors).toEqual([])
     } finally {
       runner.stop()

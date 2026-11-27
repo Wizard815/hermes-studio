@@ -77,3 +77,5 @@ pin a comment on what it found.
   comments read it).
 - `tests/live/browser-task.live.test.ts`: real browser-use and a real model.
   See the file for the environment variables (OpenRouter or Argos).
+- `tests/e2e/browser-task.live.spec.ts`: the same in the panel, in a browser.
+  `BROWSER_TASK_VIDEO=1` records a video of the run.
