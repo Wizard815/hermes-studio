@@ -1,4 +1,5 @@
 import { hermesApi } from '../services/hermes-api'
+import { MCP_DIRECTORY_SOURCE, MCP_RECOMMENDED, loadMcpDirectory, mcpDirectoryCategories, searchMcpDirectory, type McpDirectoryQuery } from '../services/mcp/directory'
 import type { Context } from 'koa'
 import { bridgeMcpAction } from '../services/mcp/bridge-actions'
 import { getActiveProfileName, getProfileDir } from '../services/profiles/profile'
@@ -217,5 +218,26 @@ export async function homeAssistantSshKey(ctx: Context) {
   } catch (err: any) {
     ctx.status = 500
     ctx.body = { error: `Could not make an SSH key: ${err?.message || err}` }
+  }
+}
+
+/** MCP directory (docs/mcp-directory.md): search the community list and the recommended servers. */
+export async function directory(ctx: Context) {
+  const q = ctx.query as Record<string, string | undefined>
+  try {
+    const list = await loadMcpDirectory({ refresh: q.refresh === '1' })
+    ctx.body = {
+      source: MCP_DIRECTORY_SOURCE,
+      fetchedAt: list.fetchedAt,
+      recommended: MCP_RECOMMENDED,
+      categories: mcpDirectoryCategories(list.entries),
+      ...searchMcpDirectory(list.entries, {
+        q: q.q, category: q.category, scope: (q.scope || '') as McpDirectoryQuery['scope'],
+        official: q.official === '1', ready: q.ready === '1', offset: Number(q.offset) || 0, limit: Number(q.limit) || 60,
+      }),
+    }
+  } catch (err: any) {
+    ctx.status = 502
+    ctx.body = { error: err?.message || 'Could not load the MCP list', recommended: MCP_RECOMMENDED }
   }
 }

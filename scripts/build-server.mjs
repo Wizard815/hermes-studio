@@ -81,6 +81,11 @@ const uiSkillsOutDir = resolve(rootDir, 'dist/ui-skills')
 rmSync(uiSkillsOutDir, { recursive: true, force: true })
 cpSync(resolve(rootDir, 'packages/ui-skills'), uiSkillsOutDir, { recursive: true })
 
+// Homelab skills (docs/homelab-skills.md): same targets as the UI skills, their own category.
+const homelabSkillsOutDir = resolve(rootDir, 'dist/homelab-skills')
+rmSync(homelabSkillsOutDir, { recursive: true, force: true })
+cpSync(resolve(rootDir, 'packages/homelab-skills'), homelabSkillsOutDir, { recursive: true })
+
 const ekkoSkillsOutDir = resolve(rootDir, 'dist/ekko-skills')
 rmSync(ekkoSkillsOutDir, { recursive: true, force: true })
 cpSync(

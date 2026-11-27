@@ -31,6 +31,7 @@ import { isHermesAgentAvailable } from '../../studio/public/agent-status-registr
 import { applyJobPostDefaults } from '../services/cron/job-post-defaults'
 import { scheduleRecommendedPlugins } from '../services/plugins/recommended'
 import { scheduleUiSkillsInstall } from '../../studio/public/ui-skills'
+import { scheduleHomelabSkillsInstall } from '../../studio/public/homelab-skills'
 import { readAppProfileAvatar } from '../services/profiles/app-profile-avatar'
 
 const bridgeCleanupClient = () => new AgentBridgeClient({ connectRetryMs: 0, timeoutMs: 5000 })
@@ -419,6 +420,7 @@ export async function create(ctx: any) {
     await applyJobPostDefaults(name).catch(err => logger.warn(err, 'Job post defaults failed for "%s"', name))
     void scheduleRecommendedPlugins([name])
     void scheduleUiSkillsInstall()
+    void scheduleHomelabSkillsInstall()
     setRuntimeStatusCache({
       profile: name,
       bridge: { running: false, profile: name, reachable: false, error: undefined },

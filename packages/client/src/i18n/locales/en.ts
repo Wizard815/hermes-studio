@@ -25,6 +25,8 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -67,6 +69,8 @@ export default {
   ...testLabMessages['en'],
   ...recommendedPluginsMessages['en'],
   ...uiSkillsMessages['en'],
+  ...homelabToolsMessages['en'],
+  ...replyStyleMessages['en'],
   ...gadgetMessages['en'],
   ...toolLoadMessages['en'],
   sessionTasks: {

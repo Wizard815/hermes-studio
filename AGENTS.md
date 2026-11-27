@@ -32,6 +32,12 @@ and keep this file small enough to fit into every task context.
 - `docs/ui-skills.md` - UI skills (bundled): design skills copied once into Hermes, Ekko and every coding agent; removal, edits, switch.
 - `docs/test-lab.md` - Test Lab: throwaway app containers, one agent test on a pinned, capped model, report and cleanup by label.
 - `docs/chat-import.md` - Import chats: Hermes, Claude Code, Codex, OpenClaw sessions into Studio chats; preview, dedupe, never credentials.
+- `docs/homelab-skills.md` - homelab skills (bundled): look-before-build (awesome lists), repo-pack, to-markdown, code-map, caveman; same targets as UI skills.
+- `docs/mcp-directory.md` - MCP page → Directory: awesome-mcp-servers searched on the server, recommended tokensave/markitdown/repomix, Set up with Hermes.
+- `docs/repo-pack.md` - Add a repo to a chat: repomix packs a GitHub repo and attaches the Markdown file; GH_TOKEN for private repos.
+- `docs/markitdown.md` - Markdown copies of attached PDFs and Office files for text-only models.
+- `docs/context-compression.md` - fewer tokens for local models; LLMLingua evaluation.
+- `docs/reply-styles.md` - emoji and caveman reply styles in the composer settings; the ten emoji, Explain and Continue.
 
 ## Common Commands
 

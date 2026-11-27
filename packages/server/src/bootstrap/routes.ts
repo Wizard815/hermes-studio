@@ -32,6 +32,7 @@ import { herdrPluginRoutes, herdrRoutes } from '../modules/coding-agents/routes/
 
 // Studio and agent route modules composed into one HTTP application.
 import { uploadRoutes } from '../modules/studio/routes/upload'
+import { repoPackRoutes } from '../modules/studio/routes/repo-pack'
 import { appUploadRoutes } from '../modules/studio/routes/app-upload'
 import { authPublicRoutes, authProtectedRoutes } from '../modules/studio/routes/auth'
 import { mcuDevicePublicRoutes, mcuDeviceRoutes } from '../modules/studio/routes/mcu-devices'
@@ -152,6 +153,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(mcuDeviceRoutes.routes())
   app.use(appConnectionRoutes.routes())
   app.use(uploadRoutes.routes())
+  app.use(repoPackRoutes.routes())
   app.use(appUploadRoutes.routes())
   app.use(updateRoutes.routes())           // Must be before proxy (proxy catch-all matches everything)
   app.use(herdrRoutes.routes())           // Before codingAgentRoutes' /:id patterns
