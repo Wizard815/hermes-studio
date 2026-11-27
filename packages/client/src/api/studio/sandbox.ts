@@ -13,6 +13,8 @@ export interface SandboxSummary {
   /** Docker's state: running, exited… or gone when the container no longer exists. */
   state: string
   repos: string[]
+  /** Sites this sandbox may reach besides the allowlist. */
+  allow: string[]
 }
 
 const base = '/api/studio/sandbox'
@@ -41,7 +43,7 @@ export interface EgressCall {
 }
 
 export const fetchEgressRules = () => request<{ rules: EgressRules }>(`${base}/egress`)
-export const saveEgressRules = (rules: Partial<EgressRules>) => request<{ rules: EgressRules }>(`${base}/egress`, { method: 'PUT', body: JSON.stringify(rules) })
+export const saveEgressRules = (rules: Partial<EgressRules> & { reset?: boolean }) => request<{ rules: EgressRules }>(`${base}/egress`, { method: 'PUT', body: JSON.stringify(rules) })
 export const fetchNetworkLog = (opts: { sandbox?: string; blocked?: boolean; limit?: number } = {}) => {
   const q = new URLSearchParams()
   if (opts.sandbox) q.set('sandbox', opts.sandbox)

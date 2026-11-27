@@ -32,8 +32,10 @@ export const sandboxMessages = {
         "allowed": "allowed",
         "refused": "refused",
         "lanNote": "Your LAN and other private addresses are always refused, even in log-only mode.",
-        "loadFailed": "Could not load the calls: {error}. Check that Docker is reachable."
-      }
+        "loadFailed": "Could not load the calls: {error}. Check that Docker is reachable.",
+        "reset": "Use the default lists"
+      },
+      "extraSites": "Also allowed for this sandbox: {hosts}"
     }
   },
   "de": {
@@ -68,8 +70,10 @@ export const sandboxMessages = {
         "allowed": "erlaubt",
         "refused": "abgelehnt",
         "lanNote": "Dein LAN und andere private Adressen werden immer abgelehnt, auch im Modus „nur protokollieren“.",
-        "loadFailed": "Die Aufrufe konnten nicht geladen werden: {error}. Prüfe, ob Docker erreichbar ist."
-      }
+        "loadFailed": "Die Aufrufe konnten nicht geladen werden: {error}. Prüfe, ob Docker erreichbar ist.",
+        "reset": "Standardlisten verwenden"
+      },
+      "extraSites": "Für diese Sandbox zusätzlich erlaubt: {hosts}"
     }
   },
   "es": {
@@ -104,8 +108,10 @@ export const sandboxMessages = {
         "allowed": "permitida",
         "refused": "rechazada",
         "lanNote": "Tu LAN y otras direcciones privadas siempre se rechazan, incluso en modo solo registrar.",
-        "loadFailed": "No se pudieron cargar las llamadas: {error}. Comprueba que Docker esté accesible."
-      }
+        "loadFailed": "No se pudieron cargar las llamadas: {error}. Comprueba que Docker esté accesible.",
+        "reset": "Usar las listas predeterminadas"
+      },
+      "extraSites": "También permitido para este sandbox: {hosts}"
     }
   },
   "fr": {
@@ -140,8 +146,10 @@ export const sandboxMessages = {
         "allowed": "autorisé",
         "refused": "refusé",
         "lanNote": "Votre réseau local et les autres adresses privées sont toujours refusés, même en mode journal seulement.",
-        "loadFailed": "Impossible de charger les appels : {error}. Vérifiez que Docker est joignable."
-      }
+        "loadFailed": "Impossible de charger les appels : {error}. Vérifiez que Docker est joignable.",
+        "reset": "Utiliser les listes par défaut"
+      },
+      "extraSites": "Aussi autorisé pour cette sandbox : {hosts}"
     }
   },
   "pt": {
@@ -176,8 +184,10 @@ export const sandboxMessages = {
         "allowed": "permitida",
         "refused": "recusada",
         "lanNote": "Sua LAN e outros endereços privados são sempre recusados, mesmo no modo só registrar.",
-        "loadFailed": "Não foi possível carregar as chamadas: {error}. Verifique se o Docker está acessível."
-      }
+        "loadFailed": "Não foi possível carregar as chamadas: {error}. Verifique se o Docker está acessível.",
+        "reset": "Usar as listas padrão"
+      },
+      "extraSites": "Também permitido para este sandbox: {hosts}"
     }
   },
   "ru": {
@@ -212,8 +222,10 @@ export const sandboxMessages = {
         "allowed": "разрешён",
         "refused": "отклонён",
         "lanNote": "Ваша локальная сеть и другие частные адреса всегда отклоняются, даже в режиме «только журнал».",
-        "loadFailed": "Не удалось загрузить запросы: {error}. Проверьте, что Docker доступен."
-      }
+        "loadFailed": "Не удалось загрузить запросы: {error}. Проверьте, что Docker доступен.",
+        "reset": "Вернуть списки по умолчанию"
+      },
+      "extraSites": "Также разрешено для этой песочницы: {hosts}"
     }
   },
   "tr": {
@@ -248,8 +260,10 @@ export const sandboxMessages = {
         "allowed": "izin verildi",
         "refused": "reddedildi",
         "lanNote": "Yerel ağınız ve diğer özel adresler, yalnızca kayıt modunda bile her zaman reddedilir.",
-        "loadFailed": "İstekler yüklenemedi: {error}. Docker'a ulaşılabildiğini kontrol edin."
-      }
+        "loadFailed": "İstekler yüklenemedi: {error}. Docker'a ulaşılabildiğini kontrol edin.",
+        "reset": "Varsayılan listeleri kullan"
+      },
+      "extraSites": "Bu sanal alan için ayrıca izin verilenler: {hosts}"
     }
   },
   "ar": {
@@ -284,8 +298,10 @@ export const sandboxMessages = {
         "allowed": "مسموح",
         "refused": "مرفوض",
         "lanNote": "تُرفض شبكتك المحلية والعناوين الخاصة الأخرى دائمًا، حتى في وضع التسجيل فقط.",
-        "loadFailed": "تعذّر تحميل الطلبات: {error}. تحقّق من إمكانية الوصول إلى Docker."
-      }
+        "loadFailed": "تعذّر تحميل الطلبات: {error}. تحقّق من إمكانية الوصول إلى Docker.",
+        "reset": "استخدام القوائم الافتراضية"
+      },
+      "extraSites": "مسموح أيضًا لهذه البيئة: {hosts}"
     }
   },
   "ja": {
@@ -320,8 +336,10 @@ export const sandboxMessages = {
         "allowed": "許可",
         "refused": "拒否",
         "lanNote": "LAN とその他のプライベートアドレスは、記録のみモードでも常に拒否されます。",
-        "loadFailed": "通信を読み込めませんでした: {error}。Docker に接続できるか確認してください。"
-      }
+        "loadFailed": "通信を読み込めませんでした: {error}。Docker に接続できるか確認してください。",
+        "reset": "既定のリストに戻す"
+      },
+      "extraSites": "このサンドボックスだけ追加で許可: {hosts}"
     }
   },
   "ko": {
@@ -356,8 +374,10 @@ export const sandboxMessages = {
         "allowed": "허용",
         "refused": "거부",
         "lanNote": "LAN과 다른 사설 주소는 기록만 모드에서도 항상 거부됩니다.",
-        "loadFailed": "요청을 불러오지 못했습니다: {error}. Docker에 연결되는지 확인하세요."
-      }
+        "loadFailed": "요청을 불러오지 못했습니다: {error}. Docker에 연결되는지 확인하세요.",
+        "reset": "기본 목록 사용"
+      },
+      "extraSites": "이 샌드박스에만 추가로 허용: {hosts}"
     }
   },
   "zh": {
@@ -392,8 +412,10 @@ export const sandboxMessages = {
         "allowed": "允许",
         "refused": "拒绝",
         "lanNote": "局域网和其他私有地址始终被拒绝，即使在仅记录模式下也是如此。",
-        "loadFailed": "无法加载请求：{error}。请检查 Docker 是否可以访问。"
-      }
+        "loadFailed": "无法加载请求：{error}。请检查 Docker 是否可以访问。",
+        "reset": "使用默认列表"
+      },
+      "extraSites": "此沙盒额外允许：{hosts}"
     }
   },
   "zh-TW": {
@@ -428,8 +450,10 @@ export const sandboxMessages = {
         "allowed": "允許",
         "refused": "拒絕",
         "lanNote": "區域網路和其他私有位址一律拒絕，即使在僅記錄模式下也一樣。",
-        "loadFailed": "無法載入請求：{error}。請確認可以連到 Docker。"
-      }
+        "loadFailed": "無法載入請求：{error}。請確認可以連到 Docker。",
+        "reset": "使用預設清單"
+      },
+      "extraSites": "此沙盒額外允許：{hosts}"
     }
   }
 }

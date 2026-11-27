@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanHost, cleanRules, DEFAULT_RULES, hostList, parseAccessLog, proxyEnv, squidConfig } from '../../packages/server/src/modules/studio/services/sandbox/egress'
+import { blockedOf, cleanHost, cleanRules, DEFAULT_RULES, hostList, parseAccessLog, proxyEnv, squidConfig } from '../../packages/server/src/modules/studio/services/sandbox/egress'
 
 describe('sandbox egress rules', () => {
   it('takes host names however they are typed, and nothing else', () => {
@@ -59,6 +59,32 @@ describe('sandbox egress rules', () => {
       { time: 1795800001000, sandbox: 'a1b2c3d4e5', ip: '10.9.0.2', method: 'CONNECT', host: 'api.openai.com', port: 443, allowed: false, result: 'TCP_DENIED/403', bytesOut: 300, bytesIn: 0 },
       { time: 1795800002500, sandbox: '', ip: '10.9.0.3', method: 'GET', host: '192.168.1.10', port: 80, allowed: false, result: 'TCP_DENIED/403', bytesOut: 120, bytesIn: 0 },
     ])
+  })
+
+  it('covers downloads for Linux, Windows, JavaScript and Steam, and no catch-all hosting', () => {
+    const allow = cleanRules(null).allow
+    const covered = (host: string) => allow.some(name => host === name || host.endsWith(`.${name}`))
+    for (const host of ['registry.npmjs.org', 'registry.yarnpkg.com', 'cdn.jsdelivr.net', 'jsr.io', 'files.pythonhosted.org', 'static.crates.io',
+      'repo1.maven.org', 'api.nuget.org', 'download.visualstudio.microsoft.com', 'community.chocolatey.org', 'repo.msys2.org', 'dl.winehq.org',
+      'deb.debian.org', 'archive.ubuntu.com', 'dl-cdn.alpinelinux.org', 'mirrors.fedoraproject.org', 'cache.nixos.org', 'download.docker.com',
+      'objects.githubusercontent.com', 'media.steampowered.com', 'steamcdn-a.akamaihd.net', 'cache1-ord1.steamcontent.com']) expect(covered(host), host).toBe(true)
+    for (const host of ['storage.googleapis.com', 's3.amazonaws.com', 'evil.akamaihd.net', 'api.openai.com', 'huggingface.co']) expect(covered(host), host).toBe(false)
+    expect(blockedOf(allow, cleanRules(null).block)).toEqual([])
+  })
+
+  it('gives a sandbox its own extra sites, for its address only and never a blocked one', () => {
+    const conf = squidConfig({ mode: 'allowlist', allow: ['pypi.org'], block: ['openai.com'] }, [
+      { id: 'a1b2c3d4e5', ip: '10.9.0.2', hosts: ['legendkeeper.com', 'www.legendkeeper.com'] },
+      { id: 'bad', ip: '10.9.0.3', hosts: ['x.com'] },
+      { id: 'b1b2c3d4e5', ip: '10.9.0.4; http_access allow all', hosts: ['x.com'] },
+    ])
+    expect(conf).toContain('acl sb_a1b2c3d4e5 src 10.9.0.2/32')
+    expect(conf).toContain('acl sb_a1b2c3d4e5_sites dstdomain .legendkeeper.com\n')
+    expect(conf).toContain('http_access allow sb_a1b2c3d4e5 sb_a1b2c3d4e5_sites')
+    expect(conf).not.toContain('10.9.0.3')
+    expect(conf).not.toContain('10.9.0.4')
+    expect(conf.indexOf('http_access deny blocked')).toBeLessThan(conf.indexOf('http_access allow sb_'))
+    expect(blockedOf(['api.openai.com', 'legendkeeper.com'], ['openai.com'])).toEqual(['api.openai.com'])
   })
 
   it('points every common tool at the proxy', () => {

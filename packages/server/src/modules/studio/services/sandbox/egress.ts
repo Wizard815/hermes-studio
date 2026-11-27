@@ -35,17 +35,36 @@ export const EGRESS_ALIAS = 'egress-proxy'
 export const EGRESS_CONF_DIR = '/etc/squid/studio'
 export const EGRESS_LOG = '/var/log/squid/access.log'
 
-/** Package registries and code hosts: what installs and clones need, for every distro preset. */
+/**
+ * Download sites for packages, toolchains and code, on Linux and Windows. Each name covers its
+ * subdomains. Left out on purpose: catch-all hosting (storage.googleapis.com, S3, akamaihd.net, blob
+ * stores), which would let a sandbox send data anywhere.
+ */
 export const DEFAULT_ALLOW = [
-  // Python, Node, Go, Rust, Ruby
-  'pypi.org', 'files.pythonhosted.org', 'registry.npmjs.org', 'registry.yarnpkg.com', 'nodejs.org',
-  'proxy.golang.org', 'sum.golang.org', 'go.dev', 'crates.io', 'static.crates.io', 'index.crates.io', 'static.rust-lang.org', 'rubygems.org',
-  // distro packages
-  'deb.debian.org', 'security.debian.org', 'archive.ubuntu.com', 'security.ubuntu.com', 'ports.ubuntu.com',
-  'dl-cdn.alpinelinux.org', 'mirrors.fedoraproject.org', 'dl.fedoraproject.org', 'download.fedoraproject.org',
-  'mirrors.rockylinux.org', 'dl.rockylinux.org', 'geo.mirror.pkgbuild.com', 'download.opensuse.org', 'cdn.opensuse.org',
-  // code
-  'github.com', 'codeload.github.com', 'objects.githubusercontent.com', 'raw.githubusercontent.com', 'release-assets.githubusercontent.com',
+  // JavaScript and TypeScript: npm, Yarn, pnpm, Bun, Deno, JSR, CDNs
+  'npmjs.org', 'npmjs.com', 'yarnpkg.com', 'pnpm.io', 'nodejs.org', 'bun.sh', 'deno.land', 'deno.com', 'jsr.io',
+  'unpkg.com', 'jsdelivr.net', 'esm.sh', 'cdnjs.cloudflare.com', 'skypack.dev', 'typescriptlang.org',
+  // Python
+  'pypi.org', 'pythonhosted.org', 'python.org', 'anaconda.org', 'anaconda.com', 'conda-forge.org', 'astral.sh',
+  // Rust, Go, Java/Kotlin, Ruby, PHP, Elixir, Haskell, Dart, Perl, R
+  'crates.io', 'rust-lang.org', 'rustup.rs', 'proxy.golang.org', 'sum.golang.org', 'golang.org', 'go.dev', 'gopkg.in', 'dl.google.com',
+  'maven.org', 'repo.maven.apache.org', 'apache.org', 'gradle.org', 'gradle-dn.com', 'jetbrains.com', 'adoptium.net', 'azul.com',
+  'rubygems.org', 'ruby-lang.org', 'packagist.org', 'getcomposer.org', 'hex.pm', 'hackage.haskell.org', 'haskell.org', 'pub.dev',
+  'dart.dev', 'cpan.org', 'metacpan.org', 'r-project.org',
+  // .NET and Windows: NuGet, the .NET SDK, Microsoft downloads, PowerShell Gallery, Chocolatey, winget, Scoop, MSYS2, Wine
+  'nuget.org', 'dot.net', 'dotnet.microsoft.com', 'builds.dotnet.microsoft.com', 'dotnetcli.azureedge.net', 'aka.ms', 'go.microsoft.com',
+  'download.microsoft.com', 'download.visualstudio.microsoft.com', 'packages.microsoft.com', 'powershellgallery.com',
+  'chocolatey.org', 'cdn.winget.microsoft.com', 'scoop.sh', 'msys2.org', 'winehq.org', 'sourceforge.net',
+  // Linux distros
+  'debian.org', 'ubuntu.com', 'launchpad.net', 'launchpadcontent.net', 'alpinelinux.org', 'fedoraproject.org', 'rockylinux.org',
+  'almalinux.org', 'centos.org', 'archlinux.org', 'pkgbuild.com', 'opensuse.org', 'kernel.org', 'gnu.org', 'nixos.org',
+  'flathub.org', 'snapcraft.io', 'brew.sh', 'linuxmint.com', 'gentoo.org', 'voidlinux.org',
+  // containers and tools
+  'docker.com', 'docker.io', 'quay.io', 'ghcr.io', 'k8s.io', 'hashicorp.com', 'releases.hashicorp.com', 'cmake.org', 'llvm.org',
+  // code hosts
+  'github.com', 'githubusercontent.com', 'gitlab.com', 'bitbucket.org', 'codeberg.org',
+  // Steam and SteamCMD
+  'steampowered.com', 'steamcontent.com', 'steamstatic.com', 'steamserver.net', 'steamcdn-a.akamaihd.net', 'steamcommunity.com',
 ]
 
 /** AI APIs and model hubs: refused in blocklist mode (and never on the default allowlist). */
@@ -91,8 +110,19 @@ export function cleanRules(input: Partial<Record<keyof EgressRules, unknown>> | 
   }
 }
 
-/** Squid's configuration for these rules. */
-export function squidConfig(rules: EgressRules): string {
+/** A sandbox's own extra sites (create's `allow`), for its address only. */
+export interface SandboxSites { id: string; ip: string; hosts: string[] }
+
+const IPV4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/
+
+/** Hosts on `block` (or under a blocked name): a sandbox can't be given these. */
+export function blockedOf(hosts: string[], block: string[]): string[] {
+  const blocked = hostList(block)
+  return hostList(hosts).filter(host => blocked.some(top => host === top || host.endsWith(`.${top}`)))
+}
+
+/** Squid's configuration for these rules, plus each sandbox's own extra sites (allowlist mode only). */
+export function squidConfig(rules: EgressRules, sites: SandboxSites[] = []): string {
   const lines = [
     '# Written by Hermes Studio (services/sandbox/egress.ts). Edit the rules in Studio, not here.',
     `http_port ${EGRESS_PORT}`,
@@ -118,6 +148,12 @@ export function squidConfig(rules: EgressRules): string {
   if (rules.mode !== 'log' && block.length) lines.push(`acl blocked dstdomain ${domains(block)}`, 'http_access deny blocked')
   if (rules.mode === 'allowlist') {
     if (allow.length) lines.push(`acl allowed dstdomain ${domains(allow)}`, 'http_access allow allowed')
+    // After the block list, so a sandbox's own sites never include a blocked one.
+    for (const box of sites) {
+      const hosts = hostList(box.hosts)
+      if (!/^[a-z0-9]{10}$/.test(box.id) || !IPV4.test(box.ip) || !hosts.length) continue
+      lines.push(`acl sb_${box.id} src ${box.ip}/32`, `acl sb_${box.id}_sites dstdomain ${domains(hosts)}`, `http_access allow sb_${box.id} sb_${box.id}_sites`)
+    }
   } else {
     lines.push('http_access allow all')
   }

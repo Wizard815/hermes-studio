@@ -154,6 +154,16 @@ describe.skipIf(!live)('sandboxes on real Docker: edge cases', () => {
       expect(await code('http://192.168.1.10.nip.io/')).toBe('403 0') // resolves to 192.168.1.10
     } finally { await s.setEgressRules({ mode: 'allowlist' }) }
     expect(await code('https://example.com/')).toBe('000 56')
+    // a sandbox made for a task that needs a site gets it; the others still don't
+    const own = (await s.create({ distro: 'alpine', minutes: 10, allow: ['example.com'], purpose: 'needs example.com' })).id
+    if (process.env.LIVE_EXTRA_CA) {
+      await s.writeFile({ sandbox: own, path: '/tmp/extra-ca.crt', content: require('node:fs').readFileSync(process.env.LIVE_EXTRA_CA, 'utf8') })
+      await s.exec({ sandbox: own, command: 'cat /tmp/extra-ca.crt >> /etc/ssl/certs/ca-certificates.crt' })
+    }
+    // busybox wget can't send https through a proxy: curl can
+    expect((await s.exec({ sandbox: own, command: 'apk add -q curl >/dev/null 2>&1 && curl -s -m 10 -o /dev/null -w "%{http_code}" https://example.com/', timeoutSeconds: 120 })).output.trim()).toBe('200')
+    expect(await code('https://example.com/')).toBe('000 56')
+    await s.remove({ sandbox: own })
     const calls = (await s.networkLog({ sandbox: box, limit: 500 })).calls
     const seen = (host: string) => calls.find(c => c.host === host)
     expect(seen('pypi.org')).toMatchObject({ allowed: true, sandbox: box })
