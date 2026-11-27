@@ -462,7 +462,7 @@ function runMenuItem(key: string) {
   }
 }
 
-defineExpose({ menuItems, runMenuItem })
+defineExpose({ menuItems, runMenuItem, openMachine, leaveMachine: () => { machine.value = '' }, machine })
 
 onMounted(() => {
   void loadMachines()
@@ -495,22 +495,10 @@ onBeforeUnmount(() => {
         The less-used herdr keys fold into a "more" menu when the row is short, and
         on a phone everything but Tools does.
       -->
-      <!-- Inside Studio the herdr bar is hidden; herdr's saved remote machines still get their switch. -->
-      <div v-if="embedded && machines.length" class="herdr-center-embedded-bar" data-testid="herdr-center-embedded-machines">
-        <div class="herdr-center-machines" role="radiogroup" :aria-label="t('herdr.machineSwitch')">
-          <button type="button" role="radio" :aria-checked="!machine" :class="{ active: !machine }" @click="machine = ''">{{ t('herdr.machineLocal') }}</button>
-          <button
-            v-for="item in machines"
-            :key="item.id"
-            type="button"
-            role="radio"
-            :aria-checked="machine === item.id"
-            :class="{ active: machine === item.id }"
-            :data-testid="`herdr-center-embedded-machine-${item.id}`"
-            @click="openMachine(item.id)"
-          >{{ item.label || item.target }}</button>
-        </div>
-        <span v-if="machine" class="herdr-center-agent">{{ t('herdr.remoteChip', { name: machineLabel }) }}</span>
+      <!-- Inside Studio another computer is picked in the chat list (Other computers); this bar says where you are. -->
+      <div v-if="embedded && machine" class="herdr-center-embedded-bar" data-testid="herdr-center-remote-bar">
+        <span class="herdr-center-agent">{{ t('studioTerminal.remoteBar', { name: machineLabel }) }}</span>
+        <button type="button" class="herdr-center-key" data-testid="herdr-center-back-here" @click="machine = ''">{{ t('studioTerminal.backHere') }}</button>
       </div>
       <Teleport :to="headerTarget || 'body'" :disabled="!headerTarget">
         <div v-show="!embedded && (active || !headerTarget)" class="herdr-center-bar" :class="{ 'in-header': !!headerTarget, 'is-phone': dock.phone.value }" data-testid="herdr-center-bar">
@@ -751,9 +739,9 @@ onBeforeUnmount(() => {
           same folders as Herdr App's Space Folders. herdr's own sidebar is hidden
           under it, or shows instead when picked. On a phone it slides over.
         -->
-        <div v-if="dock.phone.value && spaces.open.value" class="herdr-spaces-backdrop" data-testid="herdr-spaces-backdrop" @click="spaces.setOpen(false)" />
+        <div v-if="!embedded && dock.phone.value && spaces.open.value" class="herdr-spaces-backdrop" data-testid="herdr-spaces-backdrop" @click="spaces.setOpen(false)" />
         <HerdrSpaceSidebar
-          v-if="spaces.mode.value === 'studio' && started"
+          v-if="!embedded && spaces.mode.value === 'studio' && started"
           v-show="spaces.open.value"
           id="herdr-spaces"
           ref="spaceSidebar"
@@ -792,9 +780,9 @@ onBeforeUnmount(() => {
           data-testid="herdr-center-remote"
         />
         <!-- Mission's tools: beside the terminal, or a drawer over it on a phone. -->
-        <div v-if="dock.phone.value && dock.open.value" class="herdr-dock-backdrop" data-testid="herdr-dock-backdrop" @click="dock.setOpen(false)" />
+        <div v-if="!embedded && dock.phone.value && dock.open.value" class="herdr-dock-backdrop" data-testid="herdr-dock-backdrop" @click="dock.setOpen(false)" />
         <HerdrMissionDock
-          v-if="dock.open.value"
+          v-if="!embedded && dock.open.value"
           id="herdr-dock"
           class="herdr-center-dock"
           :class="{ 'is-drawer': dock.phone.value }"

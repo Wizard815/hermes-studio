@@ -13,7 +13,7 @@ import { useCodingAgentModels } from '@/composables/useCodingAgentModels'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import HeaderSidebarToggle from '@/components/layout/HeaderSidebarToggle.vue'
 import { useHerdrStore } from '@/stores/hermes/herdr'
-import { focusHerdrPane } from '@/api/coding-agents/herdr'
+import { fetchHerdrMachines, focusHerdrPane, type HerdrMachine } from '@/api/coding-agents/herdr'
 import HeaderToolPanelToggle from '@/components/layout/HeaderToolPanelToggle.vue'
 import { AGENT_OPTIONS } from "@/utils/agent-options"
 import { setSessionPinned } from "@/api/studio/sessions";
@@ -72,6 +72,7 @@ import ConversationMonitorPane from "./ConversationMonitorPane.vue";
 import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import ProjectsList from "./ProjectsList.vue";
+import ComputersList from "./ComputersList.vue";
 import ThreadPane from "./ThreadPane.vue";
 import ProjectAttentionBadges from "./ProjectAttentionBadges.vue";
 import ProjectIcon from "./ProjectIcon.vue";
@@ -167,9 +168,28 @@ const projectsView = ref((() => { try { return localStorage.getItem("studio_chat
 const projectsShown = computed(() => projectsView.value && isSuperAdmin.value && props.contentMode === "chat");
 function setProjectsView(on: boolean) {
   projectsView.value = on;
+  if (on) computersView.value = false;
   try { localStorage.setItem("studio_chat_list_view", on ? "projects" : "chats") } catch { /* private mode */ }
 }
 watch(() => route.query.view, view => { if (view === "projects") setProjectsView(true) }, { immediate: true });
+// Other computers (herdr's saved SSH machines) are a list here like Projects; one opens in Terminal.
+const computersView = ref(false);
+const computers = ref<HerdrMachine[]>([]);
+const computersShown = computed(() => computersView.value && isSuperAdmin.value && props.contentMode === "chat" && computers.value.length > 0);
+const terminalMachine = computed(() => (centerMode.value === "herdr" && String(herdrCenterRef.value?.machine || "")) || "");
+async function loadComputers() {
+  if (!isSuperAdmin.value || props.standalone) return;
+  try { computers.value = (await fetchHerdrMachines()).machines.filter(item => item.enabled) } catch { computers.value = [] }
+}
+function setComputersView(on: boolean) {
+  computersView.value = on;
+  if (on) { projectsView.value = false; void loadComputers() }
+}
+async function openComputer(id: string, pane?: string) {
+  selectCenter("herdr");
+  await nextTick();
+  await herdrCenterRef.value?.openMachine?.(id, pane);
+}
 const projectsListRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const knownProjects = ref<Project[]>([]);
 // On wide screens a thread opens in a pane beside its project's coordinator chat;
@@ -370,6 +390,10 @@ const centerModes = computed<ChatCenter[]>(() => [
   ...(codeCenterAvailable.value ? ['code' as const, 'screen' as const] : []),
 ])
 
+// The header keeps Chat | Terminal; Code and Screen open from the right sidebar (they keep the chat beside them).
+const headerCenterModes = computed(() => centerModes.value.filter(mode => mode === 'chat' || mode === 'herdr'))
+const headerCenter = computed(() => shownCenter.value === 'herdr' ? 'herdr' : 'chat')
+const sidebarCenterTabs = computed(() => centerModes.value.filter((mode): mode is 'code' | 'screen' => mode === 'code' || mode === 'screen'))
 const showOutline = ref(false);
 const ACTIVE_SESSION_MENU_ID = "active-session-actions-menu";
 const showActiveSessionMenu = ref(false);
@@ -1827,6 +1851,7 @@ async function copySessionId(id?: string) {
 
 /** herdr mode on a phone: herdr's actions join this menu (one menu in the header row). */
 const herdrCenterRef = ref<InstanceType<typeof HerdrCenter> | null>(null)
+watch(() => [isSuperAdmin.value, herdrStore.enabled] as const, ([admin, enabled]) => { if (admin && enabled) void loadComputers() }, { immediate: true })
 const herdrMenuItems = computed(() => (showHerdrCenter.value && isMobile.value ? herdrCenterRef.value?.menuItems ?? [] : []))
 const activeSessionMenuOptions = computed<DropdownOption[]>(() => withHerdrMenuGroup(buildActiveSessionMenuOptions({
   outline: t("chat.outlineTitle"),
@@ -2918,8 +2943,11 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           :primary-label="t('chat.newChat')"
           :projects-active="projectsShown"
           :projects-attention="projectAttention"
+          :computers-count="computers.length"
+          :computers-active="computersShown"
           @primary="openNewChatPage"
           @projects="setProjectsView(!projectsShown)"
+          @computers="setComputersView(!computersShown)"
         >
           <template #actions>
             <ListActionsMenu
@@ -2959,8 +2987,15 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
         />
       </template>
       <template #default>
+        <ComputersList
+          v-if="computersShown"
+          :machines="computers"
+          :active-machine="terminalMachine"
+          @open="openComputer"
+          @back="setComputersView(false)"
+        />
         <ProjectsList
-          v-if="projectsShown"
+          v-else-if="projectsShown"
           ref="projectsListRef"
           :active-session-id="chatStore.activeSessionId"
           :threads-in-pane="threadsInPane"
@@ -3498,7 +3533,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
         <!-- herdr mode: herdr's bar joins this row (HerdrCenter puts it here). -->
         <div v-show="showHerdrCenter" ref="herdrHeaderSlot" class="header-herdr-slot" data-testid="chat-header-herdr" />
         <div class="header-actions">
-          <NTooltip v-if="chatStore.runtimeMode === 'default'" trigger="hover">
+          <NTooltip v-if="!isSuperAdmin && chatStore.runtimeMode === 'default'" trigger="hover">
             <template #trigger>
               <NButton class="header-tasks-button" quaternary size="small" circle :aria-label="t('sessionTasks.title')" :aria-expanded="showSessionTasks" aria-haspopup="dialog" @click="openSessionTasks">
                 <template #icon><SessionTaskIcon :size="16" /></template>
@@ -3507,7 +3542,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             {{ t('sessionTasks.title') }}
           </NTooltip>
           <NButton
-            v-if="!showNewChatPage && chatStore.activeSession?.workspace"
+            v-if="!isSuperAdmin && !showNewChatPage && chatStore.activeSession?.workspace"
             class="header-workspace-button"
             quaternary
             size="small"
@@ -3523,7 +3558,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             </template>
           </NButton>
           <div
-            v-if="centerModes.length > 1"
+            v-if="headerCenterModes.length > 1"
             class="header-center-switch"
             role="radiogroup"
             :aria-label="t('herdr.centerSwitch')"
@@ -3531,12 +3566,12 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             data-testid="chat-center-switch"
           >
             <button
-              v-for="mode in centerModes"
+              v-for="mode in headerCenterModes"
               :key="mode"
               type="button"
               role="radio"
-              :aria-checked="shownCenter === mode"
-              :class="{ active: shownCenter === mode }"
+              :aria-checked="headerCenter === mode"
+              :class="{ active: headerCenter === mode }"
               :data-testid="`chat-center-${mode}`"
               @click="selectCenter(mode)"
             >{{ mode === 'chat' ? t('herdr.centerChat') : mode === 'herdr' ? t('herdr.centerHerdr') : mode === 'code' ? t('vscode.centerCode') : t('screen.centerScreen') }}</button>
@@ -3814,7 +3849,14 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
                   <ChatToolsPanel v-model:active-panel="activeToolPanel"
                     :workspace-session-id="activeWorkspaceSessionId" :workspace="activeWorkspacePath"
                     :visible="showToolPanel" :browser-visible="toolPanelTransitionReady" :browser-available="electronBrowserAvailable" :headless-available="headlessBrowserAvailable" :session-id="chatStore.activeSessionId || null"
-                    :submit="submitBrowserAnnotations" @attach="handleWorkspaceFileAttach" />
+                    :submit="submitBrowserAnnotations" @attach="handleWorkspaceFileAttach"
+                    :center-tabs="sidebarCenterTabs"
+                    :show-tasks="chatStore.runtimeMode === 'default'"
+                    :show-folder="!!chatStore.activeSession?.workspace"
+                    :folder-title="chatStore.activeSession?.workspace || ''"
+                    @center="selectCenter"
+                    @tasks="openSessionTasks"
+                    @folder="openActiveSessionWorkspace" />
                 </template>
               </div>
             </aside>

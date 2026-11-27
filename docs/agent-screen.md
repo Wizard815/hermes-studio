@@ -1,8 +1,8 @@
 # The agents' screen
 
 Studio shows Hermes's **Bot Screen**: a desktop (Xvnc + Xfce) with a real
-browser that agents use. Pick **Screen** in the chat header switch
-(Chat / herdr / Code / Screen): the screen on the left, the chat on the right.
+browser that agents use. Pick **Screen** (the monitor icon) in the chat's
+right sidebar; Chat in the header goes back. the screen on the left, the chat on the right.
 You watch it live; **Take over** gives you the keyboard and mouse (a red border
 shows it), and the agent's screen and browser tools wait until you **Hand back**.
 Use it for logins, 2FA, CAPTCHAs and payments. One shared screen (the Hermes

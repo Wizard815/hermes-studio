@@ -20,12 +20,17 @@ const props = defineProps<{
   projectsActive?: boolean
   /** Threads across all projects that need the person, and that are done or idle. */
   projectsAttention?: { needsYou: number; idle: number } | null
+  /** herdr's saved remote machines (docs/harness/herdr.md): the button shows only when there are some. */
+  computersCount?: number
+  computersActive?: boolean
 }>()
 
 const emit = defineEmits<{
   primary: []
   /** On the chat page: switch the list between chats and projects. */
   projects: []
+  /** On the chat page: switch the list to the other computers and their agents. */
+  computers: []
 }>()
 
 const { t } = useI18n()
@@ -161,6 +166,22 @@ function openUpstream() {
         </svg>
         <span>{{ t('projects.nav') }}</span>
         <ProjectAttentionBadges v-if="projectsAttention" :needs-you="projectsAttention.needsYou" :idle="projectsAttention.idle" />
+      </button>
+      <button
+        v-if="canManageAgents && active === 'chat' && computersCount"
+        class="page-sidebar-tab"
+        :class="{ active: computersActive }"
+        type="button"
+        data-testid="sidebar-computers"
+        :aria-pressed="!!computersActive"
+        @click="emit('computers')"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="12" rx="2" />
+          <path d="M8 20h8M12 16v4" />
+        </svg>
+        <span>{{ t('studioTerminal.otherComputers') }}</span>
+        <span class="page-sidebar-tab-count">{{ computersCount }}</span>
       </button>
       <button
         v-if="!hasNavigationRail"
@@ -424,6 +445,12 @@ function openUpstream() {
   &.active {
     background: rgba(var(--accent-primary-rgb), 0.06);
     color: $text-primary;
+  }
+
+  .page-sidebar-tab-count {
+    margin-left: auto;
+    color: $text-muted;
+    font-size: calc(var(--font-size-base, 14px) * 12 / 14);
   }
 }
 

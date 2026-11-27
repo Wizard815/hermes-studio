@@ -18,9 +18,15 @@ withDefaults(defineProps<{
   headlessAvailable?: boolean
   sessionId?: string | null
   submit: (submission: BrowserAnnotationSubmission) => boolean | void | Promise<boolean | void>
-}>(), { contextReady: true })
+  /** Views that take the page (Code: VS Code; Screen: the agents' screen); each opens with the chat beside it. */
+  centerTabs?: Array<'code' | 'screen'>
+  /** The chat's task list and folder, which used to be header buttons. */
+  showTasks?: boolean
+  showFolder?: boolean
+  folderTitle?: string
+}>(), { contextReady: true, centerTabs: () => [], showTasks: false, showFolder: false, folderTitle: '' })
 const activePanel = defineModel<'files' | 'terminal' | 'browser'>('activePanel', { default: 'files' })
-const emit = defineEmits<{ attach: [file: File] }>()
+const emit = defineEmits<{ attach: [file: File]; center: [mode: 'code' | 'screen']; tasks: []; folder: [] }>()
 const { t } = useI18n()
 </script>
 
@@ -74,6 +80,54 @@ const { t } = useI18n()
           <circle cx="9.5" cy="6.5" r=".75" fill="currentColor" stroke="none" />
         </svg>
       </button>
+      <template v-if="centerTabs.length || showTasks || showFolder">
+        <span class="chat-tool-divider" aria-hidden="true" />
+        <button
+          v-if="centerTabs.includes('code')"
+          class="chat-tool-tab"
+          type="button"
+          :title="t('vscode.centerCode')"
+          :aria-label="t('vscode.centerCode')"
+          data-testid="chat-tool-code"
+          @click="emit('center', 'code')"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 5l-4 14" /></svg>
+        </button>
+        <button
+          v-if="centerTabs.includes('screen')"
+          class="chat-tool-tab"
+          type="button"
+          :title="t('screen.centerScreen')"
+          :aria-label="t('screen.centerScreen')"
+          data-testid="chat-tool-screen"
+          @click="emit('center', 'screen')"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg>
+        </button>
+        <button
+          v-if="showTasks"
+          class="chat-tool-tab"
+          type="button"
+          aria-haspopup="dialog"
+          :title="t('sessionTasks.title')"
+          :aria-label="t('sessionTasks.title')"
+          data-testid="chat-tool-tasks"
+          @click="emit('tasks')"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4h6v3H9zM9 12l2 2 4-4M9 17h6" /></svg>
+        </button>
+        <button
+          v-if="showFolder"
+          class="chat-tool-tab"
+          type="button"
+          :title="folderTitle || t('chat.setWorkspace')"
+          :aria-label="t('chat.setWorkspace')"
+          data-testid="chat-tool-folder"
+          @click="emit('folder')"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 11v5M9.5 13.5h5" /></svg>
+        </button>
+      </template>
     </div>
     <div class="chat-tool-content">
       <FilesPanel
@@ -174,6 +228,13 @@ const { t } = useI18n()
       background: var(--accent-primary);
     }
   }
+}
+
+.chat-tool-divider {
+  width: 24px;
+  height: var(--border-width, 1px);
+  margin: 4px 0;
+  background: $border-color;
 }
 
 .chat-tool-content {
