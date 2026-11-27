@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { NButton, NCheckbox, NForm, NFormItem, NInput, NInputNumber, NModal, NPopconfirm, NSelect, useMessage } from 'naive-ui'
+import { NButton, NCheckbox, NDropdown, NForm, NFormItem, NInput, NInputNumber, NModal, NPopconfirm, NSelect, useMessage, type DropdownOption } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import AgentStatusIcon from '@/components/common/AgentStatusIcon.vue'
 import {
@@ -8,6 +8,8 @@ import {
   listProjects,
   markThreadSeen,
   removeProject,
+  removeThreadFromProject,
+  updateProjectThread,
   setThreadResolved,
   startProjectThread,
   updateProject,
@@ -15,7 +17,7 @@ import {
   type ProjectThread,
 } from '@/api/studio/projects'
 import StudiosDialog from './StudiosDialog.vue'
-import { THREAD_AGENTS, THREAD_GROUPS, groupThreads, needsSeen, projectSummary, threadDisplayStatus } from './project-groups'
+import { THREAD_AGENTS, THREAD_GROUPS, groupThreads, needsSeen, projectSummary, threadDisplayStatus, threadMenuKeys, type ThreadMenuKey } from './project-groups'
 
 /**
  * Projects in the chat list (the chat menu's Projects view): each project is a
@@ -167,6 +169,76 @@ async function toggleResolved(project: Project, thread: ProjectThread) {
   }
 }
 
+// --- A thread's right-click menu (also the keyboard's menu key) ---
+const menu = reactive({ show: false, x: 0, y: 0, project: null as Project | null, thread: null as ProjectThread | null })
+const MENU_LABELS: Record<ThreadMenuKey, string> = {
+  open: 'projectStages.menu.open', openChat: 'projectStages.menu.openChat', markRead: 'projectStages.menu.markRead',
+  rename: 'projectStages.menu.rename', pin: 'projectStages.menu.pin', unpin: 'projectStages.menu.unpin',
+  resolve: 'projects.resolve', reopen: 'projects.reopen', remove: 'projectStages.menu.remove',
+}
+const menuOptions = computed<DropdownOption[]>(() => {
+  if (!menu.thread) return []
+  return threadMenuKeys(menu.thread, !!props.threadsInPane).flatMap((group, index) => [
+    ...(index ? [{ type: 'divider', key: `d${index}` }] : []),
+    ...group.map(key => ({ key, label: t(MENU_LABELS[key]), props: key === 'remove' ? { class: 'project-menu-danger' } : undefined })),
+  ])
+})
+
+function openMenu(event: MouseEvent, project: Project, thread: ProjectThread) {
+  event.preventDefault()
+  const target = event.currentTarget as HTMLElement | null
+  // The menu key gives no pointer position: open it under the row.
+  const box = target?.getBoundingClientRect()
+  Object.assign(menu, { show: true, project, thread, x: event.clientX || (box ? box.left + 24 : 0), y: event.clientY || (box ? box.bottom : 0) })
+}
+
+const renameForm = reactive({ show: false, title: '', saving: false })
+const removeConfirm = ref(false)
+
+async function onMenu(key: ThreadMenuKey) {
+  menu.show = false
+  const { project, thread } = menu
+  if (!project || !thread) return
+  try {
+    if (key === 'open') openThread(project, thread)
+    else if (key === 'openChat') { if (thread.sessionId) emit('open', thread.sessionId) }
+    else if (key === 'markRead') { await markThreadSeen(project.id, thread.id); await refresh() }
+    else if (key === 'rename') Object.assign(renameForm, { show: true, title: thread.title, saving: false })
+    else if (key === 'pin' || key === 'unpin') { await updateProjectThread(project.id, thread.id, { pinned: key === 'pin' }); await refresh() }
+    else if (key === 'resolve' || key === 'reopen') await toggleResolved(project, thread)
+    else if (key === 'remove') removeConfirm.value = true
+  } catch (error: any) {
+    message.error(t('projects.failed', { error: error?.message || String(error) }))
+  }
+}
+
+async function saveRename() {
+  const { project, thread } = menu
+  if (!project || !thread || !renameForm.title.trim()) return
+  renameForm.saving = true
+  try {
+    await updateProjectThread(project.id, thread.id, { title: renameForm.title.trim() })
+    renameForm.show = false
+    await refresh()
+  } catch (error: any) {
+    message.error(t('projects.failed', { error: error?.message || String(error) }))
+  } finally {
+    renameForm.saving = false
+  }
+}
+
+async function removeThread() {
+  const { project, thread } = menu
+  removeConfirm.value = false
+  if (!project || !thread) return
+  try {
+    await removeThreadFromProject(project.id, thread.id)
+    await refresh()
+  } catch (error: any) {
+    message.error(t('projects.failed', { error: error?.message || String(error) }))
+  }
+}
+
 defineExpose({ refresh })
 </script>
 
@@ -245,6 +317,7 @@ defineExpose({ refresh })
               class="project-item project-thread"
               :class="{ active: threadActive(thread) }"
               :data-testid="`project-thread-${thread.id}`"
+              @contextmenu="openMenu($event, project, thread)"
             >
               <button
                 type="button"
@@ -256,7 +329,7 @@ defineExpose({ refresh })
               >
                 <AgentStatusIcon :status="threadDisplayStatus(thread.liveStatus)" :live="thread.liveStatus !== 'idle' && thread.liveStatus !== 'gone'" />
                 <span class="project-thread-text">
-                  <span class="project-item-title">{{ thread.title }}</span>
+                  <span class="project-item-title"><span v-if="thread.pinned" class="project-thread-pin" :title="t('projectStages.menu.pinned')" :aria-label="t('projectStages.menu.pinned')">📌 </span>{{ thread.title }}</span>
                   <span class="project-item-meta">
                     <span v-if="thread.stage === 'needs_you' && thread.liveStatus !== 'blocked'" class="project-thread-failed" :title="t('projectStages.failedHint')">{{ t('projectStages.failed') }} · </span>{{ thread.liveStatus === 'starting' ? t('projects.starting') : thread.model ? `${thread.agent} · ${thread.model}` : thread.agent }}
                   </span>
@@ -276,6 +349,38 @@ defineExpose({ refresh })
     </section>
 
     <StudiosDialog v-model:show="studiosOpen" :projects="projects" />
+
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="menu.x"
+      :y="menu.y"
+      :options="menuOptions"
+      :show="menu.show"
+      data-testid="project-thread-menu"
+      @select="onMenu"
+      @clickoutside="menu.show = false"
+    />
+
+    <NModal v-model:show="renameForm.show" preset="card" :title="t('projectStages.menu.rename')" style="max-width: 420px">
+      <NInput v-model:value="renameForm.title" :maxlength="120" data-testid="thread-rename-input" @keydown.enter.prevent="saveRename" />
+      <template #footer>
+        <div class="projects-modal-actions">
+          <NButton @click="renameForm.show = false">{{ t('projects.cancel') }}</NButton>
+          <NButton type="primary" :loading="renameForm.saving" :disabled="!renameForm.title.trim()" data-testid="thread-rename-save" @click="saveRename">{{ t('projectStages.menu.save') }}</NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <NModal v-model:show="removeConfirm" preset="card" :title="t('projectStages.menu.remove')" style="max-width: 420px">
+      <p>{{ t('projectStages.menu.removeConfirm', { title: menu.thread?.title || '' }) }}</p>
+      <template #footer>
+        <div class="projects-modal-actions">
+          <NButton @click="removeConfirm = false">{{ t('projects.cancel') }}</NButton>
+          <NButton type="error" data-testid="thread-remove-confirm" @click="removeThread">{{ t('projectStages.menu.remove') }}</NButton>
+        </div>
+      </template>
+    </NModal>
 
     <NModal v-model:show="projectForm.show" preset="card" :title="projectForm.editing ? t('projects.edit') : t('projects.newProject')" style="max-width: 520px">
       <NForm label-placement="top" @submit.prevent="saveProject">
@@ -466,6 +571,14 @@ defineExpose({ refresh })
     border-color: $accent-primary;
     color: $text-primary;
   }
+}
+
+:global(.project-menu-danger) {
+  color: $error;
+}
+
+.project-thread-pin {
+  font-size: 10px;
 }
 
 .project-thread-failed {

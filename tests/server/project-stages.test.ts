@@ -354,3 +354,21 @@ describe('TestProjects_concurrentChanges', () => {
     expect(await stageOf(project.id, thread.id)).toBe('review')
   })
 })
+
+describe('TestProjects_threadMenu', () => {
+  it('renames a thread and its chat, pins it, and refuses bad input', async () => {
+    const project = await service.create({ name: 'Menu', folder: '' })
+    const thread = await service.startThread(project.id, { brief: 'job', title: 'Old name' })
+    db.sessions.set(thread.sessionId, { id: thread.sessionId, title: 'Old name' })
+    const renamed = await service.updateThread(project.id, thread.id, { title: '  New name  ' })
+    expect(renamed.title).toBe('New name')
+    expect(db.sessions.get(thread.sessionId).title).toBe('New name')
+    expect((await service.updateThread(project.id, thread.id, { pinned: true })).pinned).toBe(true)
+    // Pinning leaves the title alone, and the order key (updatedAt) too.
+    const pinned = (await service.get(project.id)).threads[0]
+    expect(pinned).toMatchObject({ title: 'New name', pinned: true, updatedAt: thread.updatedAt })
+    for (const bad of [{ title: '   ' }, { pinned: 'yes' }]) await expect(service.updateThread(project.id, thread.id, bad)).rejects.toMatchObject({ status: 400 })
+    await expect(service.updateThread(project.id, 'nope', { pinned: true })).rejects.toMatchObject({ status: 404 })
+    expect((await service.updateThread(project.id, thread.id, { pinned: false })).pinned).toBe(false)
+  })
+})

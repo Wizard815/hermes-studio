@@ -30,6 +30,8 @@ export interface ProjectThread {
   failed?: boolean
   finishedAt?: number
   seenAt?: number
+  /** Pinned threads show first in their group. */
+  pinned?: boolean
   /** Its pull request link, '' when none. */
   pr: string
   createdAt: number
@@ -119,6 +121,10 @@ export const setThreadResolved = async (id: string, threadId: string, resolved: 
 /** The person opened a thread: a finished one moves from review to done. */
 export const markThreadSeen = async (id: string, threadId: string) =>
   (await request<{ thread: ProjectThread }>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}/seen`, json('POST', {}))).thread
+
+/** Rename or pin a thread (its menu); a new title renames its chat too. */
+export const updateProjectThread = async (id: string, threadId: string, change: { title?: string; pinned?: boolean }) =>
+  (await request<{ thread: ProjectThread }>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}`, json('PUT', change))).thread
 
 export const removeThreadFromProject = (id: string, threadId: string) =>
   request<{ ok: true }>(`${base}/${encodeURIComponent(id)}/threads/${encodeURIComponent(threadId)}`, { method: 'DELETE' })

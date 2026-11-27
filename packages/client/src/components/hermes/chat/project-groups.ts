@@ -19,10 +19,11 @@ export function threadGroup(thread: Pick<ProjectThread, 'resolved' | 'liveStatus
   return 'done'
 }
 
-/** Threads by group, newest first in each. */
+/** Threads by group: pinned first, then newest first. */
 export function groupThreads(threads: ProjectThread[]): Record<ThreadGroupKey, ProjectThread[]> {
   const groups: Record<ThreadGroupKey, ProjectThread[]> = { needsYou: [], working: [], review: [], done: [], resolved: [] }
-  for (const thread of [...threads].sort((a, b) => b.updatedAt - a.updatedAt)) groups[threadGroup(thread)].push(thread)
+  const sorted = [...threads].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt)
+  for (const thread of sorted) groups[threadGroup(thread)].push(thread)
   return groups
 }
 
@@ -50,6 +51,20 @@ export function projectSummary(project: Pick<Project, 'counts'>): Array<{ key: '
   return keys
     .map(key => ({ key, count: project.counts[key] ?? 0 }))
     .filter(item => item.count > 0)
+}
+
+export type ThreadMenuKey = 'open' | 'openChat' | 'markRead' | 'rename' | 'pin' | 'unpin' | 'resolve' | 'reopen' | 'remove'
+
+/** What a thread's right-click menu offers, in order; dividers go between the returned groups. */
+export function threadMenuKeys(thread: Pick<ProjectThread, 'stage' | 'resolved' | 'pinned' | 'sessionId'>, threadsInPane: boolean): ThreadMenuKey[][] {
+  const open: ThreadMenuKey[] = threadsInPane ? ['open', ...(thread.sessionId ? ['openChat' as const] : [])] : thread.sessionId ? ['open'] : []
+  const tidy: ThreadMenuKey[] = [
+    ...(thread.stage === 'review' ? ['markRead' as const] : []),
+    'rename',
+    thread.pinned ? 'unpin' : 'pin',
+    thread.resolved ? 'reopen' : 'resolve',
+  ]
+  return [open, tidy, ['remove' as ThreadMenuKey]].filter(group => group.length)
 }
 
 /** Whether opening this thread should tell the server the person has seen it. */

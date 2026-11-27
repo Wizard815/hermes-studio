@@ -54,6 +54,8 @@ export interface ProjectThread {
   seenAt: number
   /** When it was last resolved, by anyone, 0 when never. */
   resolvedAt: number
+  /** The person pinned it: it shows first in its group. */
+  pinned: boolean
   /** The pull request (or merge request) its work went to, '' when none yet. */
   pr: string
   createdAt: number
@@ -194,6 +196,7 @@ export function normalizeThread(raw: any, now = Date.now()): ProjectThread | nul
     finishedAt: stamp(raw.finishedAt),
     seenAt: stamp(raw.seenAt),
     resolvedAt: stamp(raw.resolvedAt),
+    pinned: raw.pinned === true,
     pr: prLink(raw.pr),
     createdAt: time(raw.createdAt, now),
     updatedAt: time(raw.updatedAt, now),

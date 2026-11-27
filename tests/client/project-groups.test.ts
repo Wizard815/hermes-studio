@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardCards, boardTargets, groupThreads, projectOfSession, projectSummary, threadDisplayStatus } from '../../packages/client/src/components/hermes/chat/project-groups'
+import { boardCards, boardTargets, groupThreads, projectOfSession, projectSummary, threadDisplayStatus, threadMenuKeys } from '../../packages/client/src/components/hermes/chat/project-groups'
 import type { Project, ProjectTask, ProjectThread } from '../../packages/client/src/api/studio/projects'
 
 const thread = (id: string, liveStatus: ProjectThread['liveStatus'], extra: Partial<ProjectThread> = {}): ProjectThread => ({
@@ -77,5 +77,22 @@ describe('TestProjects_stageGroups', () => {
     const cards = boardCards({ threads: [thread('r', { stage: 'review' }), thread('d', { stage: 'done' }), thread('x', { stage: 'resolved', resolved: true })], tasks: [] })
     expect(cards.review.map(card => card.id).sort()).toEqual(['d', 'r'])
     expect(boardTargets(cards.done[0])).toEqual(['review'])
+  })
+})
+
+describe('TestProjects_threadMenu', () => {
+  it('offers what fits the thread: read only in review, reopen when resolved, open chat only with a chat', async () => {
+    expect(threadMenuKeys({ stage: 'review', resolved: false, pinned: false, sessionId: 'c' }, true)).toEqual([['open', 'openChat'], ['markRead', 'rename', 'pin', 'resolve'], ['remove']])
+    expect(threadMenuKeys({ stage: 'resolved', resolved: true, pinned: true, sessionId: '' }, true)).toEqual([['open'], ['rename', 'unpin', 'reopen'], ['remove']])
+    // Without the pane a thread with no chat yet cannot be opened.
+    expect(threadMenuKeys({ stage: 'working', resolved: false, pinned: false, sessionId: '' }, false)).toEqual([['rename', 'pin', 'resolve'], ['remove']])
+  })
+
+  it('puts pinned threads first in their group', () => {
+    const groups = groupThreads([
+      { id: 'new', updatedAt: 9, stage: 'done', liveStatus: 'done', resolved: false } as any,
+      { id: 'pinned', updatedAt: 1, stage: 'done', liveStatus: 'done', resolved: false, pinned: true } as any,
+    ])
+    expect(groups.done.map(item => item.id)).toEqual(['pinned', 'new'])
   })
 })

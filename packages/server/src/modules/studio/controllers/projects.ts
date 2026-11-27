@@ -61,6 +61,10 @@ export async function resolveThread(ctx: Context) {
   try { ctx.body = { thread: await projectService().setResolved(param(ctx, 'id'), param(ctx, 'threadId'), body(ctx).resolved !== false) } } catch (error) { fail(ctx, error) }
 }
 
+export async function updateThread(ctx: Context) {
+  try { ctx.body = { thread: await projectService().updateThread(param(ctx, 'id'), param(ctx, 'threadId'), body(ctx)) } } catch (error) { fail(ctx, error) }
+}
+
 export async function seenThread(ctx: Context) {
   try { ctx.body = { thread: await projectService().markSeen(param(ctx, 'id'), param(ctx, 'threadId')) } } catch (error) { fail(ctx, error) }
 }

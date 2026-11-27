@@ -459,7 +459,7 @@ export class ProjectService {
       sessionId: '',
       workspace,
       branch,
-      status: 'starting', resolved: false, failed: false, finishedAt: 0, seenAt: 0, resolvedAt: 0, pr: '', createdAt: now, updatedAt: now,
+      status: 'starting', resolved: false, failed: false, finishedAt: 0, seenAt: 0, resolvedAt: 0, pinned: false, pr: '', createdAt: now, updatedAt: now,
     }
     await this.store.update(project.id, current => ({ ...current, threads: [...current.threads, thread] }))
     let launched: { paneId: string; sessionId?: string }
@@ -748,6 +748,27 @@ export class ProjectService {
     return this.view(saved).threads.find(item => item.id === thread.id)!
   }
 
+  /** The person renamed or pinned a thread from its menu. A new title renames its chat too. */
+  async updateThread(idOrName: string, threadId: string, change: { title?: unknown; pinned?: unknown }): Promise<ThreadView> {
+    const { project, thread } = await this.thread(idOrName, threadId)
+    let title: string | undefined
+    if (change.title !== undefined) {
+      title = clean(change.title, THREAD_TITLE_MAX)
+      if (!title) fail('A thread needs a title', 400)
+    }
+    if (change.pinned !== undefined && typeof change.pinned !== 'boolean') fail('pinned is true or false', 400)
+    const saved = await this.store.update(project.id, current => ({
+      ...current,
+      threads: current.threads.map(item => item.id !== thread.id ? item : {
+        ...item,
+        ...(title !== undefined ? { title } : {}),
+        ...(typeof change.pinned === 'boolean' ? { pinned: change.pinned } : {}),
+      }),
+    }))
+    if (title !== undefined && thread.sessionId && getSession(thread.sessionId)) updateSession(thread.sessionId, { title })
+    return this.view(saved).threads.find(item => item.id === thread.id)!
+  }
+
   private daysInput(value: unknown): number {
     const n = Number(value)
     if (value === '' || value === null || !Number.isInteger(n) || n < 0 || n > 90) fail('Auto-resolve takes a whole number of days from 0 (never) to 90', 400)
@@ -833,6 +854,7 @@ export class ProjectService {
       finishedAt: now,
       seenAt: now,
       resolvedAt: 0,
+      pinned: false,
       pr: '',
       createdAt: now,
       updatedAt: now,

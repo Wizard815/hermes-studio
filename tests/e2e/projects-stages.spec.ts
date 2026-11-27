@@ -30,6 +30,16 @@ test('Projects: a finished thread is ready for review until opened, a failed one
       Object.assign(threads[0], { stage: 'done', seenAt: 5 })
       return route.fulfill({ json: { thread: threads[0] } })
     }
+    const one = /^\/api\/studio\/projects\/p1\/threads\/(\w+)$/.exec(path)
+    if (one && request.method() === 'PUT') {
+      const thread = threads.find(t => t.id === one[1])
+      Object.assign(thread, request.postDataJSON())
+      return route.fulfill({ json: { thread } })
+    }
+    if (one && request.method() === 'DELETE') {
+      threads.splice(threads.findIndex(t => t.id === one[1]), 1)
+      return route.fulfill({ json: { ok: true } })
+    }
     if (path === '/api/studio/projects/p1' && request.method() === 'PUT') {
       Object.assign(project, request.postDataJSON())
       return route.fulfill({ json: { project: { ...project, counts: counts() } } })
@@ -60,6 +70,31 @@ test('Projects: a finished thread is ready for review until opened, a failed one
   await page.getByTestId('project-thread-w1').getByRole('button', { name: /Busy job/ }).click()
   await page.waitForTimeout(300)
   expect(posts.filter(p => p.path.endsWith('/seen')).map(p => p.path)).toEqual(['/api/studio/projects/p1/threads/r1/seen'])
+
+  // Right-click a thread: its menu offers what fits it.
+  await page.getByTestId('project-thread-w1').click({ button: 'right' })
+  const menu = page.locator('.n-dropdown-menu')
+  await expect(menu).toBeVisible()
+  await expect(menu.locator('.n-dropdown-option')).toHaveText(['Open', 'Rename', 'Pin', 'Mark resolved', 'Remove from project'])
+  await menu.getByText('Pin', { exact: true }).click()
+  await expect.poll(() => posts.find(p => p.path === '/api/studio/projects/p1/threads/w1')?.body).toEqual({ pinned: true })
+  await expect(page.getByTestId('project-thread-w1')).toContainText('📌')
+  if (process.env.PROJECT_SHOTS) {
+    await page.getByTestId('project-thread-r1').click({ button: 'right' })
+    await page.waitForTimeout(200)
+    await page.screenshot({ path: `${process.env.PROJECT_SHOTS}/26-thread-menu.png`, clip: { x: 0, y: 0, width: 480, height: 560 } })
+    await page.keyboard.press('Escape')
+    await page.mouse.click(280, 600)
+  }
+  await page.getByTestId('project-thread-w1').click({ button: 'right' })
+  await page.locator('.n-dropdown-menu').getByText('Rename', { exact: true }).click()
+  await page.getByTestId('thread-rename-input').locator('input').fill('Busy job, renamed')
+  await page.getByTestId('thread-rename-save').click()
+  await expect(page.getByTestId('project-thread-w1')).toContainText('Busy job, renamed')
+  await page.getByTestId('project-thread-f1').click({ button: 'right' })
+  await page.locator('.n-dropdown-menu').getByText('Remove from project', { exact: true }).click()
+  await page.getByTestId('thread-remove-confirm').click()
+  await expect(page.getByTestId('project-thread-f1')).toHaveCount(0)
 
   // Auto-resolve is part of the project's settings.
   await page.getByTestId('project-p1').getByRole('button', { name: /Edit/ }).first().click()
