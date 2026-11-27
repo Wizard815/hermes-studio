@@ -24,8 +24,9 @@ the new entry by itself: add it in the navigation settings.)
   progress.jsonl, screenshots, logs).
 - **Settings** (on the page): registry mirror, runner image, browser image,
   default cap and minutes, agent steps.
-- **No Docker**: the page only says to mount `/var/run/docker.sock` and what
-  that permits (full control of Docker on the host). Nothing else runs.
+- **No Docker**: the page says what is missing. Test Lab runs on Studio's
+  own `sandbox-docker` sidecar (`STUDIO_SANDBOX_DOCKER_HOST`, see
+  [sandbox](sandbox.md)), not the host's socket. Nothing else runs.
 
 One run at a time.
 

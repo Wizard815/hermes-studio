@@ -93,6 +93,14 @@ export class SandboxService {
     try { return JSON.parse(readFileSync(this.indexFile(), 'utf8')) } catch { return {} }
   }
 
+  /** Read, change and write the index with no await in between, so concurrent calls never undo each other. */
+  private change(fn: (index: Record<string, SandboxInfo & { containerId: string }>) => void) {
+    const index = this.read()
+    fn(index)
+    this.write(index)
+    return index
+  }
+
   private write(index: Record<string, SandboxInfo & { containerId: string }>) {
     mkdirSync(this.deps.home(), { recursive: true })
     const tmp = `${this.indexFile()}.${process.pid}.tmp`
@@ -108,7 +116,7 @@ export class SandboxService {
   }
 
   private requireDocker() {
-    if (!this.deps.docker.available()) throw new SandboxError('Docker is not reachable: mount /var/run/docker.sock into Studio', 503)
+    if (!this.deps.docker.available()) throw new SandboxError('Docker is not reachable: run the sandbox-docker sidecar and set STUDIO_SANDBOX_DOCKER_HOST (docs/sandbox.md)', 503)
   }
 
   async list(): Promise<SandboxInfo[]> {
@@ -129,7 +137,6 @@ export class SandboxService {
     const minutes = Math.min(24 * 60, Math.max(5, Number(input.minutes) || 60))
     const memoryGb = Math.min(32, Math.max(0.25, Number(input.memoryGb) || 4))
     const cpus = Math.min(16, Math.max(0.5, Number(input.cpus) || 2))
-    const index = this.read()
     const running = (await this.list()).filter(item => item.state === 'running')
     if (running.length >= MAX_SANDBOXES) throw new SandboxError(`${MAX_SANDBOXES} sandboxes are running already: remove one first`, 409)
     if (!(await this.deps.docker.hasImage(image))) await this.pullImage(image)
@@ -143,8 +150,7 @@ export class SandboxService {
     })
     const item = { id, containerId, image, imageId: await this.deps.docker.imageId(image).catch(() => ''), network, purpose: str(input.purpose, 300),
       createdAt, expiresAt, state: 'running', repos: [] as string[] } as SandboxInfo & { containerId: string }
-    index[id] = item
-    this.write(index)
+    this.change(index => { index[id] = item })
     const { containerId: _c, ...out } = item
     return out
   }
@@ -198,9 +204,15 @@ export class SandboxService {
     this.requireDocker()
     const item = this.get(input.sandbox)
     const path = sandboxPath(input.path)
-    const tar = await this.deps.docker.getArchive(item.containerId, path)
-    const file = await firstFile(tar)
-    if (!file) throw new SandboxError(`${path} is a folder or empty: run ls with exec instead`)
+    let entry = await firstEntry(await this.deps.docker.getArchive(item.containerId, path))
+    if (entry.type === 'SymbolicLink') {
+      // e.g. /etc/os-release: read what the link points at, inside the sandbox
+      const real = (await this.deps.docker.exec(item.containerId, `readlink -f '${path.replace(/'/g, `'\\''`)}'`, { workdir: '/', timeoutSeconds: 10 })).output.trim()
+      if (real.startsWith('/')) entry = await firstEntry(await this.deps.docker.getArchive(item.containerId, real))
+    }
+    if (entry.type === 'Directory') throw new SandboxError(`${path} is a folder: run ls with exec instead`)
+    const file = entry.data
+    if (!file) throw new SandboxError(`${path} is not a regular file (${entry.type})`)
     if (file.length > MAX_FILE) return { sandbox: item.id, path, bytes: file.length, content: file.subarray(0, MAX_FILE).toString('utf8'), truncated: true }
     return { sandbox: item.id, path, bytes: file.length, content: file.toString('utf8'), truncated: false }
   }
@@ -220,8 +232,7 @@ export class SandboxService {
       const tar = await pack(dir, [name])
       await this.deps.docker.putArchive(item.containerId, '/work', tar)
     } finally { await rm(dir, { recursive: true, force: true }) }
-    const index = this.read()
-    if (index[item.id]) { index[item.id].repos = [...new Set([...(index[item.id].repos || []), url])]; this.write(index) }
+    this.change(index => { if (index[item.id]) index[item.id].repos = [...new Set([...(index[item.id].repos || []), url])] })
     return { sandbox: item.id, repo: url, path: `/work/${name}` }
   }
 
@@ -249,41 +260,45 @@ export class SandboxService {
   async extend(input: Record<string, unknown>) {
     const item = this.get(input.sandbox)
     const minutes = Math.min(24 * 60, Math.max(5, Number(input.minutes) || 60))
-    const index = this.read()
-    index[item.id].expiresAt = Math.max(index[item.id].expiresAt, this.now()) + minutes * 60_000
-    this.write(index)
-    return { sandbox: item.id, expiresAt: index[item.id].expiresAt }
+    let expiresAt = 0
+    this.change(index => {
+      if (!index[item.id]) return
+      index[item.id].expiresAt = expiresAt = Math.max(index[item.id].expiresAt, this.now()) + minutes * 60_000
+    })
+    return { sandbox: item.id, expiresAt }
   }
 
   async remove(input: Record<string, unknown>) {
     const item = this.get(input.sandbox)
     if (this.deps.docker.available()) await this.deps.docker.remove(item.containerId, this.deps.instance)
-    const index = this.read()
-    delete index[item.id]
-    this.write(index)
+    this.change(index => { delete index[item.id] })
     return { sandbox: item.id, removed: true }
   }
 
-  /** Removes sandboxes whose time is up, and labelled containers this Studio no longer knows. */
+  /** Removes sandboxes whose time is up, and forgets ones whose container is gone. */
   async sweep(): Promise<string[]> {
     if (!this.deps.docker.available()) return []
-    const index = this.read()
+    const known = this.read()
     const removed: string[] = []
     const live = await this.deps.docker.list(this.deps.instance)
     for (const container of live) {
       const id = container.Labels?.[LABEL_SANDBOX] || ''
-      const expires = index[id]?.expiresAt ?? Number(container.Labels?.[LABEL_EXPIRES] || 0)
+      const expires = known[id]?.expiresAt ?? Number(container.Labels?.[LABEL_EXPIRES] || 0)
       if (expires <= this.now()) {
         await this.deps.docker.remove(container.Id, this.deps.instance).catch(() => false)
         removed.push(id)
       }
     }
     const liveIds = new Set(live.map(c => c.Labels?.[LABEL_SANDBOX]))
-    let changed = false
-    for (const id of Object.keys(index)) {
-      if (removed.includes(id) || !liveIds.has(id)) { delete index[id]; changed = true }
+    // A sandbox made while this ran isn't in `live` yet: forget a missing one only when it is older
+    // than a minute or Docker says its container is gone.
+    const fresh = this.now() - 60_000
+    const gone = new Set<string>()
+    for (const [id, item] of Object.entries(known)) {
+      if (liveIds.has(id) || removed.includes(id)) continue
+      if (item.createdAt < fresh || (await this.deps.docker.inspect(item.containerId).catch(() => undefined)) === null) gone.add(id)
     }
-    if (changed || removed.length) this.write(index)
+    this.change(index => { for (const id of [...removed, ...gone]) delete index[id] })
     return removed
   }
 
@@ -309,19 +324,22 @@ async function pack(cwd: string, entries: string[]): Promise<Buffer> {
   return Buffer.concat(chunks)
 }
 
-/** The first regular file in a tar, or null. */
-function firstFile(tar: Buffer): Promise<Buffer | null> {
+/** The tar's first entry: its type and, for a regular file, its bytes. */
+function firstEntry(tar: Buffer): Promise<{ type: string; data: Buffer | null }> {
   return new Promise((resolve, reject) => {
-    let found: Buffer | null = null
+    let first: { type: string; data: Buffer | null } | null = null
     const parser = new TarParser({
       onReadEntry: (entry: any) => {
-        if (found || entry.type !== 'File') { entry.resume(); return }
+        if (first) { entry.resume(); return }
+        first = { type: String(entry.type), data: null }
+        if (entry.type !== 'File') { entry.resume(); return }
         const chunks: Buffer[] = []
+        const mine = first
         entry.on('data', (chunk: Buffer) => chunks.push(chunk))
-        entry.on('end', () => { found ??= Buffer.concat(chunks) })
+        entry.on('end', () => { mine.data = Buffer.concat(chunks) })
       },
     } as any)
-    parser.on('end', () => resolve(found))
+    parser.on('end', () => resolve(first || { type: 'none', data: null }))
     parser.on('error', reject)
     parser.end(tar)
   })

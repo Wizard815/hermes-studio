@@ -264,7 +264,7 @@ export class TestLabService {
 
   async start(userId: number, input: StartRunInput, profile?: string): Promise<TestLabRun> {
     const docker = await this.deps.docker.status()
-    if (!docker.available) throw new TestLabError('Docker is not reachable. Mount /var/run/docker.sock into Studio (see the Test Lab page)', 503, 'test_lab_no_docker')
+    if (!docker.available) throw new TestLabError('Docker is not reachable. Run the sandbox-docker sidecar and set STUDIO_SANDBOX_DOCKER_HOST (see the Test Lab page)', 503, 'test_lab_no_docker')
     if (this.active.size || this.list().some(run => ACTIVE.includes(run.status))) throw new TestLabError('A Test Lab run is already going. Wait for it or stop it first', 409, 'test_lab_busy')
     const settings = this.settings()
     const models = await this.deps.models(userId, profile)

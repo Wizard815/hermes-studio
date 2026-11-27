@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
 import { hostname } from 'node:os'
-import { dockerEngine, dockerSocket, engineError, demuxLogs } from '../system/docker'
+import { dockerEngine, sandboxDockerSocket, engineError, demuxLogs } from '../system/docker'
 
 /**
  * Docker for Test Lab (docs/test-lab.md), over the Engine API socket.
@@ -94,13 +94,13 @@ function streamError(body: Buffer): string | null {
 export interface RemovalResult { containers: string[]; networks: string[]; volumes: string[]; images: string[] }
 
 export class LabDocker {
-  constructor(private readonly socketPath: () => string | null = () => dockerSocket()) {}
+  constructor(private readonly socketPath: () => string | null = () => sandboxDockerSocket()) {}
 
   socket(): string | null { return this.socketPath() }
 
   private async api(method: string, path: string, body?: unknown, timeoutMs?: number) {
     const socket = this.socketPath()
-    if (!socket) throw Object.assign(new Error('Docker is not reachable: mount /var/run/docker.sock into Studio'), { status: 503 })
+    if (!socket) throw Object.assign(new Error('Docker is not reachable: run the sandbox-docker sidecar and set STUDIO_SANDBOX_DOCKER_HOST (docs/sandbox.md)'), { status: 503 })
     return dockerEngine(socket, method, path, body, timeoutMs)
   }
 

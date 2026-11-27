@@ -5,6 +5,7 @@ import { create as tarCreate, extract as tarExtract } from 'tar'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { LABEL_EXPIRES, LABEL_INSTANCE, LABEL_SANDBOX, sandboxBody, type SandboxDocker, type SandboxSpec } from '../../packages/server/src/modules/studio/services/sandbox/docker'
 import { DISTROS, SandboxService } from '../../packages/server/src/modules/studio/services/sandbox/service'
+import { sandboxDockerSocket } from '../../packages/server/src/modules/studio/services/system/docker'
 
 /** A Docker that keeps each container's files in a host folder, so archives and exec are real. */
 class FakeSandboxDocker {
@@ -86,6 +87,13 @@ afterEach(() => {
 })
 
 describe('sandbox container settings', () => {
+  it('uses Studio\'s own sandbox Docker when one is set, not the host\'s', () => {
+    const own = { STUDIO_SANDBOX_DOCKER_HOST: 'unix:///run/sandbox-docker/docker.sock', DOCKER_HOST: 'unix:///var/run/docker.sock' }
+    expect(sandboxDockerSocket(own, 'linux')).toBe('/run/sandbox-docker/docker.sock')
+    expect(sandboxDockerSocket({ STUDIO_SANDBOX_DOCKER_HOST: 'tcp://sandbox-docker:2375' }, 'linux')).toBeNull()
+    expect(sandboxDockerSocket({ DOCKER_HOST: 'unix:///x.sock' }, 'linux')).toBe('/x.sock')
+  })
+
   it('has no host folders, no extra privileges and the asked network', () => {
     const body: any = sandboxBody({ name: 'x', image: 'alpine:3.22', labels: { a: 'b' }, network: 'none', memoryBytes: 1, nanoCpus: 2, pidsLimit: 3 })
     expect(body.HostConfig).toMatchObject({ NetworkMode: 'none', Binds: [], SecurityOpt: ['no-new-privileges'], Memory: 1, NanoCpus: 2, PidsLimit: 3 })

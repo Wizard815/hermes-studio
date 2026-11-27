@@ -1,4 +1,4 @@
-import { dockerEngine, dockerSocket, engineError, demuxLogs } from '../system/docker'
+import { dockerEngine, sandboxDockerSocket, engineError, demuxLogs } from '../system/docker'
 
 /** Labels on everything a sandbox makes; removal checks them again before deleting. */
 export const LABEL_SANDBOX = 'studio.sandbox.id'
@@ -42,11 +42,11 @@ export function sandboxBody(spec: SandboxSpec): Record<string, unknown> {
 export interface ExecResult { exitCode: number; output: string }
 
 export class SandboxDocker {
-  constructor(private readonly socketPath: () => string | null = () => dockerSocket()) {}
+  constructor(private readonly socketPath: () => string | null = () => sandboxDockerSocket()) {}
 
   private async api(method: string, path: string, body?: unknown, timeoutMs?: number) {
     const socket = this.socketPath()
-    if (!socket) throw Object.assign(new Error('Docker is not reachable: mount /var/run/docker.sock into Studio'), { status: 503 })
+    if (!socket) throw Object.assign(new Error('Docker is not reachable: run the sandbox-docker sidecar and set STUDIO_SANDBOX_DOCKER_HOST (docs/sandbox.md)'), { status: 503 })
     return dockerEngine(socket, method, path, body, timeoutMs)
   }
 

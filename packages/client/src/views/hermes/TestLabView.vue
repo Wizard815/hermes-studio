@@ -192,8 +192,10 @@ onBeforeUnmount(() => {
     <section v-else-if="!status.docker.available" class="lab-card" data-theme-surface="card" data-testid="test-lab-requirements">
       <h3>{{ t('testLab.requirements.title') }}</h3>
       <p>{{ t('testLab.requirements.what') }}</p>
-      <pre class="lab-code">volumes:
-  - /var/run/docker.sock:/var/run/docker.sock</pre>
+      <pre class="lab-code">environment:
+  - STUDIO_SANDBOX_DOCKER_HOST=unix:///run/sandbox-docker/docker.sock
+volumes:
+  - sandbox-docker:/run/sandbox-docker</pre>
       <p>{{ t('testLab.requirements.permits') }}</p>
       <p>{{ t('testLab.requirements.labels') }}</p>
       <p v-if="status.docker.error" class="lab-muted">{{ t('testLab.requirements.error', { error: status.docker.error }) }}</p>

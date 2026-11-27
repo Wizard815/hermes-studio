@@ -45,12 +45,19 @@ and `POST /api/studio/sandbox/tool/:action`, super admins only.
 
 ## Setup
 
-Studio needs the Docker socket, the same as Test Lab:
+Sandboxes and Test Lab run on a Docker of Studio's own, the `sandbox-docker`
+sidecar in `docker-compose.yml`. Studio reaches it through
+`STUDIO_SANDBOX_DOCKER_HOST=unix:///run/sandbox-docker/docker.sock`.
 
-```yaml
-volumes:
-  - /var/run/docker.sock:/var/run/docker.sock
-```
+Do not give them the host's `/var/run/docker.sock`. Agents run shell commands
+in Studio's container, so they can reach any Docker Studio can. With the host's
+socket, an agent can start a privileged container and take over the host. The
+sidecar holds only sandboxes, and it is rootless: even a `--privileged`
+container started in it is an unprivileged user on the host. It needs
+`/dev/net/tun` (Unraid has it).
+
+Without `STUDIO_SANDBOX_DOCKER_HOST`, sandboxes fall back to the System page's
+Docker (`DOCKER_HOST`, then `/var/run/docker.sock`).
 
 The list of sandboxes is in `<Studio home>/sandbox/sandboxes.json`.
 
@@ -63,7 +70,13 @@ skill: `job run --runner gpu -- COMMAND` or `--runner ubuntu-latest`. See
 
 ## What goes wrong
 
-- **"Docker is not reachable"**: mount the socket (above) and restart Studio.
+- **"Docker is not reachable"**: start the `sandbox-docker` sidecar (above)
+  and check `STUDIO_SANDBOX_DOCKER_HOST`. `docker logs` on the sidecar that
+  says `tap0` failed means `/dev/net/tun` is missing.
+- **A Test Lab run can't write its results in the rootless sidecar**: the run
+  folder belongs to root. Use `image: docker:28-dind` for the sidecar instead.
+  That keeps agents away from the host's containers, but a privileged container
+  in it can still reach the host.
 - **"Could not pull IMAGE"**: the name is wrong, or the machine can't reach
   `mirror.gcr.io` or Docker Hub.
 - **"8 sandboxes are running already"**: remove some on the Test Lab page.

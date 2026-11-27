@@ -28,6 +28,17 @@ export function dockerSocket(env: NodeJS.ProcessEnv = process.env, platform = pr
   return existsSync('/var/run/docker.sock') ? '/var/run/docker.sock' : null
 }
 
+/**
+ * The engine sandboxes and Test Lab run on: STUDIO_SANDBOX_DOCKER_HOST (unix://), a Docker of their
+ * own such as the compose file's sandbox-docker sidecar, so agents never need the host's socket.
+ * Unset, they share the System page's engine (dockerSocket).
+ */
+export function sandboxDockerSocket(env: NodeJS.ProcessEnv = process.env, platform = process.platform): string | null {
+  const own = env.STUDIO_SANDBOX_DOCKER_HOST?.trim()
+  if (own) return own.startsWith('unix://') ? own.slice('unix://'.length) : null
+  return dockerSocket(env, platform)
+}
+
 /** One Engine API request over the socket; `body` is sent as JSON. Exported for Test Lab (docs/test-lab.md). */
 export function dockerEngine(socketPath: string, method: string, path: string, body?: unknown, timeoutMs = 15_000): Promise<{ status: number; body: Buffer }> {
   return new Promise((resolve, reject) => {
