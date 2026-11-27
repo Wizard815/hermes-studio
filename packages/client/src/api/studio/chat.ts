@@ -22,6 +22,8 @@ export interface StartRunRequest {
   /** Optional UI/storage representation when model input carries hidden metadata. */
   display_input?: string | ContentBlock[] | null
   instructions?: string
+  /** docs/reply-styles.md: emoji or caveman answers to save tokens. */
+  reply_style?: 'emoji' | 'caveman'
   session_id?: string
   profile?: string
   model?: string

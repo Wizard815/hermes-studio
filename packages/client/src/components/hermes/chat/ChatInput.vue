@@ -32,6 +32,8 @@ import ImagePreviewOverlay from './ImagePreviewOverlay.vue'
 import { readDraft, writeDraft, reloadComposerDrafts, migratePendingDraft } from '@/composables/useComposerDraft'
 import ScreenshotButton from './ScreenshotButton.vue'
 import RepoPackButton from './RepoPackButton.vue'
+import { replyStyle, setReplyStyle } from '@/utils/reply-style'
+import { REPLY_STYLES, normalizeReplyStyle } from '../../../../../shared/reply-style'
 
 const chatStore = useChatStore()
 const appStore = useAppStore()
@@ -581,6 +583,16 @@ const inputSettingsOptions = computed<DropdownOption[]>(() => [
       'aria-hidden': 'true',
     }, toolTraceVisible.value ? '✓' : ''),
   },
+  // docs/reply-styles.md: cheaper answers. One of the three is always ticked.
+  { type: 'divider', key: 'replyStyleDivider' },
+  ...REPLY_STYLES.map(style => ({
+    label: t(`replyStyle.styles.${style}`),
+    key: `replyStyle:${style}`,
+    icon: () => h('span', {
+      class: ['settings-check', { active: replyStyle.value === style }],
+      'aria-hidden': 'true',
+    }, replyStyle.value === style ? '✓' : ''),
+  })),
 ])
 
 function loadDraftForActiveSession() {
@@ -645,6 +657,10 @@ function handleInputSettingsSelect(key: string | number) {
   if (key === 'toolTrace') {
     toggleToolTraceVisible()
     return
+  }
+
+  if (typeof key === 'string' && key.startsWith('replyStyle:')) {
+    setReplyStyle(normalizeReplyStyle(key.slice('replyStyle:'.length)))
   }
 }
 
@@ -1426,6 +1442,14 @@ function openAttachmentPreview(attachment: Attachment) {
 
           <ScreenshotButton :key="chatStore.activeSessionId || 'new'" :mobile="isMobileViewport" @capture="file => addFiles([file])" />
           <RepoPackButton v-if="isStoredSuperAdmin()" :mobile="isMobileViewport" @attach="file => addFiles([file])" />
+          <button
+            v-if="replyStyle !== 'normal'"
+            type="button"
+            class="reply-style-chip"
+            data-testid="reply-style-chip"
+            :aria-label="t('replyStyle.turnOff', { style: t(`replyStyle.styles.${replyStyle}`) })"
+            @click="setReplyStyle('normal')"
+          >{{ t(`replyStyle.chip.${replyStyle}`) }} <span aria-hidden="true">×</span></button>
 
           <NDropdown
             v-if="!hideSettings"
@@ -1776,6 +1800,12 @@ function openAttachmentPreview(attachment: Attachment) {
 
 <style scoped lang="scss">
 @use '@/styles/variables' as *;
+.reply-style-chip {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 0 8px;
+  border: var(--border-width, 1px) solid $border-color; border-radius: 999px;
+  background: transparent; color: $text-secondary; font-size: calc(var(--font-size-base, 14px) * 12 / 14); cursor: pointer;
+}
+.reply-style-chip:focus-visible { outline: 2px solid $accent-primary; outline-offset: 2px; }
 
 .chat-input-area {
   position: relative;

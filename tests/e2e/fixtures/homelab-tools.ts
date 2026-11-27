@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { NConfigProvider, NDialogProvider, NMessageProvider } from 'naive-ui'
 import McpDirectoryPanel from '../../../packages/client/src/components/hermes/mcp/McpDirectoryPanel.vue'
 import RepoPackButton from '../../../packages/client/src/components/hermes/chat/RepoPackButton.vue'
+import EmojiReplyCard from '../../../packages/client/src/components/hermes/chat/EmojiReplyCard.vue'
 import { i18nReady } from '../../../packages/client/src/i18n'
 import '../../../packages/client/src/styles/global.scss'
 
@@ -20,7 +21,9 @@ const attached = ref<string[]>([])
 const app = createApp({
   render: () => h(NConfigProvider, {}, { default: () => h(NMessageProvider, {}, { default: () => h(NDialogProvider, {}, {
     default: () => h('main', { style: { padding: '16px', maxWidth: '1100px' } }, [
-      view === 'repo-pack'
+      view === 'emoji'
+        ? h('div', [h('p', '⚠️'), h(EmojiReplyCard, { content: '⚠️', actions: true, onSend: (text: string) => { attached.value = [...attached.value, `sent ${text}`] } })])
+        : view === 'repo-pack'
         ? h(RepoPackButton, { onAttach: (file: File) => { attached.value = [...attached.value, `${file.name} ${file.type} ${file.size}`] } })
         : h(McpDirectoryPanel),
       h('pre', { 'data-testid': 'route' }, router.currentRoute.value.fullPath),

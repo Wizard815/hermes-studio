@@ -37,6 +37,7 @@ and keep this file small enough to fit into every task context.
 - `docs/repo-pack.md` - Add a repo to a chat: repomix packs a GitHub repo and attaches the Markdown file; GH_TOKEN for private repos.
 - `docs/markitdown.md` - Markdown copies of attached PDFs and Office files for text-only models.
 - `docs/context-compression.md` - fewer tokens for local models; LLMLingua evaluation.
+- `docs/reply-styles.md` - emoji and caveman reply styles in the composer settings; the ten emoji, Explain and Continue.
 
 ## Common Commands
 

@@ -20,7 +20,7 @@ import { validateSkillContent } from '../../packages/ekko-agent/src/tools/skills
 const BUNDLE = resolve(__dirname, '../../packages/homelab-skills')
 const SCRIPT = join(BUNDLE, 'look-before-build/scripts/awesome_search.py')
 const FIXTURE = resolve(__dirname, '../fixtures/awesome-sample.md')
-const EXPECTED = ['caveman', 'caveman-commit', 'caveman-review', 'code-map', 'look-before-build', 'megacave', 'repo-pack', 'to-markdown', 'ultracave']
+const EXPECTED = ['caveman', 'caveman-commit', 'caveman-review', 'code-map', 'emoji', 'look-before-build', 'megacave', 'repo-pack', 'to-markdown', 'ultracave']
 
 let dir = ''
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'homelab-skills-')) })

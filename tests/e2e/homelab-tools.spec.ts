@@ -10,7 +10,7 @@ const ENTRIES = [
   { name: '77777R7/Octocrawl', url: 'https://github.com/77777R7/Octocrawl', category: 'Browser Automation', description: 'Web scraping into Markdown.', official: true, languages: ['TypeScript'], scopes: ['cloud', 'local'], os: [], install: 'npx -y @octocrawl/mcp', config: { command: 'npx', args: ['-y', '@octocrawl/mcp'] } },
 ]
 
-async function openFixture(page: Page, view: 'directory' | 'repo-pack') {
+async function openFixture(page: Page, view: 'directory' | 'repo-pack' | 'emoji') {
   const requests: Array<{ method: string; path: string; search: string; body: any }> = []
   const errors: string[] = []
   let servers: Array<{ name: string; raw_config: Record<string, unknown> }> = []
@@ -84,5 +84,15 @@ test('Add a repo packs one of your GitHub repos and attaches the Markdown file',
   await dialog.getByRole('button', { name: 'Pack and attach' }).click()
   await expect.poll(() => requests.find(r => r.path === '/api/studio/repo-pack')?.body).toEqual({ repo: 'Wizard815/argos', include: 'cmd/**', compress: true })
   await expect(page.getByTestId('attached')).toHaveText('Wizard815_argos.repomix.md text/markdown 22')
+  expect(errors).toEqual([])
+})
+
+test('an emoji reply says what it means and offers Explain and Continue', async ({ page }) => {
+  const { errors } = await openFixture(page, 'emoji')
+  const card = page.getByTestId('emoji-reply')
+  await expect(card).toContainText('Done, but there is a problem to know about')
+  await card.getByRole('button', { name: 'Explain' }).click()
+  await card.getByRole('button', { name: 'Continue' }).click()
+  await expect(page.getByTestId('attached')).toHaveText('sent explain\nsent continue')
   expect(errors).toEqual([])
 })
