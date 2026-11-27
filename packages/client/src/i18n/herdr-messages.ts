@@ -57,7 +57,7 @@ export const herdrMessages = {
         "sidebar": "herdr sidebar"
       },
       "centerChat": "Chat",
-      "centerHerdr": "herdr",
+      "centerHerdr": "Terminal",
       "centerSwitch": "Show the chat or its herdr agent here",
       "centerOff": "herdr is off. Turn it on in herdr settings.",
       "centerNotLive": "This chat isn't running in herdr.",
@@ -319,7 +319,7 @@ export const herdrMessages = {
         "sidebar": "herdr 侧栏"
       },
       "centerChat": "聊天",
-      "centerHerdr": "herdr",
+      "centerHerdr": "终端",
       "centerSwitch": "在此显示聊天或其 herdr 代理",
       "centerOff": "herdr 已关闭。请在 herdr 设置中开启。",
       "centerNotLive": "此聊天未在 herdr 中运行。",
@@ -581,7 +581,7 @@ export const herdrMessages = {
         "sidebar": "herdr 側欄"
       },
       "centerChat": "聊天",
-      "centerHerdr": "herdr",
+      "centerHerdr": "終端機",
       "centerSwitch": "在此顯示聊天或其 herdr 代理",
       "centerOff": "herdr 已關閉。請在 herdr 設定中開啟。",
       "centerNotLive": "此聊天未在 herdr 中執行。",
@@ -843,7 +843,7 @@ export const herdrMessages = {
         "sidebar": "herdr のサイドバー"
       },
       "centerChat": "チャット",
-      "centerHerdr": "herdr",
+      "centerHerdr": "ターミナル",
       "centerSwitch": "ここにチャットか herdr のエージェントを表示",
       "centerOff": "herdr はオフです。herdr の設定でオンにしてください。",
       "centerNotLive": "このチャットは herdr で動いていません。",
@@ -1105,7 +1105,7 @@ export const herdrMessages = {
         "sidebar": "herdr 사이드바"
       },
       "centerChat": "채팅",
-      "centerHerdr": "herdr",
+      "centerHerdr": "터미널",
       "centerSwitch": "여기에 채팅 또는 herdr 에이전트 표시",
       "centerOff": "herdr가 꺼져 있습니다. herdr 설정에서 켜세요.",
       "centerNotLive": "이 채팅은 herdr에서 실행 중이 아닙니다.",
@@ -1367,7 +1367,7 @@ export const herdrMessages = {
         "sidebar": "herdr-Seitenleiste"
       },
       "centerChat": "Chat",
-      "centerHerdr": "herdr",
+      "centerHerdr": "Terminal",
       "centerSwitch": "Hier den Chat oder seinen herdr-Agenten zeigen",
       "centerOff": "herdr ist aus. In den herdr-Einstellungen einschalten.",
       "centerNotLive": "Dieser Chat läuft nicht in herdr.",
@@ -1629,7 +1629,7 @@ export const herdrMessages = {
         "sidebar": "Barra lateral de herdr"
       },
       "centerChat": "Chat",
-      "centerHerdr": "herdr",
+      "centerHerdr": "Terminal",
       "centerSwitch": "Mostrar aquí el chat o su agente de herdr",
       "centerOff": "herdr está apagado. Actívalo en los ajustes de herdr.",
       "centerNotLive": "Este chat no se está ejecutando en herdr.",
@@ -1891,7 +1891,7 @@ export const herdrMessages = {
         "sidebar": "Barre latérale herdr"
       },
       "centerChat": "Chat",
-      "centerHerdr": "herdr",
+      "centerHerdr": "Terminal",
       "centerSwitch": "Afficher ici le chat ou son agent herdr",
       "centerOff": "herdr est désactivé. Activez-le dans les réglages herdr.",
       "centerNotLive": "Ce chat ne tourne pas dans herdr.",
@@ -2153,7 +2153,7 @@ export const herdrMessages = {
         "sidebar": "Barra lateral do herdr"
       },
       "centerChat": "Chat",
-      "centerHerdr": "herdr",
+      "centerHerdr": "Terminal",
       "centerSwitch": "Mostrar aqui o chat ou o agente do herdr",
       "centerOff": "O herdr está desligado. Ative-o nas configurações do herdr.",
       "centerNotLive": "Este chat não está rodando no herdr.",
@@ -2415,7 +2415,7 @@ export const herdrMessages = {
         "sidebar": "Боковая панель herdr"
       },
       "centerChat": "Чат",
-      "centerHerdr": "herdr",
+      "centerHerdr": "Терминал",
       "centerSwitch": "Показать здесь чат или его агента herdr",
       "centerOff": "herdr выключен. Включите его в настройках herdr.",
       "centerNotLive": "Этот чат не запущен в herdr.",
@@ -2677,7 +2677,7 @@ export const herdrMessages = {
         "sidebar": "herdr kenar çubuğu"
       },
       "centerChat": "Sohbet",
-      "centerHerdr": "herdr",
+      "centerHerdr": "Terminal",
       "centerSwitch": "Burada sohbeti veya herdr ajanını göster",
       "centerOff": "herdr kapalı. herdr ayarlarından açın.",
       "centerNotLive": "Bu sohbet herdr'da çalışmıyor.",
@@ -2939,7 +2939,7 @@ export const herdrMessages = {
         "sidebar": "شريط herdr الجانبي"
       },
       "centerChat": "الدردشة",
-      "centerHerdr": "herdr",
+      "centerHerdr": "الطرفية",
       "centerSwitch": "اعرض هنا الدردشة أو وكيلها في herdr",
       "centerOff": "herdr متوقف. شغّله من إعدادات herdr.",
       "centerNotLive": "هذه الدردشة لا تعمل في herdr.",

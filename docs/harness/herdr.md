@@ -6,6 +6,11 @@ stay separate apps; this integration links them.
 
 ## Elevated chats: how chats use herdr
 
+> Since herdr folded into Projects, a chat that is elevated (opened in herdr)
+> also becomes a project thread, and the chat list shows no herdr badge. See
+> [docs/projects.md#herdr-is-the-engine](../projects.md#herdr-is-the-engine).
+> The rest of this section describes the elevation underneath.
+
 Chats are Studio-only until they are **elevated** to herdr. You start in
 Studio and elevate a chat when you want its agent in a terminal.
 

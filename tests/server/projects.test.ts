@@ -160,6 +160,47 @@ describe('TestProjects_service', () => {
     expect((await service.get(a.id)).threads).toEqual([])
   })
 
+  it('TestProjects_herdrFold: herdr chats become threads, a project per herdr folder and an Inbox for the rest', async () => {
+    const { runtime } = fakeRuntime()
+    const service = new ProjectService({ store, runtime: () => runtime })
+    const existing = await service.create({ name: 'Homelab' })
+    const nested = { id: 90, name: 'Argos', parent_id: existing.categoryId }
+    db.categories.push(nested)
+    db.sessions.set('h1', { id: 'herdr-1', title: 'Fix fan curve', agent: 'claude-code', category_id: existing.categoryId, workspace: '/srv/homelab' })
+    db.sessions.set('h2', { id: 'h2', title: 'Proxy tests', agent: 'codex', category_id: 90, workspace: '/srv/argos' })
+    db.sessions.set('h3', { id: 'h3', title: 'Argos docs', agent: 'codex', category_id: 90, workspace: '/srv/argos' })
+    db.sessions.set('h4', { id: 'h4', title: 'Loose agent', agent: 'opencode', category_id: null, workspace: '/tmp' })
+    db.sessions.set('h5', { id: 'h5', title: 'Orb pick', agent: 'claude-code', category_id: 90 })
+    db.sessions.set('h6', { id: 'h6', title: 'Rebase PR', agent: 'codex', category_id: null })
+    const coordinator = existing.coordinatorSessionId
+    const result = await service.foldHerdrChats([
+      { sessionId: 'h1' }, { sessionId: 'h2' }, { sessionId: 'h3' }, { sessionId: 'h4' },
+      { sessionId: 'h5', ref: { orb: { project: 'Argos' } } },
+      { sessionId: 'h6', ref: { upstream: { task: 't1' } } },
+      // Already a project's own chat, gone, or a project thread's launch: left alone.
+      { sessionId: coordinator }, { sessionId: 'missing' }, { sessionId: 'h7', ref: { project: { id: existing.id, thread: 'x' } } },
+    ])
+    expect(result).toEqual({ filed: 6, failed: 0 })
+    const projects = await service.list()
+    const byName = Object.fromEntries(projects.map(project => [project.name, project]))
+    expect(Object.keys(byName).sort()).toEqual(['Argos', 'Homelab', 'Inbox', 'Orb', 'Upstream'])
+    expect(byName.Homelab.threads.map(thread => thread.title)).toEqual(['Fix fan curve'])
+    // The nested herdr folder keeps its own chat folder; its project is not woken on its own, and not in worktrees.
+    expect(byName.Argos).toMatchObject({ categoryId: 90, folder: '/srv/argos', worktrees: false, wakeCoordinator: false })
+    expect(byName.Argos.threads.map(thread => thread.title)).toEqual(['Proxy tests', 'Argos docs'])
+    expect(byName.Inbox.threads.map(thread => thread.title)).toEqual(['Loose agent'])
+    expect(byName.Orb.threads.map(thread => thread.title)).toEqual(['Orb pick'])
+    expect(byName.Upstream.threads.map(thread => thread.title)).toEqual(['Rebase PR'])
+    // Seen, not waiting for review.
+    expect(byName.Argos.threads.every(thread => thread.stage === 'done')).toBe(true)
+    // Running it again moves nothing.
+    expect(await service.foldHerdrChats([{ sessionId: 'h2' }, { sessionId: 'h4' }])).toEqual({ filed: 0, failed: 0 })
+    // A new herdr chat in the Argos folder joins that project.
+    db.sessions.set('h8', { id: 'h8', title: 'Later', agent: 'codex', category_id: 90 })
+    expect(await service.fileHerdrChat('h8')).toMatchObject({ title: 'Later' })
+    expect((await service.get(byName.Argos.id)).threads).toHaveLength(3)
+  })
+
   it('the coordinator\'s turn context lists open threads and names its tool; a thread gets the rules', async () => {
     const { runtime } = fakeRuntime()
     const service = new ProjectService({ store, runtime: () => runtime })

@@ -76,7 +76,6 @@ import ThreadPane from "./ThreadPane.vue";
 import ProjectAttentionBadges from "./ProjectAttentionBadges.vue";
 import ProjectIcon from "./ProjectIcon.vue";
 import { addChatToProject, listProjects, type Project, type ProjectThread } from "@/api/studio/projects";
-import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
 import VsCodeCenter from "./VsCodeCenter.vue";
 import ScreenCenter from "./ScreenCenter.vue";
@@ -271,16 +270,9 @@ const herdrChatState = computed<'eligible' | 'other' | 'unknown' | 'none'>(() =>
   if (!session) return 'unknown'
   return herdrCanOpenChat(session) ? 'eligible' : 'other'
 })
-const herdrEligible = computed(() => herdrChatState.value === 'eligible')
-/**
- * Chats elevated to herdr (the chat list marks them "herdr"), from the herdr
- * state Studio already has. Super admins with herdr on only.
- */
-function herdrElevated(session: Session): boolean {
-  return isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(session.id)
-}
-/** The open chat is elevated to herdr: the header offers Return to Studio. */
-const activeChatElevated = computed(() => isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(chatStore.activeSessionId))
+// herdr is the engine behind projects (docs/projects.md#herdr-is-the-engine):
+// chats carry no herdr badge and offer no "Elevate to herdr"; a chat that needs
+// an agent's terminal moves to a project (or opens Terminal, which files it in one).
 
 // The center column swaps between the chat and its herdr agent; the sidebar,
 // header and tool panel stay. Both stay mounted once opened, so swapping is instant.
@@ -1832,7 +1824,6 @@ const activeSessionMenuOptions = computed<DropdownOption[]>(() => withHerdrMenuG
     : "chat.openSessionInNewTab"),
   copyId: t("chat.copySessionId"),
   runLimits: t("runLimits.menu"),
-  ...(activeChatElevated.value ? { returnToStudio: t("herdr.returnToStudio") } : {}),
 }, {
   canRename: activeSessionSupportsPersistence.value,
   canOpen: activeSessionSupportsPersistence.value,
@@ -2312,9 +2303,6 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
   pinned: contextSessionPinned.value,
   includeArchive: contextSession.value?.source !== "global_agent",
   includeModel: canSetContextSessionModel.value,
-  // Same rule as the header's "Elevate to herdr" button, with herdr on.
-  includeHerdr: isSuperAdmin.value && herdrStore.enabled && herdrCanOpenChat(contextSession.value),
-  elevated: isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(contextSession.value?.id),
   includeProject: isSuperAdmin.value && !!contextSession.value && !contextSession.value.isLocalOnly,
   categoryChildren: buildSessionCategoryMenuChildren({
     categories: [...sessionCategories.value].sort((a, b) =>
@@ -2344,8 +2332,6 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
     moveToProject: t("projects.moveToProject"),
     copyLink: t("chat.copySessionLink"),
     copyId: t("chat.copySessionId"),
-    openInHerdr: herdrStore.isElevated(contextSession.value?.id) ? t("herdr.openLive") : t("herdr.elevate"),
-    returnToStudio: t("herdr.returnToStudio"),
   },
 }).map(option => option.key === "pin"
   ? { ...option, disabled: Boolean(contextSession.value?.isLocalOnly) }
@@ -2999,7 +2985,6 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
-              :herdr-elevated="herdrElevated(s)"
             :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
             :selectable="isBatchMode"
             :selected="isSessionSelected(s)"
@@ -3057,7 +3042,6 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
-              :herdr-elevated="herdrElevated(s)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -3175,7 +3159,6 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
-              :herdr-elevated="herdrElevated(s)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -3546,10 +3529,6 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               @click="selectCenter(mode)"
             >{{ mode === 'chat' ? t('herdr.centerChat') : mode === 'herdr' ? t('herdr.centerHerdr') : mode === 'code' ? t('vscode.centerCode') : t('screen.centerScreen') }}</button>
           </div>
-          <HerdrOpenButton
-            v-if="isSuperAdmin && herdrStore.enabled && !showNewChatPage && chatStore.activeSessionId && herdrEligible && !showHerdrCenter"
-            :session-id="chatStore.activeSessionId"
-          />
           <!-- chat/live mode toggle hidden -->
           <template v-if="currentMode === 'chat' && !showNewChatPage">
             <HeaderToolPanelToggle v-if="isSuperAdmin" :expanded="showToolPanel" controls="chat-tool-panel"

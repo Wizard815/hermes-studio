@@ -107,6 +107,10 @@ const WAKE_RETRIES = 240
 const DAY_MS = 86_400_000
 /** How long a just-launched thread's pane may be missing from herdr's list before it counts as gone. */
 const LAUNCH_GRACE_MS = 60_000
+/** Where herdr chats without a folder go, and where Orb's and Upstream's work goes. */
+export const INBOX_PROJECT = 'Inbox'
+export const ORB_PROJECT = 'Orb'
+export const UPSTREAM_PROJECT = 'Upstream'
 /** How often the auto-resolve sweep runs. */
 const SWEEP_EVERY_MS = 60 * 60_000
 /** herdr states where the agent has stopped for now; the ones where it is still at it. */
@@ -378,7 +382,7 @@ export class ProjectService {
    * New project: a Studio chat folder named after it (an existing folder of the
    * same name is reused, so a folder can become a project) and its coordinator chat.
    */
-  async create(input: { name?: unknown; folder?: unknown; instructions?: unknown; profile?: unknown; defaultAgent?: unknown; defaultModel?: unknown; repo?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; autoResolveDays?: unknown; userId?: string | number | null }): Promise<ProjectView> {
+  async create(input: { name?: unknown; folder?: unknown; instructions?: unknown; profile?: unknown; defaultAgent?: unknown; defaultModel?: unknown; repo?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; autoResolveDays?: unknown; userId?: string | number | null; categoryId?: number | null }): Promise<ProjectView> {
     const name = clean(input.name, PROJECT_NAME_MAX)
     if (!name) fail('Give the project a name', 400)
     const profile = clean(input.profile, 128) || 'default'
@@ -392,7 +396,9 @@ export class ProjectService {
       folder = folder || join(this.reposRoot(), `${repoFolderName(repo)}-${randomUUID().slice(0, 6)}`)
       await (this.deps.clone ?? cloneRepo)(repo, folder)
     }
-    const category = findSessionCategoryByName(name, null) || createSessionCategory(name, null)
+    // A herdr folder becoming a project keeps its own chat folder (it may be nested).
+    const given = typeof input.categoryId === 'number' ? getSessionCategory(input.categoryId) : null
+    const category = given || findSessionCategoryByName(name, null) || createSessionCategory(name, null)
     const coordinatorId = randomUUID()
     createSession({
       id: coordinatorId,
@@ -885,6 +891,57 @@ export class ProjectService {
     }
     const saved = await this.store.update(project.id, current => ({ ...current, threads: [...current.threads, thread] }))
     return this.view(saved).threads.find(item => item.id === thread.id)!
+  }
+
+  /**
+   * herdr is the engine behind projects (docs/projects.md#herdr-is-the-engine):
+   * a chat that enters herdr outside a project (an agent started in herdr
+   * itself, work Orb or Upstream started, a chat opened in herdr) becomes a
+   * thread. It goes to the project of its chat folder (made from the folder
+   * when there is none yet), Orb's or Upstream's own project, or the Inbox
+   * project when it has no folder. Chats already in a project stay put.
+   */
+  async fileHerdrChat(sessionId: string, ref?: { orb?: unknown; upstream?: unknown; project?: unknown } | null): Promise<ThreadView | null> {
+    if (ref?.project) return null
+    if (await this.forSession(sessionId)) return null
+    const row = getSession(sessionId) as any
+    if (!row) return null
+    const projects = await this.store.list()
+    const named = ref?.orb ? ORB_PROJECT : ref?.upstream ? UPSTREAM_PROJECT : ''
+    const categoryId: number | null = named ? null : row.category_id ?? null
+    const folder = categoryId != null ? getSessionCategory(categoryId) : null
+    let project = named
+      ? projects.find(item => item.name === named)
+      : folder ? projects.find(item => item.categoryId === folder.id) : projects.find(item => item.name === INBOX_PROJECT)
+    if (!project) {
+      const name = named || (folder ? clean(folder.name, PROJECT_NAME_MAX) : '') || INBOX_PROJECT
+      const clash = projects.find(item => item.name.toLowerCase() === name.toLowerCase())
+      // A project of that name with another folder: use it rather than fail.
+      project = clash ?? (await this.create({
+        name,
+        folder: String(row.workspace || ''),
+        profile: String(row.profile || 'default'),
+        defaultAgent: String(row.agent || '') || undefined,
+        worktrees: false,
+        // Made by Studio, not asked for: its coordinator does not wake (and spend) on its own.
+        wakeCoordinator: false,
+        ...(folder ? { categoryId: folder.id } : {}),
+      }))
+    }
+    return this.adoptChat(project.id, sessionId)
+  }
+
+  /** One-time move of every chat already in herdr into projects (see fileHerdrChat). */
+  async foldHerdrChats(chats: Array<{ sessionId: string; ref?: { orb?: unknown; upstream?: unknown; project?: unknown } | null }>): Promise<{ filed: number; failed: number }> {
+    let filed = 0
+    let failed = 0
+    for (const chat of chats) {
+      try { if (await this.fileHerdrChat(chat.sessionId, chat.ref)) filed += 1 } catch (error) {
+        failed += 1
+        logger.warn({ err: error, sessionId: chat.sessionId }, 'Could not file a herdr chat in a project')
+      }
+    }
+    return { filed, failed }
   }
 
   /** A thread leaves the project and is an ordinary chat again (its folder stays as it is). */

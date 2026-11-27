@@ -77,6 +77,36 @@ project's threads together (see `docs/harness/herdr.md`).
    agent reports its session. Until then the thread shows "starting…" and
    cannot be opened.
 
+## herdr is the engine
+
+Projects are the one place herdr work shows up. herdr runs the agents; every
+chat with an agent in herdr is a project thread.
+
+- **No herdr badge, no "Elevate to herdr".** To give a chat an agent in
+  herdr, use **Move to project…** in its menu.
+- **Terminal** (the switch in the chat header, formerly "herdr") shows the
+  agents' terminals, files and changes. Its spaces are the projects' folders.
+- **A chat that enters herdr outside a project becomes a thread** right away:
+  an agent started in herdr itself, a chat opened there, or work Orb or
+  Upstream started. It goes to:
+  - the project of its chat folder, made from the folder when there is none
+    (the project keeps that folder, nested or not);
+  - the **Orb** or **Upstream** project, for their work;
+  - the **Inbox** project, when the chat has no folder.
+  Projects Studio makes this way do not wake their coordinator and do not
+  use worktrees, until you change them in Edit project.
+- **Chats already in herdr moved once**, the first time Studio started with
+  herdr on, the same way. `projects/herdr-folded.json` under the Web UI home
+  records it; delete it to run the move again. A chat you take out of a
+  project afterwards stays out, until it enters herdr again.
+
+What goes wrong:
+
+- **A project has an empty folder:** its herdr folder had no start
+  directory. Set the folder in Edit project, or threads start in your home.
+- **Too many small projects:** each herdr folder became one. Move threads
+  with **Move to project…** and stop the empty projects.
+
 ## Thread stages
 
 Each thread has a stage, worked out from what herdr reports and whether the

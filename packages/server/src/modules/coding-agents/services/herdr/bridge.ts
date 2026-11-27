@@ -139,6 +139,12 @@ export interface HerdrBridgeDeps {
    * script is missing.
    */
   chatPane?: () => Promise<{ script: string; env: Record<string, string>; cardsDir: string; studioUrl: string } | null>
+  /**
+   * A chat entered herdr outside a project: an agent started in herdr, work
+   * Orb or Upstream started, or a chat opened there. Studio files it in a
+   * project (docs/projects.md#herdr-is-the-engine). Errors are only logged.
+   */
+  chatEnteredHerdr?: (sessionId: string, ref?: HerdrWorkRef) => Promise<unknown>
   /** Where work belongs: a Studio chat folder (and its start directory) matching the project. */
   folderForWork?: (data: HerdrWorkRef) => Promise<{ categoryId: number | null; workspace: string } | null>
   /**
@@ -1294,6 +1300,7 @@ export class HerdrBridge {
     this.persisted.elevatedChats = { ...(this.persisted.elevatedChats || {}), [sessionId]: Date.now() }
     await this.savePersisted()
     this.emit()
+    this.enteredHerdr(sessionId)
   }
 
   /** Elevate a chat and make its herdr space now (see markElevated). */
@@ -1311,6 +1318,17 @@ export class HerdrBridge {
     if (!this.deps.getSession(sessionId)) throw Object.assign(new Error('Chat not found'), { status: 404 })
     if (!this.deps.chatAccess) throw Object.assign(new Error('Studio cannot run chats from herdr here'), { status: 501 })
     return this.deps.chatAccess(sessionId)
+  }
+
+  private enteredHerdr(sessionId: string, ref?: HerdrWorkRef): void {
+    if (!this.deps.chatEnteredHerdr || ref?.project) return
+    void this.deps.chatEnteredHerdr(sessionId, ref).catch(error => this.log('warn', '[herdr] could not file a chat in a project', { sessionId, error: error instanceof Error ? error.message : String(error) }))
+  }
+
+  /** The work a chat's agent was started for (Orb, Upstream, a project), if Studio still knows it. */
+  workRefForChat(sessionId: string): HerdrWorkRef | undefined {
+    const pane = this.links.get(sessionId)?.paneId
+    return pane ? this.persisted.working?.[pane] : undefined
   }
 
   /** Create a Studio chat for an agent session that started in herdr. */
@@ -1345,6 +1363,7 @@ export class HerdrBridge {
     // Herdr-born chats import their whole history.
     if (path) this.persisted.offsets[id] = { path, offset: 0 }
     await this.savePersisted()
+    this.enteredHerdr(id, this.persisted.working?.[pane.pane_id])
     this.log('info', '[herdr] imported agent session', { sessionId: id, agent: studioAgent, pane: pane.pane_id })
     return id
   }

@@ -115,9 +115,11 @@ test('Projects: pair Studios, approve and share a project, and message a shared 
   await expect(attic).toContainText('Introduced by Lab Studio')
   await expect(attic).toContainText('Group')
   await garage.getByTestId('studios-group-hwui_garage').click()
+  // Close the earlier menu (a click outside it), so the pick lands in the new one.
+  await dialog.getByText('Paired Studios', { exact: true }).click()
+  await expect(page.locator('.n-base-select-menu:visible')).toHaveCount(0)
   await dialog.getByTestId('studios-group-share').click()
-  // The menu that just opened (the earlier one may still be fading out).
-  await page.locator('.n-base-select-option', { hasText: 'Homelab' }).last().click()
+  await page.locator('.n-base-select-option:visible', { hasText: 'Homelab' }).click()
   await expect(dialog.getByTestId('studios-group-share')).toContainText('Homelab')
   const bridge = dialog.getByTestId('studios-log')
   await expect(bridge).toContainText('To Attic Studio · message · coordinator (Homelab)')

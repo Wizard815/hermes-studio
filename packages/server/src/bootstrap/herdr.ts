@@ -2,6 +2,7 @@ import { homedir } from 'node:os'
 import { folderFor } from '../modules/coding-agents/services/herdr/folders'
 import { getChatRunServer } from '../modules/studio/services/chat-run/server-registry'
 import { existsSync, readdirSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Server } from 'socket.io'
 import { getWebUiHome } from '../modules/studio/public/config'
@@ -317,6 +318,8 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
       ])
     },
     folderForWork,
+    // herdr is the engine behind projects: a chat that enters herdr outside one becomes a thread.
+    chatEnteredHerdr: (sessionId, ref) => projectService().fileHerdrChat(sessionId, ref),
     categoryForSpace,
     listChatSpaces: () => listChatSpaces(),
     chatAccess: async sessionId => {
@@ -799,6 +802,24 @@ export function projectRuntime(manager: Pick<typeof herdrManager, 'getBridge' | 
   }
 }
 
+/**
+ * Once per install: chats already in herdr move into projects, one per herdr
+ * folder plus an Inbox (docs/projects.md#herdr-is-the-engine). A marker file
+ * keeps it from running again, so a chat the person later takes out of a
+ * project stays out.
+ */
+async function foldHerdrChatsOnce(home: string): Promise<void> {
+  const marker = join(home, 'projects', 'herdr-folded.json')
+  if (existsSync(marker)) return
+  const bridge = herdrManager.getBridge()
+  if (!bridge) return
+  const chats = bridge.elevatedChatIds().map(sessionId => ({ sessionId, ref: bridge.workRefForChat(sessionId) }))
+  const result = await projectService().foldHerdrChats(chats)
+  await mkdir(join(home, 'projects'), { recursive: true })
+  await writeFile(marker, JSON.stringify({ at: new Date().toISOString(), ...result }, null, 2))
+  if (chats.length) logger.info(result, '[herdr] moved chats already in herdr into projects')
+}
+
 export function startHerdrIntegration(io: Server, baseUrl: string): { close: () => void } {
   const home = getWebUiHome()
   herdrManager.configure(herdrBridgeDeps(), {
@@ -820,7 +841,7 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
     herdrManager.getBridge()?.scheduleChatSync()
     folders.soon()
   })
-  void herdrManager.init().catch(error => {
+  void herdrManager.init().then(() => foldHerdrChatsOnce(home)).catch(error => {
     logger.warn(error, '[herdr] integration failed to start')
     recordWatcherEvent({ kind: 'connection', severity: 'warn', text: `herdr did not start: ${String(error?.message || error).slice(0, 200)}`, link: '/hermes/chat?center=herdr' })
   })

@@ -464,6 +464,8 @@ describe('herdr bridge', () => {
     const create = deps.createSession
     deps.createSession = input => { created.push(input.categoryId); create(input) }
     deps.folderForWork = async data => (data.orb?.project === 'site' ? { categoryId: 7, workspace: join(dir, 'site') } : null)
+    const entered: Array<[string, unknown]> = []
+    deps.chatEnteredHerdr = async (sessionId, ref) => { entered.push([sessionId, ref]) }
     await startBridge(deps)
     await bridge!.launchAgent('claude-code', { title: 'site', workspace: '/somewhere/else', onWorking: { orb: { project: 'site' } } })
     expect(prepared).toEqual([join(dir, 'site')])
@@ -474,6 +476,9 @@ describe('herdr bridge', () => {
     await until(() => created.length === 1)
     expect(created).toEqual([7])
     expect(sessions.size).toBe(1)
+    // Outside a project, so Studio files it in one (Orb's), with the work it was started for.
+    await until(() => entered.length === 1)
+    expect(entered[0]).toEqual([`herdr-${nativeId}`, expect.objectContaining({ orb: { project: 'site' } })])
   })
 
   it('files a project thread\'s chat in its folder even when Studio restarted before the agent reported', async () => {
@@ -482,6 +487,8 @@ describe('herdr bridge', () => {
     const create = deps.createSession
     deps.createSession = input => { created.push(input.categoryId); create(input) }
     deps.folderForWork = async data => (data.project?.id === 'p1' ? { categoryId: 5, workspace: join(dir, 'wt') } : null)
+    const entered: string[] = []
+    deps.chatEnteredHerdr = async sessionId => { entered.push(sessionId) }
     await startBridge(deps)
     await bridge!.launchAgent('claude-code', { title: 'thread', onWorking: { project: { id: 'p1', thread: 't1' } } })
     // Studio restarts while the agent still sits on its first-run screen: the launch in memory is gone.
@@ -493,6 +500,8 @@ describe('herdr bridge', () => {
     herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2' })
     await until(() => created.length === 1)
     expect(created).toEqual([5])
+    // Already a project's thread: not filed again.
+    expect(entered).toEqual([])
   })
 
   it('gives agents a Studio login on launch and refreshes it while they work', async () => {
