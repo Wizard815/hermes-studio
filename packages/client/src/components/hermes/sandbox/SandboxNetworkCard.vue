@@ -34,11 +34,11 @@ async function load(withRules = false) {
   } catch (error) { loadError.value = (error as Error).message }
 }
 
-async function save() {
+async function save(reset = false) {
   saving.value = true
   try {
     const lines = (text: string) => text.split('\n').map(line => line.trim()).filter(Boolean)
-    setRules((await saveEgressRules({ mode: mode.value, allow: lines(allow.value), block: lines(block.value) })).rules)
+    setRules((await saveEgressRules(reset ? { reset: true } : { mode: mode.value, allow: lines(allow.value), block: lines(block.value) })).rules)
     toast.success(t('sandbox.net.saved'))
   } catch (error) { toast.error(t('sandbox.net.saveFailed', { error: (error as Error).message })) } finally { saving.value = false }
 }
@@ -77,7 +77,10 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
         <NInput v-model:value="block" type="textarea" :autosize="{ minRows: 3, maxRows: 10 }" data-testid="sandbox-egress-block" />
       </label>
       <p class="lab-muted">{{ t('sandbox.net.lanNote') }}</p>
-      <div><NButton type="primary" size="small" :loading="saving" data-testid="sandbox-egress-save" @click="save">{{ t('sandbox.net.save') }}</NButton></div>
+      <div class="net-actions">
+        <NButton type="primary" size="small" :loading="saving" data-testid="sandbox-egress-save" @click="save()">{{ t('sandbox.net.save') }}</NButton>
+        <NButton size="small" secondary :disabled="saving" data-testid="sandbox-egress-reset" @click="save(true)">{{ t('sandbox.net.reset') }}</NButton>
+      </div>
     </fieldset>
 
     <div class="net-head">
@@ -115,6 +118,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 .net-head h3, .net-head h4 { margin: 0; }
 .net-rules { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 10px; border: var(--border-width, 1px) solid $border-light; border-radius: var(--radius-component, 8px); }
 .net-rules legend { padding: 0 4px; font-weight: 600; }
+.net-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .net-modes { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .net-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .lab-muted { margin: 0; font-size: 12px; color: $text-muted; overflow-wrap: anywhere; }

@@ -65,5 +65,8 @@ forge runners like CI, use the `forgejo` skill's `job run --runner gpu` (or
   the LAN, AI APIs and other sites are refused. An install that fails with 403
   means the host isn't allowed: check `network_log` with `blocked: true` and
   tell the person which host to allow. Don't try to get around the proxy.
+- When the task itself needs a site (testing a LegendKeeper MCP server needs
+  legendkeeper.com), pass `allow: ["legendkeeper.com"]` to create. Only that
+  sandbox gets it. Ask only for what the task needs.
 - `network: none` has no DNS and no package installs. Install first with
   internet, or pick an image that already has what you need.

@@ -253,6 +253,27 @@ describe('SandboxService', () => {
     expect((await s.tool('network_log', {}) as any).rules.mode).toBe('blocklist')
   })
 
+  it('lets a sandbox reach the extra sites its task needs, takes them back on remove, and never a blocked one', async () => {
+    const s = service()
+    docker.images.add('alpine:3.22')
+    await s.create({ distro: 'alpine' }) // starts the proxy
+    const [[proxyId, proxy]] = [...docker.own.entries()]
+    const conf = () => readFileSync(join(proxy.root, 'etc/squid/studio/squid.conf'), 'utf8')
+    const box = await s.create({ distro: 'alpine', allow: ['https://legendkeeper.com/app', 'api.legendkeeper.com'], purpose: 'test the LegendKeeper MCP' })
+    expect(box.allow).toEqual(['legendkeeper.com'])
+    expect(conf()).toContain(`acl sb_${box.id}_sites dstdomain .legendkeeper.com`)
+    expect(docker.execs.at(-1)).toMatchObject({ id: proxyId, command: expect.stringContaining('squid -k reconfigure') })
+    expect((await s.list()).find(b => b.id === box.id)?.allow).toEqual(['legendkeeper.com'])
+    await expect(s.create({ distro: 'alpine', allow: ['legendkeeper.com', 'api.openai.com'] })).rejects.toThrow(/api\.openai\.com is on Studio's block list/)
+    // offline sandboxes have no use for sites
+    expect((await s.create({ distro: 'alpine', network: 'none', allow: ['legendkeeper.com'] })).allow).toEqual([])
+    await s.remove({ sandbox: box.id })
+    expect(conf()).not.toContain('legendkeeper')
+    // reset brings back the default lists
+    await s.setEgressRules({ mode: 'log', allow: [] })
+    expect((await s.setEgressRules({ reset: true })).allow).toContain('npmjs.org')
+  })
+
   it('says Docker is missing instead of failing oddly', async () => {
     docker.up = false
     await expect(service().create({ distro: 'alpine' })).rejects.toThrow(/Docker is not reachable/)

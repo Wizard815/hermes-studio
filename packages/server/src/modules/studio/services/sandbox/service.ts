@@ -9,7 +9,7 @@ import { create as tarCreate, Parser as TarParser } from 'tar'
 import { forgeConfig, forgeGitEnv, onForge, type ForgeConfig } from '../forge'
 import { pullReference } from '../test-lab/templates'
 import { LABEL_EXPIRES, LABEL_INSTANCE, LABEL_SANDBOX, SandboxDocker } from './docker'
-import { cleanRules, DEFAULT_RULES, EGRESS_ALIAS, EGRESS_CONF_DIR, EGRESS_IMAGE, EGRESS_LOG, parseAccessLog, proxyEnv, squidConfig, type EgressEntry, type EgressRules } from './egress'
+import { blockedOf, cleanRules, DEFAULT_RULES, hostList, EGRESS_ALIAS, EGRESS_CONF_DIR, EGRESS_IMAGE, EGRESS_LOG, parseAccessLog, proxyEnv, squidConfig, type EgressEntry, type EgressRules } from './egress'
 
 /**
  * Throwaway containers on Studio's own machine (docs/sandbox.md): an agent makes one
@@ -54,6 +54,8 @@ export interface SandboxInfo {
   expiresAt: number
   state: string
   repos: string[]
+  /** Sites this sandbox may reach besides the allowlist (create's `allow`). */
+  allow: string[]
 }
 
 export interface SandboxDeps {
@@ -129,7 +131,7 @@ export class SandboxService {
     const index = this.read()
     const live = this.deps.docker.available() ? await this.deps.docker.list(this.deps.instance).catch(() => []) : []
     const states = new Map(live.map(c => [c.Labels?.[LABEL_SANDBOX] || '', c.State || '']))
-    return Object.values(index).map(({ containerId: _c, ip: _ip, ...item }) => ({ ...item, state: states.get(item.id) || 'gone' }))
+    return Object.values(index).map(({ containerId: _c, ip: _ip, ...item }) => ({ ...item, allow: item.allow || [], state: states.get(item.id) || 'gone' }))
       .sort((a, b) => b.createdAt - a.createdAt)
   }
 
@@ -140,6 +142,9 @@ export class SandboxService {
     const image = str(input.image, 300).trim() || (distro ? DISTROS[distro].image : '')
     if (!/^[\w][\w.\-/:@]{0,299}$/.test(image)) throw new SandboxError(`Give a distro (${Object.keys(DISTROS).join(', ')}) or an image, e.g. ubuntu:24.04`)
     const network = input.network === 'none' ? 'none' : 'internet'
+    const allow = network === 'internet' ? hostList(input.allow).slice(0, 20) : []
+    const refused = blockedOf(allow, this.egressRules().block)
+    if (refused.length) throw new SandboxError(`${refused.join(', ')} ${refused.length > 1 ? 'are' : 'is'} on Studio's block list (AI APIs, model hubs): ask the person to change the rules on the Test Lab page`, 403)
     const minutes = Math.min(24 * 60, Math.max(5, Number(input.minutes) || 60))
     const memoryGb = Math.min(32, Math.max(0.25, Number(input.memoryGb) || 4))
     const cpus = Math.min(16, Math.max(0.5, Number(input.cpus) || 2))
@@ -159,8 +164,9 @@ export class SandboxService {
     })
     const ip = network === 'internet' ? await this.deps.docker.ipOn(containerId, this.egressNetwork()).catch(() => '') : ''
     const item: Indexed = { id, containerId, ip, image, imageId: await this.deps.docker.imageId(image).catch(() => ''), network, purpose: str(input.purpose, 300),
-      createdAt, expiresAt, state: 'running', repos: [] as string[] }
+      createdAt, expiresAt, state: 'running', repos: [] as string[], allow }
     this.change(index => { index[id] = item })
+    if (allow.length) await this.refreshEgress()
     const { containerId: _c, ip: _ip, ...out } = item
     return out
   }
@@ -282,6 +288,8 @@ export class SandboxService {
     const item = this.get(input.sandbox)
     if (this.deps.docker.available()) await this.deps.docker.remove(item.containerId, this.deps.instance)
     this.change(index => { delete index[item.id] })
+    // Its address may go to the next sandbox: take its extra sites back.
+    if (item.allow?.length) await this.refreshEgress().catch(() => undefined)
     return { sandbox: item.id, removed: true }
   }
 
@@ -310,7 +318,9 @@ export class SandboxService {
       if (liveIds.has(id) || removed.includes(id)) continue
       if (item.createdAt < fresh || (await this.deps.docker.inspect(item.containerId).catch(() => undefined)) === null) gone.add(id)
     }
+    const hadSites = [...removed, ...gone].some(id => known[id]?.allow?.length)
     this.change(index => { for (const id of [...removed, ...gone]) delete index[id] })
+    if (hadSites) await this.refreshEgress().catch(() => undefined)
     return removed
   }
 
@@ -325,24 +335,33 @@ export class SandboxService {
   }
 
   async setEgressRules(input: Record<string, unknown>): Promise<EgressRules> {
-    const rules = cleanRules(input as Partial<Record<keyof EgressRules, unknown>>, this.egressRules())
+    // reset: the default lists (they grow with Studio; saved rules keep the lists they had)
+    const rules = input.reset ? cleanRules(DEFAULT_RULES) : cleanRules(input as Partial<Record<keyof EgressRules, unknown>>, this.egressRules())
     mkdirSync(this.deps.home(), { recursive: true })
     writeFileSync(this.rulesFile(), JSON.stringify(rules, null, 2))
     // A running proxy takes the new rules at once; otherwise the next sandbox with internet starts it with them.
-    const proxy = this.deps.docker.available() ? await this.deps.docker.inspect(this.egressName()).catch(() => null) : null
-    if (proxy?.State?.Running) {
-      await this.writeSquidConfig(String(proxy.Id), rules)
-      const done = await this.deps.docker.exec(String(proxy.Id), `squid -k reconfigure -f ${EGRESS_CONF_DIR}/squid.conf`, { workdir: '/', timeoutSeconds: 30 })
-      if (done.exitCode !== 0) throw new SandboxError(`The proxy did not take the new rules: ${done.output.trim().slice(-300)}`, 502)
-    }
+    await this.refreshEgress()
     return rules
+  }
+
+  private sandboxSites() {
+    return Object.values(this.read()).filter(item => item.allow?.length && item.ip).map(item => ({ id: item.id, ip: item.ip!, hosts: item.allow }))
+  }
+
+  /** Gives a running proxy the current rules and every sandbox's own sites. */
+  private async refreshEgress() {
+    const proxy = this.deps.docker.available() ? await this.deps.docker.inspect(this.egressName()).catch(() => null) : null
+    if (!proxy?.State?.Running) return
+    await this.writeSquidConfig(String(proxy.Id), this.egressRules())
+    const done = await this.deps.docker.exec(String(proxy.Id), `squid -k reconfigure -f ${EGRESS_CONF_DIR}/squid.conf`, { workdir: '/', timeoutSeconds: 30 })
+    if (done.exitCode !== 0) throw new SandboxError(`The proxy did not take the new rules: ${done.output.trim().slice(-300)}`, 502)
   }
 
   private async writeSquidConfig(containerId: string, rules: EgressRules) {
     const dir = await mkdtemp(join(tmpdir(), 'studio-sandbox-egress-'))
     try {
       await mkdir(join(dir, 'studio'))
-      await writeFile(join(dir, 'studio', 'squid.conf'), squidConfig(rules))
+      await writeFile(join(dir, 'studio', 'squid.conf'), squidConfig(rules, this.sandboxSites()))
       await this.deps.docker.putArchive(containerId, posix.dirname(EGRESS_CONF_DIR), await pack(dir, ['studio']))
     } finally { await rm(dir, { recursive: true, force: true }) }
   }

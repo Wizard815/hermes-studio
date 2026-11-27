@@ -54,6 +54,7 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
         </div>
         <span v-if="box.purpose" class="lab-muted">{{ box.purpose }}</span>
         <span v-if="box.repos.length" class="lab-muted">{{ box.repos.join(', ') }}</span>
+        <span v-if="box.allow?.length" class="lab-muted" data-testid="sandbox-extra-sites">{{ t('sandbox.extraSites', { hosts: box.allow.join(', ') }) }}</span>
         <NPopconfirm @positive-click="remove(box.id)">
           <template #trigger>
             <NButton size="small" secondary :loading="busy === box.id" :aria-label="`${t('sandbox.remove')} ${box.image}`" data-testid="sandbox-remove">{{ t('sandbox.remove') }}</NButton>
