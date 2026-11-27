@@ -574,10 +574,12 @@ export async function getStatus(ctx: Context) {
     ctx.body = { available: false, reason: 'Service not initialized' }
     return
   }
+  // This route is public (no sign-in). The broker descriptor holds the master
+  // token that drives the browser, so it never goes out: MCP clients read it
+  // from broker.json on disk.
   ctx.body = {
     available: true,
     stats: service.getStats(),
-    descriptor: service.descriptor,
   }
 }
 
