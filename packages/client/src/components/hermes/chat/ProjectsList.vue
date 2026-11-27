@@ -91,16 +91,21 @@ function threadActive(thread: ProjectThread): boolean {
 }
 
 // --- New / edit project ---
-const projectForm = reactive({ show: false, editing: '' as string, name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', repo: '', worktrees: true, wakeCoordinator: true, saving: false })
+const forgeOptions = computed(() => [
+  { label: t('projects.forge.follow'), value: '' },
+  { label: t('projects.forge.github'), value: 'github' },
+  { label: t('projects.forge.home'), value: 'forge' },
+])
+const projectForm = reactive({ show: false, editing: '' as string, name: '', folder: '', instructions: '', forge: '' as '' | 'github' | 'forge', defaultAgent: 'claude-code', defaultModel: '', repo: '', worktrees: true, wakeCoordinator: true, saving: false })
 
 function openNewProject() {
-  Object.assign(projectForm, { show: true, editing: '', name: '', folder: '', instructions: '', defaultAgent: 'claude-code', defaultModel: '', repo: '', worktrees: true, wakeCoordinator: true, saving: false })
+  Object.assign(projectForm, { show: true, editing: '', name: '', folder: '', instructions: '', forge: '', defaultAgent: 'claude-code', defaultModel: '', repo: '', worktrees: true, wakeCoordinator: true, saving: false })
 }
 
 function openEditProject(project: Project) {
   Object.assign(projectForm, {
     show: true, editing: project.id, name: project.name, folder: project.folder,
-    instructions: project.instructions, defaultAgent: project.defaultAgent, defaultModel: project.defaultModel || '',
+    instructions: project.instructions, forge: project.forge || '', defaultAgent: project.defaultAgent, defaultModel: project.defaultModel || '',
     worktrees: project.worktrees !== false, wakeCoordinator: project.wakeCoordinator !== false, saving: false,
   })
 }
@@ -109,7 +114,7 @@ async function saveProject() {
   if (!projectForm.name.trim()) return
   projectForm.saving = true
   try {
-    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, defaultAgent: projectForm.defaultAgent, defaultModel: projectForm.defaultModel.trim(), ...(!projectForm.editing && projectForm.repo.trim() ? { repo: projectForm.repo.trim() } : {}), worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator }
+    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, forge: projectForm.forge, defaultAgent: projectForm.defaultAgent, defaultModel: projectForm.defaultModel.trim(), ...(!projectForm.editing && projectForm.repo.trim() ? { repo: projectForm.repo.trim() } : {}), worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator }
     const saved = projectForm.editing ? await updateProject(projectForm.editing, input) : await createProject(input)
     projectForm.show = false
     await refresh()
@@ -285,6 +290,9 @@ defineExpose({ refresh })
         </NFormItem>
         <NFormItem :label="t('projects.form.instructions')" :feedback="t('projects.form.instructionsHint')">
           <NInput v-model:value="projectForm.instructions" type="textarea" :autosize="{ minRows: 3, maxRows: 10 }" :maxlength="8000" />
+        </NFormItem>
+        <NFormItem :label="t('projects.forge.label')" :feedback="t('projects.forge.hint')">
+          <NSelect v-model:value="projectForm.forge" :options="forgeOptions" data-testid="project-form-forge" />
         </NFormItem>
         <NFormItem :label="t('projects.form.defaultAgent')">
           <NSelect v-model:value="projectForm.defaultAgent" :options="agentOptions" filterable tag />

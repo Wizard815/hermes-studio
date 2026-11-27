@@ -36,7 +36,9 @@ import {
   type ProjectTaskColumn,
   type ProjectThread,
   type ProjectThreadStatus,
+  projectForge,
 } from './store'
+import { forgeConfig, onForge } from '../forge'
 import { PrStatusReader, type PrResult } from './pr-status'
 import { addWorktree, cloneRepo, removeWorktree, repoFolderName, repoRoot, repoUrl, threadBranch } from './worktree'
 
@@ -186,11 +188,22 @@ export function memoryLines(memory: ProjectMemory[] = [], budget = 4000): string
   return lines.length ? ['Project memory (facts the person, coordinator and threads saved; the newest last):', ...lines] : []
 }
 
-export function threadPrompt(project: Pick<Project, 'name' | 'instructions'> & { id?: string; memory?: ProjectMemory[] }, thread: Pick<ProjectThread, 'title' | 'brief'> & { branch?: string; id?: string }): string {
+/** What a project's forge choice tells its agents, '' when it follows the repo. */
+export function forgeLine(project: { forge?: string }): string {
+  if (project.forge === 'forge') {
+    const url = forgeConfig()?.url
+    return `This project's code lives on the homelab's own Git forge (Forgejo${url ? ` at ${url}` : ''}), not GitHub. Push branches and open pull requests there; Hermes does this with its forgejo skill. Keep the work private: don't create or push to GitHub repos unless the person asks.`
+  }
+  if (project.forge === 'github') return 'This project\'s code lives on GitHub. Push branches and open pull requests there.'
+  return ''
+}
+
+export function threadPrompt(project: Pick<Project, 'name' | 'instructions'> & { id?: string; memory?: ProjectMemory[]; forge?: string }, thread: Pick<ProjectThread, 'title' | 'brief'> & { branch?: string; id?: string }): string {
   return [
     `You are working on one thread of the Studio project "${project.name}": ${thread.title}.`,
     project.id && thread.id ? `You are thread ${thread.id} of project ${project.id}. To ask the project's coordinator something or report a finding early, call ekko_studio_use_project with action message_coordinator and arguments {"project": "${project.id}", "from": "${thread.id}", "text": "..."}. To tell another thread something, use action message_thread with {"project": "${project.id}", "from": "${thread.id}", "thread": "<its id>", "text": "..."}; action list shows the other threads. Keep these messages short and only when they help.` : '',
     thread.branch ? `You work in your own git worktree on the branch ${thread.branch}; other threads have their own. Commit your work on this branch. Push it and open a pull request only when the task or the project instructions ask for one.` : '',
+    forgeLine(project),
     project.instructions ? `Project instructions (they apply to every thread):\n${project.instructions}` : '',
     memoryLines(project.memory).join('\n'),
     project.id && thread.id ? `When you make something the person should look at (a report, a screenshot, a build, a page), add it to the project's Artifacts with action add_artifact and {"project": "${project.id}", "from": "${thread.id}", "title": "...", "path": "<file in your workspace>"} or "url" for a link.` : '',
@@ -212,6 +225,7 @@ export function projectContextBlock(project: ProjectView | Project, role: 'coord
     lines.push('Answer directly when a request needs no separate work. For a task that takes real work, start a thread: ekko_studio_use_project with action start_thread and a self-contained brief (the thread does not see this chat). Check on threads with list and read_thread, steer them with message_thread, and resolve_thread when one is finished. Tell the person which threads you started and what each is for.')
     if (project.folder) lines.push(`Project folder: ${project.folder}`)
     if (project.worktrees) lines.push('In a git repo each thread works in its own worktree on its own branch, so threads do not see each other\'s uncommitted changes. To combine their work, start a thread that merges the branches or opens pull requests.')
+    if (forgeLine(project)) lines.push(forgeLine(project))
     if (project.wakeCoordinator) lines.push('You get a <studio_project_event> turn when a thread finishes or needs the person; act on it then, rather than waiting to be asked.')
     if (project.instructions) lines.push(`Project instructions:\n${project.instructions}`)
     lines.push(...memoryLines(project.memory))
@@ -234,6 +248,7 @@ export function projectContextBlock(project: ProjectView | Project, role: 'coord
     }
   } else {
     lines.push(`This chat is ${threadId ? `thread ${threadId}` : 'a thread'} of the Studio project "${project.name}" (project id ${project.id}).`)
+    if (forgeLine(project)) lines.push(forgeLine(project))
     if (project.instructions) lines.push(`Project instructions:\n${project.instructions}`)
     lines.push(...memoryLines(project.memory))
     if (threadId) lines.push(`To reach the coordinator, call ekko_studio_use_project with action message_coordinator and {"project": "${project.id}", "from": "${threadId}", "text": "..."}; to reach another thread, message_thread with "thread" set to its id.`)
@@ -320,7 +335,7 @@ export class ProjectService {
    * New project: a Studio chat folder named after it (an existing folder of the
    * same name is reused, so a folder can become a project) and its coordinator chat.
    */
-  async create(input: { name?: unknown; folder?: unknown; instructions?: unknown; profile?: unknown; defaultAgent?: unknown; defaultModel?: unknown; repo?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; userId?: string | number | null }): Promise<ProjectView> {
+  async create(input: { name?: unknown; folder?: unknown; instructions?: unknown; forge?: unknown; profile?: unknown; defaultAgent?: unknown; defaultModel?: unknown; repo?: unknown; worktrees?: unknown; wakeCoordinator?: unknown; userId?: string | number | null }): Promise<ProjectView> {
     const name = clean(input.name, PROJECT_NAME_MAX)
     if (!name) fail('Give the project a name', 400)
     const profile = clean(input.profile, 128) || 'default'
@@ -352,6 +367,7 @@ export class ProjectService {
         folder,
         repo,
         instructions: clean(input.instructions, PROJECT_INSTRUCTIONS_MAX),
+        forge: input.forge !== undefined ? projectForge(input.forge) : repo && onForge(repo, forgeConfig()) ? 'forge' : '',
         profile,
         categoryId: category?.id ?? null,
         coordinatorSessionId: coordinatorId,
@@ -368,12 +384,13 @@ export class ProjectService {
     }
   }
 
-  async update(id: string, change: { name?: unknown; folder?: unknown; instructions?: unknown; defaultAgent?: unknown; defaultModel?: unknown; worktrees?: unknown; wakeCoordinator?: unknown }): Promise<ProjectView> {
+  async update(id: string, change: { name?: unknown; folder?: unknown; instructions?: unknown; forge?: unknown; defaultAgent?: unknown; defaultModel?: unknown; worktrees?: unknown; wakeCoordinator?: unknown }): Promise<ProjectView> {
     const project = await this.store.update(id, current => ({
       ...current,
       ...(change.name !== undefined ? { name: clean(change.name, PROJECT_NAME_MAX) || current.name } : {}),
       ...(change.folder !== undefined ? { folder: clean(change.folder, 1024) } : {}),
       ...(change.instructions !== undefined ? { instructions: clean(change.instructions, PROJECT_INSTRUCTIONS_MAX) } : {}),
+      ...(change.forge !== undefined ? { forge: projectForge(change.forge) } : {}),
       ...(change.defaultAgent !== undefined ? { defaultAgent: clean(change.defaultAgent, 80) || current.defaultAgent } : {}),
       ...(change.defaultModel !== undefined ? { defaultModel: clean(change.defaultModel, 200) } : {}),
       ...(typeof change.worktrees === 'boolean' ? { worktrees: change.worktrees } : {}),
