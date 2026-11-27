@@ -62,9 +62,14 @@ describe('Settings → Git forges', () => {
     await s.service.save({ url: 'http://forge.lan:3030', token: 'tok' })
     expect(await s.service.test()).toEqual({ ok: true, url: 'http://forge.lan:3030', login: 'wizard', version: '17.0.1' })
     expect(calls.at(-1)).toEqual(['http://forge.lan:3030/api/v1/user', { Authorization: 'token tok' }])
-    expect(calls.at(-2)![1]).toEqual({})
+    expect(calls.at(-2)![1]).toEqual({ Authorization: 'token tok' })
     userStatus = 401
     await expect(s.service.test({ token: 'other' })).rejects.toThrow(/refused the token/)
+    // a forge that requires sign-in answers 403 to anonymous requests, /version included
+    const locked = setup({ fetch: vi.fn(async (_u: string, init: any) => init.headers.Authorization ? reply(200, { version: '17.0.1', login: 'wizard' }) : reply(403, {})) as any })
+    await locked.service.save({ url: 'http://forge.lan:3030' })
+    await expect(locked.service.test()).rejects.toThrow(/only answers signed-in requests/)
+    expect((await locked.service.test({ token: 'tok' })).login).toBe('wizard')
     const down = setup({ fetch: vi.fn(async () => { throw new Error('ECONNREFUSED') }) as any })
     await expect(down.service.test({ url: 'http://nowhere:1' })).rejects.toThrow(/isn't answering/)
     await expect(setup().service.test()).rejects.toThrow(/address first/)

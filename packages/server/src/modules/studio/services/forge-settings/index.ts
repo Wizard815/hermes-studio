@@ -140,7 +140,13 @@ export class ForgeSettingsService {
         throw new ForgeSettingsError(`The forge at ${url} isn't answering (${(error as Error).message}). Check the address and that the forge is running.`, 502)
       }
     }
-    const versionRes = await get('/version', false)
+    // With the token: a forge with REQUIRE_SIGNIN_VIEW answers 403 to anonymous requests, even /version.
+    const versionRes = await get('/version', true)
+    if (versionRes.status === 401 || versionRes.status === 403) {
+      throw new ForgeSettingsError(token
+        ? 'The forge refused the token: it is wrong, expired, or lacks read:user'
+        : 'The forge only answers signed-in requests: save a token (Settings > Applications on the forge)', 401)
+    }
     if (!versionRes.ok) throw new ForgeSettingsError(`${url} answered ${versionRes.status}: is it a Forgejo or Gitea address?`, 502)
     const version = String((await versionRes.json().catch(() => ({})))?.version || '')
     if (!token) throw new ForgeSettingsError(`The forge answers (version ${version || '?'}), but no token is saved: make one under Settings > Applications on the forge`)
