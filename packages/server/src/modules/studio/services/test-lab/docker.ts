@@ -161,6 +161,16 @@ export class LabDocker {
     if (failed) throw new Error(failed)
   }
 
+  /** `docker build -` from a tar build context (a private forge repo Studio cloned itself). */
+  async buildContext(context: Buffer, image: string, labels: Record<string, string>, dockerfile?: string): Promise<void> {
+    const query = [`t=${encodeURIComponent(image)}`, `labels=${encodeURIComponent(JSON.stringify(labels))}`, 'rm=1', 'forcerm=1',
+      ...(dockerfile ? [`dockerfile=${encodeURIComponent(dockerfile)}`] : [])].join('&')
+    const res = await this.api('POST', `/build?${query}`, context, 60 * 60_000)
+    if (res.status !== 200) throw engineError(res.status, res.body)
+    const failed = streamError(res.body)
+    if (failed) throw new Error(failed)
+  }
+
   async createNetwork(name: string, labels: Record<string, string>): Promise<string> {
     // Internal: the apps reach each other, never the internet or the host's LAN.
     const created = await this.json('POST', '/networks/create', { Name: name, Driver: 'bridge', Internal: true, CheckDuplicate: true, Labels: labels }, [201])

@@ -34,8 +34,10 @@ One run at a time.
 1. **Images.** Each app's pinned image is pulled; Docker Hub images go through
    the mirror (default `mirror.gcr.io`), then Docker Hub if the mirror fails.
    Other registries (ghcr.io) are pulled as they are. Apps without an image are
-   built with Docker's own git build (`POST /build?remote=…`); without a git
-   address they are skipped with a message. The runner image
+   built with Docker's own git build (`POST /build?remote=…`); a repo on the
+   homelab forge is cloned by Studio with `FORGE_TOKEN` and sent as the build
+   context instead ([forge.md](forge.md)). Without a git address they are
+   skipped with a message. The runner image
    (`node:24-bookworm-slim`) and the browser image
    (`chromedp/headless-shell:157.0.8103.27`) come the same way.
 2. **Network.** `studio-testlab-<run>`, a Docker bridge network with
@@ -127,7 +129,7 @@ Studio's). Broken files are listed on the page and not offered.
 | `id` | Lowercase, also the app's name on the lab network |
 | `name`, `description` | Shown on the page |
 | `image` | A fixed version (`repo:1.2.3` or `@sha256:`); `latest`, `stable`, `nightly`… are refused |
-| `build.git` | `https://…[.git][#branch]` to build when there is no image; `""` asks the user |
+| `build.git` | `https://…[.git][#branch]` (or your forge's `http://` address) to build when there is no image; `""` asks the user |
 | `port`, `env`, `entrypoint`, `cmd`, `memory`, `start` | How it runs; `start` is the first page |
 | `health` | `path`, `timeoutSeconds` (default 180), `expect` (status codes; default 2xx/3xx) |
 | `logins` | Told to the agent and shown on the page |

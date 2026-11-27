@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { forgeConfig, forgeGitEnv, forgePr, onForge } from '../../packages/server/src/modules/studio/services/forge'
+import { forgeConfig, forgeGitEnv, forgePr, onForge, useProfileForge } from '../../packages/server/src/modules/studio/services/forge'
 import { PrStatusReader, forgeChecks } from '../../packages/server/src/modules/studio/services/projects/pr-status'
 import { failedForgeRuns, forgeInbox, GithubFeed } from '../../packages/server/src/modules/studio/services/command-center/github'
 import { normalizeRepos, normalizeSettings } from '../../packages/server/src/modules/studio/services/command-center/settings'
-import { forgeLine, threadPrompt } from '../../packages/server/src/modules/studio/services/projects/service'
+import { defaultProjectForge, forgeLine, threadPrompt } from '../../packages/server/src/modules/studio/services/projects/service'
+import { forgeBuildContext } from '../../packages/server/src/modules/studio/services/test-lab/forge-build'
+import { isBuildUrl } from '../../packages/server/src/modules/studio/services/test-lab/templates'
 import { normalizeProject } from '../../packages/server/src/modules/studio/services/projects/store'
 
 const env = { FORGE_URL: 'http://192.168.20.5:3030/', FORGE_TOKEN: 'ftok', FORGE_HOSTS: 'forgejo:3000' }
@@ -17,6 +19,41 @@ describe('TestForge_config', () => {
     expect([...config.hosts].sort()).toEqual(['192.168.20.5:3030', 'forgejo:3000'])
     expect(forgeConfig({})).toBeNull()
     expect(forgeConfig({ FORGE_URL: 'forgejo:3000' })).toBeNull()
+  })
+
+  it('falls back to the Hermes profile\'s forge settings; FORGE_URL on the host wins', () => {
+    const saved = { ...process.env }
+    try {
+      delete process.env.FORGE_URL; delete process.env.FORGE_DEFAULT_HOME
+      useProfileForge({ url: 'http://forgejo:3000/', token: 'ptok', hosts: ['192.168.20.5:3030'], defaultHome: 'forge' })
+      expect(forgeConfig()).toMatchObject({ url: 'http://forgejo:3000', token: 'ptok', defaultHome: 'forge' })
+      expect(forgeConfig({})).toBeNull() // an explicit env never reads the profile
+      process.env.FORGE_DEFAULT_HOME = 'github'
+      expect(forgeConfig()?.defaultHome).toBe('github')
+      process.env.FORGE_URL = 'http://192.168.20.5:3030'
+      expect(forgeConfig()?.url).toBe('http://192.168.20.5:3030')
+      useProfileForge(null)
+      delete process.env.FORGE_URL
+      expect(forgeConfig()).toBeNull()
+    } finally {
+      useProfileForge(null)
+      process.env = saved
+    }
+  })
+
+  it('starts new projects on the default home unless their repo says otherwise', () => {
+    const home = forgeConfig({ ...env, FORGE_DEFAULT_HOME: 'forge' })!
+    expect(defaultProjectForge('', home)).toBe('forge')
+    expect(defaultProjectForge('http://forgejo:3000/w/r.git', config)).toBe('forge')
+    expect(defaultProjectForge('https://github.com/w/r.git', home)).toBe('')
+    expect(defaultProjectForge('', config)).toBe('')
+    expect(defaultProjectForge('', null)).toBe('')
+  })
+
+  it('lets Test Lab build from the forge over plain http, and nowhere else', () => {
+    expect(isBuildUrl('http://192.168.20.5:3030/wizard/orb.git#main', config)).toBe(true)
+    expect(isBuildUrl('http://example.com/wizard/orb.git', config)).toBe(false)
+    expect(isBuildUrl('https://github.com/Wizard815/pondering-orb.git#main', null)).toBe(true)
   })
 
   it('knows the forge under each address, and nothing else', () => {
@@ -136,5 +173,15 @@ describe('TestForge_projects', () => {
     const prompt = threadPrompt({ name: 'P', instructions: '', forge: 'forge' }, { title: 'T', brief: 'B' })
     expect(prompt).toMatch(/homelab's own Git forge/)
     expect(prompt).toMatch(/don't create or push to GitHub repos/)
+  })
+})
+
+describe.runIf(process.env.FORGE_TEST_URL && process.env.FORGE_TEST_TOKEN && process.env.FORGE_TEST_REPO)('TestForge_LiveBuildContext', () => {
+  it('clones a private repo into a build context without .git', async () => {
+    const live = forgeConfig({ FORGE_URL: process.env.FORGE_TEST_URL, FORGE_TOKEN: process.env.FORGE_TEST_TOKEN })!
+    const tar = await forgeBuildContext(`${live.url}/${process.env.FORGE_TEST_REPO}.git`, live)
+    expect(tar.length).toBeGreaterThan(512)
+    expect(tar.toString('latin1')).not.toContain('.git/HEAD')
+    await expect(forgeBuildContext(`${live.url}/${process.env.FORGE_TEST_REPO}.git`, { ...live, token: 'wrong' })).rejects.toThrow(/Could not clone/)
   })
 })

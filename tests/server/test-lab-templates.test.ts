@@ -56,7 +56,7 @@ describe('Test Lab templates', () => {
     expect(isBuildUrl('git@github.com:a/b.git')).toBe(false)
     expect(isBuildUrl('http://example.com/a/b')).toBe(false)
     expect(validateTemplate({ ...base, image: undefined, build: { git: '' } })).toEqual([])
-    expect(validateTemplate({ ...base, image: undefined, build: { git: 'file:///etc' } })).toEqual(['build.git: an https git URL, optionally with #branch'])
+    expect(validateTemplate({ ...base, image: undefined, build: { git: 'file:///etc' } })).toEqual(["build.git: an https git URL (or your forge's http one), optionally with #branch"])
     expect(validateTemplate({ ...base, build: { git: 'https://a.b/c', dockerfile: '../x' } })).toEqual(['build.dockerfile: a path inside the repository'])
   })
 

@@ -6,6 +6,8 @@ import AdmZip from 'adm-zip'
 import { LabDocker, LABEL_APP, memoryBytes, runLabels, type ContainerSpec } from './docker'
 import { isBuildUrl, loadTemplates, pullReference, runnerScriptFile, builtinTemplateDir, type LoadedTemplate, type TemplateProblem } from './templates'
 import { parseReport, type ParsedReport } from './report'
+import { buildsFromForge, forgeBuildContext } from './forge-build'
+import { forgeConfig, type ForgeConfig } from '../forge'
 import { pinModel, testLabSessionId, unpinModel } from './pin'
 
 /**
@@ -98,6 +100,10 @@ export interface OpenRouterUsage { usage: number }
 export interface TestLabDeps {
   /** HERMES_WEB_UI_HOME/test-lab */
   home: () => string
+  /** The homelab forge (tests); unset reads forgeConfig(). */
+  forge?: ForgeConfig | null
+  /** Build context for a forge repo (tests); unset clones with FORGE_TOKEN. */
+  forgeContext?: (gitUrl: string, forge: ForgeConfig) => Promise<Buffer>
   docker: LabDocker
   /** Labels every object of this Studio, so two Studios on one Docker never remove each other's runs. */
   instance: string
@@ -271,8 +277,9 @@ export class TestLabService {
     const capUsd = typeof input.capUsd === 'number' && input.capUsd > 0 && input.capUsd <= 100 ? Math.round(input.capUsd * 10000) / 10000 : settings.defaultCapUsd
     const minutes = typeof input.minutes === 'number' && input.minutes >= 1 && input.minutes <= 240 ? input.minutes : settings.defaultMinutes
     const builds = input.builds && typeof input.builds === 'object' ? input.builds : {}
+    const forge = this.deps.forge !== undefined ? this.deps.forge : forgeConfig()
     for (const [app, url] of Object.entries(builds)) {
-      if (url && !isBuildUrl(String(url))) throw new TestLabError(`The git address for ${app} must be an https URL (optionally with #branch)`, 400, 'test_lab_build_url')
+      if (url && !isBuildUrl(String(url), forge)) throw new TestLabError(`The git address for ${app} must be an https URL, or your forge's address (optionally with #branch)`, 400, 'test_lab_build_url')
     }
     const now = this.now()
     const id = newRunId(now)
@@ -349,7 +356,14 @@ export class TestLabService {
         } else if (gitUrl) {
           this.app(id, template.id, { state: 'building', message: gitUrl })
           const tag = `studio-testlab/${template.id}:${id}`
-          await docker.build(gitUrl, tag, labels({ [LABEL_APP]: template.id }), template.build?.dockerfile)
+          const forge = this.deps.forge !== undefined ? this.deps.forge : forgeConfig()
+          if (forge && buildsFromForge(gitUrl, forge)) {
+            // Private forge repos: Studio clones with FORGE_TOKEN and sends the files; Docker never sees the token.
+            const context = await (this.deps.forgeContext || forgeBuildContext)(gitUrl, forge)
+            await docker.buildContext(context, tag, labels({ [LABEL_APP]: template.id }), template.build?.dockerfile)
+          } else {
+            await docker.build(gitUrl, tag, labels({ [LABEL_APP]: template.id }), template.build?.dockerfile)
+          }
           images.set(template.id, tag)
         } else {
           this.app(id, template.id, { state: 'skipped', message: `${template.name} has no image: give its git address to build it` })

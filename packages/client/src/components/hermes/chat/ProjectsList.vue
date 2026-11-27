@@ -114,7 +114,7 @@ async function saveProject() {
   if (!projectForm.name.trim()) return
   projectForm.saving = true
   try {
-    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, forge: projectForm.forge, defaultAgent: projectForm.defaultAgent, defaultModel: projectForm.defaultModel.trim(), ...(!projectForm.editing && projectForm.repo.trim() ? { repo: projectForm.repo.trim() } : {}), worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator }
+    const input = { name: projectForm.name, folder: projectForm.folder, instructions: projectForm.instructions, ...(projectForm.editing || projectForm.forge ? { forge: projectForm.forge } : {}), defaultAgent: projectForm.defaultAgent, defaultModel: projectForm.defaultModel.trim(), ...(!projectForm.editing && projectForm.repo.trim() ? { repo: projectForm.repo.trim() } : {}), worktrees: projectForm.worktrees, wakeCoordinator: projectForm.wakeCoordinator }
     const saved = projectForm.editing ? await updateProject(projectForm.editing, input) : await createProject(input)
     projectForm.show = false
     await refresh()

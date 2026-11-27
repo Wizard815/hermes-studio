@@ -189,6 +189,19 @@ describe('Test Lab runs', () => {
     expect(run.status).toBe('error') // no report written
   })
 
+  it('builds a private forge repo from a context Studio cloned, never sending Docker the token', async () => {
+    const forge = { url: 'http://192.168.20.5:3030', token: 'forgetok', hosts: new Set(['192.168.20.5:3030']), defaultHome: '' as const }
+    const cloned: string[] = []
+    const service = makeService({ forge, forgeContext: async url => { cloned.push(url); return Buffer.from('fake tar bytes') } })
+    fake.onStart = container => { if (container.Labels['studio.testlab.app'] === 'runner') { container.Running = false } }
+    await expect(service.start(1, { model: MODEL.id, apps: ['allglance'], builds: { allglance: 'http://lan.example/w/r.git' } })).rejects.toMatchObject({ code: 'test_lab_build_url' })
+    const started = await service.start(1, { model: MODEL.id, apps: ['allglance'], builds: { allglance: 'http://192.168.20.5:3030/wizard/allglance.git#main' }, browser: false })
+    await waitFor(() => service.read(started.id), r => !!r.finishedAt && !!r.removed)
+    expect(cloned).toEqual(['http://192.168.20.5:3030/wizard/allglance.git#main'])
+    expect(fake.built).toEqual([`context:${'fake tar bytes'.length}`])
+    expect(JSON.stringify(fake.calls)).not.toContain('forgetok')
+  })
+
   it('shows the requirement and runs nothing when Docker is not reachable', async () => {
     const service = makeService({ docker: new LabDocker(() => null) })
     const status = await service.status(1)

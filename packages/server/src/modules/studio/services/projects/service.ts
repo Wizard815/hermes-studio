@@ -37,6 +37,7 @@ import {
   type ProjectThread,
   type ProjectThreadStatus,
   projectForge,
+  type ProjectForge,
 } from './store'
 import { forgeConfig, onForge } from '../forge'
 import { PrStatusReader, type PrResult } from './pr-status'
@@ -186,6 +187,16 @@ export function memoryLines(memory: ProjectMemory[] = [], budget = 4000): string
     lines.unshift(line)
   }
   return lines.length ? ['Project memory (facts the person, coordinator and threads saved; the newest last):', ...lines] : []
+}
+
+/**
+ * Where a new project pushes when the person didn't pick: a forge repo URL means the
+ * forge; no repo means the forge's default home (FORGE_DEFAULT_HOME or Hermes's
+ * forgejo.default_home); any other repo follows itself.
+ */
+export function defaultProjectForge(repo: string, forge = forgeConfig()): ProjectForge {
+  if (repo) return onForge(repo, forge) ? 'forge' : ''
+  return forge?.defaultHome || ''
 }
 
 /** What a project's forge choice tells its agents, '' when it follows the repo. */
@@ -367,7 +378,7 @@ export class ProjectService {
         folder,
         repo,
         instructions: clean(input.instructions, PROJECT_INSTRUCTIONS_MAX),
-        forge: input.forge !== undefined ? projectForge(input.forge) : repo && onForge(repo, forgeConfig()) ? 'forge' : '',
+        forge: input.forge !== undefined ? projectForge(input.forge) : defaultProjectForge(repo),
         profile,
         categoryId: category?.id ?? null,
         coordinatorSessionId: coordinatorId,

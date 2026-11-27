@@ -3,7 +3,7 @@
  * herdr (docs/projects.md), one entry per locale.
  */
 const en = {
-  forge: { label: 'Where code goes', hint: 'Where threads push and open pull requests. Follow the repo uses its own remote.', follow: 'Follow the repo', github: 'GitHub', home: 'Home forge (private)' }, 
+  forge: { label: 'Where code goes', hint: 'Where threads push and open pull requests. Follow the repo uses its own remote; a new project with no repo starts on the forge when the forge is the default home.', follow: 'Follow the repo', github: 'GitHub', home: 'Home forge (private)' }, 
   nav: 'Projects',
   title: 'Projects',
   back: 'Chats',

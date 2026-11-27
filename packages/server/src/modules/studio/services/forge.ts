@@ -8,8 +8,12 @@
  *                needs read:repository)
  *   FORGE_HOSTS  other addresses of the same forge, comma separated
  *                (host or host:port), e.g. forgejo:3000
+ *   FORGE_DEFAULT_HOME  forge or github: where new projects without a repo push
  *
- * The token goes only to the forge's own addresses, never to GitHub.
+ * Without FORGE_URL, Studio uses the active Hermes profile's forgejo skill
+ * settings (skills.config.forgejo.url and default_home in config.yaml,
+ * FORGE_TOKEN and FORGE_HOSTS in its .env), so one setting serves Hermes and
+ * Studio. The token goes only to the forge's own addresses, never to GitHub.
  */
 
 export interface ForgeConfig {
@@ -17,6 +21,13 @@ export interface ForgeConfig {
   token: string
   /** host or host:port values that mean "the forge". */
   hosts: Set<string>
+  /** Where new projects without a repo push: 'forge', 'github' or '' (ask nothing, follow the repo). */
+  defaultHome: '' | 'forge' | 'github'
+}
+
+const home = (value: unknown): ForgeConfig['defaultHome'] => {
+  const v = String(value || '').trim().toLowerCase()
+  return v === 'forge' || v === 'github' ? v : ''
 }
 
 const netloc = (value: string): string => {
@@ -28,12 +39,32 @@ const netloc = (value: string): string => {
   }
 }
 
-export function forgeConfig(env: NodeJS.ProcessEnv = process.env): ForgeConfig | null {
-  const url = String(env.FORGE_URL || '').trim().replace(/\/+$/, '')
+function build(url: string, token: string, hosts: string[], defaultHome: unknown): ForgeConfig | null {
+  url = url.trim().replace(/\/+$/, '')
   if (!/^https?:\/\/[^/\s]+/i.test(url)) return null
-  const hosts = new Set([netloc(url), ...String(env.FORGE_HOSTS || '').split(',').map(item => netloc(item.trim())).filter(Boolean)])
-  hosts.delete('')
-  return { url, token: String(env.FORGE_TOKEN || '').trim(), hosts }
+  const set = new Set([netloc(url), ...hosts.map(item => netloc(item.trim())).filter(Boolean)])
+  set.delete('')
+  return { url, token: token.trim(), hosts: set, defaultHome: home(defaultHome) }
+}
+
+/** The Hermes profile's forge settings, refreshed in the background (refreshForgeFromProfile). */
+let fromProfile: ForgeConfig | null = null
+
+export function forgeConfig(env: NodeJS.ProcessEnv = process.env): ForgeConfig | null {
+  const own = build(String(env.FORGE_URL || ''), String(env.FORGE_TOKEN || ''), String(env.FORGE_HOSTS || '').split(','), env.FORGE_DEFAULT_HOME)
+  if (own || env !== process.env) return own
+  return fromProfile && { ...fromProfile, defaultHome: home(env.FORGE_DEFAULT_HOME) || fromProfile.defaultHome }
+}
+
+/** Remember the profile's forge settings (null clears them). */
+export function useProfileForge(settings: { url: string; token: string; hosts: string[]; defaultHome?: string } | null): void {
+  fromProfile = settings ? build(settings.url, settings.token, settings.hosts, settings.defaultHome) : null
+}
+
+/** Read the active Hermes profile's forge settings again; FORGE_URL on the host wins over them. */
+export async function refreshForgeFromProfile(): Promise<void> {
+  const { loadForgeSettings } = await import('./repo-pack/forge')
+  useProfileForge(await loadForgeSettings().catch(() => null))
 }
 
 /** The path the forge is served under ('' at the root, '/git' behind a proxy at /git). */
