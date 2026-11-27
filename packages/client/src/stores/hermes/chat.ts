@@ -504,6 +504,8 @@ export interface Session {
   pushEnabled?: boolean
   workspace?: string | null
   categoryId?: number | null
+  /** Shown under this chat in the list (one level). */
+  nestedUnder?: string | null
   isLocalOnly?: boolean
   /** Per-session reasoning effort override.
    * Empty string / undefined = use config.yaml default.
@@ -1232,6 +1234,7 @@ export function mapHermesSession(s: SessionSummary): Session {
     pushEnabled: Boolean(s.push_enabled),
     workspace: s.workspace || null,
     categoryId: s.category_id ?? null,
+    nestedUnder: s.nested_under || null,
   }
 }
 

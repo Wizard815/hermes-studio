@@ -43,6 +43,8 @@ export interface SessionSummary {
   cost_status: string
   workspace?: string | null
   category_id?: number | null
+  /** Shown under this chat in the list (one level; docs/chat-list.md). */
+  nested_under?: string | null
   webui_imported?: boolean
 }
 
@@ -622,6 +624,23 @@ export async function setSessionWorkspace(id: string, workspace: string | null):
   } catch {
     return false
   }
+}
+
+/** Show a chat under another chat in the list, or take it out (null). */
+export async function setSessionNesting(id: string, parentId: string | null): Promise<void> {
+  await request(`/api/studio/sessions/${encodeURIComponent(id)}/nest`, {
+    method: 'POST',
+    body: JSON.stringify({ parentId }),
+  })
+}
+
+/** Each chat's last message, for Clean up. */
+export async function fetchLastMessages(ids: string[]): Promise<Record<string, { role: string; text: string; at: number }>> {
+  const result = await request<{ messages: Record<string, { role: string; text: string; at: number }> }>('/api/studio/sessions/last-messages', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  })
+  return result.messages || {}
 }
 
 export async function setSessionCategory(id: string, categoryId: number | null): Promise<void> {

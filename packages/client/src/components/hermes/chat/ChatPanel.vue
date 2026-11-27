@@ -28,6 +28,7 @@ import {
   renameSession,
   renameSessionCategory,
   setSessionCategory,
+  setSessionNesting,
   setSessionWorkspace,
   type SessionCategory,
 } from "@/api/studio/sessions";
@@ -73,6 +74,8 @@ import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import ProjectsList from "./ProjectsList.vue";
 import ComputersList from "./ComputersList.vue";
+import ChatCleanupDialog from "./ChatCleanupDialog.vue";
+import { nestChats } from "@/utils/chat-list-tidy";
 import ThreadPane from "./ThreadPane.vue";
 import ProjectAttentionBadges from "./ProjectAttentionBadges.vue";
 import ProjectIcon from "./ProjectIcon.vue";
@@ -89,7 +92,7 @@ import { chatSessionAgentAvatar } from "@/utils/chat-agent-avatar";
 import { isHermesSession } from "@/utils/hermes/session-agent";
 import { buildVisibleSessionCategoryGroups, categoryPathLabel, categorySubtreeIds, partitionRecentSessions } from "./session-category-groups";
 import { buildSessionCategoryMenuChildren, resolveRecentSessionCategoryLabel } from "./session-category-menu";
-import { buildActiveSessionMenuOptions, buildSessionContextMenuOptions, withHerdrMenuGroup } from "./session-menu-options";
+import { buildActiveSessionMenuOptions, buildSessionContextMenuOptions, renderSessionMenuIcon, withHerdrMenuGroup } from "./session-menu-options";
 import RunLimitBanner from "../run-limits/RunLimitBanner.vue";
 import ToolLoadBanner from "../tool-load/ToolLoadBanner.vue";
 import RunLimitsModal from "../run-limits/RunLimitsModal.vue";
@@ -243,6 +246,47 @@ function selectPaneThread(threadId: string | null) {
 function openFromProjects(sessionId: string) {
   if (paneThread.value?.project.coordinatorSessionId !== sessionId) paneThread.value = null;
   void handleSessionClick(sessionId);
+}
+// Clean up and nesting (docs/chat-list.md).
+const showCleanup = ref(false);
+const projectSessionIds = computed(() => new Set(projectRoles.value.keys()));
+function forgetCleanedChats(ids: string[]) {
+  for (const id of ids) chatStore.forgetSession(id);
+  void syncSessionRouteAfterDeletion();
+}
+const nestSessionId = ref("");
+const nestParentId = ref<string | null>(null);
+const showNest = ref(false);
+const nesting = ref(false);
+const nestOptions = computed(() => {
+  const self = chatStore.sessions.find(item => item.id === nestSessionId.value);
+  const parents = new Set(chatStore.sessions.map(item => item.nestedUnder).filter(Boolean) as string[]);
+  return chatStore.sessions
+    .filter(item => item.id !== nestSessionId.value && !item.nestedUnder && !item.isArchived && !item.isLocalOnly
+      && (!self || !parents.has(self.id)) && (!self?.profile || !item.profile || item.profile === self.profile))
+    .map(item => ({ label: item.title || item.id.slice(0, 8), value: item.id }));
+});
+function openNest(sessionId: string) {
+  nestSessionId.value = sessionId;
+  nestParentId.value = null;
+  showNest.value = true;
+}
+async function saveNesting(sessionId: string, parentId: string | null) {
+  nesting.value = true;
+  try {
+    await setSessionNesting(sessionId, parentId);
+    const session = chatStore.sessions.find(item => item.id === sessionId);
+    const parent = parentId ? chatStore.sessions.find(item => item.id === parentId) : null;
+    if (session) {
+      session.nestedUnder = parentId;
+      if (parent) session.categoryId = parent.categoryId ?? null;
+    }
+    showNest.value = false;
+  } catch (error: any) {
+    message.error(error?.message || String(error));
+  } finally {
+    nesting.value = false;
+  }
 }
 const moveToProjectSessionId = ref("");
 const moveToProjectId = ref<string | null>(null);
@@ -2372,7 +2416,13 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
   },
 }).map(option => option.key === "pin"
   ? { ...option, disabled: Boolean(contextSession.value?.isLocalOnly) }
-  : option));
+  : option).concat(contextSession.value && !contextSession.value.isLocalOnly
+    ? contextSession.value.nestedUnder
+      ? [{ key: "nest:out", label: t("chatList.unnest"), icon: () => renderSessionMenuIcon("category") }]
+      : chatStore.sessions.some(s => s.nestedUnder === contextSession.value?.id)
+        ? []
+        : [{ key: "nest", label: t("chatList.nest"), icon: () => renderSessionMenuIcon("category") }]
+    : []));
 function contextMenuProps(option: DropdownOption | undefined) {
   return option?.key === "category" ? { style: "max-height: 60vh" } : {};
 }
@@ -2409,6 +2459,14 @@ async function handleContextMenuSelect(key: string) {
   if (!contextSessionId.value) return;
   if (key === "project") {
     void openMoveToProject(contextSessionId.value);
+    return;
+  }
+  if (key === "nest") {
+    openNest(contextSessionId.value);
+    return;
+  }
+  if (key === "nest:out") {
+    void saveNesting(contextSessionId.value, null);
     return;
   }
   if (key === "category:retry") {
@@ -2958,8 +3016,10 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :loading="profilesStore.loading"
               :batch-mode="isBatchMode"
               :import-chats="isSuperAdmin && !props.standalone"
+              cleanup
               @filter="handleProfileFilterChange"
               @batch="toggleBatchMode"
+              @cleanup="showCleanup = true"
               @import="router.push({ name: 'hermes.chatImport' })"
             />
             <button
@@ -3079,8 +3139,9 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           </div>
           <template v-if="!sessionBrowserPrefsStore.recentCollapsed">
             <SessionListItem
-              v-for="s in recentSessions.sessions"
+              v-for="{ chat: s, nested } in nestChats(recentSessions.sessions)"
               :key="`recent-${s.id}`"
+              :class="{ 'session-nested': nested }"
               :session="s"
               :project-role="projectRoles.get(s.id) ?? null"
               :active="s.id === chatStore.activeSessionId"
@@ -3196,8 +3257,9 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             :style="{ '--tree-depth': group.depth || 0 }"
           >
             <SessionListItem
-              v-for="s in group.sessions"
+              v-for="{ chat: s, nested } in nestChats(group.sessions)"
               :key="s.id"
+              :class="{ 'session-nested': nested }"
               :session="s"
               :project-role="projectRoles.get(s.id) ?? null"
               :active="s.id === chatStore.activeSessionId"
@@ -3224,6 +3286,30 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
       </template>
     </SessionListSidebar>
 
+    <ChatCleanupDialog
+      v-model:show="showCleanup"
+      :sessions="chatStore.sessions"
+      :keep="projectSessionIds"
+      :busy="id => sessionStates.isWorking(id, chatStore.isSessionWorking(id))"
+      :archive="id => chatStore.archiveSession(id)"
+      @deleted="forgetCleanedChats"
+    />
+    <NModal v-model:show="showNest" preset="card" :title="t('chatList.nestTitle')" style="max-width: 420px" data-testid="chat-nest">
+      <p class="nest-hint">{{ t('chatList.nestHint') }}</p>
+      <NSelect
+        v-model:value="nestParentId"
+        filterable
+        :options="nestOptions"
+        :placeholder="t('chatList.nestPick')"
+        :aria-label="t('chatList.nestPick')"
+        data-testid="chat-nest-select"
+      />
+      <template #footer>
+        <div class="nest-actions">
+          <NButton type="primary" :disabled="!nestParentId" :loading="nesting" data-testid="chat-nest-save" @click="saveNesting(nestSessionId, nestParentId)">{{ t('chatList.nestSave') }}</NButton>
+        </div>
+      </template>
+    </NModal>
     <NModal v-model:show="showMoveToProject" preset="card" :title="t('projects.moveTitle')" style="max-width: 420px">
       <NSelect
         v-model:value="moveToProjectId"
@@ -4126,6 +4212,23 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
 
 // Tree view: each nesting level indents one step and draws a vertical guide line,
 // so every row under a nested category carries the guides of all its ancestors.
+.session-nested {
+  position: relative;
+  margin-inline-start: calc(16px * var(--spacing-scale, 1));
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset-block: 4px;
+    inset-inline-start: calc(-8px * var(--spacing-scale, 1));
+    width: var(--border-width, 1px);
+    background: $border-light;
+  }
+}
+
+.nest-hint { margin: 0 0 10px; color: $text-secondary; font-size: 13px; }
+.nest-actions { display: flex; justify-content: flex-end; }
+
 .session-tree-row {
   --tree-step: calc(11px * var(--spacing-scale, 1));
   position: relative;

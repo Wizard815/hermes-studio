@@ -14,6 +14,7 @@ import { projectStageMessages } from '../project-stage-messages'
 import { studioGroupMessages } from '../studio-group-messages'
 import { studioTerminalMessages } from '../studio-terminal-messages'
 import { chatOriginMessages } from '../chat-origin-messages'
+import { chatListMessages } from '../chat-list-messages'
 import { herdrAppMessages } from '../herdr-app-messages'
 import { commandCenterMessages } from '../command-center-messages'
 import { runLimitsMessages } from '../run-limits-messages'
@@ -78,6 +79,7 @@ export default {
   ...studioGroupMessages['tr'],
   ...studioTerminalMessages['tr'],
   ...chatOriginMessages['tr'],
+  ...chatListMessages['tr'],
   ...herdrAppMessages['tr'],
   ...commandCenterMessages['tr'],
   ...runLimitsMessages['tr'],

@@ -55,6 +55,7 @@ export interface HermesSessionRow {
   push_enabled: number
   workspace: string | null
   category_id: number | null
+  nested_under?: string | null
   history_revision: number
   history_cleared_at?: number
   parent_title?: string | null
@@ -185,6 +186,7 @@ function mapStoredSessionRow(row: Record<string, unknown>): HermesSessionRow {
     push_enabled: Number(row.push_enabled || 0) !== 0 ? 1 : 0,
     workspace: row.workspace != null ? String(row.workspace) : null,
     category_id: row.category_id != null ? Number(row.category_id) : null,
+    nested_under: row.nested_under != null && row.nested_under !== '' ? String(row.nested_under) : null,
     history_revision: Number(row.history_revision || 0),
     history_cleared_at: Number(row.history_cleared_at || 0),
     parent_title: row.parent_title != null ? String(row.parent_title) : null,

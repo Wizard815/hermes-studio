@@ -59,6 +59,8 @@ import {
   normalizeSessionCategoryName,
   renameSessionCategory,
   setSessionCategory,
+  setSessionNesting,
+  getRecentSessionMessages,
 } from '../public/sessions'
 import { deleteWorkspaceRunChangesForSession, getWorkspaceRunChangeFile as getWorkspaceRunChangeFileFromDb, listWorkspaceRunChangesForAssistantMessages, listWorkspaceRunChangesForSession } from '../public/sessions'
 import { getActiveProfileDir, getActiveProfileName, getProfileDir, listProfileNamesFromDisk, readConfigYamlForProfile } from '../public/profile-config'
@@ -1806,6 +1808,37 @@ export async function setCategory(ctx: any) {
     return
   }
   ctx.body = { ok: true, category_id: categoryId }
+}
+
+/** Each chat's last message (for Clean up, docs/chat-list.md); chats the caller can't see are left out. */
+export async function lastMessages(ctx: any) {
+  const ids = Array.isArray(ctx.request.body?.ids) ? ctx.request.body.ids.slice(0, 300).map((id: unknown) => String(id || '')).filter(Boolean) : []
+  const out: Record<string, { role: string; text: string; at: number }> = {}
+  for (const id of ids) {
+    const session = localGetSession(id)
+    if (!session || isPrivatePersonSession(session.id) || (!(isPersonSession(session.id) && ownsPersonSession(ctx.state?.user?.id, session)) && !canAccessProfile(ctx, session.profile))) continue
+    const last = getRecentSessionMessages(id, 1)[0] as any
+    if (!last) continue
+    const text = typeof last.content === 'string' ? last.content : JSON.stringify(last.content ?? '')
+    out[id] = { role: String(last.role || ''), text: text.replace(/\s+/g, ' ').trim().slice(0, 240), at: Number(last.timestamp || 0) }
+  }
+  ctx.body = { messages: out }
+}
+
+export async function setNesting(ctx: any) {
+  const existing = localGetSession(ctx.params.id)
+  if (!existing) { ctx.status = 404; ctx.body = { error: 'Session not found' }; return }
+  if (denySessionAccess(ctx, existing)) return
+  const body = (ctx.request.body || {}) as { parentId?: string | null }
+  const parentId = typeof body.parentId === 'string' && body.parentId.trim() ? body.parentId.trim() : null
+  if (parentId) {
+    const parent = localGetSession(parentId)
+    if (!parent) { ctx.status = 404; ctx.body = { error: 'That chat was not found' }; return }
+    if (denySessionAccess(ctx, parent)) return
+  }
+  const result = setSessionNesting(ctx.params.id, parentId)
+  if (!result.ok) { ctx.status = result.status; ctx.body = { error: result.error }; return }
+  ctx.body = { ok: true, nested_under: parentId }
 }
 
 type SessionProviderApiMode = 'chat_completions' | 'codex_responses' | 'anthropic_messages'

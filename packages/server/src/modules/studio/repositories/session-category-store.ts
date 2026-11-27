@@ -151,10 +151,34 @@ export function setSessionCategory(sessionId: string, categoryId: number | null)
   if (!isSqliteAvailable()) return false
   if (categoryId !== null && !getSessionCategory(categoryId)) return false
   const db = getDb()!
+  // Moving a chat to a folder takes it out from under another chat, and its own nested chats go with it.
   const result = db.prepare(
-    `UPDATE ${SESSIONS_TABLE} SET category_id = ? WHERE id = ?`,
+    `UPDATE ${SESSIONS_TABLE} SET category_id = ?, nested_under = NULL WHERE id = ?`,
   ).run(categoryId, sessionId)
+  if (result.changes > 0) db.prepare(`UPDATE ${SESSIONS_TABLE} SET category_id = ? WHERE nested_under = ?`).run(categoryId, sessionId)
   return result.changes > 0
+}
+
+/**
+ * Show a chat under another chat in the list, or move it back out (null). One
+ * level: a chat with chats under it can't go under another, and a chat can't
+ * go under one that is itself under another. The chat joins the parent's folder.
+ */
+export function setSessionNesting(sessionId: string, parentId: string | null): { ok: true } | { ok: false; status: number; error: string } {
+  if (!isSqliteAvailable()) return { ok: false, status: 500, error: 'No database' }
+  const db = getDb()!
+  if (parentId === null) {
+    db.prepare(`UPDATE ${SESSIONS_TABLE} SET nested_under = NULL WHERE id = ?`).run(sessionId)
+    return { ok: true }
+  }
+  if (parentId === sessionId) return { ok: false, status: 400, error: 'A chat cannot go under itself' }
+  const parent = db.prepare(`SELECT id, category_id, nested_under FROM ${SESSIONS_TABLE} WHERE id = ?`).get(parentId) as { id: string; category_id: number | null; nested_under: string | null } | undefined
+  if (!parent) return { ok: false, status: 404, error: 'That chat was not found' }
+  if (parent.nested_under) return { ok: false, status: 409, error: 'That chat is already under another chat; chats nest one level deep' }
+  const children = db.prepare(`SELECT COUNT(*) AS n FROM ${SESSIONS_TABLE} WHERE nested_under = ?`).get(sessionId) as { n: number }
+  if (Number(children.n) > 0) return { ok: false, status: 409, error: 'This chat has chats under it; move them out first' }
+  db.prepare(`UPDATE ${SESSIONS_TABLE} SET nested_under = ?, category_id = ? WHERE id = ?`).run(parentId, parent.category_id ?? null, sessionId)
+  return { ok: true }
 }
 
 export function moveSessionCategory(id: number, parentId: number | null): SessionCategoryRow | null {
