@@ -8,6 +8,7 @@ import {
   type TestLabRun, type TestLabRunSummary, type TestLabSettings, type TestLabStatus,
 } from '@/api/studio/test-lab'
 import SandboxCard from '@/components/hermes/sandbox/SandboxCard.vue'
+import SandboxNetworkCard from '@/components/hermes/sandbox/SandboxNetworkCard.vue'
 
 /** Test Lab (docs/test-lab.md): throwaway app containers, one agent test, a report. Super admins only. */
 
@@ -290,6 +291,7 @@ volumes:
       </div>
 
       <SandboxCard />
+      <SandboxNetworkCard />
 
       <section v-if="selected" class="lab-card" data-theme-surface="card" data-testid="test-lab-run">
         <div class="lab-run-head">

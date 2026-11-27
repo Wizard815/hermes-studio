@@ -23,3 +23,20 @@ export async function remove(ctx: Context) {
 export async function tool(ctx: Context) {
   try { ctx.body = await getSandbox().tool(String(ctx.params.action || ''), body(ctx)) } catch (error) { fail(ctx, error) }
 }
+
+/** What sandboxes with internet may reach (egress.ts). */
+export async function getEgress(ctx: Context) {
+  try { ctx.body = { rules: getSandbox().egressRules() } } catch (error) { fail(ctx, error) }
+}
+
+export async function setEgress(ctx: Context) {
+  try { ctx.body = { rules: await getSandbox().setEgressRules(body(ctx)) } } catch (error) { fail(ctx, error) }
+}
+
+/** The calls sandboxes made through the proxy, newest first (?sandbox=ID, ?blocked=1, ?limit=N). */
+export async function networkLog(ctx: Context) {
+  try {
+    const q = ctx.query
+    ctx.body = await getSandbox().networkLog({ sandbox: q.sandbox, blocked: q.blocked === '1' || q.blocked === 'true', limit: q.limit })
+  } catch (error) { fail(ctx, error) }
+}

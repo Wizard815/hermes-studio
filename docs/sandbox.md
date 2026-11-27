@@ -16,8 +16,7 @@ A plain Docker container from an image, kept alive until it is removed.
 - **Distro presets:** ubuntu (24.04), debian (13 slim), fedora (43), rocky (9,
   RHEL-like), alpine (3.22), arch, opensuse (Leap 15.6), node (24), python
   (3.13), go (1.25). Any other image works by name (`image: "nixos/nix"`).
-- **Network:** `internet` (Docker's default bridge: the internet, but none of
-  Studio's own networks) or `none`.
+- **Network:** `internet` (only through Studio's proxy, see below) or `none`.
 - **Limits:** 4 GB memory and 2 CPUs by default (up to 32 GB and 16), 4096
   processes, `no-new-privileges`, no host folders and no Docker socket. At
   most 8 run at once.
@@ -27,6 +26,43 @@ A plain Docker container from an image, kept alive until it is removed.
 
 Images from Docker Hub are pulled through `mirror.gcr.io` first (Docker Hub
 limits pulls), then from Docker Hub.
+
+## Internet goes through a proxy
+
+A sandbox with `internet` sits on an internal Docker network with no gateway.
+It cannot reach your LAN, Unraid, Studio or the internet directly, and it gets
+no DNS. Its only way out is a Squid proxy (`studio-sandbox-egress-…`, one per
+Studio). `HTTP_PROXY` and `HTTPS_PROXY` are set in every sandbox, so curl,
+wget, pip, npm, apt, apk, dnf, git and go use it. Anything that ignores them
+fails.
+
+The proxy:
+
+- **Refuses private addresses always**, in every mode: 10/8, 172.16/12,
+  192.168/16, 127/8, 100.64/10, link-local, IPv6 private ranges. It checks the
+  address after DNS, so a public name that points at your LAN is refused too.
+- **Allows only ports 80 and 443.**
+- **Checks the host name** against the rules, set on Test Lab → **Internet for
+  sandboxes**:
+  - **Only the allowed sites** (the default): package registries for every
+    preset (PyPI, npm, Go, crates, RubyGems, Debian, Ubuntu, Alpine, Fedora,
+    Rocky, Arch, openSUSE) and GitHub. Each name covers its subdomains.
+  - **Any site except the blocked ones.** The default block list has the AI
+    APIs and model hubs: OpenAI, Anthropic, Hugging Face, OpenRouter, Google
+    AI, Mistral, Groq, Together, DeepSeek, xAI, Cohere, Perplexity, Fireworks,
+    Replicate, Ollama.
+  - **Any public site (log only).**
+- **Logs every call**: time, sandbox, method, host, port, allowed or refused,
+  and bytes each way. Test Lab shows the latest, with a filter for refused
+  ones. Studio keeps them in `<Studio home>/sandbox/egress.jsonl` (5 MB, then
+  the older half is dropped). Agents read them with `network_log`.
+
+New rules reach the running proxy at once. The rules are in
+`<Studio home>/sandbox/egress.json`.
+
+What it can't see: HTTPS hides what is inside a call, so the log says
+"sandbox X → pypi.org, 40 KB in" but not which file. A download and an upload
+to an allowed site look the same, which is why the allowlist is the default.
 
 ## Actions
 
@@ -39,9 +75,12 @@ limits pulls), then from Docker Hub.
 | copy_repo | `sandbox`, `repo` (GitHub or forge git URL), `ref`. Cloned on the Studio machine with its own GitHub or forge login, copied to `/work/NAME`. The token never goes into the sandbox |
 | extend | `sandbox`, `minutes` |
 | remove | `sandbox` |
+| network_log | `sandbox` (optional), `blocked: true` for refused calls only, `limit`. Returns the calls, newest first, and the proxy's rules |
 
-The HTTP routes are `GET /api/studio/sandbox`, `DELETE /api/studio/sandbox/:id`
-and `POST /api/studio/sandbox/tool/:action`, super admins only.
+The HTTP routes are `GET /api/studio/sandbox`, `DELETE /api/studio/sandbox/:id`,
+`POST /api/studio/sandbox/tool/:action`, `GET`/`PUT /api/studio/sandbox/egress`
+(the rules) and `GET /api/studio/sandbox/network-log?sandbox=&blocked=1&limit=`,
+super admins only.
 
 ## Setup
 
@@ -79,6 +118,15 @@ skill: `job run --runner gpu -- COMMAND` or `--runner ubuntu-latest`. See
   in it can still reach the host.
 - **"Could not pull IMAGE"**: the name is wrong, or the machine can't reach
   `mirror.gcr.io` or Docker Hub.
+- **An install fails with `403` or `CONNECT tunnel failed`**: the host isn't
+  allowed. The refused calls on Test Lab name it: add it to the allowed sites.
+  Distros that pick a mirror at random (Fedora, openSUSE, Arch) can land on one
+  that isn't listed.
+- **A clone from your own forge fails inside the sandbox**: the forge is on the
+  LAN, which is always refused. Use `copy_repo`, which clones on the Studio
+  machine.
+- **The proxy image can't be pulled**: the first sandbox with internet pulls
+  `ubuntu/squid` through the mirror. Offline sandboxes don't need it.
 - **"8 sandboxes are running already"**: remove some on the Test Lab page.
 - **A command ends with exit code 137 and `timedOut: true`**: it ran longer
   than `timeoutSeconds`. Images without `timeout` (rare) are not cut off, so
