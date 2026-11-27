@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import type { ProxyOptions } from 'vite'
 import { resolve } from 'path'
 import pkg from './package.json'
+import { localeSplitPlugin } from './scripts/vite-locale-split'
 
 const FRONTEND_PORT = Number(process.env.HERMES_WEB_UI_FRONTEND_PORT || 8649)
 const BACKEND_PORT = process.env.HERMES_WEB_UI_BACKEND_PORT || '8648'
@@ -35,7 +36,7 @@ export default defineConfig({
   base: process.env.STUDIO_BASE_PATH || '/',
   // Concurrent test/dev servers must not replace each other's optimized Vue runtime.
   cacheDir: resolve(__dirname, process.env.HERMES_WEB_UI_VITE_CACHE_DIR || 'node_modules/.vite/client'),
-  plugins: [vue()],
+  plugins: [vue(), localeSplitPlugin(resolve(__dirname, 'packages/client/src/i18n'))],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

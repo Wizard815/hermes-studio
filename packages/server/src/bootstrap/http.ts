@@ -79,6 +79,7 @@ import { PersonPresenceSocketServer } from '../modules/studio/sockets/person-pre
 import { logger } from '../modules/studio/public/logging'
 import { HeadlessBrowserService, getHeadlessBrowserService, setHeadlessBrowserService } from '../modules/studio/services/headless-browser-service'
 import { createStaticCompressionMiddleware } from '../modules/studio/middleware/static-compression'
+import { createApiCompressionMiddleware } from '../modules/studio/middleware/api-compression'
 import { getStaticCacheControl, SPA_ENTRY_CACHE_CONTROL } from '../modules/studio/middleware/static-cache'
 import { upstreamUpkeepProxy } from '../modules/studio/middleware/upstream-upkeep-proxy'
 import { requireUserJwt, resolveUserProfile } from '../modules/studio/middleware/auth'
@@ -548,6 +549,7 @@ export async function bootstrap() {
   // Raise body limits above the default 1mb: profile avatars and MiMo voice-clone
   // reference audio are posted as base64 data URLs before reaching handlers.
   app.use(createRequestBodyParser())
+  app.use(createApiCompressionMiddleware())
   app.use(createPluginHttpMiddleware(getPluginManager))
   console.log('[bootstrap] cors + bodyParser registered')
 
