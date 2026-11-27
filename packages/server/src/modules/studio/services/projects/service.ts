@@ -65,7 +65,11 @@ export interface ProjectRuntime {
   /** Live status of a thread's agent, when herdr knows it. */
   statusForPane(paneId: string): ProjectThreadStatus | null
   /** Send a message to a thread's agent (resuming it in herdr when it is not running). */
-  message(input: { sessionId: string; paneId: string; text: string }): Promise<void>
+  /**
+   * Send a message to a thread's agent. A stopped agent is resumed in a new
+   * herdr pane, which is returned; its reports then go to `project`.
+   */
+  message(input: { sessionId: string; paneId: string; text: string; project?: { id: string; thread: string } }): Promise<void | { paneId?: string }>
 }
 
 /** Gives the coordinator chat a turn (Studio's chat runs; injected in tests). */
@@ -101,6 +105,8 @@ const PR_URL = /https?:\/\/[^\s<>"')\]]+\/(?:pull|pulls|merge_requests)\/\d+/g
 const WAKE_RETRY_MS = 15_000
 const WAKE_RETRIES = 240
 const DAY_MS = 86_400_000
+/** How long a just-launched thread's pane may be missing from herdr's list before it counts as gone. */
+const LAUNCH_GRACE_MS = 60_000
 /** How often the auto-resolve sweep runs. */
 const SWEEP_EVERY_MS = 60 * 60_000
 /** herdr states where the agent has stopped for now; the ones where it is still at it. */
@@ -312,8 +318,16 @@ export class ProjectService {
       let live = thread.paneId ? rt?.statusForPane(thread.paneId) ?? null : null
       // A chat with no herdr pane (one the project adopted) is working while Studio runs it.
       if (!thread.paneId && sessionId && this.chatBusy(sessionId)) live = 'working'
+      // herdr lists a new pane a moment after launch: until then it is starting, not gone (failed).
+      // (updatedAt: when it was launched, or resumed in a new pane.)
+      if (live === 'gone' && thread.status === 'starting' && this.now() - thread.updatedAt < LAUNCH_GRACE_MS) live = 'starting'
       const liveStatus = live || thread.status
-      return { ...thread, sessionId, liveStatus, stage: threadStage({ ...thread, liveStatus }) }
+      // Never reported working, yet its agent sits idle: a first-run screen, a login or a
+      // lost prompt is waiting. Starting for its first minute, then it needs the person.
+      const neverRan = thread.status === 'starting' && !thread.finishedAt && FINISHED.has(liveStatus) && liveStatus !== 'gone'
+      const stuck = neverRan && this.now() - thread.updatedAt >= LAUNCH_GRACE_MS
+      const shown = neverRan && !stuck ? 'starting' : liveStatus
+      return { ...thread, sessionId, liveStatus: shown, stage: threadStage({ ...thread, liveStatus: stuck ? 'blocked' : shown }) }
     })
     const count = (stage: ThreadStage) => threads.filter(thread => thread.stage === stage).length
     return {
@@ -542,11 +556,20 @@ export class ProjectService {
   async messageThread(idOrName: string, threadId: string, text: unknown): Promise<{ ok: true }> {
     const body = clean(text, THREAD_BRIEF_MAX)
     if (!body) fail('The message is empty', 400)
-    const { thread } = await this.thread(idOrName, threadId)
+    const { project, thread } = await this.thread(idOrName, threadId)
     if (thread.liveStatus === 'blocked') fail('The thread is waiting for an approval or an answer on its screen. Ask the person to answer it in the thread.', 409)
-    await this.requireRuntime().message({ sessionId: thread.sessionId, paneId: thread.paneId, text: body })
+    const sent = await this.requireRuntime().message({ sessionId: thread.sessionId, paneId: thread.paneId, text: body, project: { id: project.id, thread: thread.id } })
     // New work reopens a resolved thread, so its next report reaches the coordinator.
     if (thread.resolved) await this.setResolved(idOrName, thread.id, false)
+    // Resumed in a new pane (the old one closed or failed): follow that pane from now on.
+    const paneId = sent && typeof sent === 'object' ? sent.paneId : ''
+    if (paneId && paneId !== thread.paneId) {
+      const now = this.now()
+      await this.store.update(project.id, current => ({
+        ...current,
+        threads: current.threads.map(item => item.id !== thread.id ? item : { ...item, paneId, status: 'starting', failed: false, updatedAt: now }),
+      }))
+    }
     return { ok: true }
   }
 

@@ -348,6 +348,15 @@ Between Studios (no login; signed with the sender's device key, headers
 - **A thread never shows a chat:** herdr did not detect the agent. Open the
   herdr page to see its pane.
 - **Status looks stale:** the list refreshes every 5 seconds while visible.
+- **A new thread shows "Working" with no chat yet:** herdr takes a moment to
+  list a new pane. A thread gets 60 seconds before a missing pane counts as
+  failed.
+- **A new thread moves to "Needs you" after a minute:** the agent sat on its
+  first-run screen (sign-in, trust or theme) and never started. Open its pane
+  in herdr and answer it.
+- **A failed thread:** its pane closed while it worked. Send it a message; it
+  resumes in a new pane and keeps reporting to the project, even after a
+  Studio restart.
 - **"That pairing code is wrong or expired":** codes last 5 minutes and work
   once. Make a new one on the other Studio.
 - **"The other Studio at … isn't answering":** check that it runs and that

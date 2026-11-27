@@ -773,18 +773,22 @@ export function projectRuntime(manager: Pick<typeof herdrManager, 'getBridge' | 
       const status = String(pane.agent_status || '')
       return (THREAD_STATUSES.has(status) ? status : 'unknown') as ProjectThreadStatus
     },
-    message: async ({ sessionId, paneId, text }) => {
+    message: async ({ sessionId, paneId, text, project }) => {
       const bridge = manager.requireBridge()
       const link = sessionId ? bridge.linkFor(sessionId) : undefined
       if (sessionId && link && !link.waiting) {
+        // Its chat may run in another pane now (resumed there earlier, or by hand in herdr).
+        if (project && link.paneId !== paneId) bridge.followWork(link.paneId, { project })
         await bridge.promptSession(sessionId, text)
-        return
+        return { paneId: link.paneId }
       }
       if (sessionId) {
         // The thread's agent stopped: resume it in herdr (as Elevate does), then type the message.
         const opened = await bridge.openSession(sessionId)
+        // The new pane is the thread's now: its reports go to the project like the first pane's.
+        if (project) bridge.followWork(opened.paneId, { project })
         if (!await bridge.promptWhenReady(opened.paneId, text)) throw Object.assign(new Error('The thread\'s agent did not start in herdr. Open the thread to see why.'), { status: 409 })
-        return
+        return { paneId: opened.paneId }
       }
       if (paneId && bridge.getState().panes.some(pane => pane.pane_id === paneId)) {
         if (!await bridge.promptWhenReady(paneId, text)) throw Object.assign(new Error('The thread\'s agent is not ready for a message yet'), { status: 409 })

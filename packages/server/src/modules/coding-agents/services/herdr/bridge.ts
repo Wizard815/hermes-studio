@@ -1339,7 +1339,8 @@ export class HerdrBridge {
       provider: pending?.provider,
       model: pending?.model,
       // Chats made in herdr are Studio chats: they go in the space's Studio folder.
-      categoryId: pending?.categoryId ?? await this.categoryForPane(pane, cwd),
+      // The launch's own folder; after a Studio restart only the work ref is left to say it.
+      categoryId: pending?.categoryId ?? await this.categoryForWork(pane.pane_id) ?? await this.categoryForPane(pane, cwd),
     })
     // Herdr-born chats import their whole history.
     if (path) this.persisted.offsets[id] = { path, offset: 0 }
@@ -1621,6 +1622,23 @@ export class HerdrBridge {
     }
   }
 
+  /** The chat folder of the work a pane was launched for (a project thread), when it has one. */
+  private async categoryForWork(paneId: string): Promise<number | null | undefined> {
+    const ref = this.persisted.working?.[paneId]
+    if (!ref || !this.deps.folderForWork) return undefined
+    const folder = await this.deps.folderForWork(ref).catch(() => null)
+    return folder?.categoryId ?? undefined
+  }
+
+  /**
+   * Follow another pane for the same work: a project thread whose pane closed
+   * was resumed in a new one, and its reports must keep reaching the project.
+   */
+  followWork(paneId: string, ref: Pick<HerdrWorkRef, 'orb' | 'project' | 'upstream'>): void {
+    this.persisted.working = { ...this.persisted.working, [paneId]: { ...ref, at: Date.now() } }
+    void this.savePersisted()
+  }
+
   /** Follow the agent on a piece of work: from its first `working`, report every change. */
   private trackWork(paneId: string, status: HerdrAgentStatus, agent: string | null) {
     const ref = this.persisted.working?.[paneId]
@@ -1655,6 +1673,13 @@ export class HerdrBridge {
           await this.requireClient().request('agent.prompt', { target: paneId, text }, 15000)
           return true
         } catch (error) {
+          // herdr lists a resumed agent a moment before it accepts prompts for it
+          // ("agent target … not found"): wait and try again until the deadline.
+          if (/not found/i.test(String(error)) && Date.now() + 1000 < deadline) {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            this.scheduleRefresh(0)
+            continue
+          }
           this.log('warn', '[herdr] could not send the initial prompt', { paneId, error: String(error) })
           return false
         }

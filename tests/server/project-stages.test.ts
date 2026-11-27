@@ -372,3 +372,66 @@ describe('TestProjects_threadMenu', () => {
     expect((await service.updateThread(project.id, thread.id, { pinned: false })).pinned).toBe(false)
   })
 })
+
+describe('TestProjects_launchGrace', () => {
+  it('a thread herdr has not listed yet is starting, not failed, for its first minute', async () => {
+    const project = await service.create({ name: 'Grace', folder: '' })
+    const thread = await service.startThread(project.id, { brief: 'job' })
+    // The bridge has not seen the new pane yet: the runtime says gone.
+    fake.panes.delete(thread.paneId)
+    fake.runtime.statusForPane = () => 'gone'
+    let view = (await service.get(project.id)).threads[0]
+    expect(view).toMatchObject({ liveStatus: 'starting', stage: 'working' })
+    clock += 61_000
+    view = (await service.get(project.id)).threads[0]
+    expect(view).toMatchObject({ liveStatus: 'gone', stage: 'needs_you' })
+  })
+})
+
+describe('TestProjects_stuckAtStart', () => {
+  it('a thread whose agent sits idle before it ever worked is starting, then needs you', async () => {
+    const project = await service.create({ name: 'Stuck', folder: '' })
+    const thread = await service.startThread(project.id, { brief: 'job' })
+    // Claude Code waits on its first-run screen: herdr says idle, nothing was reported.
+    fake.panes.get(thread.paneId)!.status = 'idle'
+    expect((await service.get(project.id)).threads[0]).toMatchObject({ liveStatus: 'starting', stage: 'working' })
+    clock += 61_000
+    expect((await service.get(project.id)).threads[0]).toMatchObject({ liveStatus: 'idle', stage: 'needs_you' })
+    // Once it really works and finishes, it is an ordinary finished thread.
+    await report(project.id, thread, 'working')
+    await report(project.id, thread, 'idle')
+    expect((await service.get(project.id)).threads[0].stage).toBe('review')
+  })
+})
+
+describe('TestProjects_resumeInNewPane', () => {
+  it('a failed thread resumed in a new herdr pane follows that pane and is no longer failed', async () => {
+    const project = await service.create({ name: 'Resume', folder: '' })
+    const thread = await service.startThread(project.id, { brief: 'job' })
+    await report(project.id, thread, 'working')
+    await report(project.id, thread, 'gone')
+    expect(await stageOf(project.id, thread.id)).toBe('needs_you')
+    // herdr resumes the chat's agent in a new pane, which herdr lists a moment later.
+    const sent: any[] = []
+    fake.runtime.message = async input => { sent.push(input); return { paneId: 'w9:p1' } }
+    await service.messageThread(project.id, thread.id, 'carry on')
+    expect(sent[0].project).toEqual({ id: project.id, thread: thread.id })
+    let saved = (await store.get(project.id))!.threads[0]
+    expect(saved).toMatchObject({ paneId: 'w9:p1', status: 'starting', failed: false })
+    expect(await stageOf(project.id, thread.id)).toBe('working')
+    fake.panes.set('w9:p1', { session: 'chat-1', status: 'working' })
+    await report(project.id, { id: thread.id, paneId: 'w9:p1' }, 'working')
+    clock += 1000
+    await report(project.id, { id: thread.id, paneId: 'w9:p1' }, 'idle')
+    expect(await stageOf(project.id, thread.id)).toBe('review')
+    saved = (await store.get(project.id))!.threads[0]
+    expect(saved.finishedAt).toBe(clock)
+  })
+
+  it('a message typed into a live pane changes nothing about the pane', async () => {
+    const project = await service.create({ name: 'Live pane', folder: '' })
+    const thread = await service.startThread(project.id, { brief: 'job' })
+    await service.messageThread(project.id, thread.id, 'more')
+    expect((await store.get(project.id))!.threads[0].paneId).toBe(thread.paneId)
+  })
+})

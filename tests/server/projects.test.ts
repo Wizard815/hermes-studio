@@ -124,7 +124,7 @@ describe('TestProjects_service', () => {
     const project = await service.create({ name: 'Homelab' })
     const thread = await service.startThread(project.id, { brief: 'Do it', agent: 'claude-code' })
     await service.messageThread(project.id, thread.id, 'Also update the docs')
-    expect(messages).toEqual([{ sessionId: '', paneId: 'w1:p1', text: 'Also update the docs' }])
+    expect(messages).toEqual([{ sessionId: '', paneId: 'w1:p1', text: 'Also update the docs', project: { id: project.id, thread: thread.id } }])
     panes.set('w1:p1', { session: null, status: 'blocked' })
     await expect(service.messageThread(project.id, thread.id, 'go on')).rejects.toMatchObject({ status: 409 })
   })
