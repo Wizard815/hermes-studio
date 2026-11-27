@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { forgeConfig, onForge, type ForgeConfig } from '../forge'
 
 /**
  * Test Lab app templates (docs/test-lab.md): one JSON file per app. Studio ships
@@ -62,9 +63,10 @@ export function isPinnedImage(image: string): boolean {
   return /^[\w][\w.-]{0,127}$/.test(tag) && !FLOATING_TAGS.has(tag.toLowerCase())
 }
 
-/** A git URL Docker can build from: https only, optional `#ref`. */
-export function isBuildUrl(url: string): boolean {
-  return /^https:\/\/[\w.-]+\/[\w./-]+?(\.git)?(#[\w./-]+)?$/.test(url)
+/** A git URL Test Lab can build from: https, or plain http on the homelab forge only; optional `#ref`. */
+export function isBuildUrl(url: string, forge: ForgeConfig | null = forgeConfig()): boolean {
+  if (/^https:\/\/[\w.-]+(:\d+)?\/[\w./-]+?(\.git)?(#[\w./-]+)?$/.test(url)) return true
+  return /^http:\/\/[\w.-]+(:\d+)?\/[\w./-]+?(\.git)?(#[\w./-]+)?$/.test(url) && onForge(url.split('#')[0], forge)
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
@@ -82,7 +84,7 @@ export function validateTemplate(raw: unknown): string[] {
   if (t.image !== undefined && (typeof t.image !== 'string' || !isPinnedImage(t.image))) errors.push('image: needs a fixed version (repo:1.2.3 or repo@sha256:…), not latest')
   if (t.build !== undefined) {
     if (!isObject(t.build) || typeof t.build.git !== 'string') errors.push('build.git: missing')
-    else if (t.build.git && !isBuildUrl(t.build.git)) errors.push('build.git: an https git URL, optionally with #branch')
+    else if (t.build.git && !isBuildUrl(t.build.git)) errors.push('build.git: an https git URL (or your forge\'s http one), optionally with #branch')
     if (isObject(t.build) && t.build.dockerfile !== undefined && (typeof t.build.dockerfile !== 'string' || !/^[\w./-]{1,200}$/.test(t.build.dockerfile) || t.build.dockerfile.includes('..'))) errors.push('build.dockerfile: a path inside the repository')
   }
   if (!Number.isInteger(t.port) || t.port < 1 || t.port > 65535) errors.push('port: a number from 1 to 65535')

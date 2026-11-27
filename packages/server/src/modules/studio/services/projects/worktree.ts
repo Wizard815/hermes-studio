@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { mkdir, readdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { promisify } from 'node:util'
+import { forgeConfig, forgeGitEnv, onForge } from '../forge'
 
 /**
  * Git worktrees for project threads: each thread gets its own checkout and
@@ -54,6 +55,8 @@ export function repoUrl(value: unknown): string {
   const url = String(value ?? '').trim()
   if (!url || url.length > 500 || /\s/.test(url) || url.startsWith('-')) return ''
   if (/^https:\/\/[^/\s]+\/.+/i.test(url) || /^ssh:\/\/[^/\s]+\/.+/i.test(url)) return url
+  // The homelab forge is often plain http on the LAN; http is allowed for it only.
+  if (/^http:\/\/[^/\s]+\/.+/i.test(url) && onForge(url, forgeConfig())) return url
   if (/^[\w.-]+@[\w.-]+:[\w./~-]+$/.test(url)) return url
   return ''
 }
@@ -70,9 +73,13 @@ export async function cloneRepo(url: string, dest: string): Promise<void> {
   if (entries && entries.length) throw Object.assign(new Error(`${dest} is not empty. Pick an empty or new folder for the clone.`), { status: 409 })
   await mkdir(dirname(dest), { recursive: true })
   try {
-    await run('git', ['clone', '--', url, dest], { timeout: 10 * 60_000, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } })
+    const forge = forgeConfig()
+    const auth = onForge(url, forge) ? forgeGitEnv(forge) : {}
+    await run('git', ['clone', '--', url, dest], { timeout: 10 * 60_000, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, ...auth, GIT_TERMINAL_PROMPT: '0' } })
   } catch (error: any) {
-    const reason = String(error?.stderr || error?.message || error).trim().split('\n').filter(Boolean).at(-1) || 'git clone failed'
+    const token = forgeConfig()?.token
+    let reason = String(error?.stderr || error?.message || error).trim().split('\n').filter(Boolean).at(-1) || 'git clone failed'
+    if (token) reason = reason.split(token).join('****')
     throw Object.assign(new Error(`Could not clone ${url}: ${reason}`), { status: 422 })
   }
 }

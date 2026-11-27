@@ -11,6 +11,7 @@ coding agents' skill folders, the same way as the UI skills. See
 | repo-pack | Packs a repo into one Markdown file with repomix, then reads it. | Studio; runs [repomix](https://github.com/yamadashy/repomix) 1.19.0 (MIT) with `npx`. |
 | to-markdown | Converts PDF, Office, HTML and other files to Markdown with markitdown. | Studio; runs [markitdown](https://github.com/microsoft/markitdown) 0.1.9 (MIT) with `uvx`. |
 | code-map | Uses tokensave's code graph instead of reading many files. | Studio; uses [tokensave](https://github.com/aovestdipaperino/tokensave) (MIT). |
+| sandbox | Says when to try things in a throwaway container (`ekko_studio_use_sandbox`) or on the forge runners. | Studio |
 | emoji | Answers with one of ten emoji when that says it all (`/emoji`); Studio's composer has the same as a setting. | Studio |
 | caveman, ultracave, megacave | Terse answer voice that keeps every technical fact (`/caveman`, `/ultracave`, `/megacave`). | [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman), Apache-2.0 |
 | caveman-commit, caveman-review | One-line commit messages and one-line review findings. | same |

@@ -9,6 +9,7 @@ They are copied the same way, to the same agents, with the same rules.
 | repo-pack | `/repo-pack` | Packs a GitHub repo or folder into one Markdown file with repomix, then reads it. |
 | to-markdown | `/to-markdown` | Converts PDF, Office, HTML, EPUB and more to Markdown with markitdown. |
 | code-map | `/code-map` | Uses tokensave's code graph (MCP) instead of reading many files. |
+| sandbox | `/sandbox` | When to try things in a throwaway container on the Studio machine, any distro, and when to use the forge runners instead. See [sandbox](sandbox.md). |
 | emoji | `/emoji` | Answers with one of ten emoji when that says it all; words otherwise. See [reply styles](reply-styles.md). |
 | caveman, ultracave, megacave | `/caveman`, `/ultracave`, `/megacave` | Short answers that keep every technical fact. "stop caveman" turns it off. |
 | caveman-commit, caveman-review | `/caveman-commit`, `/caveman-review` | One-line commit messages and one-line review findings. |

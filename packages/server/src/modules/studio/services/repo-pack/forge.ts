@@ -11,16 +11,18 @@ import { readEnvValue } from '../llm-wiki/service'
  * one-off git header, never in a URL or argv.
  */
 
-export interface ForgeSettings { url: string; token: string; hosts: string[] }
+export interface ForgeSettings { url: string; token: string; hosts: string[]; defaultHome?: string }
 
 export async function loadForgeSettings(profile = getActiveProfileName() || 'default'): Promise<ForgeSettings | null> {
   const config = await readConfigYamlForProfile(profile).catch(() => ({} as Record<string, any>))
-  const url = String(config?.skills?.config?.forgejo?.url || '').trim().replace(/\/+$/, '')
+  const forgejo = config?.skills?.config?.forgejo || {}
+  // The profile's address first; FORGE_URL on the Studio host when the profile has none.
+  const url = String(forgejo.url || process.env.FORGE_URL || '').trim().replace(/\/+$/, '')
   if (!url) return null
   const env = await readFile(join(getProfileDir(profile), '.env'), 'utf8').catch(() => '')
   const token = readEnvValue(env, 'FORGE_TOKEN') || process.env.FORGE_TOKEN || ''
   const hosts = (readEnvValue(env, 'FORGE_HOSTS') || process.env.FORGE_HOSTS || '').split(',').map(host => host.trim()).filter(Boolean)
-  return { url, token, hosts }
+  return { url, token, hosts, defaultHome: String(forgejo.default_home || process.env.FORGE_DEFAULT_HOME || '') }
 }
 
 /** The forge address a URL is on (its own origin), or null. github.com is never the forge. */

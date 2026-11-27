@@ -4,7 +4,8 @@ import { dirname } from 'node:path'
 /**
  * Command Center settings (the herdr page's Tools dock). GitHub: whether the
  * Inbox asks `gh` for failed CI and review requests, and which repositories
- * it watches ([] = every repository of the signed-in account).
+ * it watches ([] = every repository of the signed-in account). Repositories on
+ * the homelab forge are written `forge:owner/repo`.
  */
 export interface CommandCenterSettings {
   github: { enabled: boolean; repos: string[] }
@@ -12,14 +13,18 @@ export interface CommandCenterSettings {
 
 export const DEFAULT_SETTINGS: CommandCenterSettings = { github: { enabled: true, repos: [] } }
 
-const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+const REPO = /^(?:forge:)?[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const MAX_REPOS = 20
 
 export function normalizeRepos(value: unknown): string[] {
   const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[\s,]+/) : []
   const out: string[] = []
   for (const item of list) {
-    const repo = String(item || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/, '').replace(/\/$/, '')
+    // A forge repo is `forge:owner/repo`; its full URL (FORGE_URL/owner/repo) is turned into that.
+    const forgeUrl = String(process.env.FORGE_URL || '').trim().replace(/\/+$/, '')
+    let repo = String(item || '').trim()
+    if (forgeUrl && repo.toLowerCase().startsWith(`${forgeUrl.toLowerCase()}/`)) repo = `forge:${repo.slice(forgeUrl.length + 1)}`
+    repo = repo.replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/, '').replace(/\/$/, '')
     if (REPO.test(repo) && !out.includes(repo)) out.push(repo)
   }
   return out.slice(0, MAX_REPOS)
