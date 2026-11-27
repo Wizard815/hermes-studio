@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
+import { createServer } from 'node:http'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -20,7 +21,7 @@ import { validateSkillContent } from '../../packages/ekko-agent/src/tools/skills
 const BUNDLE = resolve(__dirname, '../../packages/homelab-skills')
 const SCRIPT = join(BUNDLE, 'look-before-build/scripts/awesome_search.py')
 const FIXTURE = resolve(__dirname, '../fixtures/awesome-sample.md')
-const EXPECTED = ['caveman', 'caveman-commit', 'caveman-review', 'code-map', 'emoji', 'look-before-build', 'megacave', 'repo-pack', 'sandbox', 'to-markdown', 'ultracave']
+const EXPECTED = ['caveman', 'caveman-commit', 'caveman-review', 'code-map', 'emoji', 'immich', 'look-before-build', 'megacave', 'repo-pack', 'sandbox', 'to-markdown', 'ultracave']
 
 let dir = ''
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'homelab-skills-')) })
@@ -90,5 +91,42 @@ describe('look-before-build search', () => {
 
   it('says so when nothing matches', () => {
     expect(search('quantum toaster', '--list', FIXTURE)).toMatch(/^no matches for 'quantum toaster'/)
+  })
+})
+
+describe('the immich skill', () => {
+  const IMMICH = join(BUNDLE, 'immich/scripts/immich.py')
+  const pic = '11111111-2222-3333-4444-555555555555'
+  const run = (env: Record<string, string>, ...args: string[]) => new Promise<{ code: number, out: string, err: string }>((done) => {
+    execFile('python3', ['-I', IMMICH, ...args], { env: { PATH: process.env.PATH ?? '', ...env } }, (e, out, err) => done({ code: e ? Number((e as any).code) || 1 : 0, out, err }))
+  })
+
+  it('searches, lists memories with the key in x-api-key, and never writes', async () => {
+    const seen: string[] = []
+    const server = createServer((req, res) => {
+      seen.push(`${req.method} ${req.url}`)
+      if (req.headers['x-api-key'] !== 'ik') { res.writeHead(401).end('{"message":"Invalid API key"}'); return }
+      const json = (o: unknown) => { res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(o)) }
+      const asset = { id: pic, type: 'IMAGE', exifInfo: { city: 'Traverse City', country: 'USA', dateTimeOriginal: '2023-11-27T14:05:00Z' }, people: [{ name: 'Robin' }] }
+      if (req.url?.startsWith('/api/search/person')) return json([{ id: 'p1', name: 'Robin' }])
+      if (req.url === '/api/search/smart') return json({ assets: { items: [asset] } })
+      if (req.url?.startsWith('/api/memories')) return json([{ data: { year: 2023 }, assets: [asset] }, { data: { year: 2020 }, assets: [] }])
+      res.writeHead(404).end('{}')
+    })
+    await new Promise<void>(ok => server.listen(0, '127.0.0.1', ok))
+    const url = `http://127.0.0.1:${(server.address() as any).port}`
+    try {
+      const env = { IMMICH_URL: url, IMMICH_API_KEY: 'ik', IMMICH_PUBLIC_URL: 'https://photos.example.org' }
+      const s = await run(env, 'search', 'beach', '--people', 'Robin', '--json')
+      expect(s.code, s.err).toBe(0)
+      expect(JSON.parse(s.out).photos[0]).toMatchObject({ id: pic, place: 'Traverse City, USA', people: ['Robin'], link: `https://photos.example.org/photos/${pic}` })
+      const m = await run(env, 'memories', '--json')
+      expect(JSON.parse(m.out)).toHaveLength(1)
+      expect(seen.every(line => line.startsWith('GET') || line === 'POST /api/search/smart')).toBe(true)
+      const bad = await run({ IMMICH_URL: url, IMMICH_API_KEY: 'nope' }, 'people')
+      expect([bad.code, bad.err]).toEqual([1, expect.stringContaining('refused the key')])
+      const none = await run({}, 'albums')
+      expect(none.err).toContain('IMMICH_URL and IMMICH_API_KEY must be set')
+    } finally { server.close() }
   })
 })

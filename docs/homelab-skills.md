@@ -11,6 +11,7 @@ They are copied the same way, to the same agents, with the same rules.
 | code-map | `/code-map` | Uses tokensave's code graph (MCP) instead of reading many files. |
 | sandbox | `/sandbox` | When to try things in a throwaway container on the Studio machine, any distro, and when to use the forge runners instead. See [sandbox](sandbox.md). |
 | emoji | `/emoji` | Answers with one of ten emoji when that says it all; words otherwise. See [reply styles](reply-styles.md). |
+| immich | `/immich` | Finds photos in the user's own Immich library (what's in them, who, where, when), today's memories, people and albums. Read only. Needs `IMMICH_URL` and `IMMICH_API_KEY` (that person's own key) in the profile's `.env`. |
 | caveman, ultracave, megacave | `/caveman`, `/ultracave`, `/megacave` | Short answers that keep every technical fact. "stop caveman" turns it off. |
 | caveman-commit, caveman-review | `/caveman-commit`, `/caveman-review` | One-line commit messages and one-line review findings. |
 
