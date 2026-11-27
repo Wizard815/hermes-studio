@@ -94,7 +94,7 @@ describe.runIf(process.env.LIVE_CHATS === '1')('TestChats_live', () => {
     console.log('calls:', calls.join(' | '))
     console.log('shown:\n' + shown.join('\n'))
     expect(calls.some(call => call.startsWith('planner send argos'))).toBe(true)
-    const back = shown.find(line => line.startsWith('[planner] ↩ Reply from “Argos tests”'))
+    const back = shown.find(line => line.startsWith('[planner] ↩ Reply from “Argos tests” to'))
     expect(back).toMatch(/40/)
     console.log(`spent $${spent.toFixed(4)}`)
   }, 300_000)

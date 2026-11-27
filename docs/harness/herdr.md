@@ -503,6 +503,8 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   the Agents panel lists each machine's agents (`herdr --machine <id> agent list`,
   every 15 seconds); picking one focuses it there (`agent focus`). Remote agents
   are used in that machine's herdr; they are not Studio chats.
+  Inside Studio (Terminal of a chat) the herdr bar is hidden, but a Local |
+  machine switch still shows above the terminal when machines are saved.
 - **One Orb form.** `HerdrOrbSettings.vue` is shown in herdr settings and in
   Mission's Control tab.
 - **Testing remote without SSH.** A stand-in `ssh` on PATH that runs the remote

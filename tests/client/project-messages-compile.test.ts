@@ -6,6 +6,7 @@ import { pinCommentMessages } from '../../packages/client/src/i18n/pin-comment-m
 import { projectStageMessages } from '../../packages/client/src/i18n/project-stage-messages'
 import { studioGroupMessages } from '../../packages/client/src/i18n/studio-group-messages'
 import { studioTerminalMessages } from '../../packages/client/src/i18n/studio-terminal-messages'
+import { chatOriginMessages } from '../../packages/client/src/i18n/chat-origin-messages'
 
 // vue-i18n treats @ | { } as syntax: a stray one (like "git@") throws while a
 // dialog renders. Every Projects string must compile in every locale.
@@ -15,7 +16,7 @@ function keys(value: unknown, prefix = ''): string[] {
 }
 
 describe('TestProjects_messagesCompile', () => {
-  for (const [name, table] of Object.entries({ projectsMessages, studiosMessages, pinCommentMessages, projectStageMessages, studioGroupMessages, studioTerminalMessages })) {
+  for (const [name, table] of Object.entries({ projectsMessages, studiosMessages, pinCommentMessages, projectStageMessages, studioGroupMessages, studioTerminalMessages, chatOriginMessages })) {
     it(`${name}: every string compiles in all 12 locales, with the same keys`, () => {
       const locales = Object.keys(table)
       expect(locales.sort()).toEqual(['ar', 'de', 'en', 'es', 'fr', 'ja', 'ko', 'pt', 'ru', 'tr', 'zh', 'zh-TW'])

@@ -28,8 +28,13 @@ function setup(answer: (sessionId: string, input: string, messenger: ChatMesseng
       return { ok: true, output: await answer(input.sessionId, input.input, messenger) }
     },
   }
+  // Chat t is a project thread whose agent runs in a herdr pane.
+  const panes: Array<{ ref: { project: string; thread: string }; text: string }> = []
+  rows.t = { id: 't', title: 'Fix login', profile: 'default', studio_user_id: '7' }
+  deps.herdrThread = async id => id === 't' ? { project: 'p1', thread: 'th1', title: 'Fix login' } : null
+  deps.messageHerdrThread = async (ref, text) => { panes.push({ ref, text }) }
   const messenger = new ChatMessenger(deps)
-  return { messenger, runs, busy, rows, tick: (ms: number) => { clock += ms } }
+  return { messenger, runs, busy, rows, panes, tick: (ms: number) => { clock += ms } }
 }
 
 describe('chat messages', () => {
@@ -47,13 +52,13 @@ describe('chat messages', () => {
 
   it('TestChats_sendDeliversTheAnswerBackAsATurn', async () => {
     const { messenger, runs } = setup()
-    expect(messenger.send({ from: 'a', to: 'b', text: 'Write the docs' }, me)).toEqual({ chat: 'b', title: 'Docs', queued: true })
+    expect(await messenger.send({ from: 'a', to: 'b', text: 'Write the docs' }, me)).toEqual({ chat: 'b', title: 'Docs', queued: true })
     await messenger.idle()
     expect(runs.map(run => run.sessionId)).toEqual(['b', 'a'])
     expect(runs[1].input).toContain('<studio_chat_reply from_chat="Docs" from_id="b">')
     expect(runs[1].input).toContain('answer from b')
     expect(runs[1].input).toContain('<studio_chat_sent to_chat="Docs">\nWrite the docs\n</studio_chat_sent>')
-    expect(runs[1].display).toBe('↩ Reply from “Docs”: answer from b')
+    expect(runs[1].display).toBe('↩ Reply from “Docs” to “Write the docs”: answer from b')
   })
 
   it('TestChats_busyChatGetsTheMessageAfterItsTurn', async () => {
@@ -79,8 +84,8 @@ describe('chat messages', () => {
 
   it('TestChats_listShowsOnlyThisPersonsOtherChats', () => {
     const { messenger } = setup()
-    expect(messenger.list({ from: 'a' }, me).chats.map(chat => chat.id)).toEqual(['b', 'c', 'd', 'e', 'f'])
-    expect(messenger.list({ from: 'a' }, { id: 1, role: 'super_admin' }).chats.map(chat => chat.id)).toEqual(['b', 'c', 'd', 'e', 'f', 'x'])
+    expect(messenger.list({ from: 'a' }, me).chats.map(chat => chat.id)).toEqual(['b', 'c', 'd', 'e', 'f', 't'])
+    expect(messenger.list({ from: 'a' }, { id: 1, role: 'super_admin' }).chats.map(chat => chat.id)).toEqual(['b', 'c', 'd', 'e', 'f', 'x', 't'])
   })
 
   it('TestChats_chainsStopAtTheHopLimit', async () => {
@@ -127,5 +132,29 @@ describe('chat messages', () => {
     await expect(messenger.ask({ from: 'a', to: 'c', text: 'hi' }, me)).resolves.toMatchObject({ ok: true })
     tick(61 * 60_000)
     await expect(messenger.ask({ from: 'a', to: 'b', text: 'later' }, me)).resolves.toMatchObject({ ok: true })
+  })
+
+  it('TestChats_projectThreadsInHerdrGetMessagesInTheirPane', async () => {
+    const { messenger, runs, panes } = setup()
+    // Asking a herdr thread can't wait for it: the message goes into its pane and it answers later.
+    const out = await messenger.ask({ from: 'a', to: 't', text: 'Is the login test fixed?' }, me)
+    expect(out).toMatchObject({ chat: 't', ok: true, queued: true })
+    expect(runs).toHaveLength(0)
+    expect(panes[0].ref).toMatchObject({ project: 'p1', thread: 'th1' })
+    expect(panes[0].text).toContain('Is the login test fixed?')
+    expect(panes[0].text).toContain('{"from": "t", "chat": "a"')
+    expect(panes[0].text).toContain('"answer": true')
+    // The thread answers (even if it forgets answer: true): that lands as a turn in chat a, and nothing goes back into the pane.
+    await messenger.send({ from: 't', to: 'a', text: 'Yes, fixed and pushed.' }, me)
+    await messenger.idle()
+    expect(runs.map(run => run.sessionId)).toEqual(['a'])
+    expect(runs[0].display).toBe('↩ Reply from “Fix login”: Yes, fixed and pushed.')
+    expect(panes).toHaveLength(1)
+    // A plain send from the thread does get a's answer back, into its pane.
+    await messenger.send({ from: 't', to: 'a', text: 'Which branch?' }, me)
+    await messenger.idle()
+    await new Promise(resolve => setTimeout(resolve, 5))
+    expect(panes).toHaveLength(2)
+    expect(panes[1].text).toContain('<studio_chat_reply from_chat="Argos fixes"')
   })
 })

@@ -36,6 +36,7 @@ import type { WorkspaceRunChangeSummary } from "@/api/studio/sessions";
 import { isServerTtsProvider } from "@/api/studio/tts";
 import type { ProfileAvatar as ProfileAvatarData } from "@/api/hermes/profiles";
 import ProfileAvatar from "@/components/hermes/profiles/ProfileAvatar.vue";
+import { parseChatMessageOrigin } from "@/utils/chat-message-origin";
 import ImagePreviewOverlay from "./ImagePreviewOverlay.vue";
 import MarkdownRenderer from "./MarkdownRenderer.vue";
 
@@ -149,6 +150,8 @@ const displayText = computed(() => {
     .filter(Boolean)
     .join('\n');
 });
+// A message another chat sent this one (docs/chat-messages.md): shown with that chat's name, not the person's.
+const chatOrigin = computed(() => props.message.role === 'user' ? parseChatMessageOrigin(displayText.value) : null)
 const parsedMessageReference = computed(() =>
   props.message.role === 'user' ? parseMessageReference(displayText.value) : null,
 )
@@ -996,7 +999,11 @@ onBeforeUnmount(() => {
     <template v-else>
       <div class="msg-body">
         <div class="msg-content" :class="message.role">
-          <div v-if="message.role === 'user'" class="message-author user-message-author">
+          <div v-if="message.role === 'user' && chatOrigin" class="message-author user-message-author chat-origin-author" data-testid="chat-origin-author">
+            <span class="message-author-name" dir="auto">{{ t(chatOrigin.kind === 'reply' ? 'chatOrigin.reply' : 'chatOrigin.from', { name: chatOrigin.chat }) }}</span>
+            <span class="chat-origin-icon" aria-hidden="true">{{ chatOrigin.kind === 'reply' ? '↩' : '💬' }}</span>
+          </div>
+          <div v-else-if="message.role === 'user'" class="message-author user-message-author">
             <span class="message-author-name" dir="auto">{{ userProfileName }}</span>
             <ProfileAvatar
               class="user-profile-avatar"
@@ -1194,6 +1201,7 @@ onBeforeUnmount(() => {
                 <MarkdownRenderer :content="referencedContentMarkdown" />
                 <MarkdownRenderer v-if="parsedMessageReference.reply" :content="parsedMessageReference.reply" />
               </template>
+              <MarkdownRenderer v-else-if="chatOrigin" :content="chatOrigin.text" />
               <MarkdownRenderer v-else-if="displayText" :content="displayText" />
             </template>
 
@@ -1454,6 +1462,11 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-origin-icon {
+  font-size: 15px;
+  line-height: 22px;
 }
 
 .user-profile-avatar {
