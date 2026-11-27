@@ -9,7 +9,15 @@ The Unraid compose for the forge is in the Overseer repo, `deploy/forgejo/`.
 
 ## Set it up
 
-On the Studio host, set:
+The easy way: **Settings → Git forges** (super admins). It shows whether
+GitHub is signed in, and saves the forge address, other addresses, token,
+where new repos go (Follow the repo, Home forge or GitHub), the GitHub owner
+for mirrors and the jobs repo into the active Hermes profile. Hermes's
+forgejo skill and Studio then use the same values. **Test** asks the forge
+who the token is. Forgejo and Gitea both work (they share an API); GitLab
+is not supported.
+
+Or, on the Studio host, set:
 
 ```bash
 FORGE_URL=http://192.168.20.5:3030     # the forge as this machine reaches it
@@ -52,5 +60,8 @@ agents need a git credential for the forge on the Studio host.
 - **Clone fails with 401.** `FORGE_TOKEN` is missing or lacks `read:repository`.
 - **Test Lab: "Could not clone ... from the forge".** The same token problem,
   or the branch after `#` doesn't exist.
+- **Settings → Git forges says "FORGE_URL is set on the Studio host".**
+  Studio uses the host's value and Hermes uses the profile's. Remove
+  `FORGE_URL` from the host to have one setting for both.
 - **A forge link is treated as "not GitHub".** Its host isn't `FORGE_URL`'s
   host and port, or in `FORGE_HOSTS`.

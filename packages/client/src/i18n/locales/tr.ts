@@ -26,6 +26,7 @@ import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
 import { homelabToolsMessages } from '../homelab-tools-messages'
 import { sandboxMessages } from '../sandbox-messages'
+import { forgeSettingsMessages } from '../forge-settings-messages'
 import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
@@ -96,6 +97,7 @@ export default {
   ...uiSkillsMessages['tr'],
   ...homelabToolsMessages['tr'],
   ...sandboxMessages['tr'],
+  ...forgeSettingsMessages['tr'],
   ...replyStyleMessages['tr'],
   ...gadgetMessages['tr'],
   ...toolLoadMessages['tr'],
