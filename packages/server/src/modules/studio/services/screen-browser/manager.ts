@@ -499,6 +499,11 @@ export class ScreenBrowserManager implements BrowserBrokerManager {
     return this.automation.readText(tabId, this.wc(record), options)
   }
 
+  async pageHtml(tabId: string) {
+    const record = this.requireTab(tabId)
+    return this.automation.pageHtml(tabId, this.wc(record))
+  }
+
   async interact(tabId: string, action: BrowserInteractAction, assertActive: () => void = () => {}): Promise<BrowserInteractionResult> {
     assertActive()
     const record = this.requireTab(tabId)

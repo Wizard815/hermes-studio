@@ -12,9 +12,9 @@ import type {
   BrowserWaitOptions,
   BrowserWaitResult,
 } from './browser-types'
-import { MAX_BROWSER_TEXT_READ_LIMIT } from './browser-types'
+import { MAX_BROWSER_PAGE_HTML_CHARS, MAX_BROWSER_TEXT_READ_LIMIT, type BrowserPageHtml } from './browser-types'
 import { filterSnapshotNodes, snapshotOptions, DEFAULT_SNAPSHOT_LIMIT } from './browser-snapshot'
-import { publicBrowserUrl, redactBrowserContent, redactBrowserText } from './browser-url'
+import { publicBrowserUrl, redactBrowserContent, redactBrowserHtml, redactBrowserText } from './browser-url'
 import type { BrowserObservedState, BrowserObservedTarget } from './browser-observation'
 import { DOWNLOAD_SOURCE_FUNCTION, PAGE_BLOB_FUNCTION, UPLOAD_FUNCTION, type BrowserUploadFile, type BrowserUploadMethod, type BrowserUploadResult } from './browser-files'
 import { CdpTabState } from './browser-cdp'
@@ -943,6 +943,37 @@ export class BrowserAutomation {
         return { tabId, matched, elapsedMs, url: publicBrowserUrl(contents.getURL()) }
       }
       await new Promise(resolve => setTimeout(resolve, Math.min(WAIT_POLL_MS, options.timeoutMs - elapsedMs)))
+    }
+  }
+
+  /** The main frame's rendered HTML (the live DOM, not the original source); never interacts with the page. */
+  async pageHtml(tabId: string, contents: WebContents): Promise<BrowserPageHtml> {
+    await this.ensureAttached(contents)
+    this.assertNoDialog(contents)
+    const state = this.cdp(contents)
+    // Scripts, styles and comments are not content (and are where tokens hide): left out.
+    const expression = `(() => { const root = document.documentElement ? document.documentElement.cloneNode(true) : null;
+      if (root) {
+        for (const node of root.querySelectorAll('script, style, noscript, template, link, meta')) node.remove();
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
+        const comments = []; while (walker.nextNode()) comments.push(walker.currentNode);
+        for (const node of comments) node.remove();
+        for (const field of root.querySelectorAll('input[type=password]')) field.removeAttribute('value');
+      }
+      const html = root ? root.outerHTML : '';
+      return { html: html.slice(0, ${MAX_BROWSER_PAGE_HTML_CHARS}), totalLength: html.length, title: document.title || '' } })()`
+    const evaluated = await state.untilDialog(state.send('Runtime.evaluate', { expression, returnByValue: true }))
+    if (evaluated === 'dialog') this.assertNoDialog(contents)
+    const value = (evaluated as { result?: { value?: { html?: unknown; totalLength?: unknown; title?: unknown } } }).result?.value
+    if (!value || typeof value.html !== 'string') throw new Error('Unable to read the page')
+    const totalLength = typeof value.totalLength === 'number' ? value.totalLength : value.html.length
+    return {
+      tabId,
+      url: publicBrowserUrl(contents.getURL()),
+      title: redactBrowserText(value.title),
+      html: redactBrowserHtml(value.html, MAX_BROWSER_PAGE_HTML_CHARS),
+      totalLength,
+      truncated: totalLength > value.html.length,
     }
   }
 

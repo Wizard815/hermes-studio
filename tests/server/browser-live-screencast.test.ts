@@ -72,6 +72,19 @@ describe('TestBrowserLive_screencast', () => {
     expect(cast.watchedTabs()).toEqual([])
 
     await expect(cast.watch('missing', () => {})).rejects.toThrow('Tab not found')
+
+    // Closing the tab tells its watchers; a watcher that left is not told.
+    const page = await tab.page.context().newPage()
+    await page.goto(origin)
+    const ended: string[] = []
+    const castFor = new BrowserScreencast(id => (id === 'closing' ? page : null))
+    const leave = await castFor.watch('closing', () => {}, () => ended.push('left'))
+    leave()
+    await castFor.watch('closing', () => {}, () => ended.push('stayed'))
+    await page.close()
+    await new Promise(resolve => setTimeout(resolve, 200))
+    expect(ended).toEqual(['stayed'])
+    expect(castFor.watchedTabs()).toEqual([])
     await cast.stopAll()
   }, 60_000)
 })

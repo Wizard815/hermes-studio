@@ -99,8 +99,11 @@ const liveFrameUrl = ref<string | null>(null)
 let liveTabId: string | null = null
 let previousLiveUrl: string | null = null
 
+// Reactive, so the picture falls back to screenshots the moment the stream drops.
+const liveConnected = ref(false)
+
 function liveStreaming(): boolean {
-  return !!liveSocket?.connected && !!liveFrameUrl.value && liveTabId === activeTabId.value
+  return liveConnected.value && !!liveFrameUrl.value && liveTabId === activeTabId.value
 }
 
 function showLiveFrame(frame: BrowserLiveFrame): void {
@@ -127,7 +130,8 @@ function clearLiveFrames(): void {
 function watchLiveTab(): void {
   if (!liveSocket?.connected) return
   const tabId = activeTabId.value
-  if (!tabId) {
+  // A hidden page shows nothing: stop the stream until it is visible again.
+  if (!tabId || document.hidden) {
     liveSocket.emit('unwatch')
     return
   }
@@ -140,14 +144,38 @@ function watchLiveTab(): void {
 function connectLive(): void {
   try {
     liveSocket = connectBrowserLiveSocket()
-    liveSocket.on('connect', watchLiveTab)
+    liveSocket.on('connect', () => {
+      liveConnected.value = true
+      watchLiveTab()
+    })
     liveSocket.on('frame', showLiveFrame)
+    liveSocket.on('disconnect', () => {
+      // Show a fresh screenshot rather than the last frame; reconnecting watches again.
+      liveConnected.value = false
+      clearLiveFrames()
+      void refreshPreview(true)
+    })
+    liveSocket.on('ended', (payload?: { tabId?: string }) => {
+      // The tab closed or the browser restarted under the stream.
+      if (!payload?.tabId || payload.tabId !== activeTabId.value) return
+      clearLiveFrames()
+      void refreshPreview(true)
+      setTimeout(() => { if (payload.tabId === activeTabId.value) watchLiveTab() }, 1000)
+    })
+    document.addEventListener('visibilitychange', onLiveVisibility)
   } catch {
     liveSocket = null
   }
 }
 
+// Back in view, the last frame stays up until the stream's first new one.
+function onLiveVisibility(): void {
+  watchLiveTab()
+}
+
 function disconnectLive(): void {
+  document.removeEventListener('visibilitychange', onLiveVisibility)
+  liveConnected.value = false
   liveSocket?.off()
   liveSocket?.disconnect()
   liveSocket = null
@@ -158,7 +186,7 @@ watch(activeTabId, (tabId, previous) => {
   if (tabId !== previous) watchLiveTab()
 })
 
-const previewSrc = computed(() => liveFrameUrl.value && liveTabId === activeTabId.value
+const previewSrc = computed(() => liveConnected.value && liveFrameUrl.value && liveTabId === activeTabId.value
   ? liveFrameUrl.value
   : currentScreenshot.value ? `data:image/jpeg;base64,${currentScreenshot.value}` : null)
 

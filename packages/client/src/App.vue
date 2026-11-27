@@ -38,7 +38,7 @@ import { usePersonPresenceStore } from '@/stores/hermes/person-presence';
 import { isStoredSuperAdmin } from "@/api/client";
 import AuthEventListener from "@/components/auth/AuthEventListener.vue";
 import { desktopBridge } from "@/utils/desktop-bridge";
-import { naiveLocaleFor } from "@/constants/naiveLocale";
+import { loadNaiveLocale, naiveLocaleFor } from "@/constants/naiveLocale";
 import { naiveRtlFor } from "@/constants/naiveRtl";
 import { navigationRailKey } from "@/composables/useNavigationRail";
 import { pageHeaderTargetKey } from "@/composables/usePageHeader";
@@ -116,7 +116,11 @@ const {
   syncThemeFromServer,
 } = useTheme();
 const { t, locale } = useI18n();
-const naiveLocale = computed(() => naiveLocaleFor(locale.value));
+const naiveLocale = shallowRef(naiveLocaleFor(locale.value));
+watch(locale, async value => {
+  const next = await loadNaiveLocale(value);
+  if (locale.value === value) naiveLocale.value = next;
+}, { immediate: true });
 const naiveRtl = computed(() => naiveRtlFor(locale.value));
 const appStore = useAppStore();
 const navigation = useNavigationStore();

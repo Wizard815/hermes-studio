@@ -31,6 +31,25 @@ Studio so the panel moves to it.
 - A tab the model opens becomes the panel's tab. Tabs Studio opens in the
   background stay in the background.
 - Pin comments (pin-comments.md) work on whatever page the model left open.
+- The stream stops while the Studio tab is hidden and starts again when you
+  come back. When the tab closes or the browser restarts, the panel shows a
+  fresh screenshot and watches again. If the socket drops, the panel switches
+  to screenshots at once instead of freezing on the last frame.
+
+## Models that read text
+
+`ekko_studio_browser_read_page` gives the model the whole page as Markdown:
+headings, paragraphs, links with full URLs, lists, tables, image alt text and
+form fields. Scripts, styles and comments are left out, password fields lose
+their values, and tokens are redacted. It is converted with markitdown (see
+markitdown.md) when that runs on the host, otherwise with a small built-in
+converter. Long pages come in parts (`offset`, `max_chars`); the parts reuse
+one conversion for two minutes, or until the tab's address changes.
+
+A text-only model reads a page this way, opens links by URL, and gets refs to
+click or type with `ekko_studio_browser_snapshot` (`query` set to text it
+read). So it can use the browser, not only look at it. A model with vision
+can still take screenshots.
 
 ## What goes wrong
 
@@ -43,6 +62,10 @@ Studio so the panel moves to it.
 - **The page view is a still picture that only updates after you click:** the
   live stream is not getting through. Check that the proxy in front of Studio
   passes websockets for `/socket.io/`.
+- **read_page says this browser cannot return page HTML:** an older Desktop app
+  is sharing its browser. Update it, or use `snapshot` and `read_text`.
+- **read_page output is plain and has no tables:** markitdown is not on the
+  host, so the built-in converter ran (the result says `converter`).
 - **Not a sandbox:** the model acts in a real browser that may be signed in.
   Purchases and sign-ins still ask you first. Anything in the container can reach the
   loopback DevTools port.
@@ -51,6 +74,8 @@ Studio so the panel moves to it.
 
 - `tests/server/browser-live-screencast.test.ts`: frames arrive when the page
   changes, two panels share one stream, and it stops with the last one.
+- `tests/server/browser-read-page.test.ts`: page HTML from a live tab, the
+  markitdown and built-in conversions, redaction, and the MCP tool's parts.
 - `tests/server/browser-follow-agent.test.ts`: the tools' broker drives the
   panel's browser, and the panel follows it.
 - `tests/e2e/browser-chat-agent.live.spec.ts`: a real model with Studio's

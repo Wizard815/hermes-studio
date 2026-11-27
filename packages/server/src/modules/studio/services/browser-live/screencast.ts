@@ -22,6 +22,8 @@ export interface LiveFrame {
 }
 
 export type FrameListener = (frame: LiveFrame) => void
+/** Called when the stream ends without the watcher asking: the tab closed, or the browser restarted. */
+export type EndListener = () => void
 
 export interface ScreencastOptions {
   /** At most this many frames a second (default 15). */
@@ -38,6 +40,7 @@ interface Cast {
   session: CDPSession | null
   ready: Promise<void>
   listeners: Set<FrameListener>
+  enders: Map<FrameListener, EndListener>
   lastFrame: LiveFrame | null
   lastAckAt: number
   ackTimer: NodeJS.Timeout | null
@@ -70,7 +73,7 @@ export class BrowserScreencast {
    * Returns the function that stops watching; the screencast stops with the
    * last watcher.
    */
-  async watch(tabId: string, listener: FrameListener): Promise<() => void> {
+  async watch(tabId: string, listener: FrameListener, onEnd?: EndListener): Promise<() => void> {
     const page = this.pageFor(tabId)
     if (!page || page.isClosed()) throw new Error('Tab not found')
     let cast = this.casts.get(tabId)
@@ -80,11 +83,13 @@ export class BrowserScreencast {
     }
     if (!cast) cast = this.startCast(tabId, page)
     cast.listeners.add(listener)
+    if (onEnd) cast.enders.set(listener, onEnd)
     const current = cast
     try {
       await current.ready
     } catch (error) {
       current.listeners.delete(listener)
+      current.enders.delete(listener)
       throw error
     }
     if (current.lastFrame && current.listeners.has(listener)) listener(current.lastFrame)
@@ -93,6 +98,7 @@ export class BrowserScreencast {
       if (stopped) return
       stopped = true
       current.listeners.delete(listener)
+      current.enders.delete(listener)
       if (!current.listeners.size && this.casts.get(tabId) === current) void this.stopCast(tabId, current)
     }
   }
@@ -107,6 +113,7 @@ export class BrowserScreencast {
       session: null,
       ready: Promise.resolve(),
       listeners: new Set(),
+      enders: new Map(),
       lastFrame: null,
       lastAckAt: 0,
       ackTimer: null,
@@ -166,6 +173,11 @@ export class BrowserScreencast {
     if (cast.closed) return
     cast.closed = true
     cast.listeners.clear()
+    const enders = [...cast.enders.values()]
+    cast.enders.clear()
+    for (const end of enders) {
+      try { end() } catch { /* one broken watcher must not stop the others */ }
+    }
     if (cast.ackTimer) clearTimeout(cast.ackTimer)
     await cast.ready.catch(() => {})
     const session = cast.session

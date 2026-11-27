@@ -5,7 +5,9 @@ import type { BrowserScreencast } from '../services/browser-live/screencast'
 /**
  * `/browser-live`: the browser panel's live view. A panel sends `watch` with
  * its active tab and gets `frame` events ({ tabId, data: JPEG bytes, width,
- * height, scrollX, scrollY }) while the page changes. Same access as the
+ * height, scrollX, scrollY }) while the page changes, and `ended` ({ tabId })
+ * when the stream stops without being asked (tab closed, browser restarted).
+ * Same access as the
  * panel's REST routes: any signed-in user.
  *
  * Frames are volatile (dropped when the socket is still busy with the last
@@ -45,6 +47,10 @@ export function registerBrowserLiveSocket(io: Server, screencast: () => BrowserS
       try {
         const release = await cast.watch(tabId, frame => {
           socket.compress(false).volatile.emit('frame', frame)
+        }, () => {
+          if (mine !== generation) return
+          stop = null
+          socket.emit('ended', { tabId })
         })
         // Another watch or a disconnect came in while this one started.
         if (mine !== generation || socket.disconnected) release()

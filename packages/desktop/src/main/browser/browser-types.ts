@@ -181,6 +181,19 @@ export interface BrowserReadTextResult {
   nextOffset?: number
 }
 
+/** The page's HTML is cut at this many characters (about 3 MB). */
+export const MAX_BROWSER_PAGE_HTML_CHARS = 3_000_000
+
+/** The main frame's current HTML, for turning the page into Markdown for models that read text. */
+export interface BrowserPageHtml {
+  tabId: string
+  url: string
+  title: string
+  html: string
+  totalLength: number
+  truncated: boolean
+}
+
 export interface BrowserScreenshot {
   tabId: string
   url: string

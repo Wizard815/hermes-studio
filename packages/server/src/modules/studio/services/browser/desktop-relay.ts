@@ -3,7 +3,7 @@ import { randomUUID, createHash } from 'node:crypto'
 export const DESKTOP_BROWSER_IDLE_MS = 10 * 60 * 1000
 export const DESKTOP_BROWSER_METHODS = new Set([
   'cdp.attach', 'cdp.send', 'cdp.events', 'state', 'tabs.list', 'tabs.create', 'tabs.activate', 'tabs.close', 'lease.release',
-  'navigate', 'navigation.action', 'snapshot', 'text.read', 'interact', 'interact.batch',
+  'navigate', 'navigation.action', 'snapshot', 'text.read', 'page.html', 'interact', 'interact.batch',
   'screenshot', 'console.read', 'console.clear', 'upload', 'wait', 'download.start', 'download.read',
   'dialog', 'network.read', 'network.clear',
 ])
