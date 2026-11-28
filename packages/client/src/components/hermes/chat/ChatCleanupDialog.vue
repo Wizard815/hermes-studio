@@ -124,8 +124,8 @@ async function deleteSelected() {
       }
       if (result.saved.length) message.success(t('chatList.savedToWiki', { n: result.saved.length }, result.saved.length))
     }
-    const archived: Array<{ id: string; profile: string | null }> = []
-    for (const chat of chats) if (await props.archive(chat.id).catch(() => false)) archived.push({ id: chat.id, profile: chat.profile || null })
+    const archived: DeleteTarget[] = []
+    for (const chat of chats) if (await props.archive(chat.id).catch(() => false)) archived.push({ id: chat.id, profile: chat.profile || null, title: chat.title || chat.id.slice(0, 8) })
     show.value = false
     if (archived.length) startUndoWindow(archived)
   } catch (error: any) {
@@ -135,37 +135,82 @@ async function deleteSelected() {
   }
 }
 
-function startUndoWindow(targets: Array<{ id: string; profile: string | null }>) {
-  let undone = false
+type DeleteTarget = { id: string; profile: string | null; title: string }
+
+/** A big delete (this many or more) can pick which chats to bring back. */
+const PICK_FROM = 3
+const undoPick = ref<{ targets: DeleteTarget[]; back: Set<string> } | null>(null)
+let finishPick: ((back: Set<string>) => void) | null = null
+
+async function restore(targets: DeleteTarget[]) {
+  const back: string[] = []
+  for (const target of targets) if (await unarchiveSession(target.id)) back.push(target.id)
+  emit('restored', back)
+  message.success(t('chatList.undone', { n: back.length }, back.length))
+}
+
+async function deleteForGood(targets: DeleteTarget[]) {
+  if (!targets.length) return
+  try {
+    const result = await batchDeleteSessions(targets.map(({ id, profile }) => ({ id, profile })))
+    const failed = new Set(result.errors.map(error => error.id))
+    emit('deleted', targets.map(target => target.id).filter(id => !failed.has(id)))
+    message.success(t('chatList.done', { n: result.deleted }, result.deleted))
+  } catch (error: any) {
+    message.error(error?.message || String(error))
+  }
+}
+
+/**
+ * Undo for UNDO_MS, then delete for good. A big delete also offers Choose…,
+ * which stops the clock until you pick which chats come back.
+ */
+function startUndoWindow(targets: DeleteTarget[]) {
+  let settled = false
+  const settle = () => { if (settled) return false; settled = true; clearTimeout(timer); note.destroy(); return true }
   const note = notification.create({
     content: t('chatList.deleting', { n: targets.length }, targets.length),
     duration: UNDO_MS,
     closable: false,
-    action: () => h(NButton, {
-      size: 'small',
-      type: 'primary',
-      'data-testid': 'chat-cleanup-undo',
-      onClick: async () => {
-        undone = true
-        note.destroy()
-        const back: string[] = []
-        for (const target of targets) if (await unarchiveSession(target.id)) back.push(target.id)
-        emit('restored', back)
-        message.success(t('chatList.undone', { n: back.length }, back.length))
-      },
-    }, { default: () => t('chatList.undo') }),
+    action: () => h('div', { style: 'display: flex; gap: 8px' }, [
+      targets.length >= PICK_FROM
+        ? h(NButton, {
+          size: 'small',
+          'data-testid': 'chat-cleanup-undo-choose',
+          onClick: () => {
+            if (!settle()) return
+            undoPick.value = { targets, back: new Set() }
+            finishPick = back => {
+              void restore(targets.filter(target => back.has(target.id)))
+              void deleteForGood(targets.filter(target => !back.has(target.id)))
+            }
+          },
+        }, { default: () => t('chatList.undoChoose') })
+        : null,
+      h(NButton, {
+        size: 'small',
+        type: 'primary',
+        'data-testid': 'chat-cleanup-undo',
+        onClick: () => { if (settle()) void restore(targets) },
+      }, { default: () => t('chatList.undo') }),
+    ]),
   })
-  setTimeout(async () => {
-    if (undone) return
-    try {
-      const result = await batchDeleteSessions(targets)
-      const failed = new Set(result.errors.map(error => error.id))
-      emit('deleted', targets.map(target => target.id).filter(id => !failed.has(id)))
-      message.success(t('chatList.done', { n: result.deleted }, result.deleted))
-    } catch (error: any) {
-      message.error(error?.message || String(error))
-    }
-  }, UNDO_MS)
+  const timer = setTimeout(() => { if (settle()) void deleteForGood(targets) }, UNDO_MS)
+}
+
+function togglePick(id: string, on: boolean) {
+  if (!undoPick.value) return
+  const back = new Set(undoPick.value.back)
+  if (on) back.add(id)
+  else back.delete(id)
+  undoPick.value = { ...undoPick.value, back }
+}
+
+function applyPick() {
+  const pick = undoPick.value
+  undoPick.value = null
+  if (pick && finishPick) finishPick(pick.back)
+  finishPick = null
 }
 </script>
 
@@ -207,6 +252,33 @@ function startUndoWindow(targets: Array<{ id: string; profile: string | null }>)
           {{ t('chatList.deleteConfirm', { n: selected.size }) }}
         </NPopconfirm>
         <NButton type="primary" :disabled="!selected.size" :loading="working" data-testid="chat-cleanup-archive" @click="archiveSelected">{{ t('chatList.archiveSelected', { n: selected.size }) }}</NButton>
+      </div>
+    </template>
+  </NModal>
+  <NModal
+    :show="!!undoPick"
+    preset="card"
+    :title="t('chatList.undoPickTitle')"
+    :closable="false"
+    :mask-closable="false"
+    :close-on-esc="false"
+    style="max-width: 480px"
+    data-testid="chat-cleanup-undo-pick"
+  >
+    <template v-if="undoPick">
+      <p class="cleanup-hint">{{ t('chatList.undoPickHint') }}</p>
+      <label v-for="target in undoPick.targets" :key="target.id" class="cleanup-item">
+        <NCheckbox :checked="undoPick.back.has(target.id)" @update:checked="on => togglePick(target.id, on)" />
+        <span class="cleanup-title">{{ target.title }}</span>
+      </label>
+    </template>
+    <template #footer>
+      <div class="cleanup-actions">
+        <NButton type="primary" data-testid="chat-cleanup-undo-apply" @click="applyPick">
+          {{ undoPick && undoPick.back.size
+            ? t('chatList.undoPickApply', { n: undoPick.back.size, m: undoPick.targets.length - undoPick.back.size })
+            : t('chatList.undoPickDeleteAll', { n: undoPick?.targets.length ?? 0 }) }}
+        </NButton>
       </div>
     </template>
   </NModal>

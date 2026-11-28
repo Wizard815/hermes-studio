@@ -52,9 +52,11 @@ Everything starts selected; untick what you want to keep.
    the profile's own token. If a note can't be saved, that chat is kept and
    you're told why. A chat with nothing worth keeping is deleted without a note.
 2. The chats are archived, so they leave the list.
-3. **Undo** shows for 10 seconds and brings them back. After that they are
-   deleted for good. If you close the page in those 10 seconds, they stay
-   archived instead.
+3. **Undo** shows for 10 seconds and brings them all back. When three or more
+   chats were deleted it also has **Choose…**: that stops the clock and lists
+   them; ticked chats come back, the rest are deleted for good. After the 10
+   seconds they are deleted for good. If you close the page before then (or
+   while choosing), they stay archived instead.
 
 **Remind me once a month** (off by default) shows "N chats could be cleaned
 up" with a **Clean up** button when you open the chat page, at most once a
