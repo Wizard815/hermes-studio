@@ -643,6 +643,24 @@ export async function fetchLastMessages(ids: string[]): Promise<Record<string, {
   return result.messages || {}
 }
 
+export interface CleanupPr { url: string; state: 'open' | 'draft' | 'merged' | 'closed' | 'unknown'; title: string }
+
+/** Clean up (docs/chat-list.md): the pull requests each chat mentions, and which profiles can save to the wiki. */
+export function fetchCleanupPrs(ids: string[]): Promise<{ prs: Record<string, CleanupPr[]>; wikiProfiles: string[] }> {
+  return request('/api/studio/sessions/cleanup/prs', { method: 'POST', body: JSON.stringify({ ids }) })
+}
+
+/** Clean up: a one-line summary per chat, written by the chat's own model. */
+export async function fetchCleanupSummaries(ids: string[]): Promise<Record<string, string>> {
+  const result = await request<{ summaries: Record<string, string> }>('/api/studio/sessions/cleanup/summaries', { method: 'POST', body: JSON.stringify({ ids }) })
+  return result.summaries || {}
+}
+
+/** Clean up: save each chat's key facts to its profile's LLM wiki inbox. */
+export function saveChatsToWiki(ids: string[]): Promise<{ saved: string[]; skipped: string[]; errors: Array<{ id: string; error: string }> }> {
+  return request('/api/studio/sessions/cleanup/save-to-wiki', { method: 'POST', body: JSON.stringify({ ids }) })
+}
+
 export async function setSessionCategory(id: string, categoryId: number | null): Promise<void> {
   await request(`/api/studio/sessions/${encodeURIComponent(id)}/category`, {
     method: 'POST',

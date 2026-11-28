@@ -71,6 +71,10 @@ import {
   useWindowsDriveWorkspaceMode,
 } from '../services/files/workspace-path'
 import { getGroupChatServer } from './group-chat'
+import { ChatCleanupService, type CleanupChat } from '../services/sessions/chat-cleanup'
+import { PrStatusReader } from '../services/projects/pr-status'
+import { askModelOnce } from '../services/chat-run/session-title'
+import { getLlmWiki } from '../services/llm-wiki'
 import { logger } from '../public/logging'
 import { isHermesAgentAvailable } from '../public/agent-status-registry'
 import { listUserProfiles } from '../public/users'
@@ -1823,6 +1827,53 @@ export async function lastMessages(ctx: any) {
     out[id] = { role: String(last.role || ''), text: text.replace(/\s+/g, ' ').trim().slice(0, 240), at: Number(last.timestamp || 0) }
   }
   ctx.body = { messages: out }
+}
+
+// Clean up's smart parts (docs/chat-list.md).
+let chatCleanup: ChatCleanupService | null = null
+let cleanupPrReader: PrStatusReader | null = null
+function cleanupService(): ChatCleanupService {
+  chatCleanup ??= new ChatCleanupService({
+    messages: (id, limit) => getRecentSessionMessages(id, limit) as any,
+    defaultModel: async profile => {
+      const config: any = await readConfigYamlForProfile(profile).catch(() => ({}))
+      const model = String(config?.model?.default || '').trim()
+      const provider = String(config?.model?.provider || '').trim()
+      return model && provider ? { provider, model } : null
+    },
+    ask: options => askModelOnce(options),
+    prs: links => (cleanupPrReader ??= new PrStatusReader()).readAll(links),
+    wikiReady: profile => getLlmWiki().canWrite(profile),
+    wikiCapture: (profile, title, content) => getLlmWiki().capture(profile, title, content),
+  })
+  return chatCleanup
+}
+
+/** The chats in a request's `ids` that this person may see, as Clean up needs them. */
+function cleanupChats(ctx: any, limit: number): CleanupChat[] {
+  const ids = Array.isArray(ctx.request.body?.ids) ? ctx.request.body.ids.slice(0, limit).map((id: unknown) => String(id || '')).filter(Boolean) : []
+  const out: CleanupChat[] = []
+  for (const id of ids) {
+    const session = localGetSession(id) as any
+    if (!session || isPrivatePersonSession(session.id) || (!(isPersonSession(session.id) && ownsPersonSession(ctx.state?.user?.id, session)) && !canAccessProfile(ctx, session.profile))) continue
+    out.push({ id, title: String(session.title || ''), profile: String(session.profile || 'default'), provider: String(session.provider || ''), model: String(session.model || ''), apiMode: String(session.api_mode || ''), messageCount: Number(session.message_count || 0) })
+  }
+  return out
+}
+
+export async function cleanupPrs(ctx: any) {
+  const chats = cleanupChats(ctx, 200)
+  const service = cleanupService()
+  const [prs, wikiProfiles] = await Promise.all([service.prs(chats), service.wikiProfiles(chats.map(chat => chat.profile))])
+  ctx.body = { prs, wikiProfiles }
+}
+
+export async function cleanupSummaries(ctx: any) {
+  ctx.body = { summaries: await cleanupService().summaries(cleanupChats(ctx, 40)) }
+}
+
+export async function cleanupSaveToWiki(ctx: any) {
+  ctx.body = await cleanupService().saveToWiki(cleanupChats(ctx, 50))
 }
 
 export async function setNesting(ctx: any) {

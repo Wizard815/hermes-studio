@@ -178,6 +178,23 @@ export class LlmWikiService {
     return this.profileStatus(profile)
   }
 
+  /** Whether a profile has a wiki address and token, so Studio can write to it. */
+  async canWrite(profile: string): Promise<boolean> {
+    if (!this.deps.profiles().includes(profile)) return false
+    return !!((await this.profileStatus(profile)).url && this.token(profile))
+  }
+
+  /**
+   * File a topic note into the wiki's inbox with the profile's own token
+   * (`memory_capture`, the provider's llm_wiki_capture). The wiki refuses
+   * anything that looks like a secret.
+   */
+  async capture(profileInput: unknown, title: string, content: string): Promise<string> {
+    const profile = this.profileName(profileInput)
+    const { url } = await this.profileStatus(profile)
+    return callWikiTool(url, this.token(profile), 'memory_capture', { title: title.replace(/\s+/g, ' ').trim().slice(0, 80), content: content.trim() }, this.deps.fetcher)
+  }
+
   /** Ask the wiki who a token is (the form's token, or the one saved for the profile). */
   async test(profileInput: unknown, input: Record<string, unknown> = {}): Promise<LlmWikiTestResult> {
     const profile = this.profileName(profileInput)

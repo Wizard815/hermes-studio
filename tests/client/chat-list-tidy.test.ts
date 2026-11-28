@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nestChats, suggestCleanup } from '../../packages/client/src/utils/chat-list-tidy'
+import { mergedChats, nestChats, suggestCleanup } from '../../packages/client/src/utils/chat-list-tidy'
 
 const DAY = 86_400_000
 const now = 100 * DAY
@@ -39,5 +39,20 @@ describe('chat list tidy', () => {
       { id: 'new', title: 'Fix login', messageCount: 1, lastActiveAt: now - 2 * DAY },
     ]
     expect(suggestCleanup(chats, { now }).map(item => `${item.reason}:${item.chat.id}`)).toEqual(['empty:new'])
+  })
+  it('TestChatList_cleanupSuggestsChatsWhosePrMerged', () => {
+    const merged = mergedChats({
+      done: [{ state: 'merged' }, { state: 'closed' }],
+      open: [{ state: 'merged' }, { state: 'open' }],
+      closed: [{ state: 'closed' }],
+      today: [{ state: 'merged' }],
+    })
+    expect([...merged].sort()).toEqual(['done', 'today'])
+    const chats = [
+      { id: 'done', title: 'Ship it', messageCount: 20, lastActiveAt: now - 3 * DAY },
+      { id: 'today', title: 'Today', messageCount: 20, lastActiveAt: now - 1000 },
+      { id: 'open', title: 'Open', messageCount: 20, lastActiveAt: now - 3 * DAY },
+    ]
+    expect(suggestCleanup(chats, { now, merged }).map(item => `${item.reason}:${item.chat.id}`)).toEqual(['done:done'])
   })
 })

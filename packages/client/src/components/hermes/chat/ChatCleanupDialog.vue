@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { NButton, NCheckbox, NModal, NPopconfirm, NSpin, useMessage } from 'naive-ui'
+import { computed, h, ref, watch } from 'vue'
+import { NButton, NCheckbox, NModal, NPopconfirm, NSpin, useMessage, useNotification } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
-import { batchDeleteSessions, fetchLastMessages } from '@/api/studio/sessions'
-import { STALE_DAYS, suggestCleanup, type CleanupSuggestion } from '@/utils/chat-list-tidy'
+import { batchDeleteSessions, fetchCleanupPrs, fetchCleanupSummaries, fetchLastMessages, saveChatsToWiki, unarchiveSession, type CleanupPr } from '@/api/studio/sessions'
+import { STALE_DAYS, cleanupCandidates, mergedChats, readCleanupReminder, suggestCleanup, writeCleanupReminder, type CleanupSuggestion } from '@/utils/chat-list-tidy'
 import type { Session } from '@/stores/hermes/chat'
 
 /**
  * Clean up (docs/chat-list.md): chats worth archiving or deleting, by reason,
- * each with its last message so you can tell what it was. Archive is the main
- * button; Delete asks first.
+ * each with a one-line summary and its last message so you can tell what it
+ * was. Archive is the main button. Delete asks first, can save each chat's key
+ * facts to the wiki, and archives first so it can be undone for a few seconds.
  */
 const props = defineProps<{
   sessions: Session[]
@@ -18,31 +19,65 @@ const props = defineProps<{
   busy: (id: string) => boolean
   archive: (id: string) => Promise<boolean>
 }>()
-const emit = defineEmits<{ deleted: [ids: string[]] }>()
+const emit = defineEmits<{ deleted: [ids: string[]]; restored: [ids: string[]] }>()
 const show = defineModel<boolean>('show', { default: false })
 const { t } = useI18n()
 const message = useMessage()
+const notification = useNotification()
+
+const UNDO_MS = 10_000
 
 const suggestions = ref<Array<CleanupSuggestion<Session>>>([])
 const lastMessages = ref<Record<string, { role: string; text: string; at: number }>>({})
+const summaries = ref<Record<string, string>>({})
+const summarizing = ref(false)
+const prs = ref<Record<string, CleanupPr[]>>({})
+const wikiProfiles = ref<string[]>([])
+const saveToWiki = ref(true)
+const remind = ref(readCleanupReminder().on)
 const selected = ref(new Set<string>())
 const loading = ref(false)
 const working = ref(false)
 
 async function load() {
   loading.value = true
-  suggestions.value = suggestCleanup(props.sessions, { now: Date.now(), keep: props.keep, busy: props.busy })
+  summaries.value = {}
+  const now = Date.now()
+  const options = { now, keep: props.keep, busy: props.busy }
+  const candidates = cleanupCandidates(props.sessions, options)
+  try {
+    const context = await fetchCleanupPrs(candidates.map(chat => chat.id))
+    prs.value = context.prs || {}
+    wikiProfiles.value = context.wikiProfiles || []
+  } catch {
+    prs.value = {}
+    wikiProfiles.value = []
+  }
+  suggestions.value = suggestCleanup(props.sessions, { ...options, merged: mergedChats(prs.value) })
   selected.value = new Set(suggestions.value.map(item => item.chat.id))
-  try { lastMessages.value = await fetchLastMessages(suggestions.value.map(item => item.chat.id)) } catch { lastMessages.value = {} }
+  const ids = suggestions.value.map(item => item.chat.id)
+  try { lastMessages.value = await fetchLastMessages(ids) } catch { lastMessages.value = {} }
   loading.value = false
+  // Opening Clean up counts as this month's reminder.
+  const reminder = readCleanupReminder()
+  if (reminder.on) writeCleanupReminder({ on: true, last: now })
+  summarizing.value = true
+  try { summaries.value = await fetchCleanupSummaries(ids.slice(0, 40)) } catch { summaries.value = {} }
+  summarizing.value = false
 }
 watch(show, open => { if (open) void load() })
 
-const groups = computed(() => (['empty', 'duplicate', 'stale'] as const)
+const groups = computed(() => (['empty', 'done', 'duplicate', 'stale'] as const)
   .map(reason => ({ reason, items: suggestions.value.filter(item => item.reason === reason) }))
   .filter(group => group.items.length))
-const reasonLabel = (reason: string) => reason === 'empty' ? t('chatList.reasonEmpty') : reason === 'duplicate' ? t('chatList.reasonDuplicate') : t('chatList.reasonStale', { days: STALE_DAYS })
+const reasonLabel = (reason: string) => reason === 'empty' ? t('chatList.reasonEmpty')
+  : reason === 'done' ? t('chatList.reasonDone')
+    : reason === 'duplicate' ? t('chatList.reasonDuplicate')
+      : t('chatList.reasonStale', { days: STALE_DAYS })
 const allSelected = computed(() => suggestions.value.length > 0 && selected.value.size === suggestions.value.length)
+const selectedChats = computed(() => suggestions.value.filter(item => selected.value.has(item.chat.id)).map(item => item.chat))
+const wikiAvailable = computed(() => selectedChats.value.some(chat => wikiProfiles.value.includes(chat.profile || 'default')))
+const mergedPr = (id: string) => (prs.value[id] || []).find(pr => pr.state === 'merged')
 
 function toggle(id: string, on: boolean) {
   const next = new Set(selected.value)
@@ -53,6 +88,10 @@ function toggle(id: string, on: boolean) {
 function toggleAll(on: boolean) {
   selected.value = on ? new Set(suggestions.value.map(item => item.chat.id)) : new Set()
 }
+function setRemind(on: boolean) {
+  remind.value = on
+  writeCleanupReminder({ on, last: Date.now() })
+}
 function when(ms?: number) {
   return ms ? new Date(ms).toLocaleDateString() : ''
 }
@@ -62,24 +101,71 @@ async function archiveSelected() {
   let done = 0
   for (const id of selected.value) if (await props.archive(id).catch(() => false)) done++
   working.value = false
-  message.success(t('chatList.done', { n: done }))
+  message.success(t('chatList.done', { n: done }, done))
   show.value = false
 }
 
+/**
+ * Delete: save notes to the wiki (when asked; a chat whose notes fail is kept),
+ * archive so the chats leave the list, then delete for good once the undo
+ * window has passed. Closing the page in that window leaves them archived.
+ */
 async function deleteSelected() {
   working.value = true
-  const targets = suggestions.value.filter(item => selected.value.has(item.chat.id)).map(item => ({ id: item.chat.id, profile: item.chat.profile || null }))
   try {
-    const result = await batchDeleteSessions(targets)
-    const failed = new Set(result.errors.map(error => error.id))
-    emit('deleted', targets.map(target => target.id).filter(id => !failed.has(id)))
-    message.success(t('chatList.done', { n: result.deleted }))
+    let chats = selectedChats.value
+    if (saveToWiki.value && wikiAvailable.value) {
+      const forWiki = chats.filter(chat => wikiProfiles.value.includes(chat.profile || 'default'))
+      const result = await saveChatsToWiki(forWiki.map(chat => chat.id))
+      if (result.errors.length) {
+        const failed = new Set(result.errors.map(error => error.id))
+        chats = chats.filter(chat => !failed.has(chat.id))
+        message.warning(t('chatList.wikiKept', { n: failed.size, error: result.errors[0].error }, failed.size), { duration: 8000 })
+      }
+      if (result.saved.length) message.success(t('chatList.savedToWiki', { n: result.saved.length }, result.saved.length))
+    }
+    const archived: Array<{ id: string; profile: string | null }> = []
+    for (const chat of chats) if (await props.archive(chat.id).catch(() => false)) archived.push({ id: chat.id, profile: chat.profile || null })
     show.value = false
+    if (archived.length) startUndoWindow(archived)
   } catch (error: any) {
     message.error(error?.message || String(error))
   } finally {
     working.value = false
   }
+}
+
+function startUndoWindow(targets: Array<{ id: string; profile: string | null }>) {
+  let undone = false
+  const note = notification.create({
+    content: t('chatList.deleting', { n: targets.length }, targets.length),
+    duration: UNDO_MS,
+    closable: false,
+    action: () => h(NButton, {
+      size: 'small',
+      type: 'primary',
+      'data-testid': 'chat-cleanup-undo',
+      onClick: async () => {
+        undone = true
+        note.destroy()
+        const back: string[] = []
+        for (const target of targets) if (await unarchiveSession(target.id)) back.push(target.id)
+        emit('restored', back)
+        message.success(t('chatList.undone', { n: back.length }, back.length))
+      },
+    }, { default: () => t('chatList.undo') }),
+  })
+  setTimeout(async () => {
+    if (undone) return
+    try {
+      const result = await batchDeleteSessions(targets)
+      const failed = new Set(result.errors.map(error => error.id))
+      emit('deleted', targets.map(target => target.id).filter(id => !failed.has(id)))
+      message.success(t('chatList.done', { n: result.deleted }, result.deleted))
+    } catch (error: any) {
+      message.error(error?.message || String(error))
+    }
+  }, UNDO_MS)
 }
 </script>
 
@@ -97,6 +183,9 @@ async function deleteSelected() {
           <span class="cleanup-body">
             <span class="cleanup-title">{{ item.chat.title || item.chat.id.slice(0, 8) }}</span>
             <span class="cleanup-meta">{{ when(item.chat.lastActiveAt || item.chat.updatedAt) }} · {{ item.chat.messageCount ?? 0 }}<template v-if="item.keep"> · {{ t('chatList.reasonDuplicate') }}: {{ when(item.keep.lastActiveAt || item.keep.updatedAt) }}</template></span>
+            <span v-if="summaries[item.chat.id]" class="cleanup-summary" data-testid="chat-cleanup-summary">{{ summaries[item.chat.id] }}</span>
+            <span v-else-if="summarizing" class="cleanup-summary cleanup-pending">{{ t('chatList.summarizing') }}</span>
+            <a v-if="item.reason === 'done' && mergedPr(item.chat.id)" class="cleanup-pr" :href="mergedPr(item.chat.id)!.url" target="_blank" rel="noopener" @click.stop>{{ t('chatList.prMerged') }}: {{ mergedPr(item.chat.id)!.title || mergedPr(item.chat.id)!.url }}</a>
             <span class="cleanup-last">
               <template v-if="lastMessages[item.chat.id]">{{ t('chatList.lastMessage') }}: {{ lastMessages[item.chat.id].text }}</template>
               <template v-else>{{ t('chatList.noMessage') }}</template>
@@ -106,6 +195,10 @@ async function deleteSelected() {
       </section>
     </template>
     <template #footer>
+      <div class="cleanup-options">
+        <NCheckbox v-if="wikiAvailable" v-model:checked="saveToWiki" data-testid="chat-cleanup-wiki">{{ t('chatList.saveToWiki') }}</NCheckbox>
+        <NCheckbox :checked="remind" data-testid="chat-cleanup-remind" @update:checked="setRemind">{{ t('chatList.remindMonthly') }}</NCheckbox>
+      </div>
       <div class="cleanup-actions">
         <NPopconfirm :positive-text="t('chatList.deleteSelected', { n: selected.size })" @positive-click="deleteSelected">
           <template #trigger>
@@ -162,5 +255,10 @@ async function deleteSelected() {
   overflow: hidden;
 }
 
+.cleanup-summary { color: $text-primary; font-size: 12px; }
+.cleanup-pending { color: $text-muted; font-style: italic; }
+.cleanup-pr { color: $accent-primary; font-size: 12px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cleanup-options { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; font-size: 13px; }
 .cleanup-actions { display: flex; justify-content: flex-end; gap: 8px; }
 </style>

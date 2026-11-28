@@ -55,9 +55,10 @@ import {
   NTooltip,
   NPopover,
   useMessage,
+  useNotification,
   type DropdownOption,
 } from "naive-ui";
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, provide, ref, watch } from "vue";
+import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { copyToClipboard } from "@/utils/clipboard";
@@ -75,7 +76,7 @@ import SessionListItem from "./SessionListItem.vue";
 import ProjectsList from "./ProjectsList.vue";
 import ComputersList from "./ComputersList.vue";
 import ChatCleanupDialog from "./ChatCleanupDialog.vue";
-import { nestChats } from "@/utils/chat-list-tidy";
+import { cleanupReminderDue, nestChats, readCleanupReminder, suggestCleanup, writeCleanupReminder } from "@/utils/chat-list-tidy";
 import ThreadPane from "./ThreadPane.vue";
 import ProjectAttentionBadges from "./ProjectAttentionBadges.vue";
 import ProjectIcon from "./ProjectIcon.vue";
@@ -254,6 +255,32 @@ function forgetCleanedChats(ids: string[]) {
   for (const id of ids) chatStore.forgetSession(id);
   void syncSessionRouteAfterDeletion();
 }
+function restoreCleanedChats() {
+  void chatStore.refreshSessionListOnly(chatStore.sessionProfileFilter);
+}
+// The optional monthly reminder: once the list has loaded, if it is due.
+const cleanupNotification = useNotification();
+let cleanupReminderChecked = false;
+function cleanupChatBusy(id: string) {
+  return sessionStates.isWorking(id, chatStore.isSessionWorking(id));
+}
+function checkCleanupReminder() {
+  if (cleanupReminderChecked || !chatStore.sessions.length) return;
+  cleanupReminderChecked = true;
+  setTimeout(() => {
+    const reminder = readCleanupReminder();
+    const now = Date.now();
+    const count = suggestCleanup(chatStore.sessions, { now, keep: projectSessionIds.value, busy: cleanupChatBusy }).length;
+    if (!cleanupReminderDue(reminder, now, count)) return;
+    writeCleanupReminder({ on: true, last: now });
+    const note = cleanupNotification.create({
+      content: t("chatList.reminder", { n: count }, count),
+      duration: 15_000,
+      action: () => h(NButton, { size: "small", type: "primary", "data-testid": "chat-cleanup-reminder", onClick: () => { note.destroy(); showCleanup.value = true; } }, { default: () => t("chatList.reminderOpen") }),
+    });
+  }, 4000);
+}
+watch(() => chatStore.sessions.length, checkCleanupReminder, { immediate: true });
 const nestSessionId = ref("");
 const nestParentId = ref<string | null>(null);
 const showNest = ref(false);
@@ -3290,9 +3317,10 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
       v-model:show="showCleanup"
       :sessions="chatStore.sessions"
       :keep="projectSessionIds"
-      :busy="id => sessionStates.isWorking(id, chatStore.isSessionWorking(id))"
+      :busy="cleanupChatBusy"
       :archive="id => chatStore.archiveSession(id)"
       @deleted="forgetCleanedChats"
+      @restored="restoreCleanedChats"
     />
     <NModal v-model:show="showNest" preset="card" :title="t('chatList.nestTitle')" style="max-width: 420px" data-testid="chat-nest">
       <p class="nest-hint">{{ t('chatList.nestHint') }}</p>
