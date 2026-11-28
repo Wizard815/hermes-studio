@@ -29,6 +29,10 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { sandboxMessages } from '../sandbox-messages'
+import { forgeSettingsMessages } from '../forge-settings-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -75,6 +79,10 @@ export default {
   ...testLabMessages['fr'],
   ...recommendedPluginsMessages['fr'],
   ...uiSkillsMessages['fr'],
+  ...homelabToolsMessages['fr'],
+  ...sandboxMessages['fr'],
+  ...forgeSettingsMessages['fr'],
+  ...replyStyleMessages['fr'],
   ...gadgetMessages['fr'],
   ...toolLoadMessages['fr'],
   sessionTasks: {
@@ -1451,6 +1459,7 @@ export default {
     recent: 'Récentes',
     recentCount: 'Nombre de sessions récentes',
     loadMoreSessions: 'Charger plus de sessions',
+    showMoreChats: 'Afficher {count} de plus',
     newChat: 'Nouvelle discussion',
     newChatCardTitle: "Chaque idée mérite un bon partenaire.",
     newChatCardSubtitle: "Choisissez un Agent pour commencer une conversation.",
@@ -3200,6 +3209,8 @@ jobTriggered: 'Job declenche',
     connectionFailed: 'Connexion au terminal impossible',
     connectionError: 'Erreur de connexion',
     connectionClosed: 'Connexion fermée',
+    theme: 'Thème',
+    reconnecting: 'Reconnexion…',
   },
 
   // Usage

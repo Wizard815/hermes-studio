@@ -1,3 +1,4 @@
+import { replyStyleInstruction } from '../../../../../shared/reply-style'
 import { bindProviderSocket } from '../public/provider-account'
 import { stripLegacyProviderCredential } from '../contracts/legacy-provider-credential'
 import { respondAgentInteraction } from '../services/agents/interactions'
@@ -1898,6 +1899,8 @@ export class ChatRunSocket {
       allow_command_passthrough?: boolean
       reasoning_effort?: string
       push_enabled?: boolean
+      /** docs/reply-styles.md: 'emoji' or 'caveman' for cheaper answers. */
+      reply_style?: string
       background_delegation_enabled?: boolean
       context_compression_enabled?: boolean
       background_delegation_id?: string
@@ -1972,6 +1975,10 @@ export class ChatRunSocket {
     const healthInstruction = mobileHealthRunInstruction(mobileTarget?.platform === 'ios' ? mobileSessionId : undefined, surface)
     if (healthInstruction) {
       data.instructions = [String(data.instructions || '').trim(), healthInstruction].filter(Boolean).join('\n\n')
+    }
+    const styleInstruction = replyStyleInstruction(data.reply_style)
+    if (styleInstruction) {
+      data.instructions = [String(data.instructions || '').trim(), styleInstruction].filter(Boolean).join('\n\n')
     }
     if (data.session_id) {
       const state = getOrCreateSession(this.sessionMap, data.session_id)

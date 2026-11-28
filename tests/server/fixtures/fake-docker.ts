@@ -19,6 +19,8 @@ export class FakeDocker {
   calls: Array<{ method: string; path: string; body?: any }> = []
   pulled: string[] = []
   built: string[] = []
+  /** Build contexts sent as tar (forge builds). */
+  contexts: Buffer[] = []
   ignoreFilters = true
   failPull = new Set<string>()
   /** Called when a container starts (the test plays the runner). */
@@ -47,11 +49,15 @@ export class FakeDocker {
 
   start(): Promise<void> {
     this.server = createServer((req, res) => {
-      let raw = ''
-      req.on('data', chunk => { raw += chunk })
+      const chunks: Buffer[] = []
+      req.on('data', chunk => { chunks.push(Buffer.from(chunk)) })
       req.on('end', () => {
         const url = new URL(req.url || '/', 'http://docker')
         const path = url.pathname.replace(/^\/v1\.\d+/, '')
+        const bytes = Buffer.concat(chunks)
+        const tarBody = req.headers['content-type'] === 'application/x-tar'
+        if (tarBody) this.contexts.push(bytes)
+        const raw = tarBody ? '' : bytes.toString('utf8')
         const body = raw ? JSON.parse(raw) : undefined
         this.calls.push({ method: req.method || '', path: `${path}${url.search}`, body })
         const send = (status: number, value?: unknown) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(value === undefined ? '' : JSON.stringify(value)) }
@@ -68,7 +74,7 @@ export class FakeDocker {
         }
         if (req.method === 'POST' && path === '/build') {
           const tag = url.searchParams.get('t') || ''
-          this.built.push(url.searchParams.get('remote') || '')
+          this.built.push(url.searchParams.get('remote') || (tarBody ? `context:${bytes.length}` : ''))
           this.images.set(tag, { Id: tag, Labels: JSON.parse(url.searchParams.get('labels') || '{}') })
           res.writeHead(200); res.end('{"stream":"Successfully built"}\n'); return
         }

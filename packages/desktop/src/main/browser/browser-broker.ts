@@ -14,6 +14,7 @@ import {
   type BrowserNetworkEntry,
   type BrowserPageDialog,
   type BrowserReadTextOptions,
+  type BrowserPageHtml,
   type BrowserReadTextResult,
   type BrowserScreenshot,
   type BrowserSnapshot,
@@ -49,6 +50,8 @@ export interface BrowserBrokerManager {
   navigationAction(tabId: string, action: 'back' | 'forward' | 'reload' | 'stop'): Promise<DesktopBrowserTab>
   snapshot(tabId: string, options?: BrowserSnapshotOptions): Promise<BrowserSnapshot>
   readText(tabId: string, options: BrowserReadTextOptions): Promise<BrowserReadTextResult>
+  /** The page's HTML; optional, so an older manager answers that it cannot. */
+  pageHtml?(tabId: string): Promise<BrowserPageHtml>
   interact(tabId: string, action: BrowserInteractAction, assertActive?: () => void): Promise<BrowserInteractionResult>
   interactBatch(tabId: string, input: unknown, snapshotId: unknown, assertControl: () => void): Promise<BrowserBatchResult>
   upload(
@@ -385,6 +388,10 @@ export class BrowserBroker {
             query: params.query as string | undefined, interactiveOnly: params.interactive_only as boolean | undefined,
             offset: params.offset as number | undefined, limit: params.limit as number | undefined,
           }))
+        case 'page.html': {
+          if (!this.manager.pageHtml) throw new Error('This browser cannot return page HTML; use snapshot and text.read')
+          return await this.manager.pageHtml(requiredString(params.tab_id, 'tab_id'))
+        }
         case 'text.read': {
           const mode = params.mode === undefined ? 'innerText' : requiredString(params.mode, 'mode')
           if (mode !== 'innerText' && mode !== 'textContent') throw new Error('mode must be innerText or textContent')

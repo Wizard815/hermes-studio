@@ -1,5 +1,20 @@
-import hljs from 'highlight.js'
+// The common build (about 40 languages) plus a few homelab ones. The full
+// build registers 190+ languages and was the largest chunk on the chat page.
+import hljs from 'highlight.js/lib/common'
+import dockerfile from 'highlight.js/lib/languages/dockerfile'
+import nginx from 'highlight.js/lib/languages/nginx'
+import powershell from 'highlight.js/lib/languages/powershell'
+import dos from 'highlight.js/lib/languages/dos'
+import cmake from 'highlight.js/lib/languages/cmake'
+import protobuf from 'highlight.js/lib/languages/protobuf'
+import dart from 'highlight.js/lib/languages/dart'
+import scala from 'highlight.js/lib/languages/scala'
+import elixir from 'highlight.js/lib/languages/elixir'
 import { copyToClipboard } from '@/utils/clipboard'
+
+for (const [name, language] of Object.entries({ dockerfile, nginx, powershell, dos, cmake, protobuf, dart, scala, elixir })) {
+  if (!hljs.getLanguage(name)) hljs.registerLanguage(name, language)
+}
 
 const LANGUAGE_ALIASES: Record<string, string> = {
   shellscript: 'bash',

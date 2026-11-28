@@ -1,6 +1,7 @@
 import Router from '@koa/router'
 import { requireSuperAdmin } from '../middleware/auth'
 import * as ctrl from '../controllers/projects'
+import * as commitCtrl from '../controllers/project-commits'
 
 /**
  * Projects: a coordinator chat and the threads it starts in herdr (see
@@ -35,3 +36,6 @@ projectRoutes.delete('/api/studio/projects/:id/memory/:memoryId', requireSuperAd
 projectRoutes.put('/api/studio/projects/:id/tasks/:taskId', requireSuperAdmin, ctrl.updateTask)
 projectRoutes.delete('/api/studio/projects/:id/tasks/:taskId', requireSuperAdmin, ctrl.removeTask)
 projectRoutes.post('/api/studio/projects/:id/tasks/:taskId/start', requireSuperAdmin, ctrl.startTask)
+// Commits per thread branch and board PR, and a caveman summary of one (docs/project-commits.md).
+projectRoutes.get('/api/studio/projects/:id/commits', requireSuperAdmin, commitCtrl.list)
+projectRoutes.get('/api/studio/projects/:id/commits/:sha/summary', requireSuperAdmin, commitCtrl.summary)

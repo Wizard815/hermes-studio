@@ -78,6 +78,7 @@ const TERMINAL_THEMES: Record<string, { label: string; theme: ITheme }> = {
 };
 
 const STORAGE_KEY_THEME = "hermes_terminal_theme";
+const TERMINAL_FONT = '"JetBrains Mono", "Cascadia Code", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -107,7 +108,11 @@ let activeTerm: Terminal | null = null;
 let activeFitAddon: FitAddon | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let reconnectAttempts = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+// Set on unmount: a socket closed by the panel itself must not reconnect.
+let disposed = false;
 const MAX_RECONNECT_ATTEMPTS = 3;
+const reconnecting = ref(false);
 let touchScrollLastY: number | null = null;
 let touchScrollRemainder = 0;
 // Last non-empty xterm selection. xterm clears getSelection() when the terminal
@@ -138,9 +143,6 @@ watch([activeTerminalTheme, customization], () => {
 });
 const selectedThemeLabel = computed(
   () => selectedTheme.value === "studio" ? t("theme.customization.followStudio") : TERMINAL_THEMES[selectedTheme.value].label,
-);
-const selectedThemeInitial = computed(
-  () => selectedThemeLabel.value.charAt(0).toUpperCase(),
 );
 
 // ─── WebSocket ──────────────────────────────────────────────────
@@ -175,9 +177,15 @@ function buildWsUrl(): string {
 }
 
 function connect() {
+  if (disposed) return;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
     connectionError.value = t('terminal.connectionFailed');
     isConnecting.value = false;
+    reconnecting.value = false;
     return;
   }
 
@@ -186,41 +194,60 @@ function connect() {
   isConnecting.value = true;
   reconnectAttempts++;
 
-  ws = new WebSocket(url);
+  const socket = new WebSocket(url);
+  ws = socket;
 
-  ws.onopen = () => {
+  socket.onopen = () => {
     isConnecting.value = false;
     connectionError.value = null;
   };
 
-  ws.onmessage = (event) => {
+  socket.onmessage = (event) => {
     const data = typeof event.data === "string" ? event.data : "";
+    // Control frames are JSON objects with a known type. Shell output can start
+    // with "{" too (cat config.json), and that must still reach the terminal.
     if (data.charCodeAt(0) === 0x7b) {
+      let parsed: unknown;
       try {
-        handleControl(JSON.parse(data));
-      } catch {}
-    } else {
-      activeTerm?.write(data);
+        parsed = JSON.parse(data);
+      } catch {
+        parsed = undefined;
+      }
+      if (handleControl(parsed)) return;
     }
+    activeTerm?.write(data);
   };
 
-  ws.onclose = (event) => {
+  socket.onclose = (event) => {
+    if (ws === socket) ws = null;
     isConnecting.value = false;
+    if (disposed) return;
 
-    // 如果是正常关闭（code 1000）或认证失败，不重连
+    // A normal close (1000), or a refused or unauthorized socket: don't reconnect.
     if (event.code === 1000 || event.code === 1003 || event.code === 1008) {
+      reconnecting.value = false;
       connectionError.value = t('terminal.connectionClosed');
       return;
     }
 
-    // 其他情况尝试重连
-    setTimeout(connect, 3000);
+    // Anything else (server restart, network drop): try again shortly. The
+    // sessions live on in tmux, so the pane comes back as it was.
+    reconnecting.value = true;
+    reconnectTimer = setTimeout(connect, 3000);
   };
 
-  ws.onerror = (error) => {
-    console.error('[Terminal] WebSocket error:', error);
-    connectionError.value = t('terminal.connectionError');
+  socket.onerror = () => {
+    // onclose follows and decides whether to retry; an error message here
+    // would flash on every reconnect attempt.
+    console.warn('[Terminal] WebSocket error');
   };
+}
+
+/** The Retry button: a fresh set of attempts. */
+function retry() {
+  reconnectAttempts = 0;
+  connectionError.value = null;
+  connect();
 }
 
 function send(data: object | string) {
@@ -230,10 +257,13 @@ function send(data: object | string) {
 
 // ─── Control message handlers ──────────────────────────────────
 
-function handleControl(msg: any) {
+/** Handles a control frame from the server; false when it is not one (it is output). */
+function handleControl(msg: any): boolean {
+  if (!msg || typeof msg !== "object" || typeof msg.type !== "string") return false;
   switch (msg.type) {
     case "created":
       reconnectAttempts = 0;
+      reconnecting.value = false;
       sessions.value.push({
         id: msg.id,
         shell: msg.shell,
@@ -264,6 +294,8 @@ function handleControl(msg: any) {
       // reattaches this socket to the chat scope's persistent tmux sessions and
       // sends the whole rail in one message. Upstream's client only knew
       // "created", so without this the rail came up empty on every load.
+      reconnectAttempts = 0;
+      reconnecting.value = false;
       const incoming = Array.isArray(msg.sessions) ? msg.sessions : [];
       const incomingIds = incoming.map((s: any) => s.id);
       const currentIds = sessions.value.map((s) => s.id);
@@ -318,7 +350,15 @@ function handleControl(msg: any) {
       // Server heartbeat; keeping the socket warm is the whole point, so there
       // is nothing to update here.
       break;
+
+    case "switched":
+      // The server confirms a switch the panel already made.
+      break;
+
+    default:
+      return false;
   }
+  return true;
 }
 
 // ─── Session actions ────────────────────────────────────────────
@@ -443,8 +483,14 @@ function onTermMenuKey(event: KeyboardEvent): void {
   if (event.key === "Escape") closeTermMenu();
 }
 
+const TERM_MENU_WIDTH = 160;
+const TERM_MENU_HEIGHT = 156;
+
 function openTermMenu(event: MouseEvent): void {
-  termMenu.value = { visible: true, x: event.clientX, y: event.clientY };
+  // Keep the whole menu on screen when the click is near the right or bottom edge.
+  const x = Math.max(4, Math.min(event.clientX, window.innerWidth - TERM_MENU_WIDTH - 4));
+  const y = Math.max(4, Math.min(event.clientY, window.innerHeight - TERM_MENU_HEIGHT - 4));
+  termMenu.value = { visible: true, x, y };
   // Dismiss via document listeners attached on the next tick, rather than a
   // full-viewport backdrop. The backdrop sits directly under the cursor, so on
   // release some browsers deliver a second contextmenu straight to it and the
@@ -491,7 +537,7 @@ function getOrCreateTerm(id: string): { term: Terminal; fitAddon: FitAddon } {
       cursorBlink: true,
       fontSize: customization.value.fontSize,
       allowTransparency: true,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontFamily: TERMINAL_FONT,
       theme: { ...activeTerminalTheme.value },
       // Upstream's panel shipped none of the clipboard plumbing, which is why
       // copy-out did nothing and the browser's own context menu landed on top
@@ -533,9 +579,10 @@ function getOrCreateTerm(id: string): { term: Terminal; fitAddon: FitAddon } {
       return true;
     });
     term.onData((data) => {
-      if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(data);
-      }
+      if (ws?.readyState !== WebSocket.OPEN) return;
+      // Typed or pasted text that starts with "{" goes as an input frame, so the
+      // server never mistakes it for a control message.
+      ws.send(data.charCodeAt(0) === 0x7b ? JSON.stringify({ type: "input", data }) : data);
     });
     entry = { term, fitAddon, opened: false };
     termMap.set(id, entry);
@@ -695,6 +742,9 @@ watch(() => props.visible, (visible) => {
 }, { immediate: true });
 
 onUnmounted(() => {
+  disposed = true;
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = null;
   closeTermMenu();
   for (const timer of initialCommandTimers) clearTimeout(timer);
   initialCommandTimers.clear();
@@ -705,7 +755,7 @@ onUnmounted(() => {
   termMap.clear();
   activeTerm = null;
   activeFitAddon = null;
-  ws?.close();
+  ws?.close(1000);
   ws = null;
 });
 </script>
@@ -718,18 +768,23 @@ onUnmounted(() => {
           <button
             class="terminal-rail-button terminal-theme-button"
             type="button"
-            :aria-label="selectedThemeLabel"
+            :aria-label="`${t('terminal.theme')}: ${selectedThemeLabel}`"
             @click="cycleTheme"
           >
-            {{ selectedThemeInitial }}
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.8-1.7H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3Z" />
+              <circle cx="7.5" cy="11" r="1.2" />
+              <circle cx="10.5" cy="7.2" r="1.2" />
+              <circle cx="15" cy="7.6" r="1.2" />
+            </svg>
           </button>
         </template>
-        {{ selectedThemeLabel }}
+        {{ t('terminal.theme') }}: {{ selectedThemeLabel }}
       </NTooltip>
 
       <div class="terminal-session-list">
         <div
-          v-for="session in sessions"
+          v-for="(session, index) in sessions"
           :key="session.id"
           class="terminal-session-slot"
           :class="{
@@ -748,8 +803,9 @@ onUnmounted(() => {
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <rect x="3" y="4" width="18" height="16" rx="2" />
-                  <path d="m7 9 3 3-3 3M13 15h4" />
+                  <path d="m7 9 3 3-3 3" />
                 </svg>
+                <span class="terminal-session-number">{{ index + 1 }}</span>
               </button>
             </template>
             {{ session.title }}
@@ -792,9 +848,18 @@ onUnmounted(() => {
 
     <div class="terminal-main">
       <div class="terminal-container">
-        <div v-if="connectionError" class="terminal-state terminal-state-error">
+        <div v-if="connectionError" class="terminal-state terminal-state-error" role="alert">
           <span>{{ connectionError }}</span>
-          <NButton size="tiny" @click="connect">{{ t("common.retry") }}</NButton>
+          <NButton size="tiny" @click="retry">{{ t("common.retry") }}</NButton>
+        </div>
+        <div
+          v-else-if="reconnecting && sessions.length > 0"
+          class="terminal-reconnecting"
+          role="status"
+          data-testid="terminal-reconnecting"
+        >
+          <NSpin :size="12" />
+          <span>{{ t('terminal.reconnecting') }}</span>
         </div>
         <div
           v-else-if="sessions.length === 0"
@@ -819,14 +884,15 @@ onUnmounted(() => {
           v-if="termMenu.visible"
           ref="termMenuRef"
           class="terminal-context-menu"
+          role="menu"
           :style="{ left: `${termMenu.x}px`, top: `${termMenu.y}px` }"
           @click.stop
           @contextmenu.prevent.stop
         >
-          <button type="button" @click="menuCopy">{{ t('terminal.copy') }}</button>
-          <button type="button" @click="menuPaste">{{ t('terminal.paste') }}</button>
-          <button type="button" @click="menuSelectAll">{{ t('terminal.selectAll') }}</button>
-          <button type="button" @click="menuClear">{{ t('terminal.clear') }}</button>
+          <button type="button" role="menuitem" @click="menuCopy">{{ t('terminal.copy') }}</button>
+          <button type="button" role="menuitem" @click="menuPaste">{{ t('terminal.paste') }}</button>
+          <button type="button" role="menuitem" @click="menuSelectAll">{{ t('terminal.selectAll') }}</button>
+          <button type="button" role="menuitem" @click="menuClear">{{ t('terminal.clear') }}</button>
         </div>
       </div>
     </div>
@@ -909,11 +975,20 @@ onUnmounted(() => {
 
 .terminal-theme-button {
   flex-shrink: 0;
-  color: $text-primary;
-  background: rgba(var(--accent-primary-rgb), 0.08);
-  font-size: calc(var(--font-size-base, 14px) * 13 / 14);
-  font-weight: 700;
-  line-height: var(--line-height, 1);
+
+  svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linejoin: round;
+  }
+
+  circle {
+    fill: currentColor;
+    stroke: none;
+  }
 }
 
 .terminal-add-button {
@@ -961,6 +1036,17 @@ onUnmounted(() => {
 
 .terminal-session-button {
   padding: 0;
+  position: relative;
+
+  .terminal-session-number {
+    position: absolute;
+    right: 3px;
+    bottom: 2px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
 
   svg {
     width: 18px;
@@ -1043,10 +1129,21 @@ onUnmounted(() => {
   color: $error;
 }
 
-.terminal-menu-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
+.terminal-reconnecting {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: var(--border-width, 1px) solid $border-color;
+  background: var(--theme-card-bg, $bg-card);
+  color: $text-secondary;
+  font-size: 12px;
+  pointer-events: none;
 }
 
 .terminal-context-menu {
@@ -1054,7 +1151,7 @@ onUnmounted(() => {
   z-index: 41;
   min-width: 140px;
   padding: 4px;
-  border-radius: 4px;
+  border-radius: $radius-sm;
   border: 1px solid $border-color;
   background: $bg-card;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
@@ -1091,15 +1188,21 @@ onUnmounted(() => {
     padding: calc(8px * var(--spacing-scale, 1));
   }
 
+  // A thin scrollbar, so it is plain that there is scrollback above.
   :deep(.xterm-viewport) {
     overflow-y: scroll !important;
-    scrollbar-width: none !important;
-    -ms-overflow-style: none !important;
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(var(--accent-primary-rgb), 0.3) transparent;
     background-color: transparent !important;
   }
 
   :deep(.xterm-viewport::-webkit-scrollbar) {
-    display: none !important;
+    width: 6px !important;
+  }
+
+  :deep(.xterm-viewport::-webkit-scrollbar-thumb) {
+    border-radius: 3px;
+    background: rgba(var(--accent-primary-rgb), 0.3);
   }
 
   :deep(.xterm-screen) {

@@ -19,12 +19,14 @@ and keep this file small enough to fit into every task context.
 - `docs/cleanroom.md` - clean-room chats: a chat's coding agent runs in its own container.
 - `docs/vscode.md` - VS Code (code-server) inside Studio: the Code view on a chat's folder.
 - `docs/agent-screen.md` - the agents' screen (Hermes Bot Screen) in Studio: watch, take over, hand back.
+- `docs/browser-panel.md` - the chat's Browser panel shows the browser the chat's model drives (the Screen's, or its own): one model, one browser, live.
 - `docs/android-devices.md` - Android page: adb devices, emulator stream, BlueStacks, phones, Termux bridge in the Android app.
 - `docs/llm-wiki.md` - LLM wiki: the family's Obsidian wiki as a Hermes memory provider per profile (Connections → LLM wiki), token per profile, MCP card.
 - `docs/pondering-orb.md` - Pondering Orb: Connections tab, Orb tools for Studio agents, and Orb sending work to Studio chats.
 - `docs/omi.md` - Omi (omi-local): Connections tab, the scoped Studio key for Omi, results webhook, approvals from Omi, MCP card and Hermes skill; Studio Own and the Omi app on the phone (share/deep-link intents both ways, phone AI in Termux).
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.
 - `docs/projects.md` - Projects in the chat menu: a coordinator chat and threads that run in herdr.
+- `docs/project-commits.md` - board cards list their thread's or PR's commits; hover for a caveman summary from Argos, saved per SHA.
 - `docs/agent-limits.md` - run limits: cost, tokens, time and loop detector per run, for every chat type.
 - `docs/watcher.md` - the Watcher: one alert feed and bell for Studio's guards, trust rules, Settings → Watcher and Clean rooms.
 - `docs/approval-alerts.md` - where approvals reach you: Mattermost, the Studio Own Android app (paired phone key, live stream, notifications with Approve / Reject), both or off.
@@ -32,6 +34,12 @@ and keep this file small enough to fit into every task context.
 - `docs/ui-skills.md` - UI skills (bundled): design skills copied once into Hermes, Ekko and every coding agent; removal, edits, switch.
 - `docs/test-lab.md` - Test Lab: throwaway app containers, one agent test on a pinned, capped model, report and cleanup by label.
 - `docs/chat-import.md` - Import chats: Hermes, Claude Code, Codex, OpenClaw sessions into Studio chats; preview, dedupe, never credentials.
+- `docs/homelab-skills.md` - homelab skills (bundled): look-before-build (awesome lists), repo-pack, to-markdown, code-map, caveman; same targets as UI skills.
+- `docs/mcp-directory.md` - MCP page → Directory: awesome-mcp-servers searched on the server, recommended tokensave/markitdown/repomix, Set up with Hermes.
+- `docs/repo-pack.md` - Add a repo to a chat: repomix packs a GitHub repo and attaches the Markdown file; GH_TOKEN for private repos.
+- `docs/markitdown.md` - Markdown copies of attached PDFs and Office files for text-only models.
+- `docs/context-compression.md` - fewer tokens for local models; LLMLingua evaluation.
+- `docs/reply-styles.md` - emoji and caveman reply styles in the composer settings; the ten emoji, Explain and Continue.
 
 ## Common Commands
 

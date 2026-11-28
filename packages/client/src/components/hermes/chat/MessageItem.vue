@@ -39,6 +39,7 @@ import ProfileAvatar from "@/components/hermes/profiles/ProfileAvatar.vue";
 import { parseChatMessageOrigin } from "@/utils/chat-message-origin";
 import ImagePreviewOverlay from "./ImagePreviewOverlay.vue";
 import MarkdownRenderer from "./MarkdownRenderer.vue";
+import EmojiReplyCard from "./EmojiReplyCard.vue";
 
 const TOOL_PAYLOAD_DISPLAY_LIMIT = 1000;
 const JSON_STRING_DISPLAY_LIMIT = 200;
@@ -1212,6 +1213,12 @@ onBeforeUnmount(() => {
               :heading-id-prefix="effectiveHeadingIdPrefix"
             />
 
+            <EmojiReplyCard
+              v-if="message.role === 'assistant' && !message.isStreaming"
+              :content="parsedThinking.body || message.content || ''"
+              :actions="!readOnly && !chatStore.isStreaming"
+              @send="text => chatStore.sendMessage(text)"
+            />
             <PersonTaskReturnCard v-if="message.personTaskReturn && !message.isStreaming" :result="message.personTaskReturn" />
             <RunUsageCard v-if="!hideRunUsage && message.runUsage && !message.isStreaming" :usage="message.runUsage" />
 

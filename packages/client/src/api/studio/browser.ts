@@ -5,7 +5,9 @@
  * Screenshot events arrive via Socket.IO broadcast 'browser.screenshot'.
  */
 
+import { io, type Socket } from 'socket.io-client'
 import { getApiKey, getBaseUrlValue } from '@/api/client'
+import { socketEndpoint } from '@/utils/deployment-url'
 
 // ─── State & Types ──────────────────────────────────────────────
 
@@ -295,4 +297,33 @@ export async function fetchElementAt(tabId: string, x: number, y: number): Promi
     body: JSON.stringify({ tab_id: tabId, x, y }),
   })
   return (result as any)?.element ?? null
+}
+
+// ─── Live view ──────────────────────────────────────────────────
+
+/** A frame of the panel's live view: JPEG bytes of the watched tab. */
+export interface BrowserLiveFrame {
+  tabId: string
+  data: ArrayBuffer
+  width: number
+  height: number
+  scrollX: number
+  scrollY: number
+}
+
+/**
+ * The `/browser-live` socket: `watch` a tab and receive `frame` events while
+ * its page changes (Chrome's screencast; nothing while the page is still).
+ */
+export function connectBrowserLiveSocket(): Socket {
+  const endpoint = socketEndpoint(getBaseUrlValue(), '/browser-live')
+  return io(endpoint.url, {
+    forceNew: true,
+    path: endpoint.path,
+    auth: { token: getApiKey() },
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionDelay: 500,
+    reconnectionDelayMax: 5000,
+  })
 }

@@ -29,6 +29,10 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { sandboxMessages } from '../sandbox-messages'
+import { forgeSettingsMessages } from '../forge-settings-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -101,6 +105,10 @@ export default {
   ...testLabMessages['tr'],
   ...recommendedPluginsMessages['tr'],
   ...uiSkillsMessages['tr'],
+  ...homelabToolsMessages['tr'],
+  ...sandboxMessages['tr'],
+  ...forgeSettingsMessages['tr'],
+  ...replyStyleMessages['tr'],
   ...gadgetMessages['tr'],
   ...toolLoadMessages['tr'],
   sessionTasks: {
@@ -658,9 +666,12 @@ export default {
   terminal: {
     sessions: 'Oturumlar', newTab: 'Yeni terminal', closeSession: 'Bu oturum kapatılsın mı?', sessionExited: 'Sonlandı',
     processExited: '{code} koduyla sonlandı', noSessions: 'Terminal oturumu yok', connectionFailed: 'Terminal hizmeti bağlantısı başarısız oldu', connectionClosed: 'Terminal bağlantısı kapandı', connectionError: 'Terminal bağlantısı hatası',
+    theme: 'Tema',
+    reconnecting: 'Yeniden bağlanıyor…',
   },
 
   chat: {
+    showMoreChats: '{count} tane daha göster',
     cleanRoom: 'Temiz oda',
     cleanRoomHint: 'Bu sohbetin ajanı kendi konteynerinde çalışır: orada sormadan her şeyi yapabilir, yalnızca bu sohbetin klasörünü görür ve yalnızca Studio\'ya ve izin verilen sunuculara erişir.',
     cleanRoomPanel: {

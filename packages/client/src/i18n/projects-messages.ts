@@ -1,8 +1,11 @@
+import { projectCommitsMessages } from './project-commits-messages'
+
 /**
  * Projects in the chat list: a coordinator chat plus threads that run in
  * herdr (docs/projects.md), one entry per locale.
  */
 const en = {
+  forge: { label: 'Where code goes', hint: 'Where threads push and open pull requests. Follow the repo uses its own remote; a new project with no repo starts on the forge when the forge is the default home.', follow: 'Follow the repo', github: 'GitHub', home: 'Home forge (private)' }, 
   nav: 'Projects',
   title: 'Projects',
   back: 'Chats',
@@ -53,7 +56,7 @@ type Messages = typeof en
 
 export const projectsMessages: Record<string, { projects: Messages }> = {
   en: { projects: en },
-  zh: { projects: {
+  zh: { projects: { forge: { label: '代码去向', hint: '线程推送和创建拉取请求的位置。“跟随仓库”使用其自身的远程。', follow: '跟随仓库', github: 'GitHub', home: '自建 Forge（私有）' }, 
     nav: '项目', title: '项目', back: '聊天', newProject: '新建项目', newThread: '新建线程', coordinator: '协调者',
     empty: '还没有项目。项目是一个协调聊天，它为你启动线程；每个线程是 herdr 中的一个智能体。',
     groups: { needsYou: '需要你', working: '进行中', done: '已完成', resolved: '已解决' },
@@ -66,7 +69,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: '全部线程', attention: { needsYou: '{n} 个需要你', idle: '{n} 个已完成或空闲' },
     memory: { title: '记忆', empty: '还没有保存内容。协调者和线程会把事实存在这里，你也可以。', placeholder: '每个线程都应知道的事实…', add: '记住', forget: '忘记', byPerson: '你', byCoordinator: '协调者', byThread: '线程 {id}' }, artifacts: { title: '产物', remove: '从产物中移除', fromThread: '来自 {title}' }, tabs: { threads: '线程', board: '看板', context: '上下文' }, board: { prState: { open: '打开', draft: '草稿', merged: '已合并', closed: '已关闭' }, checks: { passing: '检查通过', failing: '检查失败', pending: '检查进行中' }, conflicts: '有冲突', prError: '无实时状态：{error}', columns: { todo: '待办', doing: '进行中', needsYou: '需要你', review: '审查', done: '完成' }, addTask: '添加任务', placeholder: '需要做什么？', pr: 'PR 链接', prPlaceholder: '粘贴拉取请求链接（可选）', start: '作为线程开始', move: '移动到', remove: '删除任务', add: '添加', cancel: '取消', empty: '这里没有内容', openPr: '打开 PR', thread: '线程', task: '任务' }, context: { noInstructions: '还没有说明。', on: '开', off: '关', worktrees: '每个线程一个工作树', wake: '协调者唤醒' },
   } },
-  'zh-TW': { projects: {
+  'zh-TW': { projects: { forge: { label: '程式碼去向', hint: '執行緒推送和建立拉取請求的位置。「跟隨儲存庫」使用其自身的遠端。', follow: '跟隨儲存庫', github: 'GitHub', home: '自架 Forge（私有）' }, 
     nav: '專案', title: '專案', back: '聊天', newProject: '新增專案', newThread: '新增執行緒', coordinator: '協調者',
     empty: '還沒有專案。專案是一個協調聊天，它為你啟動執行緒；每個執行緒是 herdr 中的一個代理。',
     groups: { needsYou: '需要你', working: '進行中', done: '已完成', resolved: '已解決' },
@@ -79,7 +82,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: '全部執行緒', attention: { needsYou: '{n} 個需要你', idle: '{n} 個已完成或閒置' },
     memory: { title: '記憶', empty: '還沒有儲存內容。協調者和執行緒會把事實存在這裡，你也可以。', placeholder: '每個執行緒都該知道的事實…', add: '記住', forget: '忘記', byPerson: '你', byCoordinator: '協調者', byThread: '執行緒 {id}' }, artifacts: { title: '產出', remove: '從產出中移除', fromThread: '來自 {title}' }, tabs: { threads: '執行緒', board: '看板', context: '脈絡' }, board: { prState: { open: '開啟', draft: '草稿', merged: '已合併', closed: '已關閉' }, checks: { passing: '檢查通過', failing: '檢查失敗', pending: '檢查進行中' }, conflicts: '有衝突', prError: '無即時狀態：{error}', columns: { todo: '待辦', doing: '進行中', needsYou: '需要你', review: '審查', done: '完成' }, addTask: '新增任務', placeholder: '需要做什麼？', pr: 'PR 連結', prPlaceholder: '貼上拉取請求連結（選填）', start: '作為執行緒開始', move: '移到', remove: '移除任務', add: '新增', cancel: '取消', empty: '這裡沒有內容', openPr: '開啟 PR', thread: '執行緒', task: '任務' }, context: { noInstructions: '還沒有說明。', on: '開', off: '關', worktrees: '每個執行緒一個工作樹', wake: '協調者喚醒' },
   } },
-  ja: { projects: {
+  ja: { projects: { forge: { label: 'コードの置き場所', hint: 'スレッドがプッシュしプルリクエストを開く場所。「リポジトリに従う」はそのリモートを使います。', follow: 'リポジトリに従う', github: 'GitHub', home: '自前のフォージ（非公開）' }, 
     nav: 'プロジェクト', title: 'プロジェクト', back: 'チャット', newProject: '新規プロジェクト', newThread: '新規スレッド', coordinator: 'コーディネーター',
     empty: 'プロジェクトはまだありません。プロジェクトはスレッドを始めてくれる1つの調整チャットで、各スレッドは herdr のエージェントです。',
     groups: { needsYou: '要対応', working: '作業中', done: '完了', resolved: '解決済み' },
@@ -92,7 +95,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: 'すべてのスレッド', attention: { needsYou: '{n} 件があなたを待っています', idle: '{n} 件が完了または待機中' },
     memory: { title: 'メモリー', empty: 'まだ何も保存されていません。コーディネーターとスレッドがここに事実を保存します。あなたも保存できます。', placeholder: 'すべてのスレッドが知るべきこと…', add: '覚える', forget: '忘れる', byPerson: 'あなた', byCoordinator: 'コーディネーター', byThread: 'スレッド {id}' }, artifacts: { title: '成果物', remove: '成果物から削除', fromThread: '{title} から' }, tabs: { threads: 'スレッド', board: 'ボード', context: 'コンテキスト' }, board: { prState: { open: 'オープン', draft: 'ドラフト', merged: 'マージ済み', closed: 'クローズ' }, checks: { passing: 'チェック成功', failing: 'チェック失敗', pending: 'チェック実行中' }, conflicts: '競合あり', prError: 'ライブ状態なし: {error}', columns: { todo: '未着手', doing: '進行中', needsYou: '対応が必要', review: 'レビュー', done: '完了' }, addTask: 'タスクを追加', placeholder: '何をしますか？', pr: 'PR リンク', prPlaceholder: 'プルリクエストのリンク（任意）', start: 'スレッドとして開始', move: '移動先', remove: 'タスクを削除', add: '追加', cancel: 'キャンセル', empty: 'まだありません', openPr: 'PR を開く', thread: 'スレッド', task: 'タスク' }, context: { noInstructions: 'まだ指示はありません。', on: 'オン', off: 'オフ', worktrees: 'スレッドごとの worktree', wake: 'コーディネーターへの通知' },
   } },
-  ko: { projects: {
+  ko: { projects: { forge: { label: '코드 위치', hint: '스레드가 푸시하고 풀 리퀘스트를 여는 곳. \'저장소 따르기\'는 저장소 자체 원격을 씁니다.', follow: '저장소 따르기', github: 'GitHub', home: '자체 포지(비공개)' }, 
     nav: '프로젝트', title: '프로젝트', back: '채팅', newProject: '새 프로젝트', newThread: '새 스레드', coordinator: '코디네이터',
     empty: '아직 프로젝트가 없습니다. 프로젝트는 스레드를 시작해 주는 하나의 조정 채팅이며, 각 스레드는 herdr의 에이전트입니다.',
     groups: { needsYou: '확인 필요', working: '작업 중', done: '완료', resolved: '해결됨' },
@@ -105,7 +108,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: '모든 스레드', attention: { needsYou: '{n}개가 당신을 기다림', idle: '{n}개 완료 또는 유휴' },
     memory: { title: '메모리', empty: '아직 저장된 내용이 없습니다. 코디네이터와 스레드가 여기에 사실을 저장하며, 직접 저장할 수도 있습니다.', placeholder: '모든 스레드가 알아야 할 사실…', add: '기억', forget: '잊기', byPerson: '나', byCoordinator: '코디네이터', byThread: '스레드 {id}' }, artifacts: { title: '결과물', remove: '결과물에서 제거', fromThread: '{title}에서' }, tabs: { threads: '스레드', board: '보드', context: '컨텍스트' }, board: { prState: { open: '열림', draft: '초안', merged: '병합됨', closed: '닫힘' }, checks: { passing: '검사 통과', failing: '검사 실패', pending: '검사 중' }, conflicts: '충돌', prError: '실시간 상태 없음: {error}', columns: { todo: '할 일', doing: '진행 중', needsYou: '확인 필요', review: '리뷰', done: '완료' }, addTask: '작업 추가', placeholder: '무엇을 해야 하나요?', pr: 'PR 링크', prPlaceholder: '풀 리퀘스트 링크 붙여넣기(선택)', start: '스레드로 시작', move: '이동', remove: '작업 삭제', add: '추가', cancel: '취소', empty: '항목 없음', openPr: 'PR 열기', thread: '스레드', task: '작업' }, context: { noInstructions: '아직 지침이 없습니다.', on: '켜짐', off: '꺼짐', worktrees: '스레드별 워크트리', wake: '코디네이터 깨우기' },
   } },
-  de: { projects: {
+  de: { projects: { forge: { label: 'Wohin der Code geht', hint: 'Wohin Threads pushen und Pull Requests öffnen. „Dem Repo folgen“ nutzt dessen eigenes Remote.', follow: 'Dem Repo folgen', github: 'GitHub', home: 'Eigene Forge (privat)' }, 
     nav: 'Projekte', title: 'Projekte', back: 'Chats', newProject: 'Neues Projekt', newThread: 'Neuer Thread', coordinator: 'Koordinator',
     empty: 'Noch keine Projekte. Ein Projekt ist ein Koordinator-Chat, der Threads für dich startet; jeder Thread ist ein Agent in herdr.',
     groups: { needsYou: 'Braucht dich', working: 'Arbeitet', done: 'Fertig', resolved: 'Erledigt' },
@@ -118,7 +121,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: 'Alle Threads', attention: { needsYou: '{n} brauchen dich', idle: '{n} fertig oder untätig' },
     memory: { title: 'Gedächtnis', empty: 'Noch nichts gespeichert. Koordinator und Threads speichern hier Fakten, du auch.', placeholder: 'Etwas, das jeder Thread wissen sollte…', add: 'Merken', forget: 'Vergessen', byPerson: 'Du', byCoordinator: 'Koordinator', byThread: 'Thread {id}' }, artifacts: { title: 'Artefakte', remove: 'Aus Artefakten entfernen', fromThread: 'aus {title}' }, tabs: { threads: 'Threads', board: 'Board', context: 'Kontext' }, board: { prState: { open: 'Offen', draft: 'Entwurf', merged: 'Gemergt', closed: 'Geschlossen' }, checks: { passing: 'Checks grün', failing: 'Checks rot', pending: 'Checks laufen' }, conflicts: 'Konflikte', prError: 'Kein Live-Status: {error}', columns: { todo: 'Offen', doing: 'In Arbeit', needsYou: 'Braucht dich', review: 'Review', done: 'Erledigt' }, addTask: 'Aufgabe hinzufügen', placeholder: 'Was ist zu tun?', pr: 'PR-Link', prPlaceholder: 'Pull-Request-Link einfügen (optional)', start: 'Als Thread starten', move: 'Verschieben nach', remove: 'Aufgabe entfernen', add: 'Hinzufügen', cancel: 'Abbrechen', empty: 'Nichts hier', openPr: 'PR öffnen', thread: 'Thread', task: 'Aufgabe' }, context: { noInstructions: 'Noch keine Anweisungen.', on: 'An', off: 'Aus', worktrees: 'Worktree pro Thread', wake: 'Koordinator wecken' },
   } },
-  es: { projects: {
+  es: { projects: { forge: { label: 'Dónde va el código', hint: 'Dónde los hilos hacen push y abren pull requests. «Seguir el repo» usa su propio remoto.', follow: 'Seguir el repo', github: 'GitHub', home: 'Forge propia (privada)' }, 
     nav: 'Proyectos', title: 'Proyectos', back: 'Chats', newProject: 'Nuevo proyecto', newThread: 'Nuevo hilo', coordinator: 'Coordinador',
     empty: 'Aún no hay proyectos. Un proyecto es un chat coordinador que inicia hilos por ti; cada hilo es un agente en herdr.',
     groups: { needsYou: 'Te necesita', working: 'Trabajando', done: 'Hecho', resolved: 'Resuelto' },
@@ -131,7 +134,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: 'Todos los hilos', attention: { needsYou: '{n} te necesitan', idle: '{n} terminados o inactivos' },
     memory: { title: 'Memoria', empty: 'Aún no hay nada guardado. El coordinador y los hilos guardan datos aquí, y tú también puedes.', placeholder: 'Algo que todo hilo debe saber…', add: 'Recordar', forget: 'Olvidar', byPerson: 'Tú', byCoordinator: 'Coordinador', byThread: 'Hilo {id}' }, artifacts: { title: 'Artefactos', remove: 'Quitar de artefactos', fromThread: 'de {title}' }, tabs: { threads: 'Hilos', board: 'Tablero', context: 'Contexto' }, board: { prState: { open: 'Abierto', draft: 'Borrador', merged: 'Fusionado', closed: 'Cerrado' }, checks: { passing: 'Checks correctos', failing: 'Checks fallidos', pending: 'Checks en curso' }, conflicts: 'Conflictos', prError: 'Sin estado en vivo: {error}', columns: { todo: 'Por hacer', doing: 'En curso', needsYou: 'Te necesita', review: 'Revisión', done: 'Hecho' }, addTask: 'Añadir tarea', placeholder: '¿Qué hay que hacer?', pr: 'Enlace del PR', prPlaceholder: 'Pega un enlace de pull request (opcional)', start: 'Empezar como hilo', move: 'Mover a', remove: 'Quitar tarea', add: 'Añadir', cancel: 'Cancelar', empty: 'Nada aquí', openPr: 'Abrir PR', thread: 'Hilo', task: 'Tarea' }, context: { noInstructions: 'Aún no hay instrucciones.', on: 'Sí', off: 'No', worktrees: 'Worktree por hilo', wake: 'Avisos al coordinador' },
   } },
-  fr: { projects: {
+  fr: { projects: { forge: { label: 'Où va le code', hint: 'Où les fils poussent et ouvrent des pull requests. « Suivre le dépôt » utilise son propre remote.', follow: 'Suivre le dépôt', github: 'GitHub', home: 'Forge maison (privée)' }, 
     nav: 'Projets', title: 'Projets', back: 'Discussions', newProject: 'Nouveau projet', newThread: 'Nouveau fil', coordinator: 'Coordinateur',
     empty: 'Aucun projet pour l’instant. Un projet est une discussion coordinatrice qui lance des fils pour vous ; chaque fil est un agent dans herdr.',
     groups: { needsYou: 'Vous attend', working: 'En cours', done: 'Terminé', resolved: 'Résolu' },
@@ -144,7 +147,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: 'Tous les fils', attention: { needsYou: '{n} ont besoin de vous', idle: '{n} terminés ou inactifs' },
     memory: { title: 'Mémoire', empty: 'Rien d\'enregistré pour l\'instant. Le coordinateur et les fils y notent des faits, et vous aussi.', placeholder: 'Un fait que chaque fil doit connaître…', add: 'Retenir', forget: 'Oublier', byPerson: 'Vous', byCoordinator: 'Coordinateur', byThread: 'Fil {id}' }, artifacts: { title: 'Artefacts', remove: 'Retirer des artefacts', fromThread: 'de {title}' }, tabs: { threads: 'Fils', board: 'Tableau', context: 'Contexte' }, board: { prState: { open: 'Ouverte', draft: 'Brouillon', merged: 'Fusionnée', closed: 'Fermée' }, checks: { passing: 'Vérifications OK', failing: 'Vérifications en échec', pending: 'Vérifications en cours' }, conflicts: 'Conflits', prError: 'Pas d\'état en direct : {error}', columns: { todo: 'À faire', doing: 'En cours', needsYou: 'Vous attend', review: 'Revue', done: 'Terminé' }, addTask: 'Ajouter une tâche', placeholder: 'Que faut-il faire ?', pr: 'Lien de la PR', prPlaceholder: 'Collez un lien de pull request (facultatif)', start: 'Lancer comme fil', move: 'Déplacer vers', remove: 'Retirer la tâche', add: 'Ajouter', cancel: 'Annuler', empty: 'Rien ici', openPr: 'Ouvrir la PR', thread: 'Fil', task: 'Tâche' }, context: { noInstructions: 'Pas encore d’instructions.', on: 'Oui', off: 'Non', worktrees: 'Worktree par fil', wake: 'Réveil du coordinateur' },
   } },
-  pt: { projects: {
+  pt: { projects: { forge: { label: 'Para onde vai o código', hint: 'Onde os fios fazem push e abrem pull requests. "Seguir o repo" usa o remoto do próprio repo.', follow: 'Seguir o repo', github: 'GitHub', home: 'Forge própria (privada)' }, 
     nav: 'Projetos', title: 'Projetos', back: 'Conversas', newProject: 'Novo projeto', newThread: 'Nova thread', coordinator: 'Coordenador',
     empty: 'Ainda não há projetos. Um projeto é uma conversa coordenadora que inicia threads por você; cada thread é um agente no herdr.',
     groups: { needsYou: 'Precisa de você', working: 'Trabalhando', done: 'Concluído', resolved: 'Resolvido' },
@@ -157,7 +160,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: 'Todas as threads', attention: { needsYou: '{n} precisam de você', idle: '{n} concluídas ou ociosas' },
     memory: { title: 'Memória', empty: 'Nada salvo ainda. O coordenador e as threads salvam fatos aqui, e você também pode.', placeholder: 'Algo que toda thread deve saber…', add: 'Lembrar', forget: 'Esquecer', byPerson: 'Você', byCoordinator: 'Coordenador', byThread: 'Thread {id}' }, artifacts: { title: 'Artefatos', remove: 'Remover dos artefatos', fromThread: 'de {title}' }, tabs: { threads: 'Threads', board: 'Quadro', context: 'Contexto' }, board: { prState: { open: 'Aberto', draft: 'Rascunho', merged: 'Mesclado', closed: 'Fechado' }, checks: { passing: 'Checks ok', failing: 'Checks falharam', pending: 'Checks em andamento' }, conflicts: 'Conflitos', prError: 'Sem status ao vivo: {error}', columns: { todo: 'A fazer', doing: 'Em andamento', needsYou: 'Precisa de você', review: 'Revisão', done: 'Concluído' }, addTask: 'Adicionar tarefa', placeholder: 'O que precisa ser feito?', pr: 'Link do PR', prPlaceholder: 'Cole um link de pull request (opcional)', start: 'Iniciar como thread', move: 'Mover para', remove: 'Remover tarefa', add: 'Adicionar', cancel: 'Cancelar', empty: 'Nada aqui', openPr: 'Abrir PR', thread: 'Thread', task: 'Tarefa' }, context: { noInstructions: 'Ainda sem instruções.', on: 'Ligado', off: 'Desligado', worktrees: 'Worktree por thread', wake: 'Avisos ao coordenador' },
   } },
-  ru: { projects: {
+  ru: { projects: { forge: { label: 'Куда идёт код', hint: 'Куда потоки пушат и где открывают pull request. «Как в репозитории» использует его собственный remote.', follow: 'Как в репозитории', github: 'GitHub', home: 'Своя forge (приватно)' }, 
     nav: 'Проекты', title: 'Проекты', back: 'Чаты', newProject: 'Новый проект', newThread: 'Новая ветка', coordinator: 'Координатор',
     empty: 'Проектов пока нет. Проект — это чат-координатор, который запускает ветки за вас; каждая ветка — агент в herdr.',
     groups: { needsYou: 'Нужны вы', working: 'В работе', done: 'Готово', resolved: 'Закрыто' },
@@ -170,7 +173,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: 'Все ветки', attention: { needsYou: '{n} ждут вас', idle: '{n} готово или простаивает' },
     memory: { title: 'Память', empty: 'Пока ничего не сохранено. Координатор и ветки сохраняют здесь факты, и вы тоже можете.', placeholder: 'Факт, который должна знать каждая ветка…', add: 'Запомнить', forget: 'Забыть', byPerson: 'Вы', byCoordinator: 'Координатор', byThread: 'Ветка {id}' }, artifacts: { title: 'Артефакты', remove: 'Убрать из артефактов', fromThread: 'из «{title}»' }, tabs: { threads: 'Ветки', board: 'Доска', context: 'Контекст' }, board: { prState: { open: 'Открыт', draft: 'Черновик', merged: 'Слит', closed: 'Закрыт' }, checks: { passing: 'Проверки прошли', failing: 'Проверки упали', pending: 'Проверки идут' }, conflicts: 'Конфликты', prError: 'Нет живого статуса: {error}', columns: { todo: 'К выполнению', doing: 'В работе', needsYou: 'Нужны вы', review: 'Ревью', done: 'Готово' }, addTask: 'Добавить задачу', placeholder: 'Что нужно сделать?', pr: 'Ссылка на PR', prPlaceholder: 'Вставьте ссылку на pull request (необязательно)', start: 'Запустить как ветку', move: 'Переместить в', remove: 'Удалить задачу', add: 'Добавить', cancel: 'Отмена', empty: 'Пусто', openPr: 'Открыть PR', thread: 'Ветка', task: 'Задача' }, context: { noInstructions: 'Инструкций пока нет.', on: 'Вкл', off: 'Выкл', worktrees: 'Worktree для каждой ветки', wake: 'Пробуждение координатора' },
   } },
-  tr: { projects: {
+  tr: { projects: { forge: { label: 'Kod nereye gider', hint: 'İş parçacıklarının push yaptığı ve pull request açtığı yer. "Depoya uy" deponun kendi remote\'unu kullanır.', follow: 'Depoya uy', github: 'GitHub', home: 'Kendi forge\'unuz (özel)' }, 
     nav: 'Projeler', title: 'Projeler', back: 'Sohbetler', newProject: 'Yeni proje', newThread: 'Yeni iş parçacığı', coordinator: 'Koordinatör',
     empty: 'Henüz proje yok. Proje, senin için iş parçacıkları başlatan bir koordinatör sohbetidir; her iş parçacığı herdr içinde bir ajandır.',
     groups: { needsYou: 'Seni bekliyor', working: 'Çalışıyor', done: 'Bitti', resolved: 'Çözüldü' },
@@ -183,7 +186,7 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: 'Tüm iş parçacıkları', attention: { needsYou: '{n} size ihtiyaç duyuyor', idle: '{n} bitti veya boşta' },
     memory: { title: 'Hafıza', empty: 'Henüz bir şey kaydedilmedi. Koordinatör ve iş parçacıkları burada bilgi saklar, siz de saklayabilirsiniz.', placeholder: 'Her iş parçacığının bilmesi gereken bir bilgi…', add: 'Hatırla', forget: 'Unut', byPerson: 'Siz', byCoordinator: 'Koordinatör', byThread: 'İş parçacığı {id}' }, artifacts: { title: 'Çıktılar', remove: 'Çıktılardan kaldır', fromThread: '{title} kaynağından' }, tabs: { threads: 'İş parçacıkları', board: 'Pano', context: 'Bağlam' }, board: { prState: { open: 'Açık', draft: 'Taslak', merged: 'Birleştirildi', closed: 'Kapalı' }, checks: { passing: 'Kontroller geçti', failing: 'Kontroller başarısız', pending: 'Kontroller sürüyor' }, conflicts: 'Çakışma var', prError: 'Canlı durum yok: {error}', columns: { todo: 'Yapılacak', doing: 'Sürüyor', needsYou: 'Sizi bekliyor', review: 'İnceleme', done: 'Bitti' }, addTask: 'Görev ekle', placeholder: 'Ne yapılmalı?', pr: 'PR bağlantısı', prPlaceholder: 'Pull request bağlantısı yapıştırın (isteğe bağlı)', start: 'İş parçacığı olarak başlat', move: 'Şuraya taşı', remove: 'Görevi kaldır', add: 'Ekle', cancel: 'İptal', empty: 'Burada bir şey yok', openPr: 'PR\'ı aç', thread: 'İş parçacığı', task: 'Görev' }, context: { noInstructions: 'Henüz talimat yok.', on: 'Açık', off: 'Kapalı', worktrees: 'İş parçacığı başına worktree', wake: 'Koordinatörü uyandırma' },
   } },
-  ar: { projects: {
+  ar: { projects: { forge: { label: 'أين يذهب الكود', hint: 'المكان الذي ترفع إليه الخيوط وتفتح فيه طلبات الدمج. «اتبع المستودع» يستخدم المستودع البعيد الخاص به.', follow: 'اتبع المستودع', github: 'GitHub', home: 'الـ Forge المنزلي (خاص)' }, 
     nav: 'المشاريع', title: 'المشاريع', back: 'المحادثات', newProject: 'مشروع جديد', newThread: 'سلسلة جديدة', coordinator: 'المنسّق',
     empty: 'لا توجد مشاريع بعد. المشروع محادثة منسّقة تبدأ السلاسل نيابةً عنك؛ كل سلسلة وكيل في herdr.',
     groups: { needsYou: 'تحتاجك', working: 'قيد العمل', done: 'منتهية', resolved: 'محلولة' },
@@ -196,4 +199,9 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: 'كل السلاسل', attention: { needsYou: '{n} تحتاجك', idle: '{n} انتهت أو خاملة' },
     memory: { title: 'الذاكرة', empty: 'لا شيء محفوظ بعد. يحفظ المنسق والسلاسل الحقائق هنا، ويمكنك ذلك أيضًا.', placeholder: 'حقيقة يجب أن تعرفها كل سلسلة…', add: 'تذكّر', forget: 'انسَ', byPerson: 'أنت', byCoordinator: 'المنسق', byThread: 'السلسلة {id}' }, artifacts: { title: 'المخرجات', remove: 'إزالة من المخرجات', fromThread: 'من {title}' }, tabs: { threads: 'السلاسل', board: 'اللوحة', context: 'السياق' }, board: { prState: { open: 'مفتوح', draft: 'مسودة', merged: 'مدموج', closed: 'مغلق' }, checks: { passing: 'الفحوص ناجحة', failing: 'الفحوص فاشلة', pending: 'الفحوص جارية' }, conflicts: 'تعارضات', prError: 'لا حالة مباشرة: {error}', columns: { todo: 'للتنفيذ', doing: 'قيد العمل', needsYou: 'بانتظارك', review: 'مراجعة', done: 'تم' }, addTask: 'إضافة مهمة', placeholder: 'ما المطلوب؟', pr: 'رابط PR', prPlaceholder: 'الصق رابط طلب سحب (اختياري)', start: 'ابدأ كسلسلة', move: 'انقل إلى', remove: 'إزالة المهمة', add: 'إضافة', cancel: 'إلغاء', empty: 'لا شيء هنا', openPr: 'فتح PR', thread: 'سلسلة', task: 'مهمة' }, context: { noInstructions: 'لا توجد تعليمات بعد.', on: 'تشغيل', off: 'إيقاف', worktrees: 'worktree لكل سلسلة', wake: 'تنبيه المنسق' },
   } },
+}
+
+// The board's commit list strings live in their own file; every locale gets them under projects.commits.
+for (const [locale, table] of Object.entries(projectsMessages)) {
+  (table.projects as Record<string, unknown>).commits = projectCommitsMessages[locale] ?? projectCommitsMessages.en
 }

@@ -7,6 +7,8 @@ import {
   removeTestLabRun, saveTestLabSettings, startTestLabRun, stopTestLabRun,
   type TestLabRun, type TestLabRunSummary, type TestLabSettings, type TestLabStatus,
 } from '@/api/studio/test-lab'
+import SandboxCard from '@/components/hermes/sandbox/SandboxCard.vue'
+import SandboxNetworkCard from '@/components/hermes/sandbox/SandboxNetworkCard.vue'
 
 /** Test Lab (docs/test-lab.md): throwaway app containers, one agent test, a report. Super admins only. */
 
@@ -191,8 +193,10 @@ onBeforeUnmount(() => {
     <section v-else-if="!status.docker.available" class="lab-card" data-theme-surface="card" data-testid="test-lab-requirements">
       <h3>{{ t('testLab.requirements.title') }}</h3>
       <p>{{ t('testLab.requirements.what') }}</p>
-      <pre class="lab-code">volumes:
-  - /var/run/docker.sock:/var/run/docker.sock</pre>
+      <pre class="lab-code">environment:
+  - STUDIO_SANDBOX_DOCKER_HOST=unix:///run/sandbox-docker/docker.sock
+volumes:
+  - sandbox-docker:/run/sandbox-docker</pre>
       <p>{{ t('testLab.requirements.permits') }}</p>
       <p>{{ t('testLab.requirements.labels') }}</p>
       <p v-if="status.docker.error" class="lab-muted">{{ t('testLab.requirements.error', { error: status.docker.error }) }}</p>
@@ -285,6 +289,9 @@ onBeforeUnmount(() => {
           </ul>
         </section>
       </div>
+
+      <SandboxCard />
+      <SandboxNetworkCard />
 
       <section v-if="selected" class="lab-card" data-theme-surface="card" data-testid="test-lab-run">
         <div class="lab-run-head">

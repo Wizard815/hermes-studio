@@ -287,6 +287,7 @@ async function cancel() {
     width: 220px;
     height: 220px;
     border-radius: $radius-md;
+    /* theme-exception: qr -- Opaque quiet zone is required for reliable scanning. */
     background: #fff;
   }
 }

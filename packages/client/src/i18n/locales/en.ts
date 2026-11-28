@@ -30,6 +30,10 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { sandboxMessages } from '../sandbox-messages'
+import { forgeSettingsMessages } from '../forge-settings-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -77,6 +81,10 @@ export default {
   ...testLabMessages['en'],
   ...recommendedPluginsMessages['en'],
   ...uiSkillsMessages['en'],
+  ...homelabToolsMessages['en'],
+  ...sandboxMessages['en'],
+  ...forgeSettingsMessages['en'],
+  ...replyStyleMessages['en'],
   ...gadgetMessages['en'],
   ...toolLoadMessages['en'],
   sessionTasks: {
@@ -1505,6 +1513,7 @@ export default {
     recent: 'Recent',
     recentCount: 'Recent session count',
     loadMoreSessions: 'Load more sessions',
+    showMoreChats: 'Show {count} more',
     searchTitle: 'Search Sessions',
     searchSubtitle: 'Search by title or message content',
     searchScope: 'Search scope: Web UI local session database only. Read-only Hermes history sessions are not included.',
@@ -3715,6 +3724,8 @@ export default {
     connectionFailed: 'Terminal service connection failed',
     connectionClosed: 'Terminal connection closed',
     connectionError: 'Terminal connection error',
+    theme: 'Theme',
+    reconnecting: 'Reconnecting…',
   },
 
   // Group Chat

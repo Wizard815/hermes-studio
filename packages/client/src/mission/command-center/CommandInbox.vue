@@ -70,6 +70,12 @@ const githubLine = computed(() => {
   if (value.error) return t('commandCenter.inbox.githubError', { error: value.error })
   return t('commandCenter.inbox.githubOn', { login: value.login || '', repos: value.repos.length ? value.repos.join(', ') : t('commandCenter.inbox.allRepos') })
 })
+/** The homelab forge, when the server has FORGE_URL. */
+const forgeLine = computed(() => {
+  const forge = github.value?.forge
+  if (!forge) return ''
+  return forge.error ? t('commandCenter.inbox.forgeError', { error: forge.error }) : t('commandCenter.inbox.forgeOn', { login: forge.login || forge.url })
+})
 const settingsOpen = ref(false)
 const ghEnabled = ref(true)
 const ghRepos = ref('')
@@ -130,7 +136,7 @@ async function saveSettings() {
           </template>
           <NButton v-if="item.paneId" size="tiny" @click="emit('select-pane', item.paneId)">{{ t('mission.showPane') }}</NButton>
           <a v-if="studioChat(item)" class="source-link" :href="studioChat(item)!">{{ t('mission.openInStudio') }}</a>
-          <a v-if="item.url" class="source-link" :href="item.url" target="_blank" rel="noopener">{{ t('commandCenter.inbox.openGithub') }}</a>
+          <a v-if="item.url" class="source-link" :href="item.url" target="_blank" rel="noopener">{{ t(item.forge ? 'commandCenter.inbox.openForge' : 'commandCenter.inbox.openGithub') }}</a>
           <a v-if="item.jobId" class="source-link" href="#/hermes/jobs">{{ t('commandCenter.inbox.openJobs') }}</a>
           <span class="source-spacer" />
           <button v-if="!item.seen" type="button" class="cc-seen" :title="t('commandCenter.inbox.markSeen')" :aria-label="t('commandCenter.inbox.markSeen')" @click="cc.markSeen([item])">✓</button>
@@ -142,6 +148,7 @@ async function saveSettings() {
     </button>
     <footer class="cc-github">
       <span data-testid="cc-inbox-github">{{ githubLine }}</span>
+      <span v-if="forgeLine" data-testid="cc-inbox-forge">{{ forgeLine }}</span>
       <button v-if="github?.available" type="button" class="source-link" :aria-expanded="settingsOpen" @click="toggleSettings">{{ t('commandCenter.inbox.githubSettings') }}</button>
       <div v-if="settingsOpen" class="cc-github-settings">
         <label class="cc-row"><NSwitch v-model:value="ghEnabled" size="small" /> {{ t('commandCenter.inbox.githubEnabled') }}</label>

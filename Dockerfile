@@ -38,6 +38,18 @@ RUN ARCH=$(uname -m) \
     && rm -f /tmp/docker.tgz \
     && docker --version
 
+# markitdown (docs/markitdown.md): Markdown copies of attached PDFs and Office files for
+# text-only models. Its own venv, so Hermes's Python stays untouched. INSTALL_MARKITDOWN=0
+# skips it; a failed install only logs, and Studio then passes attachments as they are.
+ARG INSTALL_MARKITDOWN=1
+ARG MARKITDOWN_VERSION=0.1.9
+RUN if [ "$INSTALL_MARKITDOWN" = "1" ]; then \
+      (python3 -m venv /opt/markitdown \
+       && /opt/markitdown/bin/pip install --no-cache-dir "markitdown[pdf,docx,pptx,xlsx,xls,outlook]==${MARKITDOWN_VERSION}" \
+       && ln -sf /opt/markitdown/bin/markitdown /usr/local/bin/markitdown \
+       && markitdown --version) || (echo "markitdown not installed" && rm -rf /opt/markitdown); \
+    fi
+
 # Build stage: dev dependencies, npm's cache and the build happen here; the image below
 # only gets the built app with its production dependencies (about 1.5 GB smaller).
 FROM runtime AS build

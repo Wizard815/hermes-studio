@@ -377,6 +377,8 @@ onUnmounted(() => {
         </template>
         <dt>{{ t('projects.form.instructions') }}</dt>
         <dd class="thread-pane-context-text">{{ project.instructions || t('projects.context.noInstructions') }}</dd>
+        <dt>{{ t('projects.forge.label') }}</dt>
+        <dd data-testid="thread-pane-forge">{{ t(project.forge === 'forge' ? 'projects.forge.home' : project.forge === 'github' ? 'projects.forge.github' : 'projects.forge.follow') }}</dd>
         <dt>{{ t('projects.form.defaultAgent') }}</dt>
         <dd>{{ project.defaultAgent }}</dd>
         <dt>{{ t('projects.context.worktrees') }}</dt>
@@ -734,7 +736,7 @@ onUnmounted(() => {
   padding: 8px 12px;
   border-radius: var(--radius-component, 8px);
   font-size: 13px;
-  background-color: $bg-secondary;
+  background-color: rgba(var(--text-primary-rgb), 0.04);
 
   &--user { align-self: flex-end; }
   &--agent { align-self: flex-start; }

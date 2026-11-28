@@ -32,6 +32,7 @@ import { herdrPluginRoutes, herdrRoutes } from '../modules/coding-agents/routes/
 
 // Studio and agent route modules composed into one HTTP application.
 import { uploadRoutes } from '../modules/studio/routes/upload'
+import { repoPackRoutes } from '../modules/studio/routes/repo-pack'
 import { appUploadRoutes } from '../modules/studio/routes/app-upload'
 import { authPublicRoutes, authProtectedRoutes } from '../modules/studio/routes/auth'
 import { mcuDevicePublicRoutes, mcuDeviceRoutes } from '../modules/studio/routes/mcu-devices'
@@ -108,6 +109,8 @@ import { androidDeviceRoutes } from '../modules/studio/routes/android-devices'
 import { systemRoutes } from '../modules/studio/routes/system'
 import { chatImportRoutes } from '../modules/studio/routes/chat-import'
 import { testLabRoutes } from '../modules/studio/routes/test-lab'
+import { sandboxRoutes } from '../modules/studio/routes/sandbox'
+import { forgeSettingsRoutes } from '../modules/studio/routes/forge-settings'
 
 /**
  * Register all routes on the Koa app.
@@ -153,6 +156,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(mcuDeviceRoutes.routes())
   app.use(appConnectionRoutes.routes())
   app.use(uploadRoutes.routes())
+  app.use(repoPackRoutes.routes())
   app.use(appUploadRoutes.routes())
   app.use(updateRoutes.routes())           // Must be before proxy (proxy catch-all matches everything)
   app.use(herdrRoutes.routes())           // Before codingAgentRoutes' /:id patterns
@@ -160,6 +164,8 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(systemRoutes.routes())
   app.use(chatImportRoutes.routes())
   app.use(testLabRoutes.routes())
+  app.use(sandboxRoutes.routes())
+  app.use(forgeSettingsRoutes.routes())
   app.use(codingAgentRoutes.routes())
   app.use(agentStatusRoutes.routes())
   app.use(themeRoutes.routes())

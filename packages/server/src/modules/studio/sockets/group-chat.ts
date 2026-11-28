@@ -3433,6 +3433,10 @@ export class GroupChatServer {
         this.io = new Server(servers[0], {
             cors: { origin: createSocketIoCorsOrigin(config.corsOrigins) },
             maxHttpBufferSize: 2_000_000,
+            // Off by default in Socket.IO. Opening a chat sends its last messages
+            // in one event (hundreds of KB of JSON); deflate cuts that about
+            // tenfold. Small events (stream deltas) stay uncompressed.
+            perMessageDeflate: { threshold: 8192 },
             allowRequest: (req, callback) => {
                 if (shouldRejectUpgradeOrigin(req, config.corsOrigins)) {
                     logger.warn({

@@ -1,8 +1,10 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { forgeConfig, forgeGet, forgePr, type ForgeConfig } from '../forge'
 
 /**
- * Live status of the GitHub pull requests on a project's board: open, draft,
+ * Live status of the pull requests on a project's board, on GitHub or the
+ * homelab forge (Forgejo/Gitea, FORGE_URL; docs/forge.md): open, draft,
  * merged or closed, and how its checks are doing (docs/projects.md#board).
  * Uses GH_TOKEN or GITHUB_TOKEN, else `gh auth token`, else no token (public
  * repos only, with GitHub's low anonymous rate limit). Results are cached for
@@ -42,7 +44,7 @@ export class PrStatusReader {
   private readonly cache = new Map<string, { at: number; result: PrResult }>()
   private token: Promise<string> | null = null
 
-  constructor(private readonly deps: { fetch?: Fetch; token?: () => Promise<string>; now?: () => number } = {}) {}
+  constructor(private readonly deps: { fetch?: Fetch; token?: () => Promise<string>; now?: () => number; forge?: ForgeConfig | null } = {}) {}
 
   private now() { return this.deps.now ? this.deps.now() : Date.now() }
 
@@ -68,9 +70,12 @@ export class PrStatusReader {
   }
 
   private async fetchStatus(link: string): Promise<PrResult> {
-    const pr = githubPr(link)
-    if (!pr) return { error: 'Only github.com pull requests show live status' }
     const fetcher: Fetch = this.deps.fetch ?? (globalThis.fetch as unknown as Fetch)
+    const forge = this.deps.forge !== undefined ? this.deps.forge : forgeConfig()
+    const onForge = forgePr(link, forge)
+    if (onForge && forge) return this.forgeStatus(forge, onForge, fetcher)
+    const pr = githubPr(link)
+    if (!pr) return { error: forge ? 'Only github.com and forge pull requests show live status' : 'Only github.com pull requests show live status (set FORGE_URL for your own forge)' }
     const token = await this.authToken()
     const headers: Record<string, string> = { Accept: 'application/vnd.github+json', 'User-Agent': 'hermes-studio', 'X-GitHub-Api-Version': '2022-11-28' }
     if (token) headers.Authorization = `Bearer ${token}`
@@ -88,9 +93,33 @@ export class PrStatusReader {
     }
     return { state, checks, mergeable: String(data.mergeable_state || ''), title: String(data.title || ''), updatedAt: String(data.updated_at || '') }
   }
+
+  /** Forgejo/Gitea: the PR, then its head commit's combined status (Forgejo Actions reports there). */
+  private async forgeStatus(forge: ForgeConfig, pr: { owner: string; repo: string; number: number }, fetcher: Fetch): Promise<PrResult> {
+    const api = `/repos/${pr.owner}/${pr.repo}`
+    const data = await forgeGet(forge, `${api}/pulls/${pr.number}`, fetcher)
+    const title = String(data.title || '')
+    const state: PrStatus['state'] = data.merged ? 'merged' : data.state === 'closed' ? 'closed' : data.draft || /^\s*(wip|\[wip\])\s*:?/i.test(title) ? 'draft' : 'open'
+    let checks: PrStatus['checks'] = 'none'
+    if (data.head?.sha) {
+      try {
+        checks = forgeChecks(await forgeGet(forge, `${api}/commits/${data.head.sha}/status`, fetcher))
+      } catch { /* no status yet: none */ }
+    }
+    const mergeable = data.merged || data.state === 'closed' ? '' : data.mergeable === false ? 'dirty' : data.mergeable === true ? 'clean' : ''
+    return { state, checks, mergeable, title, updatedAt: String(data.updated_at || '') }
+  }
 }
 
-async function defaultToken(): Promise<string> {
+/** A forge commit's combined status to one word. */
+export function forgeChecks(status: { state?: string; total_count?: number } | null | undefined): PrStatus['checks'] {
+  if (!status || !status.total_count) return 'none'
+  if (status.state === 'failure' || status.state === 'error') return 'failing'
+  if (status.state === 'pending') return 'pending'
+  return 'passing'
+}
+
+export async function defaultToken(): Promise<string> {
   const env = process.env.GH_TOKEN || process.env.GITHUB_TOKEN
   if (env) return env.trim()
   try {

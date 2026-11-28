@@ -25,6 +25,8 @@ services:
       # container). This gives Studio full control of the host's Docker. Clean rooms also need
       # each chat's folder on a mounted volume (e.g. under ./hermes_data) so Docker can share it.
       # - /var/run/docker.sock:/var/run/docker.sock
+      # Sandboxes and Test Lab: the sandbox-docker sidecar below, never the host's socket.
+      - sandbox-docker:/run/sandbox-docker
     environment:
       - PORT=${PORT:-6060}
       - HERMES_HOME=/home/agent/.hermes
@@ -54,8 +56,48 @@ services:
       - NPM_CONFIG_PREFIX=/home/agent/.hermes-web-ui/coding-agent/npm
       - PATH=/home/agent/.hermes-web-ui/coding-agent/npm/bin:/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       - HERMES_ALLOW_ROOT_GATEWAY=1
+      - STUDIO_SANDBOX_DOCKER_HOST=unix:///run/sandbox-docker/docker.sock
+      # Projects board: caveman commit summaries from a cheap model through Argos (docs/project-commits.md).
+      - ARGOS_URL=${ARGOS_URL:-}
+      - ARGOS_API_KEY=${ARGOS_API_KEY:-}
+      - STUDIO_COMMIT_SUMMARY_MODEL=${STUDIO_COMMIT_SUMMARY_MODEL:-}
     # System page: see the host's processes instead of only the container's.
     # pid: host
     restart: unless-stopped
     stdin_open: true
     tty: true
+    depends_on:
+      sandbox-docker:
+        condition: service_started
+
+  # Studio's own Docker for sandboxes and Test Lab (docs/sandbox.md). Agents run shell commands
+  # in Studio's container, so whatever Docker Studio can reach, they can too: this one holds
+  # only sandboxes, not Unraid's containers. Rootless, so even a --privileged container started
+  # in it stays an unprivileged user on the host. Needs /dev/net/tun.
+  sandbox-docker-init:
+    image: alpine:3.22
+    command: ["chown", "1000:1000", "/run/sandbox-docker"]
+    volumes:
+      - sandbox-docker:/run/sandbox-docker
+  sandbox-docker:
+    image: docker:28-dind-rootless
+    container_name: ${WEBUI_CONTAINER_NAME:-hermes-webui}-sandbox-docker
+    privileged: true # rootless dockerd still needs it to set up its user namespace
+    devices:
+      - /dev/net/tun
+    environment:
+      - DOCKER_TLS_CERTDIR=
+      - XDG_RUNTIME_DIR=/run/sandbox-docker
+    # Only the shared unix socket: no TCP port, nothing published.
+    command: ["--host=unix:///run/sandbox-docker/docker.sock"]
+    volumes:
+      - sandbox-docker:/run/sandbox-docker
+      # Test Lab binds its run folders into lab containers: the same path as in Studio.
+      - ${HERMES_DATA_DIR:-./hermes_data}/hermes-web-ui:/home/agent/.hermes-web-ui
+    depends_on:
+      sandbox-docker-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  sandbox-docker:

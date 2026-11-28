@@ -100,6 +100,12 @@ export interface ProjectTask {
   updatedAt: number
 }
 
+export type ProjectForge = '' | 'github' | 'forge'
+
+export function projectForge(value: unknown): ProjectForge {
+  return value === 'github' || value === 'forge' ? value : ''
+}
+
 export interface Project {
   id: string
   name: string
@@ -109,6 +115,9 @@ export interface Project {
   repo: string
   /** Rules every thread and the coordinator get, like a project's instructions in Claude. */
   instructions: string
+  /** Where threads push and open pull requests: 'github', 'forge' (the homelab
+   * Forgejo/Gitea, docs/forge.md), or '' to follow the repo's own remote. */
+  forge: ProjectForge
   profile: string
   /** The Studio chat folder (session category) that holds its chats. */
   categoryId: number | null
@@ -249,6 +258,7 @@ export function normalizeProject(raw: any, now = Date.now()): Project | null {
     folder: text(raw.folder, 1024),
     repo: text(raw.repo, 500),
     instructions: text(raw.instructions, PROJECT_INSTRUCTIONS_MAX),
+    forge: projectForge(raw.forge),
     profile: text(raw.profile, 128) || 'default',
     categoryId: Number.isInteger(categoryId) && categoryId > 0 ? categoryId : null,
     coordinatorSessionId: text(raw.coordinatorSessionId, 200),
@@ -326,7 +336,7 @@ export class ProjectStore {
     return null
   }
 
-  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'memory' | 'artifacts' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo' | 'autoResolveDays'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo' | 'autoResolveDays'>>): Promise<Project> {
+  async create(input: Omit<Project, 'id' | 'threads' | 'tasks' | 'memory' | 'artifacts' | 'createdAt' | 'updatedAt' | 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo' | 'autoResolveDays' | 'forge'> & Partial<Pick<Project, 'worktrees' | 'wakeCoordinator' | 'defaultModel' | 'repo' | 'autoResolveDays' | 'forge'>>): Promise<Project> {
     const now = Date.now()
     const project = normalizeProject({ ...input, id: randomUUID(), threads: [], tasks: [], memory: [], artifacts: [], createdAt: now, updatedAt: now }, now)
     if (!project) throw Object.assign(new Error('A project needs a name'), { status: 400 })

@@ -34,7 +34,8 @@ import { dshPluginUi } from '../modules/coding-agents/services'
 import { vscodeGateway, vscodeManager } from '../modules/studio/services/vscode'
 import { screenGateway, screenManager } from '../modules/studio/services/screen'
 import { hermesApi } from '../modules/hermes/services/hermes-api'
-import { startScreenBrowser } from '../modules/studio/services/screen-browser'
+import { findHermesCli } from '../modules/hermes/services/herdr-launch'
+import { screenBrowser, screenBrowserPort, startScreenBrowser } from '../modules/studio/services/screen-browser'
 import './chat-agent-runtime-adapter'
 import './skill-files-adapter'
 import { setGroupChatServer } from '../modules/studio/routes/group-chat'
@@ -69,7 +70,10 @@ import {
 import { ensureAppRelayHostClient } from '../modules/studio/services/app-relay/connection'
 import { setupGlobalEkkoAgent } from './ekko'
 import { codingAgentUiSkillTargets, registerUiSkillTargetProvider, scheduleUiSkillsInstall } from '../modules/studio/public/ui-skills'
+import { scheduleHomelabSkillsInstall } from '../modules/studio/public/homelab-skills'
 import { closeTestLab, sweepTestLab } from '../modules/studio/public/test-lab'
+import { refreshForgeFromProfile } from '../modules/studio/services/forge'
+import { getSandbox } from '../modules/studio/services/sandbox'
 import { hermesUiSkillTargets } from '../modules/hermes/services/skills/ui-skill-targets'
 import { ekkoUiSkillTargets } from '../modules/ekko/services/ui-skill-targets'
 import { injectManagedEkkoMcpServers } from '../modules/ekko/services/mcp'
@@ -79,6 +83,9 @@ import { PersonPresenceSocketServer } from '../modules/studio/sockets/person-pre
 import { logger } from '../modules/studio/public/logging'
 import { HeadlessBrowserService, getHeadlessBrowserService, setHeadlessBrowserService } from '../modules/studio/services/headless-browser-service'
 import { createStaticCompressionMiddleware } from '../modules/studio/middleware/static-compression'
+import { createApiCompressionMiddleware } from '../modules/studio/middleware/api-compression'
+import { BrowserScreencast } from '../modules/studio/services/browser-live/screencast'
+import { registerBrowserLiveSocket } from '../modules/studio/sockets/browser-live'
 import { getStaticCacheControl, SPA_ENTRY_CACHE_CONTROL } from '../modules/studio/middleware/static-cache'
 import { upstreamUpkeepProxy } from '../modules/studio/middleware/upstream-upkeep-proxy'
 import { requireUserJwt, resolveUserProfile } from '../modules/studio/middleware/auth'
@@ -548,6 +555,7 @@ export async function bootstrap() {
   // Raise body limits above the default 1mb: profile avatars and MiMo voice-clone
   // reference audio are posted as base64 data URLs before reaching handlers.
   app.use(createRequestBodyParser())
+  app.use(createApiCompressionMiddleware())
   app.use(createPluginHttpMiddleware(getPluginManager))
   console.log('[bootstrap] cors + bodyParser registered')
 
@@ -631,10 +639,21 @@ export async function bootstrap() {
   registerUiSkillTargetProvider('coding-agents', () => codingAgentUiSkillTargets())
   const uiSkillsTimer = setTimeout(() => { void scheduleUiSkillsInstall() }, Number(process.env.STUDIO_UI_SKILLS_DELAY_MS || 5_000))
   uiSkillsTimer.unref()
+  // Homelab skills (docs/homelab-skills.md) right after, to the same folders in their own category.
+  const homelabSkillsTimer = setTimeout(() => { void scheduleHomelabSkillsInstall() }, Number(process.env.STUDIO_UI_SKILLS_DELAY_MS || 5_000) + 2_000)
+  homelabSkillsTimer.unref()
   // Test Lab (docs/test-lab.md): runs left behind on Docker (older than a day, or cut short by a restart).
   const testLabTimer = setTimeout(() => { void sweepTestLab() }, 10_000)
   testLabTimer.unref()
+  // The forge (docs/forge.md): without FORGE_URL, the active Hermes profile's forgejo settings, read again each minute.
+  void refreshForgeFromProfile().catch(() => {})
+  const forgeTimer = setInterval(() => { void refreshForgeFromProfile().catch(() => {}) }, 60_000)
+  forgeTimer.unref()
+  // Sandboxes (docs/sandbox.md): remove the ones whose time is up, every minute.
+  const sandboxTimer = setInterval(() => { void getSandbox().sweep().catch(() => {}) }, 60_000)
+  sandboxTimer.unref()
   additionalShutdownSteps.push({ name: 'Test Lab', close: () => closeTestLab() })
+  screenManager.useCliFinder(() => findHermesCli())
   const closeScreenGateway = screenGateway.attach(servers)
   additionalShutdownSteps.push({ name: 'Agent screen viewers', close: closeScreenGateway })
   // A screen installed before this container was rebuilt is installed again.
@@ -773,21 +792,42 @@ export async function bootstrap() {
   })
   console.log('[bootstrap] session deleter started, profile=%s', activeProfile)
 
-  // Headless browser service (for web-only runtime, supplements Electron desktop broker)
+  // The chat's Browser panel. One browser for the panel and the chat's browser
+  // tools (docs/browser-panel.md): with the agents' Screen installed, the panel
+  // shows the Screen's Chrome, which the tools already drive; without it, the
+  // tools drive the panel's own browser through its loopback DevTools port.
   try {
-    const headlessBrowser = new HeadlessBrowserService()
-    await headlessBrowser.start()
+    const screenInstalled = await screenManager.hermesStatus().then(status => !!status?.installed).catch(() => false)
+    let headlessBrowser = screenInstalled
+      ? new HeadlessBrowserService({ cdpEndpoint: async () => `http://127.0.0.1:${await screenBrowserPort()}` })
+      : new HeadlessBrowserService()
+    try {
+      await headlessBrowser.start()
+    } catch (error) {
+      if (!screenInstalled) throw error
+      console.warn('[bootstrap] the Screen browser is not reachable; the browser panel uses its own:', error instanceof Error ? error.message : error)
+      headlessBrowser = new HeadlessBrowserService()
+      await headlessBrowser.start()
+    }
     setHeadlessBrowserService(headlessBrowser)
-    console.log('[bootstrap] headless browser service started')
+    const screencast = new BrowserScreencast(tabId => headlessBrowser.tabs.get(tabId)?.page ?? null)
+    registerBrowserLiveSocket(activeGroupChatServer.getIO(), () => screencast)
+    if (!headlessBrowser.attached) screenBrowser.usePanelBrowser(() => headlessBrowser.devToolsPort())
+    console.log('[bootstrap] browser panel started (%s)', headlessBrowser.attached ? "the Screen's browser" : 'its own browser')
 
     // Only screenshots requested by the agent are broadcast to the chat panel.
     headlessBrowser.setOnScreenshotCapture((base64, tabId) => {
       activeGroupChatServer.getIO().emit('browser.screenshot', { data: base64, tabId })
     })
+    // The chat's agent drove the browser (or a page loaded): the panel repaints.
+    // Only the tab id goes out; the panel reads the rest from the browser API.
+    headlessBrowser.setOnChange(tabId => {
+      activeGroupChatServer.getIO().emit('browser.changed', { tabId })
+    })
 
     additionalShutdownSteps.push({
       name: 'Headless browser',
-      close: () => headlessBrowser.stop(),
+      close: async () => { await screencast.stopAll(); await headlessBrowser.stop() },
     })
   } catch (err: any) {
     console.warn('[bootstrap] headless browser service failed:', err.message)

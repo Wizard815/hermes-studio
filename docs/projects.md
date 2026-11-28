@@ -181,6 +181,9 @@ progress, Needs you, Review and Done. The pane widens while it shows.
   for a minute, and the board refreshes every minute while it shows. A link
   with no status shows "?"; hover it for why (private repo with no token, rate
   limit, or not GitHub).
+- **Your own forge.** Forgejo/Gitea PR links get the same live status when
+  `FORGE_URL` and `FORGE_TOKEN` are set; a project's **Where code goes**
+  picks GitHub or the forge for its threads. See [forge.md](forge.md).
 - The coordinator sees board tasks that are not threads in its context block,
   and can `add_task`, `update_task` and `start_task`.
 

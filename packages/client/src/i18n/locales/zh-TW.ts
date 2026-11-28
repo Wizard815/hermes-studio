@@ -29,6 +29,10 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { sandboxMessages } from '../sandbox-messages'
+import { forgeSettingsMessages } from '../forge-settings-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -75,6 +79,10 @@ export default {
   ...testLabMessages['zh-TW'],
   ...recommendedPluginsMessages['zh-TW'],
   ...uiSkillsMessages['zh-TW'],
+  ...homelabToolsMessages['zh-TW'],
+  ...sandboxMessages['zh-TW'],
+  ...forgeSettingsMessages['zh-TW'],
+  ...replyStyleMessages['zh-TW'],
   ...gadgetMessages['zh-TW'],
   ...toolLoadMessages['zh-TW'],
   sessionTasks: {
@@ -1493,6 +1501,7 @@ export default {
     recent: '最近',
     recentCount: '最近會話數量',
     loadMoreSessions: '載入更多工作階段',
+    showMoreChats: '再顯示 {count} 個',
     searchTitle: '搜尋工作階段',
     searchSubtitle: '依標題或訊息內容搜尋',
     searchScope: '搜尋範圍：僅 Web UI 本地工作階段資料庫；不包含唯讀 Hermes 歷史工作階段。',
@@ -3655,6 +3664,8 @@ export default {
     connectionFailed: '終端機服務連線失敗',
     connectionClosed: '終端機連線已關閉',
     connectionError: '終端機連線錯誤',
+    theme: '主題',
+    reconnecting: '正在重新連線…',
   },
 
   // 群聊

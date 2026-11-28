@@ -29,6 +29,10 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { sandboxMessages } from '../sandbox-messages'
+import { forgeSettingsMessages } from '../forge-settings-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -75,6 +79,10 @@ export default {
   ...testLabMessages['ru'],
   ...recommendedPluginsMessages['ru'],
   ...uiSkillsMessages['ru'],
+  ...homelabToolsMessages['ru'],
+  ...sandboxMessages['ru'],
+  ...forgeSettingsMessages['ru'],
+  ...replyStyleMessages['ru'],
   ...gadgetMessages['ru'],
   ...toolLoadMessages['ru'],
   sessionTasks: {
@@ -1397,6 +1405,7 @@ export default {
     recent: 'Недавние',
     recentCount: 'Количество недавних сессий',
     loadMoreSessions: 'Загрузить ещё сеансы',
+    showMoreChats: 'Показать ещё {count}',
     searchTitle: 'Поиск сеансов',
     searchSubtitle: 'Поиск по заголовку или содержимому сообщений',
     searchScope: 'Область поиска: только локальная библиотека сеансов Web UI; сеансы истории Hermes только для чтения не включаются.',
@@ -3349,6 +3358,8 @@ export default {
     connectionFailed: 'Не удалось подключиться к службе терминала',
     connectionClosed: 'Соединение с терминалом закрыто',
     connectionError: 'Ошибка соединения с терминалом',
+    theme: 'Тема',
+    reconnecting: 'Переподключение…',
   },
 
 

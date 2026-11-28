@@ -565,6 +565,11 @@ export class BrowserManager {
     return this.automation.readText(tabId, record.view.webContents, options)
   }
 
+  async pageHtml(tabId: string) {
+    const record = this.requireTab(tabId)
+    return this.automation.pageHtml(tabId, record.view.webContents)
+  }
+
   async interact(tabId: string, action: BrowserInteractAction, assertActive: () => void = () => {}): Promise<BrowserInteractionResult> {
     assertActive()
     const record = this.requireTab(tabId)

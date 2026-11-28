@@ -4,6 +4,7 @@ import {
   UI_SKILLS_ENV, UI_SKILLS_SOURCE, allUiSkillTargets, forgetUiSkillsSettingCache, listBundledUiSkills,
   readUiSkillsState, scheduleUiSkillsInstall, uiSkillStatuses, uiSkillsSetting,
 } from '../services/ui-skills'
+import { homelabSkillsStatus } from '../services/homelab-skills'
 
 /** UI skills (bundled), docs/ui-skills.md: the skills, the switch, and where each one is. */
 export async function status(ctx: Context) {
@@ -47,4 +48,9 @@ export async function setEnabled(ctx: Context) {
   const setting = await uiSkillsSetting()
   if (setting.enabled) void scheduleUiSkillsInstall()
   ctx.body = { enabled: setting.enabled, disabledByEnv: setting.disabledByEnv }
+}
+
+/** Homelab skills (bundled), docs/homelab-skills.md: the skills and where each one is. */
+export async function homelabStatus(ctx: Context) {
+  ctx.body = await homelabSkillsStatus()
 }

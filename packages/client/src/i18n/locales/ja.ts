@@ -29,6 +29,10 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { sandboxMessages } from '../sandbox-messages'
+import { forgeSettingsMessages } from '../forge-settings-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -75,6 +79,10 @@ export default {
   ...testLabMessages['ja'],
   ...recommendedPluginsMessages['ja'],
   ...uiSkillsMessages['ja'],
+  ...homelabToolsMessages['ja'],
+  ...sandboxMessages['ja'],
+  ...forgeSettingsMessages['ja'],
+  ...replyStyleMessages['ja'],
   ...gadgetMessages['ja'],
   ...toolLoadMessages['ja'],
   sessionTasks: {
@@ -1451,6 +1459,7 @@ export default {
     recent: '最近',
     recentCount: '最近のセッション数',
     loadMoreSessions: 'さらにセッションを読み込む',
+    showMoreChats: 'さらに {count} 件を表示',
     newChat: '新しいチャット',
     newChatCardTitle: "どんなアイデアにも、頼れるパートナーを。",
     newChatCardSubtitle: "Agent を選んで、新しい会話を始めましょう。",
@@ -3199,6 +3208,8 @@ export default {
     connectionFailed: 'ターミナルに接続できませんでした',
     connectionError: '接続エラー',
     connectionClosed: '接続が閉じられました',
+    theme: 'テーマ',
+    reconnecting: '再接続中…',
   },
 
   // 使用統計

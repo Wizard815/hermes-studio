@@ -3,6 +3,8 @@ import vue from '@vitejs/plugin-vue'
 import type { ProxyOptions } from 'vite'
 import { resolve } from 'path'
 import pkg from './package.json'
+import { localeSplitPlugin } from './scripts/vite-locale-split'
+import { naiveDeepImportsPlugin } from './scripts/vite-naive-deep-imports'
 
 const FRONTEND_PORT = Number(process.env.HERMES_WEB_UI_FRONTEND_PORT || 8649)
 const BACKEND_PORT = process.env.HERMES_WEB_UI_BACKEND_PORT || '8648'
@@ -35,7 +37,11 @@ export default defineConfig({
   base: process.env.STUDIO_BASE_PATH || '/',
   // Concurrent test/dev servers must not replace each other's optimized Vue runtime.
   cacheDir: resolve(__dirname, process.env.HERMES_WEB_UI_VITE_CACHE_DIR || 'node_modules/.vite/client'),
-  plugins: [vue()],
+  plugins: [
+    naiveDeepImportsPlugin(resolve(__dirname, 'node_modules/naive-ui')),
+    vue(),
+    localeSplitPlugin(resolve(__dirname, 'packages/client/src/i18n')),
+  ],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
@@ -68,6 +74,15 @@ export default defineConfig({
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',
         assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
+        // The Naive UI parts the first page needs, in one file rather than ~20
+        // small ones. Components only later pages use still load with them.
+        codeSplitting: {
+          groups: [{
+            name: 'naive',
+            test: /node_modules[\\/](naive-ui|vueuc|vooks|seemly|css-render|@css-render|evtd|vdirs|treemate|date-fns|async-validator|lodash-es)[\\/]/,
+            tags: ['$initial'],
+          }],
+        },
       },
     },
   },

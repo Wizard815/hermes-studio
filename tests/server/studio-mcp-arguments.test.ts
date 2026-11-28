@@ -121,6 +121,17 @@ describe('Studio MCP: arguments are checked before Studio is called', () => {
     expect(bad.hits).toEqual([])
   })
 
+  it('sandbox actions go to Studio\'s sandbox tool route, and nothing else', async () => {
+    const out = await mcp.call('ekko_studio_use_sandbox', { action: 'create', arguments: { distro: 'fedora', purpose: 'try the install script' } })
+    expect(out.error).toBe('')
+    expect(out.hits).toEqual(['POST /api/studio/sandbox/tool/create {"distro":"fedora","purpose":"try the install script"}'])
+    expect((await mcp.call('ekko_studio_use_sandbox', { action: 'exec', arguments: { sandbox: 'a1b2c3d4e5', command: 'make test' } })).hits)
+      .toEqual(['POST /api/studio/sandbox/tool/exec {"sandbox":"a1b2c3d4e5","command":"make test"}'])
+    const bad = await mcp.call('ekko_studio_use_sandbox', { action: 'mount_host' })
+    expect(bad.error).toMatch(/action must be one of: list, create/)
+    expect(bad.hits).toEqual([])
+  })
+
   it('phone actions go to Studio\'s Android agent route with the chat and agent, and nothing else', async () => {
     const out = await mcp.call('ekko_studio_use_phone', { action: 'tap', arguments: { id: 'e3' }, agent: 'hermes' })
     expect(out.error).toBe('')

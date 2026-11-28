@@ -29,6 +29,10 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { sandboxMessages } from '../sandbox-messages'
+import { forgeSettingsMessages } from '../forge-settings-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -75,6 +79,10 @@ export default {
   ...testLabMessages['de'],
   ...recommendedPluginsMessages['de'],
   ...uiSkillsMessages['de'],
+  ...homelabToolsMessages['de'],
+  ...sandboxMessages['de'],
+  ...forgeSettingsMessages['de'],
+  ...replyStyleMessages['de'],
   ...gadgetMessages['de'],
   ...toolLoadMessages['de'],
   sessionTasks: {
@@ -1451,6 +1459,7 @@ export default {
     recent: 'Zuletzt',
     recentCount: 'Anzahl letzter Sitzungen',
     loadMoreSessions: 'Weitere Sitzungen laden',
+    showMoreChats: '{count} weitere anzeigen',
     newChat: 'Neuer Chat',
     newChatCardTitle: "Jede Idee verdient einen guten Partner.",
     newChatCardSubtitle: "Wähle einen Agent für dein nächstes Gespräch.",
@@ -3200,6 +3209,8 @@ jobTriggered: 'Job ausgelost',
     connectionFailed: 'Terminaldienstverbindung fehlgeschlagen',
     connectionClosed: 'Terminalverbindung geschlossen',
     connectionError: 'Terminalverbindungsfehler',
+    theme: 'Design',
+    reconnecting: 'Verbindung wird wiederhergestellt…',
   },
 
   // Usage

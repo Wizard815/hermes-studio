@@ -30,6 +30,8 @@ import {
   storedScreenshotUrl,
   deleteStoredScreenshot,
   fetchElementAt,
+  connectBrowserLiveSocket,
+  type BrowserLiveFrame,
   type BrowserTabInfo,
   type ViewportInfo,
 } from '@/api/studio/browser'
@@ -84,6 +86,109 @@ const MAX_SCREENSHOT_HISTORY = 20
 
 let pollingTimer: ReturnType<typeof setInterval> | null = null
 let socketRef: Socket | null = null
+
+// ─── Live view ──────────────────────────────────────────────────
+// The server streams the active tab (Chrome's screencast) over /browser-live:
+// a frame whenever the page changes, so clicks, typing, scrolling and the
+// chat's model show as they happen. While it streams, the screenshot refreshes
+// below are skipped; they remain the fallback when it cannot (an older server,
+// a proxy without websockets).
+let liveSocket: Socket | null = null
+const liveFrameUrl = ref<string | null>(null)
+/** The tab the stream is showing (frames for any other tab are ignored). */
+let liveTabId: string | null = null
+let previousLiveUrl: string | null = null
+
+// Reactive, so the picture falls back to screenshots the moment the stream drops.
+const liveConnected = ref(false)
+
+function liveStreaming(): boolean {
+  return liveConnected.value && !!liveFrameUrl.value && liveTabId === activeTabId.value
+}
+
+function showLiveFrame(frame: BrowserLiveFrame): void {
+  if (!frame?.data || frame.tabId !== activeTabId.value) return
+  const url = URL.createObjectURL(new Blob([frame.data], { type: 'image/jpeg' }))
+  // Keep one frame behind alive: the <img> may still be decoding it.
+  if (previousLiveUrl) URL.revokeObjectURL(previousLiveUrl)
+  previousLiveUrl = liveFrameUrl.value
+  liveFrameUrl.value = url
+  liveTabId = frame.tabId
+  lastUpdated.value = Date.now()
+  if (frame.width && frame.height && viewportMetrics.value) {
+    viewportMetrics.value = { ...viewportMetrics.value, scrollX: frame.scrollX, scrollY: frame.scrollY }
+  }
+}
+
+function clearLiveFrames(): void {
+  for (const url of [liveFrameUrl.value, previousLiveUrl]) if (url) URL.revokeObjectURL(url)
+  liveFrameUrl.value = null
+  previousLiveUrl = null
+  liveTabId = null
+}
+
+function watchLiveTab(): void {
+  if (!liveSocket?.connected) return
+  const tabId = activeTabId.value
+  // A hidden page shows nothing: stop the stream until it is visible again.
+  if (!tabId || document.hidden) {
+    liveSocket.emit('unwatch')
+    return
+  }
+  // Until the new tab's first frame arrives, keep showing the last picture.
+  liveSocket.emit('watch', { tabId }, (reply?: { ok: boolean }) => {
+    if (!reply?.ok && tabId === activeTabId.value) void refreshPreview(true)
+  })
+}
+
+function connectLive(): void {
+  try {
+    liveSocket = connectBrowserLiveSocket()
+    liveSocket.on('connect', () => {
+      liveConnected.value = true
+      watchLiveTab()
+    })
+    liveSocket.on('frame', showLiveFrame)
+    liveSocket.on('disconnect', () => {
+      // Show a fresh screenshot rather than the last frame; reconnecting watches again.
+      liveConnected.value = false
+      clearLiveFrames()
+      void refreshPreview(true)
+    })
+    liveSocket.on('ended', (payload?: { tabId?: string }) => {
+      // The tab closed or the browser restarted under the stream.
+      if (!payload?.tabId || payload.tabId !== activeTabId.value) return
+      clearLiveFrames()
+      void refreshPreview(true)
+      setTimeout(() => { if (payload.tabId === activeTabId.value) watchLiveTab() }, 1000)
+    })
+    document.addEventListener('visibilitychange', onLiveVisibility)
+  } catch {
+    liveSocket = null
+  }
+}
+
+// Back in view, the last frame stays up until the stream's first new one.
+function onLiveVisibility(): void {
+  watchLiveTab()
+}
+
+function disconnectLive(): void {
+  document.removeEventListener('visibilitychange', onLiveVisibility)
+  liveConnected.value = false
+  liveSocket?.off()
+  liveSocket?.disconnect()
+  liveSocket = null
+  clearLiveFrames()
+}
+
+watch(activeTabId, (tabId, previous) => {
+  if (tabId !== previous) watchLiveTab()
+})
+
+const previewSrc = computed(() => liveConnected.value && liveFrameUrl.value && liveTabId === activeTabId.value
+  ? liveFrameUrl.value
+  : currentScreenshot.value ? `data:image/jpeg;base64,${currentScreenshot.value}` : null)
 
 // ─── Computed ───────────────────────────────────────────────────
 
@@ -218,6 +323,8 @@ function normalizeUrl(input: string): string {
   }
 }
 
+let lastShownPage = ''
+
 async function refreshState(): Promise<void> {
   try {
     const state = await fetchBrowserState()
@@ -247,6 +354,13 @@ async function refreshState(): Promise<void> {
     const active = tabs.value.find(t => t.id === activeTabId.value)
     if (active && !urlInputFocused.value && !isBlankUrl(active.url)) {
       urlBar.value = active.url
+    }
+    // The page under the panel changed without this panel doing it (the chat's
+    // model, a person on the Screen): repaint, even if a change event was missed.
+    const shown = active ? `${active.id}|${active.url}|${active.title}` : ''
+    if (shown && shown !== lastShownPage) {
+      lastShownPage = shown
+      if (!isBlankUrl(active!.url)) void refreshPreview()
     }
   } catch {
     // Silently fail — polling errors are expected when server is down
@@ -336,17 +450,34 @@ async function handleNavAction(action: 'back' | 'forward' | 'reload' | 'stop'): 
 // entry when the agent requests a screenshot (server 'browser.screenshot'
 // event) or the user clicks the manual capture button.
 
-async function refreshPreview(): Promise<void> {
+async function refreshPreview(force = false): Promise<void> {
   if (!activeTabId.value) return
   try {
-    const result = await captureScreenshot(activeTabId.value)
-    if (result?.data) setPreview(result.data)
+    // The live stream already shows every change; only the scroll metrics are read.
+    if (force || !liveStreaming()) {
+      const result = await captureScreenshot(activeTabId.value)
+      if (result?.data) setPreview(result.data)
+    }
     void fetchViewportInfo(activeTabId.value)
       .then(info => { viewportMetrics.value = info })
       .catch(() => {})
   } catch {
     // Preview refresh is best-effort
   }
+}
+
+// The chat's agent acts in bursts (navigate, click, type): repaint at most every
+// 400 ms, and once more after the last change so the final page shows.
+let agentRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let agentRefreshAgain = false
+function scheduleAgentRefresh(): void {
+  if (agentRefreshTimer) { agentRefreshAgain = true; return }
+  agentRefreshTimer = setTimeout(async () => {
+    await refreshState()
+    await refreshPreview()
+    agentRefreshTimer = null
+    if (agentRefreshAgain) { agentRefreshAgain = false; scheduleAgentRefresh() }
+  }, 400)
 }
 
 async function handleManualCapture(): Promise<void> {
@@ -400,6 +531,8 @@ async function sendInput(action: { type: string; [key: string]: any }): Promise<
 /** Refresh the live preview shortly after an interaction settles. */
 function schedulePreviewRefresh(delay = 450): void {
   if (clickRefreshTimer) clearTimeout(clickRefreshTimer)
+  clickRefreshTimer = null
+  if (liveStreaming()) return
   clickRefreshTimer = setTimeout(() => {
     clickRefreshTimer = null
     void refreshPreview()
@@ -412,7 +545,8 @@ async function handleViewportClick(event: MouseEvent): Promise<void> {
   viewportRef.value?.focus?.()
   interactiveBusy.value = true
   try {
-    await sendInput({ type: 'click', x: point.x, y: point.y })
+    await flushTyped()
+    await queueInput({ type: 'click', x: point.x, y: point.y })
     schedulePreviewRefresh()
   } finally {
     interactiveBusy.value = false
@@ -424,7 +558,8 @@ async function handleViewportDblClick(event: MouseEvent): Promise<void> {
   if (!point) return
   interactiveBusy.value = true
   try {
-    await sendInput({ type: 'click', x: point.x, y: point.y, double: true })
+    await flushTyped()
+    await queueInput({ type: 'click', x: point.x, y: point.y, double: true })
     schedulePreviewRefresh()
   } finally {
     interactiveBusy.value = false
@@ -447,9 +582,30 @@ async function handleViewportWheel(event: WheelEvent): Promise<void> {
     wheelAccumX = 0
     wheelAccumY = 0
     if (!dx && !dy) return
-    await sendInput({ type: 'scroll', x: point.x, y: point.y, delta_x: dx, delta_y: dy })
+    await queueInput({ type: 'scroll', x: point.x, y: point.y, delta_x: dx, delta_y: dy })
     schedulePreviewRefresh(500)
   }, 60)
+}
+
+// Inputs go out one at a time, in order (each awaits the last), and typed
+// characters that arrive together are sent as one 'type' call instead of one
+// request per key.
+let inputChain: Promise<void> = Promise.resolve()
+let typedText = ''
+let typedTimer: ReturnType<typeof setTimeout> | null = null
+
+function queueInput(action: { type: string; [key: string]: any }): Promise<void> {
+  inputChain = inputChain.then(() => sendInput(action))
+  return inputChain
+}
+
+function flushTyped(): Promise<void> {
+  if (typedTimer) clearTimeout(typedTimer)
+  typedTimer = null
+  if (!typedText) return inputChain
+  const text = typedText
+  typedText = ''
+  return queueInput({ type: 'type', text })
 }
 
 async function handleViewportKeydown(event: KeyboardEvent): Promise<void> {
@@ -459,8 +615,8 @@ async function handleViewportKeydown(event: KeyboardEvent): Promise<void> {
   if (key.length === 1) {
     if (event.ctrlKey || event.metaKey || event.altKey) return
     event.preventDefault()
-    await sendInput({ type: 'type', text: key })
-    schedulePreviewRefresh(350)
+    typedText += key
+    if (!typedTimer) typedTimer = setTimeout(() => { void flushTyped().then(() => schedulePreviewRefresh(350)) }, 40)
     return
   }
   const allowed = new Set([
@@ -470,7 +626,8 @@ async function handleViewportKeydown(event: KeyboardEvent): Promise<void> {
   ])
   if (!allowed.has(key)) return
   event.preventDefault()
-  await sendInput({ type: 'press', key: key === ' ' ? 'Space' : key })
+  void flushTyped()
+  await queueInput({ type: 'press', key: key === ' ' ? 'Space' : key })
   schedulePreviewRefresh(key === 'Enter' ? 900 : 350)
 }
 
@@ -487,6 +644,9 @@ function connectSocket(): void {
     }
 
     socketRef = io(socketUrl, opts)
+
+    // The chat's model is driving this browser: follow it live.
+    socketRef.on('browser.changed', () => { scheduleAgentRefresh() })
 
     socketRef.on('browser.screenshot', (payload: { data: string; tabId: string }) => {
       if (payload?.data) {
@@ -507,6 +667,7 @@ function connectSocket(): void {
 function disconnectSocket(): void {
   if (socketRef) {
     socketRef.off('browser.screenshot')
+    socketRef.off('browser.changed')
     socketRef.disconnect()
     socketRef = null
   }
@@ -540,8 +701,9 @@ onMounted(async () => {
   // Restore persisted screenshots for this chat session
   await loadPersistedScreenshots()
 
-  // Connect Socket.IO for agent-driven screenshot updates
+  // Connect Socket.IO for agent-driven screenshot updates, and the live view
   connectSocket()
+  connectLive()
 
   // Refresh tab state periodically; never capture screenshots on a timer.
   pollingTimer = setInterval(() => {
@@ -554,7 +716,12 @@ onUnmounted(() => {
     clearInterval(pollingTimer)
     pollingTimer = null
   }
+  if (agentRefreshTimer) clearTimeout(agentRefreshTimer)
+  agentRefreshTimer = null
+  if (typedTimer) clearTimeout(typedTimer)
+  if (clickRefreshTimer) clearTimeout(clickRefreshTimer)
   disconnectSocket()
+  disconnectLive()
 })
 </script>
 
@@ -585,7 +752,7 @@ onUnmounted(() => {
             :class="{ active: tab.id === activeTabId }"
             @click="handleActivateTab(tab.id)"
           >
-            <span class="browser-tab-title">{{ tab.title || truncateUrl(tab.url) }}</span>
+            <span class="browser-tab-title">{{ tab.title || (isBlankUrl(tab.url) ? t('browser.newTab') : truncateUrl(tab.url)) }}</span>
             <span
               class="browser-tab-close"
               role="button"
@@ -647,7 +814,7 @@ onUnmounted(() => {
             {{ t('browser.capture', 'Capture screenshot') }}
           </NTooltip>
           <NButton
-            v-if="canComment && currentScreenshot"
+            v-if="canComment && previewSrc"
             size="small"
             :type="commenting ? 'primary' : 'default'"
             :secondary="commenting"
@@ -668,7 +835,7 @@ onUnmounted(() => {
         </div>
 
         <!-- Interactive live view: clicks/typing are forwarded to the page -->
-        <template v-if="currentScreenshot">
+        <template v-if="previewSrc">
           <div
             ref="viewportRef"
             class="browser-viewport"
@@ -685,7 +852,7 @@ onUnmounted(() => {
             <PinComment :name="currentTab?.url || currentTab?.title || 'the browser'" :active="commenting" :inspect="inspectAt" @sent="message.success(t('pinComment.sent'))" @error="text => message.error(text)">
               <img
                 ref="imageRef"
-                :src="'data:image/jpeg;base64,' + currentScreenshot"
+                :src="previewSrc"
                 class="browser-screenshot-image"
                 alt="Live browser view"
                 draggable="false"

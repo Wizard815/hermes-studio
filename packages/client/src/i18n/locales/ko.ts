@@ -29,6 +29,10 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { sandboxMessages } from '../sandbox-messages'
+import { forgeSettingsMessages } from '../forge-settings-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -75,6 +79,10 @@ export default {
   ...testLabMessages['ko'],
   ...recommendedPluginsMessages['ko'],
   ...uiSkillsMessages['ko'],
+  ...homelabToolsMessages['ko'],
+  ...sandboxMessages['ko'],
+  ...forgeSettingsMessages['ko'],
+  ...replyStyleMessages['ko'],
   ...gadgetMessages['ko'],
   ...toolLoadMessages['ko'],
   sessionTasks: {
@@ -1451,6 +1459,7 @@ export default {
     recent: '최근',
     recentCount: '최근 세션 수',
     loadMoreSessions: '세션 더 불러오기',
+    showMoreChats: '{count}개 더 보기',
     newChat: '새 채팅',
     newChatCardTitle: "모든 아이디어에는 좋은 파트너가 필요합니다.",
     newChatCardSubtitle: "Agent를 선택하고 새로운 대화를 시작하세요.",
@@ -3199,6 +3208,8 @@ export default {
     connectionFailed: '터미널에 연결하지 못했습니다',
     connectionError: '연결 오류',
     connectionClosed: '연결이 닫혔습니다',
+    theme: '테마',
+    reconnecting: '다시 연결하는 중…',
   },
 
   // 사용량

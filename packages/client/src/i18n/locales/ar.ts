@@ -29,6 +29,10 @@ import { chatImportMessages } from '../chat-import-messages'
 import { testLabMessages } from '../test-lab-messages'
 import { recommendedPluginsMessages } from '../recommended-plugins-messages'
 import { uiSkillsMessages } from '../ui-skills-messages'
+import { homelabToolsMessages } from '../homelab-tools-messages'
+import { sandboxMessages } from '../sandbox-messages'
+import { forgeSettingsMessages } from '../forge-settings-messages'
+import { replyStyleMessages } from '../reply-style-messages'
 import { gadgetMessages } from '../gadget-messages'
 import { toolLoadMessages } from '../tool-load-messages'
 import { navigationMessages } from '../navigation-locales'
@@ -75,6 +79,10 @@ export default {
   ...testLabMessages['ar'],
   ...recommendedPluginsMessages['ar'],
   ...uiSkillsMessages['ar'],
+  ...homelabToolsMessages['ar'],
+  ...sandboxMessages['ar'],
+  ...forgeSettingsMessages['ar'],
+  ...replyStyleMessages['ar'],
   ...gadgetMessages['ar'],
   ...toolLoadMessages['ar'],
   sessionTasks: {
@@ -1495,6 +1503,7 @@ export default {
     recent: 'الأخيرة',
     recentCount: 'عدد الجلسات الأخيرة',
     loadMoreSessions: 'تحميل جلسات أكثر',
+    showMoreChats: 'عرض {count} أخرى',
     searchTitle: 'البحث في الجلسات',
     searchSubtitle: 'ابحث بالعنوان أو بمحتوى الرسالة',
     searchScope: 'نطاق البحث: قاعدة بيانات جلسات واجهة الويب المحلية فقط. جلسات سجل Hermes للقراءة فقط غير مضمّنة.',
@@ -3694,6 +3703,8 @@ export default {
     connectionFailed: 'فشل الاتصال بخدمة الطرفية',
     connectionClosed: 'تم إغلاق اتصال الطرفية',
     connectionError: 'خطأ في اتصال الطرفية',
+    theme: 'السمة',
+    reconnecting: 'جارٍ إعادة الاتصال…',
   },
 
   // Group Chat

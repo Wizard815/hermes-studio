@@ -8,12 +8,23 @@ const BLOCKED_HOSTS = new Set([
 ])
 const SENSITIVE_QUERY_KEY = /^(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|secret|password|authorization|auth|code|session)$/i
 
-function redactBrowserSecrets(input: unknown): string {
+const SECRET_VALUE = /\b(access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|password|secret)\s*([:=])\s*([^\s&,;]+)/gi
+const AUTHORIZATION_VALUE = /\bAuthorization\s*([:=])\s*(?!Bearer\s+\[redacted\])(?:Basic\s+)?[^\s&,;]+/gi
+// In HTML a value also ends at markup or a quote, so redacting never swallows tags.
+const SECRET_VALUE_HTML = /\b(access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|password|secret)\s*([:=])\s*([^\s&,;<>"']+)/gi
+const AUTHORIZATION_VALUE_HTML = /\bAuthorization\s*([:=])\s*(?!Bearer\s+\[redacted\])(?:Basic\s+)?[^\s&,;<>"']+/gi
+
+function redactBrowserSecrets(input: unknown, html = false): string {
   return String(input ?? '')
     .replace(/\bAuthorization\s*([:=])\s*Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Authorization$1 Bearer [redacted]')
-    .replace(/\b(access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|password|secret)\s*([:=])\s*([^\s&,;]+)/gi, '$1$2[redacted]')
+    .replace(html ? SECRET_VALUE_HTML : SECRET_VALUE, '$1$2[redacted]')
     .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, 'Bearer [redacted]')
-    .replace(/\bAuthorization\s*([:=])\s*(?!Bearer\s+\[redacted\])(?:Basic\s+)?[^\s&,;]+/gi, 'Authorization$1[redacted]')
+    .replace(html ? AUTHORIZATION_VALUE_HTML : AUTHORIZATION_VALUE, 'Authorization$1[redacted]')
+}
+
+/** Page HTML with the same secrets redacted, without breaking its markup. */
+export function redactBrowserHtml(input: unknown, limit: number): string {
+  return redactBrowserSecrets(input, true).slice(0, limit)
 }
 
 export function redactBrowserText(input: unknown, limit = 500): string {

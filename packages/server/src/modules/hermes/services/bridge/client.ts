@@ -377,8 +377,8 @@ export class AgentBridgeClient {
     return ['ECONNREFUSED', 'ENOENT', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT'].includes(code)
   }
 
-  private async connectSocket(): Promise<Socket> {
-    const deadline = Date.now() + Math.max(0, this.connectRetryMs)
+  private async connectSocket(maxRetryMs = this.connectRetryMs): Promise<Socket> {
+    const deadline = Date.now() + Math.max(0, Math.min(this.connectRetryMs, maxRetryMs))
     for (;;) {
       try {
         return await this.connectSocketOnce()
@@ -464,7 +464,10 @@ export class AgentBridgeClient {
         }, '[agent-bridge-client] request')
       }
       try {
-        const socket = await this.connectSocket()
+        // A caller's timeout bounds the connect retries too: a 1 s status
+        // lookup used to wait out the full 5 s retry window while the bridge
+        // was down (opening a chat waited on it).
+        const socket = await this.connectSocket(options.timeoutMs ?? this.connectRetryMs)
         socket.write(`${JSON.stringify(payload)}\n`)
         const raw = await this.readResponse(socket, timeoutMs)
         const response = JSON.parse(raw) as { ok?: boolean; error?: string }

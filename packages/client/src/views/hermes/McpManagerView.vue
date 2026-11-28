@@ -11,6 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import McpServerCard from '@/components/hermes/mcp/McpServerCard.vue'
 import McpCatalogPanel from '@/components/hermes/mcp/McpCatalogPanel.vue'
+import McpDirectoryPanel from '@/components/hermes/mcp/McpDirectoryPanel.vue'
 import McpOAuthConnect from '@/components/hermes/mcp/McpOAuthConnect.vue'
 import { useMcpConfigInput } from '@/composables/useMcpConfigInput'
 import {
@@ -27,7 +28,8 @@ const loading = ref(true)
 const error = ref('')
 const searchQuery = ref('')
 // ?tab=catalog opens the catalog (Connections → Omi links to its Omi card).
-const activeTab = ref<'servers' | 'catalog'>(useRoute().query.tab === 'catalog' ? 'catalog' : 'servers')
+const initialTab = useRoute().query.tab
+const activeTab = ref<'servers' | 'catalog' | 'directory'>(initialTab === 'catalog' || initialTab === 'directory' ? initialTab : 'servers')
 
 // Hermes signs in to OAuth MCP servers (catalog installs and servers with auth: oauth).
 const oauthServer = ref('')
@@ -498,6 +500,9 @@ async function saveToolsVisibility() {
           </NTabPane>
           <NTabPane name="catalog" :tab="t('hermesExtensions.mcpTabs.catalog')" display-directive="show:lazy">
             <McpCatalogPanel @changed="onCatalogChanged" />
+          </NTabPane>
+          <NTabPane name="directory" :tab="t('mcpDirectory.tab')" display-directive="show:lazy">
+            <McpDirectoryPanel @changed="onCatalogChanged" />
           </NTabPane>
         </NTabs>
       </template>

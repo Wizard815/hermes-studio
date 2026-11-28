@@ -150,7 +150,7 @@ onMounted(load)
 .kp-row {
   display: flex; align-items: center; gap: calc(10px * var(--spacing-scale, 1));
   padding: calc(10px * var(--spacing-scale, 1)) calc(12px * var(--spacing-scale, 1));
-  background: $bg-secondary; border: var(--border-width, 1px) solid $border-color; border-radius: $radius-sm;
+  background: rgba(var(--text-primary-rgb), 0.04); border: var(--border-width, 1px) solid $border-color; border-radius: $radius-sm;
 }
 
 .kp-index {
@@ -179,7 +179,7 @@ onMounted(load)
   display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
   p { margin: 0; }
 }
-.kp-code { font-size: calc(var(--font-size-base, 14px) * 22 / 14); letter-spacing: 0.15em; padding: 6px 12px; border-radius: $radius-sm; background: $bg-secondary; }
+.kp-code { font-size: calc(var(--font-size-base, 14px) * 22 / 14); letter-spacing: 0.15em; padding: 6px 12px; border-radius: $radius-sm; background: rgba(var(--text-primary-rgb), 0.04); }
 .kp-device-actions { display: flex; gap: 8px; }
 
 @media (max-width: 640px) {

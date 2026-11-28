@@ -17,6 +17,7 @@ import ModelSettings from "@/components/hermes/settings/ModelSettings.vue";
 import AccountSettings from "@/components/hermes/settings/AccountSettings.vue";
 import UserManagementSettings from "@/components/hermes/settings/UserManagementSettings.vue";
 import WebhookSettings from "@/components/hermes/settings/WebhookSettings.vue";
+import GitForgesSettings from "@/components/hermes/settings/GitForgesSettings.vue";
 import { isStoredSuperAdmin } from "@/api/client";
 import { useProfilesStore } from "@/stores/hermes/profiles";
 
@@ -32,6 +33,7 @@ const validTabs = computed(() => new Set([
   "account",
   ...(canManageUsers ? ["users"] : []),
   ...(canManageUsers ? ["webhooks"] : []),
+  ...(canManageUsers ? ["forges"] : []),
   "display",
   "proxy",
   "compression",
@@ -111,6 +113,9 @@ onMounted(() => {
           </NTabPane>
           <NTabPane v-if="canManageUsers" name="webhooks" :tab="t('settings.tabs.webhooks')">
             <WebhookSettings />
+          </NTabPane>
+          <NTabPane v-if="canManageUsers" name="forges" :tab="t('gitForges.tab')">
+            <GitForgesSettings />
           </NTabPane>
           <NTabPane name="display" :tab="t('settings.tabs.display')">
             <DisplaySettings />
