@@ -1,8 +1,8 @@
 # VS Code in Studio
 
 Studio runs VS Code (code-server, the open-source VS Code for the browser) and
-shows it in a chat: pick **Code** in the chat header switch (Chat / herdr /
-Code). VS Code opens on the chat's folder with the chat on the right, so you
+shows it in a chat: pick **Code** (the `</>` icon) in the chat's right sidebar
+(the header keeps only Chat / Terminal; Chat goes back). VS Code opens on the chat's folder with the chat on the right, so you
 can watch and edit the agent's work while you talk to it. Extensions install
 from Open VSX inside VS Code as usual.
 

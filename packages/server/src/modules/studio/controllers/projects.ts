@@ -1,5 +1,6 @@
 import type { Context } from 'koa'
 import { projectService } from '../services/projects/service'
+import { peerService } from '../services/projects/peers'
 
 function fail(ctx: Context, error: unknown) {
   const status = Number((error as { status?: number })?.status)
@@ -7,7 +8,7 @@ function fail(ctx: Context, error: unknown) {
   ctx.body = { error: error instanceof Error ? error.message : String(error) }
 }
 
-export const PROJECT_ACTIONS = ['list', 'start_thread', 'message_thread', 'read_thread', 'resolve_thread', 'set_pr', 'add_task', 'update_task', 'start_task', 'message_coordinator', 'remember', 'forget', 'add_artifact']
+export const PROJECT_ACTIONS = ['list', 'start_thread', 'message_thread', 'read_thread', 'resolve_thread', 'resolve_done', 'set_pr', 'add_task', 'update_task', 'start_task', 'message_coordinator', 'remember', 'forget', 'add_artifact', 'studios', 'message_studio', 'studio_task']
 /** What a thread may do through the tool; the rest is the coordinator's. */
 export const THREAD_ACTIONS = ['list', 'read_thread', 'message_thread', 'message_coordinator', 'set_pr', 'remember', 'add_artifact']
 
@@ -53,12 +54,25 @@ export async function messageThread(ctx: Context) {
   try { ctx.body = await projectService().messageThread(param(ctx, 'id'), param(ctx, 'threadId'), body(ctx).text) } catch (error) { fail(ctx, error) }
 }
 
+/** The signed-in person messages the coordinator from another app (FAITH, a script). */
+export async function messageCoordinator(ctx: Context) {
+  try { ctx.body = await projectService().messageFromApp(param(ctx, 'id'), body(ctx).app, body(ctx).text) } catch (error) { fail(ctx, error) }
+}
+
 export async function readThread(ctx: Context) {
   try { ctx.body = await projectService().readThread(param(ctx, 'id'), param(ctx, 'threadId'), Number(ctx.query.limit) || 6) } catch (error) { fail(ctx, error) }
 }
 
 export async function resolveThread(ctx: Context) {
   try { ctx.body = { thread: await projectService().setResolved(param(ctx, 'id'), param(ctx, 'threadId'), body(ctx).resolved !== false) } } catch (error) { fail(ctx, error) }
+}
+
+export async function updateThread(ctx: Context) {
+  try { ctx.body = { thread: await projectService().updateThread(param(ctx, 'id'), param(ctx, 'threadId'), body(ctx)) } } catch (error) { fail(ctx, error) }
+}
+
+export async function seenThread(ctx: Context) {
+  try { ctx.body = { thread: await projectService().markSeen(param(ctx, 'id'), param(ctx, 'threadId')) } } catch (error) { fail(ctx, error) }
 }
 
 export async function releaseThread(ctx: Context) {
@@ -167,6 +181,9 @@ export async function tool(ctx: Context) {
       case 'resolve_thread':
         ctx.body = { thread: await service.setResolved(project.id, threadId, input.resolved !== false) }
         return
+      case 'resolve_done':
+        ctx.body = { resolved: await service.sweep({ project: project.id, all: true }) }
+        return
       case 'set_pr':
         if (from && threadId && threadId !== from) throw Object.assign(new Error('A thread can set only its own PR'), { status: 403 })
         ctx.body = { thread: await service.setThreadPr(project.id, threadId || from, input.pr) }
@@ -189,6 +206,22 @@ export async function tool(ctx: Context) {
       case 'start_task':
         ctx.body = await service.startTask(project.id, String(input.task || ''), input)
         return
+      // Other Studios (docs/projects.md#studio-groups): only the coordinator, never a thread.
+      case 'studios':
+        ctx.body = { studios: await peerService(projectService).directory() }
+        return
+      case 'message_studio': {
+        const peers = peerService(projectService)
+        const peer = await peers.find(input.studio)
+        ctx.body = await peers.remoteMessage(peer.id, String(input.studio_project || ''), input.text, { by: 'coordinator', from: { project: project.id, name: project.name } })
+        return
+      }
+      case 'studio_task': {
+        const peers = peerService(projectService)
+        const peer = await peers.find(input.studio)
+        ctx.body = await peers.remoteTask(peer.id, String(input.studio_project || ''), { title: input.title, notes: input.notes }, { by: 'coordinator', from: { project: project.id, name: project.name } })
+        return
+      }
       default:
         throw Object.assign(new Error(`Unknown project action: ${action}. Use ${PROJECT_ACTIONS.join(', ')}.`), { status: 400 })
     }

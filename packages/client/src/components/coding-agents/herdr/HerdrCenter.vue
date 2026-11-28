@@ -55,7 +55,13 @@ const props = withDefaults(defineProps<{
    * palette shows the bar again.
    */
   topbarHidden?: boolean
-}>(), { headerTarget: null, hostMenu: false, topbarHidden: false })
+  /**
+   * Terminal inside Studio (docs/projects.md#herdr-is-the-engine): Studio's
+   * sidebar and chat view stay, herdr's spaces panel is hidden, and a chat
+   * with no agent running shows a note rather than herdr's chat client.
+   */
+  embedded?: boolean
+}>(), { headerTarget: null, hostMenu: false, topbarHidden: false, embedded: false })
 const emit = defineEmits<{ 'open-chat': [sessionId: string]; 'open-studio-chat': [sessionId: string]; 'new-chat': []; back: []; topbar: [shown: boolean] }>()
 /** Below this header width the less-used herdr keys fold into the "more" menu. */
 const HEADER_ROOM = 1560
@@ -295,6 +301,8 @@ function selectPane(paneId: string) {
 }
 /** The open chat's pane; with no herdr chat open (sessionId ''), herdr shows its own focus. */
 const linked = computed(() => (props.sessionId ? panes.value.find(pane => pane.studioSessionId === props.sessionId) ?? null : null))
+/** Terminal in Studio shows agents' terminals only: none for this chat yet (or only its waiting pane). */
+const noAgentHere = computed(() => props.embedded && !machine.value && !!props.sessionId && (!linked.value || waitingPanes.value.has(linked.value.pane_id)))
 
 const KEY_DEFAULTS = { prefix: 'ctrl+b', search: 'prefix+g', workspaces: 'prefix+w', settings: 'prefix+s', help: 'prefix+?', sidebar: 'prefix+b' }
 const keys = computed(() => ({ ...KEY_DEFAULTS, ...(herdr.status?.keys || {}) }))
@@ -454,7 +462,7 @@ function runMenuItem(key: string) {
   }
 }
 
-defineExpose({ menuItems, runMenuItem })
+defineExpose({ menuItems, runMenuItem, openMachine, leaveMachine: () => { machine.value = '' }, machine })
 
 onMounted(() => {
   void loadMachines()
@@ -487,8 +495,13 @@ onBeforeUnmount(() => {
         The less-used herdr keys fold into a "more" menu when the row is short, and
         on a phone everything but Tools does.
       -->
+      <!-- Inside Studio another computer is picked in the chat list (Other computers); this bar says where you are. -->
+      <div v-if="embedded && machine" class="herdr-center-embedded-bar" data-testid="herdr-center-remote-bar">
+        <span class="herdr-center-agent">{{ t('studioTerminal.remoteBar', { name: machineLabel }) }}</span>
+        <button type="button" class="herdr-center-key" data-testid="herdr-center-back-here" @click="machine = ''">{{ t('studioTerminal.backHere') }}</button>
+      </div>
       <Teleport :to="headerTarget || 'body'" :disabled="!headerTarget">
-        <div v-show="active || !headerTarget" class="herdr-center-bar" :class="{ 'in-header': !!headerTarget, 'is-phone': dock.phone.value }" data-testid="herdr-center-bar">
+        <div v-show="!embedded && (active || !headerTarget)" class="herdr-center-bar" :class="{ 'in-header': !!headerTarget, 'is-phone': dock.phone.value }" data-testid="herdr-center-bar">
           <div v-if="machines.length && !dock.phone.value" class="herdr-center-machines" role="radiogroup" :aria-label="t('herdr.machineSwitch')" data-testid="herdr-center-machines">
             <button type="button" role="radio" :aria-checked="!machine" :class="{ active: !machine }" @click="machine = ''">{{ t('herdr.machineLocal') }}</button>
             <button
@@ -651,7 +664,16 @@ onBeforeUnmount(() => {
             </button>
       </div>
       <!-- Nothing in herdr yet: how chats get here, and the way to elevate this one. -->
-      <div v-if="nothingInHerdr" class="herdr-center-body herdr-center-nothing" role="status" data-testid="herdr-center-nothing">
+      <div v-if="noAgentHere" class="herdr-center-body herdr-center-nothing" role="status" data-testid="herdr-center-no-agent">
+        <div class="herdr-nothing-card" data-theme-surface="card">
+          <h2>{{ t('studioTerminal.noAgentTitle') }}</h2>
+          <p>{{ t('studioTerminal.noAgentText') }}</p>
+          <div class="herdr-nothing-actions">
+            <NButton type="primary" data-testid="herdr-center-no-agent-back" @click="emit('back')">{{ t('herdr.backToChat') }}</NButton>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="nothingInHerdr" class="herdr-center-body herdr-center-nothing" role="status" data-testid="herdr-center-nothing">
         <div class="herdr-nothing-card" data-theme-surface="card">
           <h2>{{ t('herdr.nothingTitle') }}</h2>
           <p>{{ t('herdr.nothingText') }}</p>
@@ -679,6 +701,7 @@ onBeforeUnmount(() => {
           :dock-tab="dock.tab.value"
           :connected="herdr.connected"
           :waiting="waitingPanes"
+          :embedded="embedded"
           @open-chat="openFromSidebar"
           @focus-pane="focusFromSidebar"
           @open-machine="(id, pane) => { void openMachine(id, pane) }"
@@ -716,9 +739,9 @@ onBeforeUnmount(() => {
           same folders as Herdr App's Space Folders. herdr's own sidebar is hidden
           under it, or shows instead when picked. On a phone it slides over.
         -->
-        <div v-if="dock.phone.value && spaces.open.value" class="herdr-spaces-backdrop" data-testid="herdr-spaces-backdrop" @click="spaces.setOpen(false)" />
+        <div v-if="!embedded && dock.phone.value && spaces.open.value" class="herdr-spaces-backdrop" data-testid="herdr-spaces-backdrop" @click="spaces.setOpen(false)" />
         <HerdrSpaceSidebar
-          v-if="spaces.mode.value === 'studio' && started"
+          v-if="!embedded && spaces.mode.value === 'studio' && started"
           v-show="spaces.open.value"
           id="herdr-spaces"
           ref="spaceSidebar"
@@ -757,9 +780,9 @@ onBeforeUnmount(() => {
           data-testid="herdr-center-remote"
         />
         <!-- Mission's tools: beside the terminal, or a drawer over it on a phone. -->
-        <div v-if="dock.phone.value && dock.open.value" class="herdr-dock-backdrop" data-testid="herdr-dock-backdrop" @click="dock.setOpen(false)" />
+        <div v-if="!embedded && dock.phone.value && dock.open.value" class="herdr-dock-backdrop" data-testid="herdr-dock-backdrop" @click="dock.setOpen(false)" />
         <HerdrMissionDock
-          v-if="dock.open.value"
+          v-if="!embedded && dock.open.value"
           id="herdr-dock"
           class="herdr-center-dock"
           :class="{ 'is-drawer': dock.phone.value }"
@@ -936,6 +959,14 @@ onBeforeUnmount(() => {
 .herdr-center-landing {
   font-size: 12px;
   color: $text-muted;
+}
+
+.herdr-center-embedded-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: var(--border-width, 1px) solid $border-light;
 }
 
 .herdr-center-machines {

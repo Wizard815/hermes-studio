@@ -242,6 +242,8 @@ export const SESSIONS_SCHEMA: Record<string, string> = {
   push_enabled: 'INTEGER NOT NULL DEFAULT 1',
   workspace: 'TEXT',
   category_id: 'INTEGER',
+  /** Shown under this chat in the chat list (one level; docs/chat-list.md). Not a branch: parent_session_id is. */
+  nested_under: 'TEXT',
   history_revision: 'INTEGER NOT NULL DEFAULT 0',
   task_summary_revision: 'INTEGER NOT NULL DEFAULT 0',
   task_summary_updated_at: 'INTEGER NOT NULL DEFAULT 0',

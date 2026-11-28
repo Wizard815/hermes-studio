@@ -2,7 +2,8 @@
 
 A project is one coordinator chat plus the threads it starts, like Claude's
 projects. Each thread is an agent that runs in herdr. Normal chats do not
-change: Projects is a second view of the same chat list.
+change: Projects is a second view of the same chat list. Any chat can also
+message another chat without a project: see [chat-messages.md](chat-messages.md).
 
 ## Where it is
 
@@ -77,13 +78,93 @@ project's threads together (see `docs/harness/herdr.md`).
    agent reports its session. Until then the thread shows "starting…" and
    cannot be opened.
 
+## herdr is the engine
+
+Projects are the one place herdr work shows up. herdr runs the agents; every
+chat with an agent in herdr is a project thread.
+
+- **No herdr badge, no "Elevate to herdr".** To give a chat an agent in
+  herdr, use **Move to project…** in its menu.
+- **Terminal** (the switch in the chat header, formerly "herdr") shows the
+  agents' terminals, files and changes. Its spaces are the projects' folders.
+- **A chat that enters herdr outside a project becomes a thread** right away:
+  an agent started in herdr itself, a chat opened there, or work Orb or
+  Upstream started. It goes to:
+  - the project of its chat folder, made from the folder when there is none
+    (the project keeps that folder, nested or not);
+  - the **Orb** or **Upstream** project, for their work;
+  - the **Inbox** project, when the chat has no folder.
+  Projects Studio makes this way do not wake their coordinator and do not
+  use worktrees, until you change them in Edit project.
+- **Chats already in herdr moved once**, the first time Studio started with
+  herdr on, the same way. `projects/herdr-folded.json` under the Web UI home
+  records it; delete it to run the move again. A chat you take out of a
+  project afterwards stays out, until it enters herdr again.
+
+What goes wrong:
+
+- **A project has an empty folder:** its herdr folder had no start
+  directory. Set the folder in Edit project, or threads start in your home.
+- **Too many small projects:** each herdr folder became one. Move threads
+  with **Move to project…** and stop the empty projects.
+
+## Thread stages
+
+Each thread has a stage, worked out from what herdr reports and whether the
+person has looked. FAITH's projects use the same names.
+
+| Stage | When | Shown as |
+| --- | --- | --- |
+| `working` | herdr says starting, working or unknown; for a chat with no herdr pane, Studio is running it | Working |
+| `needs_you` | an approval or question is on its screen (blocked), or it **failed**: its pane closed while it was still working | Needs you (with "Failed") |
+| `review` | it finished (done, idle, or its pane closed after it finished) and the person has not opened it since | Ready for review |
+| `done` | it finished and the person opened it afterwards | Done |
+| `resolved` | the person or the coordinator put it away | Resolved |
+
+How herdr's reports move a thread:
+
+- herdr reports each agent's state to Studio (`workStatusChanged`), and the
+  list also reads each pane's live state. When a thread first reports
+  done, idle or gone, it gets a `finishedAt` time. If it is reported done
+  again, or its pane closes later, the time stays the same.
+- Gone straight after working, blocked or starting means the agent died
+  mid-task, so the thread is marked `failed` and moves to Needs you. A pane
+  that was already gone when Studio last saw it working counts the same, so
+  a thread lost while Studio was down shows as failed too. When it works,
+  finishes or blocks again, the flag clears.
+- Opening a thread (in the list or the thread pane) records `seenAt`. A
+  finished thread opened after it finished is done. If it works and finishes
+  again, it goes back to review. Opening a thread does not reorder the list.
+- A resolved thread whose herdr pane starts working or blocks again comes
+  back. That happens when someone types into it in herdr directly, or the
+  coordinator sends it a message. A repeated done report leaves it resolved.
+- Hermes threads run in herdr like any other agent (`hermes` in herdr), so
+  they follow the same rules. A Studio chat added to a project has no herdr
+  pane. It starts as done, and it shows as working while Studio runs it.
+
+**Auto-resolve.** Every hour, and when Studio starts, done threads are
+resolved once they have been done for the project's `autoResolveDays` (3 by
+default, 0 never, at most 90). A thread counts as done from whichever is later,
+when it finished or when it was last opened. The sweep never touches threads in
+needs_you, review or working. It checks each thread again just before saving,
+so a herdr report that arrives during the sweep wins. Reopening a thread
+starts its count again. The setting is in the project form ("Resolve done
+threads after").
+
+**The coordinator** sees each open thread's stage, for example
+`needs_you (gone)`. It is told to resolve a thread only when nothing is left
+for it or the person, and never to resolve one in needs_you or review on its
+own. `resolve_done` resolves every done thread at once. On a wake-up, a
+failed thread reads "failed: its herdr pane closed while it was still
+working". `message_thread` resumes it.
+
 ## Board
 
 The pane's **Board** tab is the project's kanban, with columns To do, In
 progress, Needs you, Review and Done. The pane widens while it shows.
 
 - **Threads** are cards by themselves, placed by status: working in In
-  progress, blocked in Needs you, finished or idle in Review, resolved in Done.
+  progress, needs you (blocked or failed) in Needs you, review or done in Review, resolved in Done.
   A thread moves only in or out of Done, which resolves or reopens it.
 - **Tasks** are cards that are not threads yet: a to-do, or a pull request to
   follow. Add one with **Add task**; move it by dragging or with its **Move to**
@@ -208,12 +289,61 @@ How it is secured:
   unknown keys and changed bodies get a 401.
 - **Unpair** removes the Studio here and tells the other side to forget this
   one too.
-- Starting threads on another Studio's herdr ("remote herdr") is not built:
-  a paired Studio can only message the coordinator, which decides.
+- A paired Studio never starts threads on another Studio's herdr directly. It
+  messages that project's coordinator, which decides what runs there.
 
-The coordinator tool has no federation actions; the person uses the Studios
-dialog. Paired Studios are kept in `projects/peers.json` under the Web UI home
-(mode 600).
+Paired Studios, the group, and the log are kept in `projects/peers.json`
+under the Web UI home (mode 600).
+
+## Studio groups
+
+To link many Studios (say 6) so all of them can talk, pair each one into a
+group instead of pairing every pair by hand.
+
+1. On Studio 1, **Make a pairing code**.
+2. On Studio 2, connect with that code and tick **Add it to this Studio's
+   group**.
+3. On Studio 1, approve Studio 2 and turn on **In the group**.
+4. Repeat for Studios 3 to 6, all with Studio 1's codes.
+
+When Studio 1 lets a group member in, its bridge introduces it to every
+other member, and each member answers with the members it knows. Within a
+second, every Studio knows the other five, marked "Introduced by Studio 1".
+Two groups merge when one member of each pairs with the other.
+
+The trust rule: joining a group means trusting every member's approvals. A
+Studio takes introductions only from approved members of its own group.
+Plain pairs (group off) never introduce anyone. A Studio you unpair stays
+gone: introductions do not bring it back, but pairing it again by code does.
+
+**Share with the whole group:** **This Studio's group** lists projects every
+group member may see and message, on top of the per-Studio picks.
+
+**Coordinators talk across Studios.** The coordinator tool has three
+actions, which threads cannot use:
+
+| Action | Arguments | What it does |
+|---|---|---|
+| `studios` | none | Connected Studios and the projects each shares with this one |
+| `message_studio` | `studio` (name or id), `studio_project`, `text` | Messages that project's coordinator |
+| `studio_task` | `studio`, `studio_project`, `title`, `notes` | Adds a task to its board |
+
+The other coordinator is told which project wrote and how to answer. It may
+answer that project for 24 hours, even if it is not shared with its Studio.
+It is told to answer only with a result or a question, never just to
+acknowledge.
+
+Each Studio's bridge guards the links:
+
+- A project's coordinators may send 30 messages or tasks to one Studio an
+  hour. The person in the dialog is not limited.
+- A Studio takes 120 messages or tasks from one Studio an hour.
+- **Between Studios** in the dialog shows the last messages, tasks and
+  introductions, with who sent them and from which project.
+
+The person can also write to a local coordinator from another app (FAITH, a
+script) with `POST /api/studio/projects/:id/message {text, app}`. It wakes
+the coordinator as "From your person, sent through FAITH".
 
 ## The coordinator
 
@@ -224,7 +354,7 @@ the open threads with their status, and how to use its tool.
 
 The coordinator's tool is `ekko_studio_use_project` in Studio's `use` MCP
 toolset. Actions: `list`, `start_thread`, `message_thread`, `read_thread`,
-`resolve_thread`, `set_pr`, `add_task`, `update_task`, `start_task`, and
+`resolve_thread`, `resolve_done`, `set_pr`, `add_task`, `update_task`, `start_task`, and
 `message_coordinator` for threads. The project is the calling chat's project
 (`HERMES_STUDIO_SESSION_ID`) unless `arguments.project` names one.
 
@@ -250,13 +380,14 @@ All routes need a super admin.
 | Method and path | Does |
 | --- | --- |
 | `GET /api/studio/projects` | Projects with threads, live status and counts |
-| `POST /api/studio/projects` | New project `{ name, folder?, repo?, instructions?, defaultAgent?, defaultModel? }` |
+| `POST /api/studio/projects` | New project `{ name, folder?, repo?, instructions?, defaultAgent?, defaultModel?, autoResolveDays? }` |
 | `GET/PUT/DELETE /api/studio/projects/:id` | Read, change, stop being a project (chats and folder stay) |
 | `POST /api/studio/projects/:id/threads` | Start a thread `{ brief, title?, agent? }` |
 | `POST /api/studio/projects/:id/chats` | Existing chat joins `{ sessionId }` |
 | `GET /api/studio/projects/:id/threads/:threadId` | Latest messages |
 | `POST /api/studio/projects/:id/threads/:threadId/message` | `{ text }` to the thread's agent |
 | `PUT /api/studio/projects/:id/threads/:threadId/resolved` | `{ resolved }` |
+| `POST /api/studio/projects/:id/threads/:threadId/seen` | The person opened it: review becomes done |
 | `DELETE /api/studio/projects/:id/threads/:threadId` | Thread leaves the project, chat stays |
 | `PUT /api/studio/projects/:id/threads/:threadId/pr` | `{ pr }`: the thread's PR link, `''` clears it |
 | `GET /api/studio/projects/:id/prs` | Live status of the board's GitHub PRs |
@@ -276,12 +407,15 @@ Paired Studios (super admin):
 | --- | --- |
 | `GET /api/studio/peers` | This Studio's id and label, and paired Studios |
 | `POST /api/studio/peers/code` | A one-time pairing code `{ code, expiresAt }` |
-| `POST /api/studio/peers/pair` | Pair `{ url, code, selfUrl, label? }` |
-| `PUT /api/studio/peers/:peerId` | `{ approved?, label?, url?, projects? }`: approve, rename, or pick shared projects |
+| `POST /api/studio/peers/pair` | Pair `{ url, code, selfUrl, label?, group? }` |
+| `PUT /api/studio/peers/:peerId` | `{ approved?, label?, url?, projects?, group? }`: approve, rename, pick shared projects, or put it in the group |
+| `GET`/`PUT /api/studio/peers/group` | `{ projects }` shared with every group member |
+| `GET /api/studio/peers/log?limit=` | What crossed between Studios, newest last |
 | `DELETE /api/studio/peers/:peerId` | Unpair on both sides |
 | `GET /api/studio/peers/:peerId/projects` | The projects that Studio shares with this one |
 | `POST /api/studio/peers/:peerId/projects/:projectId/message` | `{ text }` to its coordinator |
 | `POST /api/studio/peers/:peerId/projects/:projectId/tasks` | `{ title, notes? }` on its board |
+| `POST /api/studio/projects/:id/message` | `{ text, app }`: the person writes to the coordinator from another app |
 
 Between Studios (no login; signed with the sender's device key, headers
 `x-studio-peer`, `x-studio-nonce`, `x-studio-timestamp`, `x-studio-signature`):
@@ -300,6 +434,15 @@ Between Studios (no login; signed with the sender's device key, headers
 - **A thread never shows a chat:** herdr did not detect the agent. Open the
   herdr page to see its pane.
 - **Status looks stale:** the list refreshes every 5 seconds while visible.
+- **A new thread shows "Working" with no chat yet:** herdr takes a moment to
+  list a new pane. A thread gets 60 seconds before a missing pane counts as
+  failed.
+- **A new thread moves to "Needs you" after a minute:** the agent sat on its
+  first-run screen (sign-in, trust or theme) and never started. Open its pane
+  in herdr and answer it.
+- **A failed thread:** its pane closed while it worked. Send it a message; it
+  resumes in a new pane and keeps reporting to the project, even after a
+  Studio restart.
 - **"That pairing code is wrong or expired":** codes last 5 minutes and work
   once. Make a new one on the other Studio.
 - **"The other Studio at … isn't answering":** check that it runs and that
@@ -310,6 +453,13 @@ Between Studios (no login; signed with the sender's device key, headers
   Studio at the root of its address.
 - **A shared project shows nothing:** the other side shared no projects with
   this Studio yet.
+- **A group member never meets the others:** it was approved with **In the
+  group** off on one side. Turn it on in both Studios.
+- **An introduced Studio isn't answering:** it was introduced at the address
+  the introducing Studio uses, which may be a LAN address the others cannot
+  reach. Pair over Tailscale addresses, or fix its address in peers.json.
+- **429 "Coordinators here sent 30 messages":** two coordinators are likely
+  looping. Read **Between Studios**, and tell one coordinator to stop.
 
 - **"Could not make a git worktree for the thread":** git refused, usually
   because the repo has no commit yet or a branch of that name exists. Commit
@@ -325,6 +475,15 @@ Between Studios (no login; signed with the sender's device key, headers
   the same subfolder of its own checkout.
 - **A message to a resolved thread** reopens it, so its next report reaches
   the coordinator.
+- **A thread shows "Failed":** its herdr pane closed while it was working,
+  for example because the agent crashed, the pane was closed or herdr
+  restarted. Send it a message to carry on, or resolve it.
+- **A finished thread stays in "Ready for review":** nobody has opened it
+  since it finished. Open it once and it moves to Done.
+- **Done threads never go away by themselves:** the project's auto-resolve is
+  0. Edit the project and set a number of days.
+- **"Auto-resolve takes a whole number of days from 0 (never) to 90":** the
+  setting accepts only that.
 - **"A PR is a link that starts with https://":** PR links must be http(s)
   URLs. Paste the PR's address, not its number.
 - **A thread card won't move to To do or Review:** threads follow their status.
@@ -334,7 +493,9 @@ Between Studios (no login; signed with the sender's device key, headers
 
 ## Code map
 
-- `modules/studio/services/projects/store.ts`: the project file.
+- `modules/studio/services/projects/store.ts`: the project file. Changes
+  build on the latest saved copy, so two changes that land together both
+  stay.
 - `modules/studio/services/projects/service.ts`: projects, threads, context
   block, wake-ups; the herdr side comes in through `setProjectRuntime`.
 - `modules/studio/services/projects/worktree.ts`: thread worktrees and branches.

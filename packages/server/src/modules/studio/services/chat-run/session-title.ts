@@ -127,6 +127,22 @@ export interface GenerateSessionTitleOptions {
 export async function generateSessionTitle(options: GenerateSessionTitleOptions): Promise<string> {
   const prompt = options.prompt.trim().slice(0, SESSION_TITLE_PROMPT_MAX_CHARS)
   if (!prompt) return ''
+  const reply = await askModelOnce({ ...options, prompt, systemPrompt: SESSION_TITLE_SYSTEM_PROMPT, purpose: 'session-title' })
+  return reply === null ? '' : normalizeGeneratedTitle(reply)
+}
+
+export interface AskModelOnceOptions extends GenerateSessionTitleOptions {
+  systemPrompt: string
+  purpose: string
+  timeoutMs?: number
+}
+
+/**
+ * One model call with no tools, skills or memory: a system prompt and one user
+ * message in, the reply's text out (null when the model asked for a tool).
+ * Used for chat titles and Clean up's summaries (docs/chat-list.md).
+ */
+export async function askModelOnce(options: AskModelOnceOptions): Promise<string | null> {
   let modelClient = options.modelClient
   if (!modelClient) {
     const runtimeConfig = await resolveEkkoProviderRuntimeConfig({
@@ -143,7 +159,7 @@ export async function generateSessionTitle(options: GenerateSessionTitleOptions)
       apiKey: runtimeConfig.apiKey,
       model: options.model,
       apiMode: runtimeConfig.apiMode,
-      timeoutMs: SESSION_TITLE_TIMEOUT_MS,
+      timeoutMs: options.timeoutMs ?? SESSION_TITLE_TIMEOUT_MS,
     })
     modelClient = createModelClient(providerConfig, {
       fetch: createAuthorizedProviderFetch({
@@ -159,21 +175,21 @@ export async function generateSessionTitle(options: GenerateSessionTitleOptions)
       modelClient,
       toolsEnabled: false,
       skillsEnabled: false,
-      systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
+      systemPrompt: options.systemPrompt,
       runtimeInstructions: [],
       maxSteps: 1,
       maxModelRetries: 0,
       modelDefaults: { model: options.model },
     },
     {
-      messages: [{ role: 'user', content: prompt }],
+      messages: [{ role: 'user', content: options.prompt }],
       memoryEnabled: false,
-      metadata: { purpose: 'session-title', profile: options.profile },
+      metadata: { purpose: options.purpose, profile: options.profile },
       logContext: { profile: options.profile },
     },
   )
-  if (result.output.toolCalls?.length) return ''
-  return normalizeGeneratedTitle(result.output.content)
+  if (result.output.toolCalls?.length) return null
+  return String(result.output.content ?? '')
 }
 
 /**

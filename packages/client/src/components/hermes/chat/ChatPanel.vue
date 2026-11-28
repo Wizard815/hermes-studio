@@ -13,7 +13,7 @@ import { useCodingAgentModels } from '@/composables/useCodingAgentModels'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import HeaderSidebarToggle from '@/components/layout/HeaderSidebarToggle.vue'
 import { useHerdrStore } from '@/stores/hermes/herdr'
-import { focusHerdrPane } from '@/api/coding-agents/herdr'
+import { fetchHerdrMachines, focusHerdrPane, type HerdrMachine } from '@/api/coding-agents/herdr'
 import HeaderToolPanelToggle from '@/components/layout/HeaderToolPanelToggle.vue'
 import { AGENT_OPTIONS } from "@/utils/agent-options"
 import { setSessionPinned } from "@/api/studio/sessions";
@@ -28,6 +28,7 @@ import {
   renameSession,
   renameSessionCategory,
   setSessionCategory,
+  setSessionNesting,
   setSessionWorkspace,
   type SessionCategory,
 } from "@/api/studio/sessions";
@@ -54,9 +55,10 @@ import {
   NTooltip,
   NPopover,
   useMessage,
+  useNotification,
   type DropdownOption,
 } from "naive-ui";
-import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, provide, ref, watch } from "vue";
+import { computed, defineAsyncComponent, h, nextTick, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { copyToClipboard } from "@/utils/clipboard";
@@ -72,11 +74,13 @@ import ConversationMonitorPane from "./ConversationMonitorPane.vue";
 import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import ProjectsList from "./ProjectsList.vue";
+import ComputersList from "./ComputersList.vue";
+import ChatCleanupDialog from "./ChatCleanupDialog.vue";
+import { cleanupReminderDue, nestChats, readCleanupReminder, suggestCleanup, writeCleanupReminder } from "@/utils/chat-list-tidy";
 import ThreadPane from "./ThreadPane.vue";
 import ProjectAttentionBadges from "./ProjectAttentionBadges.vue";
 import ProjectIcon from "./ProjectIcon.vue";
 import { addChatToProject, listProjects, type Project, type ProjectThread } from "@/api/studio/projects";
-import HerdrOpenButton from "@/components/coding-agents/herdr/HerdrOpenButton.vue";
 import HerdrCenter from "@/components/coding-agents/herdr/HerdrCenter.vue";
 import VsCodeCenter from "./VsCodeCenter.vue";
 import ScreenCenter from "./ScreenCenter.vue";
@@ -89,7 +93,7 @@ import { chatSessionAgentAvatar } from "@/utils/chat-agent-avatar";
 import { isHermesSession } from "@/utils/hermes/session-agent";
 import { buildVisibleSessionCategoryGroups, categoryPathLabel, categorySubtreeIds, partitionRecentSessions } from "./session-category-groups";
 import { buildSessionCategoryMenuChildren, resolveRecentSessionCategoryLabel } from "./session-category-menu";
-import { buildActiveSessionMenuOptions, buildSessionContextMenuOptions, withHerdrMenuGroup } from "./session-menu-options";
+import { buildActiveSessionMenuOptions, buildSessionContextMenuOptions, renderSessionMenuIcon, withHerdrMenuGroup } from "./session-menu-options";
 import RunLimitBanner from "../run-limits/RunLimitBanner.vue";
 import ToolLoadBanner from "../tool-load/ToolLoadBanner.vue";
 import RunLimitsModal from "../run-limits/RunLimitsModal.vue";
@@ -168,9 +172,28 @@ const projectsView = ref((() => { try { return localStorage.getItem("studio_chat
 const projectsShown = computed(() => projectsView.value && isSuperAdmin.value && props.contentMode === "chat");
 function setProjectsView(on: boolean) {
   projectsView.value = on;
+  if (on) computersView.value = false;
   try { localStorage.setItem("studio_chat_list_view", on ? "projects" : "chats") } catch { /* private mode */ }
 }
 watch(() => route.query.view, view => { if (view === "projects") setProjectsView(true) }, { immediate: true });
+// Other computers (herdr's saved SSH machines) are a list here like Projects; one opens in Terminal.
+const computersView = ref(false);
+const computers = ref<HerdrMachine[]>([]);
+const computersShown = computed(() => computersView.value && isSuperAdmin.value && props.contentMode === "chat" && computers.value.length > 0);
+const terminalMachine = computed(() => (centerMode.value === "herdr" && String(herdrCenterRef.value?.machine || "")) || "");
+async function loadComputers() {
+  if (!isSuperAdmin.value || props.standalone) return;
+  try { computers.value = (await fetchHerdrMachines()).machines.filter(item => item.enabled) } catch { computers.value = [] }
+}
+function setComputersView(on: boolean) {
+  computersView.value = on;
+  if (on) { projectsView.value = false; void loadComputers() }
+}
+async function openComputer(id: string, pane?: string) {
+  selectCenter("herdr");
+  await nextTick();
+  await herdrCenterRef.value?.openMachine?.(id, pane);
+}
 const projectsListRef = ref<{ refresh: () => Promise<void> } | null>(null);
 const knownProjects = ref<Project[]>([]);
 // On wide screens a thread opens in a pane beside its project's coordinator chat;
@@ -225,6 +248,73 @@ function openFromProjects(sessionId: string) {
   if (paneThread.value?.project.coordinatorSessionId !== sessionId) paneThread.value = null;
   void handleSessionClick(sessionId);
 }
+// Clean up and nesting (docs/chat-list.md).
+const showCleanup = ref(false);
+const projectSessionIds = computed(() => new Set(projectRoles.value.keys()));
+function forgetCleanedChats(ids: string[]) {
+  for (const id of ids) chatStore.forgetSession(id);
+  void syncSessionRouteAfterDeletion();
+}
+function restoreCleanedChats() {
+  void chatStore.refreshSessionListOnly(chatStore.sessionProfileFilter);
+}
+// The optional monthly reminder: once the list has loaded, if it is due.
+const cleanupNotification = useNotification();
+let cleanupReminderChecked = false;
+function cleanupChatBusy(id: string) {
+  return sessionStates.isWorking(id, chatStore.isSessionWorking(id));
+}
+function checkCleanupReminder() {
+  if (cleanupReminderChecked || !chatStore.sessions.length) return;
+  cleanupReminderChecked = true;
+  setTimeout(() => {
+    const reminder = readCleanupReminder();
+    const now = Date.now();
+    const count = suggestCleanup(chatStore.sessions, { now, keep: projectSessionIds.value, busy: cleanupChatBusy }).length;
+    if (!cleanupReminderDue(reminder, now, count)) return;
+    writeCleanupReminder({ on: true, last: now });
+    const note = cleanupNotification.create({
+      content: t("chatList.reminder", { n: count }, count),
+      duration: 15_000,
+      action: () => h(NButton, { size: "small", type: "primary", "data-testid": "chat-cleanup-reminder", onClick: () => { note.destroy(); showCleanup.value = true; } }, { default: () => t("chatList.reminderOpen") }),
+    });
+  }, 4000);
+}
+watch(() => chatStore.sessions.length, checkCleanupReminder, { immediate: true });
+const nestSessionId = ref("");
+const nestParentId = ref<string | null>(null);
+const showNest = ref(false);
+const nesting = ref(false);
+const nestOptions = computed(() => {
+  const self = chatStore.sessions.find(item => item.id === nestSessionId.value);
+  const parents = new Set(chatStore.sessions.map(item => item.nestedUnder).filter(Boolean) as string[]);
+  return chatStore.sessions
+    .filter(item => item.id !== nestSessionId.value && !item.nestedUnder && !item.isArchived && !item.isLocalOnly
+      && (!self || !parents.has(self.id)) && (!self?.profile || !item.profile || item.profile === self.profile))
+    .map(item => ({ label: item.title || item.id.slice(0, 8), value: item.id }));
+});
+function openNest(sessionId: string) {
+  nestSessionId.value = sessionId;
+  nestParentId.value = null;
+  showNest.value = true;
+}
+async function saveNesting(sessionId: string, parentId: string | null) {
+  nesting.value = true;
+  try {
+    await setSessionNesting(sessionId, parentId);
+    const session = chatStore.sessions.find(item => item.id === sessionId);
+    const parent = parentId ? chatStore.sessions.find(item => item.id === parentId) : null;
+    if (session) {
+      session.nestedUnder = parentId;
+      if (parent) session.categoryId = parent.categoryId ?? null;
+    }
+    showNest.value = false;
+  } catch (error: any) {
+    message.error(error?.message || String(error));
+  } finally {
+    nesting.value = false;
+  }
+}
 const moveToProjectSessionId = ref("");
 const moveToProjectId = ref<string | null>(null);
 const showMoveToProject = ref(false);
@@ -271,16 +361,9 @@ const herdrChatState = computed<'eligible' | 'other' | 'unknown' | 'none'>(() =>
   if (!session) return 'unknown'
   return herdrCanOpenChat(session) ? 'eligible' : 'other'
 })
-const herdrEligible = computed(() => herdrChatState.value === 'eligible')
-/**
- * Chats elevated to herdr (the chat list marks them "herdr"), from the herdr
- * state Studio already has. Super admins with herdr on only.
- */
-function herdrElevated(session: Session): boolean {
-  return isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(session.id)
-}
-/** The open chat is elevated to herdr: the header offers Return to Studio. */
-const activeChatElevated = computed(() => isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(chatStore.activeSessionId))
+// herdr is the engine behind projects (docs/projects.md#herdr-is-the-engine):
+// chats carry no herdr badge and offer no "Elevate to herdr"; a chat that needs
+// an agent's terminal moves to a project (or opens Terminal, which files it in one).
 
 // The center column swaps between the chat and its herdr agent; the sidebar,
 // header and tool panel stay. Both stay mounted once opened, so swapping is instant.
@@ -320,6 +403,16 @@ const herdrHeaderSlot = ref<HTMLElement | null>(null)
  * next chat loads, so the center stays mounted and herdr does not reconnect.
  */
 const herdrSessionId = ref('')
+/**
+ * The project thread open in the pane beside its coordinator: Terminal shows
+ * that thread's agent, not the coordinator chat (docs/projects.md#herdr-is-the-engine).
+ */
+const paneThreadSessionId = computed(() => {
+  if (!threadPaneShown.value || !paneThread.value?.threadId) return ''
+  const project = knownProjects.value.find(item => item.id === paneThread.value!.project.id) ?? paneThread.value.project
+  return project.threads.find(item => item.id === paneThread.value!.threadId)?.sessionId || paneThread.value.initial?.sessionId || ''
+})
+const terminalSessionId = computed(() => paneThreadSessionId.value || herdrSessionId.value)
 watch(() => [chatStore.activeSessionId, herdrChatState.value] as const, ([id, state]) => {
   if (state === 'eligible') herdrSessionId.value = id || ''
   else if (state !== 'unknown') herdrSessionId.value = ''
@@ -340,7 +433,8 @@ const showHerdrCenter = computed(() => centerMode.value === 'herdr' && herdrCent
  * Esc and the palette bring it back; kept per viewer. Phones keep the header.
  */
 const herdrTopBarShown = ref((() => { try { return localStorage.getItem('studio_herdr_topbar') === 'shown' } catch { return false } })())
-const herdrTopBarHidden = computed(() => showHerdrCenter.value && !isMobile.value && !herdrTopBarShown.value)
+// Terminal keeps Studio's own top bar: it is part of Studio, not a separate app.
+const herdrTopBarHidden = computed(() => false)
 // The shell's header row (App.vue) goes too; see global.scss.
 watch(herdrTopBarHidden, hidden => { document.body.classList.toggle('herdr-topbar-hidden', hidden) }, { immediate: true })
 onUnmounted(() => document.body.classList.remove('herdr-topbar-hidden'))
@@ -367,6 +461,10 @@ const centerModes = computed<ChatCenter[]>(() => [
   ...(codeCenterAvailable.value ? ['code' as const, 'screen' as const] : []),
 ])
 
+// The header keeps Chat | Terminal; Code and Screen open from the right sidebar (they keep the chat beside them).
+const headerCenterModes = computed(() => centerModes.value.filter(mode => mode === 'chat' || mode === 'herdr'))
+const headerCenter = computed(() => shownCenter.value === 'herdr' ? 'herdr' : 'chat')
+const sidebarCenterTabs = computed(() => centerModes.value.filter((mode): mode is 'code' | 'screen' => mode === 'code' || mode === 'screen'))
 const showOutline = ref(false);
 const ACTIVE_SESSION_MENU_ID = "active-session-actions-menu";
 const showActiveSessionMenu = ref(false);
@@ -429,7 +527,8 @@ const showBatchDeleteConfirm = ref(false);
 const isBatchDeleting = ref(false);
 
 /** herdr mode swaps the chat list for its spaces panel; phones have no room for that panel and keep the drawer. */
-const herdrOwnsSidebar = computed(() => showHerdrCenter.value && !isMobile.value)
+// Terminal keeps Studio's own sidebar (chats and projects); herdr's spaces panel is not shown.
+const herdrOwnsSidebar = computed(() => false)
 
 const hasPageSidebar = computed(
   () => !props.standalone && currentMode.value === "chat" && props.contentMode === "chat",
@@ -1843,6 +1942,7 @@ async function copySessionId(id?: string) {
 
 /** herdr mode on a phone: herdr's actions join this menu (one menu in the header row). */
 const herdrCenterRef = ref<InstanceType<typeof HerdrCenter> | null>(null)
+watch(() => [isSuperAdmin.value, herdrStore.enabled] as const, ([admin, enabled]) => { if (admin && enabled) void loadComputers() }, { immediate: true })
 const herdrMenuItems = computed(() => (showHerdrCenter.value && isMobile.value ? herdrCenterRef.value?.menuItems ?? [] : []))
 const activeSessionMenuOptions = computed<DropdownOption[]>(() => withHerdrMenuGroup(buildActiveSessionMenuOptions({
   outline: t("chat.outlineTitle"),
@@ -1852,7 +1952,6 @@ const activeSessionMenuOptions = computed<DropdownOption[]>(() => withHerdrMenuG
     : "chat.openSessionInNewTab"),
   copyId: t("chat.copySessionId"),
   runLimits: t("runLimits.menu"),
-  ...(activeChatElevated.value ? { returnToStudio: t("herdr.returnToStudio") } : {}),
 }, {
   canRename: activeSessionSupportsPersistence.value,
   canOpen: activeSessionSupportsPersistence.value,
@@ -2332,9 +2431,6 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
   pinned: contextSessionPinned.value,
   includeArchive: contextSession.value?.source !== "global_agent",
   includeModel: canSetContextSessionModel.value,
-  // Same rule as the header's "Elevate to herdr" button, with herdr on.
-  includeHerdr: isSuperAdmin.value && herdrStore.enabled && herdrCanOpenChat(contextSession.value),
-  elevated: isSuperAdmin.value && herdrStore.enabled && herdrStore.isElevated(contextSession.value?.id),
   includeProject: isSuperAdmin.value && !!contextSession.value && !contextSession.value.isLocalOnly,
   categoryChildren: buildSessionCategoryMenuChildren({
     categories: [...sessionCategories.value].sort((a, b) =>
@@ -2364,12 +2460,16 @@ const contextMenuOptions = computed(() => buildSessionContextMenuOptions({
     moveToProject: t("projects.moveToProject"),
     copyLink: t("chat.copySessionLink"),
     copyId: t("chat.copySessionId"),
-    openInHerdr: herdrStore.isElevated(contextSession.value?.id) ? t("herdr.openLive") : t("herdr.elevate"),
-    returnToStudio: t("herdr.returnToStudio"),
   },
 }).map(option => option.key === "pin"
   ? { ...option, disabled: Boolean(contextSession.value?.isLocalOnly) }
-  : option));
+  : option).concat(contextSession.value && !contextSession.value.isLocalOnly
+    ? contextSession.value.nestedUnder
+      ? [{ key: "nest:out", label: t("chatList.unnest"), icon: () => renderSessionMenuIcon("category") }]
+      : chatStore.sessions.some(s => s.nestedUnder === contextSession.value?.id)
+        ? []
+        : [{ key: "nest", label: t("chatList.nest"), icon: () => renderSessionMenuIcon("category") }]
+    : []));
 function contextMenuProps(option: DropdownOption | undefined) {
   return option?.key === "category" ? { style: "max-height: 60vh" } : {};
 }
@@ -2406,6 +2506,14 @@ async function handleContextMenuSelect(key: string) {
   if (!contextSessionId.value) return;
   if (key === "project") {
     void openMoveToProject(contextSessionId.value);
+    return;
+  }
+  if (key === "nest") {
+    openNest(contextSessionId.value);
+    return;
+  }
+  if (key === "nest:out") {
+    void saveNesting(contextSessionId.value, null);
     return;
   }
   if (key === "category:retry") {
@@ -2940,8 +3048,11 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           :primary-label="t('chat.newChat')"
           :projects-active="projectsShown"
           :projects-attention="projectAttention"
+          :computers-count="computers.length"
+          :computers-active="computersShown"
           @primary="openNewChatPage"
           @projects="setProjectsView(!projectsShown)"
+          @computers="setComputersView(!computersShown)"
         >
           <template #actions>
             <ListActionsMenu
@@ -2952,8 +3063,10 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :loading="profilesStore.loading"
               :batch-mode="isBatchMode"
               :import-chats="isSuperAdmin && !props.standalone"
+              cleanup
               @filter="handleProfileFilterChange"
               @batch="toggleBatchMode"
+              @cleanup="showCleanup = true"
               @import="router.push({ name: 'hermes.chatImport' })"
             />
             <button
@@ -2981,8 +3094,15 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
         />
       </template>
       <template #default>
+        <ComputersList
+          v-if="computersShown"
+          :machines="computers"
+          :active-machine="terminalMachine"
+          @open="openComputer"
+          @back="setComputersView(false)"
+        />
         <ProjectsList
-          v-if="projectsShown"
+          v-else-if="projectsShown"
           ref="projectsListRef"
           :active-session-id="chatStore.activeSessionId"
           :threads-in-pane="threadsInPane"
@@ -3019,7 +3139,6 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
-              :herdr-elevated="herdrElevated(s)"
             :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
             :selectable="isBatchMode"
             :selected="isSessionSelected(s)"
@@ -3067,8 +3186,9 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
           </div>
           <template v-if="!sessionBrowserPrefsStore.recentCollapsed">
             <SessionListItem
-              v-for="s in recentSessions.sessions"
+              v-for="{ chat: s, nested } in nestChats(recentSessions.sessions)"
               :key="`recent-${s.id}`"
+              :class="{ 'session-nested': nested }"
               :session="s"
               :project-role="projectRoles.get(s.id) ?? null"
               :active="s.id === chatStore.activeSessionId"
@@ -3077,7 +3197,6 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
-              :herdr-elevated="herdrElevated(s)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -3185,8 +3304,9 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             :style="{ '--tree-depth': group.depth || 0 }"
           >
             <SessionListItem
-              v-for="s in shownGroupSessions(group.key, group.sessions)"
+              v-for="{ chat: s, nested } in nestChats(shownGroupSessions(group.key, group.sessions))"
               :key="s.id"
+              :class="{ 'session-nested': nested }"
               :session="s"
               :project-role="projectRoles.get(s.id) ?? null"
               :active="s.id === chatStore.activeSessionId"
@@ -3195,7 +3315,6 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
               :streaming="sessionStates.isWorking(s.id, chatStore.isSessionWorking(s.id))"
               :status="sessionStates.statusOf(s.id, chatStore.isSessionWorking(s.id), chatStore.isSessionCompletedUnread(s.id))"
               :herdr-linked="!!sessionStates.herdrLink(s.id)"
-              :herdr-elevated="herdrElevated(s)"
               :completed-unread="sessionStates.isUnread(s.id, chatStore.isSessionCompletedUnread(s.id))"
               :selectable="isBatchMode"
               :selected="isSessionSelected(s)"
@@ -3222,6 +3341,31 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
       </template>
     </SessionListSidebar>
 
+    <ChatCleanupDialog
+      v-model:show="showCleanup"
+      :sessions="chatStore.sessions"
+      :keep="projectSessionIds"
+      :busy="cleanupChatBusy"
+      :archive="id => chatStore.archiveSession(id)"
+      @deleted="forgetCleanedChats"
+      @restored="restoreCleanedChats"
+    />
+    <NModal v-model:show="showNest" preset="card" :title="t('chatList.nestTitle')" style="max-width: 420px" data-testid="chat-nest">
+      <p class="nest-hint">{{ t('chatList.nestHint') }}</p>
+      <NSelect
+        v-model:value="nestParentId"
+        filterable
+        :options="nestOptions"
+        :placeholder="t('chatList.nestPick')"
+        :aria-label="t('chatList.nestPick')"
+        data-testid="chat-nest-select"
+      />
+      <template #footer>
+        <div class="nest-actions">
+          <NButton type="primary" :disabled="!nestParentId" :loading="nesting" data-testid="chat-nest-save" @click="saveNesting(nestSessionId, nestParentId)">{{ t('chatList.nestSave') }}</NButton>
+        </div>
+      </template>
+    </NModal>
     <NModal v-model:show="showMoveToProject" preset="card" :title="t('projects.moveTitle')" style="max-width: 420px">
       <NSelect
         v-model:value="moveToProjectId"
@@ -3531,7 +3675,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
         <!-- herdr mode: herdr's bar joins this row (HerdrCenter puts it here). -->
         <div v-show="showHerdrCenter" ref="herdrHeaderSlot" class="header-herdr-slot" data-testid="chat-header-herdr" />
         <div class="header-actions">
-          <NTooltip v-if="chatStore.runtimeMode === 'default'" trigger="hover">
+          <NTooltip v-if="!isSuperAdmin && chatStore.runtimeMode === 'default'" trigger="hover">
             <template #trigger>
               <NButton class="header-tasks-button" quaternary size="small" circle :aria-label="t('sessionTasks.title')" :aria-expanded="showSessionTasks" aria-haspopup="dialog" @click="openSessionTasks">
                 <template #icon><SessionTaskIcon :size="16" /></template>
@@ -3540,7 +3684,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             {{ t('sessionTasks.title') }}
           </NTooltip>
           <NButton
-            v-if="!showNewChatPage && chatStore.activeSession?.workspace"
+            v-if="!isSuperAdmin && !showNewChatPage && chatStore.activeSession?.workspace"
             class="header-workspace-button"
             quaternary
             size="small"
@@ -3556,7 +3700,7 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             </template>
           </NButton>
           <div
-            v-if="centerModes.length > 1"
+            v-if="headerCenterModes.length > 1"
             class="header-center-switch"
             role="radiogroup"
             :aria-label="t('herdr.centerSwitch')"
@@ -3564,20 +3708,16 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             data-testid="chat-center-switch"
           >
             <button
-              v-for="mode in centerModes"
+              v-for="mode in headerCenterModes"
               :key="mode"
               type="button"
               role="radio"
-              :aria-checked="shownCenter === mode"
-              :class="{ active: shownCenter === mode }"
+              :aria-checked="headerCenter === mode"
+              :class="{ active: headerCenter === mode }"
               :data-testid="`chat-center-${mode}`"
               @click="selectCenter(mode)"
             >{{ mode === 'chat' ? t('herdr.centerChat') : mode === 'herdr' ? t('herdr.centerHerdr') : mode === 'code' ? t('vscode.centerCode') : t('screen.centerScreen') }}</button>
           </div>
-          <HerdrOpenButton
-            v-if="isSuperAdmin && herdrStore.enabled && !showNewChatPage && chatStore.activeSessionId && herdrEligible && !showHerdrCenter"
-            :session-id="chatStore.activeSessionId"
-          />
           <!-- chat/live mode toggle hidden -->
           <template v-if="currentMode === 'chat' && !showNewChatPage">
             <HeaderToolPanelToggle v-if="isSuperAdmin" :expanded="showToolPanel" controls="chat-tool-panel"
@@ -3725,7 +3865,8 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
             <HerdrCenter
               v-if="herdrCenterMounted || showHerdrCenter"
               v-show="showHerdrCenter"
-              :session-id="herdrSessionId"
+              :session-id="terminalSessionId"
+              embedded
               :active="showHerdrCenter"
               ref="herdrCenterRef"
               :header-target="herdrHeaderSlot"
@@ -3850,7 +3991,14 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
                   <ChatToolsPanel v-model:active-panel="activeToolPanel"
                     :workspace-session-id="activeWorkspaceSessionId" :workspace="activeWorkspacePath"
                     :visible="showToolPanel" :browser-visible="toolPanelTransitionReady" :browser-available="electronBrowserAvailable" :headless-available="headlessBrowserAvailable" :session-id="chatStore.activeSessionId || null"
-                    :submit="submitBrowserAnnotations" @attach="handleWorkspaceFileAttach" />
+                    :submit="submitBrowserAnnotations" @attach="handleWorkspaceFileAttach"
+                    :center-tabs="sidebarCenterTabs"
+                    :show-tasks="chatStore.runtimeMode === 'default'"
+                    :show-folder="!!chatStore.activeSession?.workspace"
+                    :folder-title="chatStore.activeSession?.workspace || ''"
+                    @center="selectCenter"
+                    @tasks="openSessionTasks"
+                    @folder="openActiveSessionWorkspace" />
                 </template>
               </div>
             </aside>
@@ -4120,6 +4268,23 @@ watch(() => `${chatStore.activeSession?.id || ''}|${chatStore.activeSession?.mes
 
 // Tree view: each nesting level indents one step and draws a vertical guide line,
 // so every row under a nested category carries the guides of all its ancestors.
+.session-nested {
+  position: relative;
+  margin-inline-start: calc(16px * var(--spacing-scale, 1));
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset-block: 4px;
+    inset-inline-start: calc(-8px * var(--spacing-scale, 1));
+    width: var(--border-width, 1px);
+    background: $border-light;
+  }
+}
+
+.nest-hint { margin: 0 0 10px; color: $text-secondary; font-size: 13px; }
+.nest-actions { display: flex; justify-content: flex-end; }
+
 .session-tree-row {
   --tree-step: calc(11px * var(--spacing-scale, 1));
   position: relative;

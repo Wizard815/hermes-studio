@@ -2,6 +2,7 @@ import { homedir } from 'node:os'
 import { folderFor } from '../modules/coding-agents/services/herdr/folders'
 import { getChatRunServer } from '../modules/studio/services/chat-run/server-registry'
 import { existsSync, readdirSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Server } from 'socket.io'
 import { getWebUiHome } from '../modules/studio/public/config'
@@ -317,6 +318,8 @@ export function herdrBridgeDeps(): HerdrBridgeDeps {
       ])
     },
     folderForWork,
+    // herdr is the engine behind projects: a chat that enters herdr outside one becomes a thread.
+    chatEnteredHerdr: (sessionId, ref) => projectService().fileHerdrChat(sessionId, ref),
     categoryForSpace,
     listChatSpaces: () => listChatSpaces(),
     chatAccess: async sessionId => {
@@ -773,18 +776,22 @@ export function projectRuntime(manager: Pick<typeof herdrManager, 'getBridge' | 
       const status = String(pane.agent_status || '')
       return (THREAD_STATUSES.has(status) ? status : 'unknown') as ProjectThreadStatus
     },
-    message: async ({ sessionId, paneId, text }) => {
+    message: async ({ sessionId, paneId, text, project }) => {
       const bridge = manager.requireBridge()
       const link = sessionId ? bridge.linkFor(sessionId) : undefined
       if (sessionId && link && !link.waiting) {
+        // Its chat may run in another pane now (resumed there earlier, or by hand in herdr).
+        if (project && link.paneId !== paneId) bridge.followWork(link.paneId, { project })
         await bridge.promptSession(sessionId, text)
-        return
+        return { paneId: link.paneId }
       }
       if (sessionId) {
         // The thread's agent stopped: resume it in herdr (as Elevate does), then type the message.
         const opened = await bridge.openSession(sessionId)
+        // The new pane is the thread's now: its reports go to the project like the first pane's.
+        if (project) bridge.followWork(opened.paneId, { project })
         if (!await bridge.promptWhenReady(opened.paneId, text)) throw Object.assign(new Error('The thread\'s agent did not start in herdr. Open the thread to see why.'), { status: 409 })
-        return
+        return { paneId: opened.paneId }
       }
       if (paneId && bridge.getState().panes.some(pane => pane.pane_id === paneId)) {
         if (!await bridge.promptWhenReady(paneId, text)) throw Object.assign(new Error('The thread\'s agent is not ready for a message yet'), { status: 409 })
@@ -793,6 +800,24 @@ export function projectRuntime(manager: Pick<typeof herdrManager, 'getBridge' | 
       throw Object.assign(new Error('The thread has no chat or herdr pane to send to'), { status: 409 })
     },
   }
+}
+
+/**
+ * Once per install: chats already in herdr move into projects, one per herdr
+ * folder plus an Inbox (docs/projects.md#herdr-is-the-engine). A marker file
+ * keeps it from running again, so a chat the person later takes out of a
+ * project stays out.
+ */
+async function foldHerdrChatsOnce(home: string): Promise<void> {
+  const marker = join(home, 'projects', 'herdr-folded.json')
+  if (existsSync(marker)) return
+  const bridge = herdrManager.getBridge()
+  if (!bridge) return
+  const chats = bridge.elevatedChatIds().map(sessionId => ({ sessionId, ref: bridge.workRefForChat(sessionId) }))
+  const result = await projectService().foldHerdrChats(chats)
+  await mkdir(join(home, 'projects'), { recursive: true })
+  await writeFile(marker, JSON.stringify({ at: new Date().toISOString(), ...result }, null, 2))
+  if (chats.length) logger.info(result, '[herdr] moved chats already in herdr into projects')
 }
 
 export function startHerdrIntegration(io: Server, baseUrl: string): { close: () => void } {
@@ -804,6 +829,8 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
   const socket = setupHerdrSocket(io)
   const folders = startSpaceFolders()
   setProjectRuntime(projectRuntime())
+  // Finished threads the person has seen are resolved after the project's autoResolveDays.
+  projectService().startSweeps()
   try {
     const repaired = repairHerdrChatModes()
     if (repaired) logger.info({ repaired }, '[herdr] chats started in herdr now resume with their agent\'s own configuration')
@@ -814,7 +841,7 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
     herdrManager.getBridge()?.scheduleChatSync()
     folders.soon()
   })
-  void herdrManager.init().catch(error => {
+  void herdrManager.init().then(() => foldHerdrChatsOnce(home)).catch(error => {
     logger.warn(error, '[herdr] integration failed to start')
     recordWatcherEvent({ kind: 'connection', severity: 'warn', text: `herdr did not start: ${String(error?.message || error).slice(0, 200)}`, link: '/hermes/chat?center=herdr' })
   })
@@ -824,6 +851,7 @@ export function startHerdrIntegration(io: Server, baseUrl: string): { close: () 
       folders.stop()
       herdrManager.setSpaceFolders(null)
       setProjectRuntime(null)
+      projectService().stopSweeps()
       socket.close()
       herdrManager.shutdown()
     },

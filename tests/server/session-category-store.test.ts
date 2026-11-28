@@ -113,4 +113,34 @@ describe('session category store', () => {
     expect(db.prepare("SELECT COUNT(*) AS n FROM session_shares WHERE session_id = 'child'").get().n).toBe(0)
     expect(getSession('child')).toBeNull()
   })
+
+  it('TestChatList_chatsNestOneLevelUnderAnotherChatAndFollowItsFolder', async () => {
+    const { createSessionCategory, setSessionCategory, setSessionNesting } = await import(
+      '../../packages/server/src/modules/studio/repositories/session-category-store'
+    )
+    const { createSession, getSession } = await import('../../packages/server/src/modules/studio/repositories/session-store')
+    const work = createSessionCategory('Work')
+    const home = createSessionCategory('Home')
+    createSession({ id: 'parent', profile: 'default', category_id: work.id })
+    createSession({ id: 'child', profile: 'default' })
+    createSession({ id: 'grandchild', profile: 'default' })
+
+    // Nesting puts the chat in the parent's folder.
+    expect(setSessionNesting('child', 'parent')).toEqual({ ok: true })
+    expect(getSession('child')).toMatchObject({ nested_under: 'parent', category_id: work.id })
+    // One level only, and never itself.
+    expect(setSessionNesting('grandchild', 'child')).toMatchObject({ ok: false, status: 409 })
+    expect(setSessionNesting('parent', 'grandchild')).toMatchObject({ ok: false, status: 409 })
+    expect(setSessionNesting('child', 'child')).toMatchObject({ ok: false, status: 400 })
+    expect(setSessionNesting('child', 'missing')).toMatchObject({ ok: false, status: 404 })
+    // Moving the parent to another folder takes its nested chats along.
+    expect(setSessionCategory('parent', home.id)).toBe(true)
+    expect(getSession('child')).toMatchObject({ nested_under: 'parent', category_id: home.id })
+    // Moving the nested chat itself to a folder takes it out.
+    expect(setSessionCategory('child', work.id)).toBe(true)
+    expect(getSession('child')).toMatchObject({ nested_under: null, category_id: work.id })
+    expect(setSessionNesting('child', 'parent')).toEqual({ ok: true })
+    expect(setSessionNesting('child', null)).toEqual({ ok: true })
+    expect(getSession('child')?.nested_under).toBeNull()
+  })
 })

@@ -6,6 +6,11 @@ stay separate apps; this integration links them.
 
 ## Elevated chats: how chats use herdr
 
+> Since herdr folded into Projects, a chat that is elevated (opened in herdr)
+> also becomes a project thread, and the chat list shows no herdr badge. See
+> [docs/projects.md#herdr-is-the-engine](../projects.md#herdr-is-the-engine).
+> The rest of this section describes the elevation underneath.
+
 Chats are Studio-only until they are **elevated** to herdr. You start in
 Studio and elevate a chat when you want its agent in a terminal.
 
@@ -498,6 +503,11 @@ and herdr uses its own phone layout, where its spaces slide over the pane.
   the Agents panel lists each machine's agents (`herdr --machine <id> agent list`,
   every 15 seconds); picking one focuses it there (`agent focus`). Remote agents
   are used in that machine's herdr; they are not Studio chats.
+  Inside Studio the chat list has an **Other computers** button (shown when
+  machines are saved): each computer folds open to its folders and the agents
+  running in them (`ComputersList.vue`). Picking one opens that computer's herdr
+  in Terminal, with a bar to go back to this computer. Terminal inside Studio has
+  no Spaces or tools panels.
 - **One Orb form.** `HerdrOrbSettings.vue` is shown in herdr settings and in
   Mission's Control tab.
 - **Testing remote without SSH.** A stand-in `ssh` on PATH that runs the remote

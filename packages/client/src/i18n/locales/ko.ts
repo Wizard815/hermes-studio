@@ -10,6 +10,11 @@ import { spaceFoldersMessages } from '../space-folders-messages'
 import { projectsMessages } from '../projects-messages'
 import { pinCommentMessages } from '../pin-comment-messages'
 import { studiosMessages } from '../studios-messages'
+import { projectStageMessages } from '../project-stage-messages'
+import { studioGroupMessages } from '../studio-group-messages'
+import { studioTerminalMessages } from '../studio-terminal-messages'
+import { chatOriginMessages } from '../chat-origin-messages'
+import { chatListMessages } from '../chat-list-messages'
 import { herdrAppMessages } from '../herdr-app-messages'
 import { commandCenterMessages } from '../command-center-messages'
 import { runLimitsMessages } from '../run-limits-messages'
@@ -48,6 +53,11 @@ export default {
   ...projectsMessages['ko'],
   ...pinCommentMessages['ko'],
   ...studiosMessages['ko'],
+  ...projectStageMessages['ko'],
+  ...studioGroupMessages['ko'],
+  ...studioTerminalMessages['ko'],
+  ...chatOriginMessages['ko'],
+  ...chatListMessages['ko'],
   ...herdrAppMessages['ko'],
   ...commandCenterMessages['ko'],
   ...runLimitsMessages['ko'],

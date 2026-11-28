@@ -139,6 +139,12 @@ export interface HerdrBridgeDeps {
    * script is missing.
    */
   chatPane?: () => Promise<{ script: string; env: Record<string, string>; cardsDir: string; studioUrl: string } | null>
+  /**
+   * A chat entered herdr outside a project: an agent started in herdr, work
+   * Orb or Upstream started, or a chat opened there. Studio files it in a
+   * project (docs/projects.md#herdr-is-the-engine). Errors are only logged.
+   */
+  chatEnteredHerdr?: (sessionId: string, ref?: HerdrWorkRef) => Promise<unknown>
   /** Where work belongs: a Studio chat folder (and its start directory) matching the project. */
   folderForWork?: (data: HerdrWorkRef) => Promise<{ categoryId: number | null; workspace: string } | null>
   /**
@@ -1294,6 +1300,7 @@ export class HerdrBridge {
     this.persisted.elevatedChats = { ...(this.persisted.elevatedChats || {}), [sessionId]: Date.now() }
     await this.savePersisted()
     this.emit()
+    this.enteredHerdr(sessionId)
   }
 
   /** Elevate a chat and make its herdr space now (see markElevated). */
@@ -1311,6 +1318,17 @@ export class HerdrBridge {
     if (!this.deps.getSession(sessionId)) throw Object.assign(new Error('Chat not found'), { status: 404 })
     if (!this.deps.chatAccess) throw Object.assign(new Error('Studio cannot run chats from herdr here'), { status: 501 })
     return this.deps.chatAccess(sessionId)
+  }
+
+  private enteredHerdr(sessionId: string, ref?: HerdrWorkRef): void {
+    if (!this.deps.chatEnteredHerdr || ref?.project) return
+    void this.deps.chatEnteredHerdr(sessionId, ref).catch(error => this.log('warn', '[herdr] could not file a chat in a project', { sessionId, error: error instanceof Error ? error.message : String(error) }))
+  }
+
+  /** The work a chat's agent was started for (Orb, Upstream, a project), if Studio still knows it. */
+  workRefForChat(sessionId: string): HerdrWorkRef | undefined {
+    const pane = this.links.get(sessionId)?.paneId
+    return pane ? this.persisted.working?.[pane] : undefined
   }
 
   /** Create a Studio chat for an agent session that started in herdr. */
@@ -1339,11 +1357,13 @@ export class HerdrBridge {
       provider: pending?.provider,
       model: pending?.model,
       // Chats made in herdr are Studio chats: they go in the space's Studio folder.
-      categoryId: pending?.categoryId ?? await this.categoryForPane(pane, cwd),
+      // The launch's own folder; after a Studio restart only the work ref is left to say it.
+      categoryId: pending?.categoryId ?? await this.categoryForWork(pane.pane_id) ?? await this.categoryForPane(pane, cwd),
     })
     // Herdr-born chats import their whole history.
     if (path) this.persisted.offsets[id] = { path, offset: 0 }
     await this.savePersisted()
+    this.enteredHerdr(id, this.persisted.working?.[pane.pane_id])
     this.log('info', '[herdr] imported agent session', { sessionId: id, agent: studioAgent, pane: pane.pane_id })
     return id
   }
@@ -1621,6 +1641,23 @@ export class HerdrBridge {
     }
   }
 
+  /** The chat folder of the work a pane was launched for (a project thread), when it has one. */
+  private async categoryForWork(paneId: string): Promise<number | null | undefined> {
+    const ref = this.persisted.working?.[paneId]
+    if (!ref || !this.deps.folderForWork) return undefined
+    const folder = await this.deps.folderForWork(ref).catch(() => null)
+    return folder?.categoryId ?? undefined
+  }
+
+  /**
+   * Follow another pane for the same work: a project thread whose pane closed
+   * was resumed in a new one, and its reports must keep reaching the project.
+   */
+  followWork(paneId: string, ref: Pick<HerdrWorkRef, 'orb' | 'project' | 'upstream'>): void {
+    this.persisted.working = { ...this.persisted.working, [paneId]: { ...ref, at: Date.now() } }
+    void this.savePersisted()
+  }
+
   /** Follow the agent on a piece of work: from its first `working`, report every change. */
   private trackWork(paneId: string, status: HerdrAgentStatus, agent: string | null) {
     const ref = this.persisted.working?.[paneId]
@@ -1655,6 +1692,13 @@ export class HerdrBridge {
           await this.requireClient().request('agent.prompt', { target: paneId, text }, 15000)
           return true
         } catch (error) {
+          // herdr lists a resumed agent a moment before it accepts prompts for it
+          // ("agent target … not found"): wait and try again until the deadline.
+          if (/not found/i.test(String(error)) && Date.now() + 1000 < deadline) {
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            this.scheduleRefresh(0)
+            continue
+          }
           this.log('warn', '[herdr] could not send the initial prompt', { paneId, error: String(error) })
           return false
         }

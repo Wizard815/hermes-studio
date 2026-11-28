@@ -18,6 +18,18 @@ export async function list(ctx: Context) {
   try { ctx.body = { self: await peers().self(), peers: await peers().list() } } catch (error) { fail(ctx, error) }
 }
 
+export async function group(ctx: Context) {
+  try { ctx.body = { projects: await peers().groupProjects() } } catch (error) { fail(ctx, error) }
+}
+
+export async function setGroup(ctx: Context) {
+  try { ctx.body = { projects: await peers().setGroupProjects(body(ctx).projects) } } catch (error) { fail(ctx, error) }
+}
+
+export async function log(ctx: Context) {
+  try { ctx.body = { log: await peers().log(Number(ctx.query.limit) || 100) } } catch (error) { fail(ctx, error) }
+}
+
 export async function createCode(ctx: Context) {
   try { ctx.status = 201; ctx.body = await peers().createCode() } catch (error) { fail(ctx, error) }
 }

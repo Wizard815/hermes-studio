@@ -282,6 +282,19 @@ describe('herdr bridge', () => {
     await expect(bridge!.promptSession('missing', 'x')).rejects.toMatchObject({ status: 409 })
   })
 
+  it('keeps trying a prompt while herdr has not registered a resumed agent yet', async () => {
+    const { deps } = makeDeps(dir)
+    herdr.panes = [{ pane_id: 'w1:p7', workspace_id: 'w1', agent: 'claude', agent_status: 'idle' }]
+    await startBridge(deps)
+    herdr.promptError = { code: 'agent_not_found', message: 'agent target w1:p7 not found' }
+    setTimeout(() => { herdr.promptError = null }, 1500)
+    await expect(bridge!.promptWhenReady('w1:p7', 'carry on', 10_000)).resolves.toBe(true)
+    expect(herdr.requests.filter(r => r.method === 'agent.prompt').length).toBeGreaterThan(1)
+    // Any other refusal still fails at once.
+    herdr.promptError = { code: 'agent_blocked', message: 'blocked' }
+    await expect(bridge!.promptWhenReady('w1:p7', 'again', 10_000)).resolves.toBe(false)
+  })
+
   it("gives a message typed from Studio's chat box Studio's turn context, live until the pane's agent is done", async () => {
     const nativeId = '57575757-2222-3333-4444-555555555555'
     const { deps, sessions, links } = makeDeps(dir)
@@ -451,6 +464,8 @@ describe('herdr bridge', () => {
     const create = deps.createSession
     deps.createSession = input => { created.push(input.categoryId); create(input) }
     deps.folderForWork = async data => (data.orb?.project === 'site' ? { categoryId: 7, workspace: join(dir, 'site') } : null)
+    const entered: Array<[string, unknown]> = []
+    deps.chatEnteredHerdr = async (sessionId, ref) => { entered.push([sessionId, ref]) }
     await startBridge(deps)
     await bridge!.launchAgent('claude-code', { title: 'site', workspace: '/somewhere/else', onWorking: { orb: { project: 'site' } } })
     expect(prepared).toEqual([join(dir, 'site')])
@@ -461,6 +476,32 @@ describe('herdr bridge', () => {
     await until(() => created.length === 1)
     expect(created).toEqual([7])
     expect(sessions.size).toBe(1)
+    // Outside a project, so Studio files it in one (Orb's), with the work it was started for.
+    await until(() => entered.length === 1)
+    expect(entered[0]).toEqual([`herdr-${nativeId}`, expect.objectContaining({ orb: { project: 'site' } })])
+  })
+
+  it('files a project thread\'s chat in its folder even when Studio restarted before the agent reported', async () => {
+    const { deps } = makeDeps(dir)
+    const created: Array<number | null | undefined> = []
+    const create = deps.createSession
+    deps.createSession = input => { created.push(input.categoryId); create(input) }
+    deps.folderForWork = async data => (data.project?.id === 'p1' ? { categoryId: 5, workspace: join(dir, 'wt') } : null)
+    const entered: string[] = []
+    deps.chatEnteredHerdr = async sessionId => { entered.push(sessionId) }
+    await startBridge(deps)
+    await bridge!.launchAgent('claude-code', { title: 'thread', onWorking: { project: { id: 'p1', thread: 't1' } } })
+    // Studio restarts while the agent still sits on its first-run screen: the launch in memory is gone.
+    bridge!.stop()
+    await new Promise(resolve => setTimeout(resolve, 100))  // its state file is written
+    await startBridge(deps)
+    const nativeId = '92929292-2222-3333-4444-555555555555'
+    Object.assign(herdr.panes.find(p => p.pane_id === 'w9:p2'), { agent: 'claude', agent_status: 'working', agent_session: { kind: 'id', value: nativeId, source: 'herdr:claude' } })
+    herdr.emit('pane.agent_status_changed', { pane_id: 'w9:p2' })
+    await until(() => created.length === 1)
+    expect(created).toEqual([5])
+    // Already a project's thread: not filed again.
+    expect(entered).toEqual([])
   })
 
   it('gives agents a Studio login on launch and refreshes it while they work', async () => {

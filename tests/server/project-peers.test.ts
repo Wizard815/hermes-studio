@@ -22,6 +22,7 @@ function identity(): PeerIdentity {
 function fakeProjects() {
   const messages: Array<[string, string, unknown]> = []
   const tasks: Array<[string, any]> = []
+  const froms: unknown[] = []
   const project = (id: string, name: string) => ({
     id,
     name,
@@ -35,16 +36,17 @@ function fakeProjects() {
   return {
     messages,
     tasks,
+    froms,
     projects: {
       list: async () => [project('p1', 'Homelab'), project('p2', 'Private')],
-      messageFromStudio: async (projectId: string, studio: string, text: unknown) => { messages.push([projectId, studio, text]); return { queued: true } },
+      messageFromStudio: async (projectId: string, studio: string, text: unknown, from?: unknown) => { messages.push([projectId, studio, text]); froms.push(from); return { queued: true } },
       addTask: async (projectId: string, input: any) => { tasks.push([projectId, input]); return { id: 'k9', ...input } },
     },
   }
 }
 
-/** Two Studios in memory; each one's fetch reaches the other's federation handler. */
-function studios() {
+/** Studios in memory; each one's fetch reaches the others' federation handlers. */
+function network() {
   let now = 1_000_000
   const sent: PeerRequest[] = []
   const nodes: Record<string, PeerService> = {}
@@ -64,9 +66,36 @@ function studios() {
     nodes[origin] = service
     return { service, id, fake }
   }
-  const a = make('http://studio-a:8648', 'Office Studio')
-  const b = make('http://studio-b:8648', 'Garage Studio')
-  return { a, b, sent, tick: (ms: number) => { now += ms } }
+  return { make, sent, tick: (ms: number) => { now += ms }, nodes }
+}
+
+function studios() {
+  const net = network()
+  const a = net.make('http://studio-a:8648', 'Office Studio')
+  const b = net.make('http://studio-b:8648', 'Garage Studio')
+  return { a, b, sent: net.sent, tick: net.tick }
+}
+
+type Node = ReturnType<ReturnType<typeof network>['make']> & { url: string; label: string }
+
+/** n Studios named s1…sn. */
+function group(n: number) {
+  const net = network()
+  const all: Node[] = []
+  for (let i = 1; i <= n; i++) {
+    const url = `http://s${i}:8648`
+    all.push({ ...net.make(url, `Studio ${i}`), url, label: `Studio ${i}` })
+  }
+  const idle = async () => { for (let round = 0; round < 5; round++) await Promise.all(all.map(node => node.service.idle())) }
+  /** joiner types host's code, both mark each other as group members, host approves. */
+  const join = async (host: Node, joiner: Node, options: { group?: boolean } = { group: true }) => {
+    const { code } = await host.service.createCode()
+    await joiner.service.pair({ url: host.url, code, selfUrl: joiner.url, group: options.group })
+    await host.service.update(joiner.id.device_id, { approved: true, group: options.group })
+    await idle()
+  }
+  const known = async (node: Node) => (await node.service.list()).filter(peer => peer.approved).map(peer => peer.label).sort()
+  return { ...net, all, idle, join, known }
 }
 
 describe('TestProjects_federation', () => {
@@ -208,5 +237,131 @@ describe('TestProjects_federationHttp', () => {
     } finally {
       for (const server of servers) server.close()
     }
+  })
+})
+
+describe('TestProjects_studioGroup', () => {
+  it('pairs 6 Studios into one group with one approval each, and all of them can talk', async () => {
+    const net = group(6)
+    const [hub, ...rest] = net.all
+    for (const node of rest) await net.join(hub, node)
+    for (const node of net.all) {
+      const others = net.all.filter(item => item !== node).map(item => item.label).sort()
+      expect(await net.known(node)).toEqual(others)
+      expect((await node.service.list()).every(peer => peer.group && peer.approved)).toBe(true)
+    }
+    // Introduced Studios say who introduced them.
+    const s3 = (await net.all[5].service.list()).find(peer => peer.label === 'Studio 3')!
+    expect(s3.introducedBy).toMatch(/^Studio \d$/)
+
+    // Studio 3 shares a project with its whole group; Studio 6 reaches it directly, not through the hub.
+    await net.all[2].service.setGroupProjects(['p1'])
+    const seen = await net.all[5].service.remoteProjects(net.all[2].id.device_id)
+    expect(seen.map(project => project.id)).toEqual(['p1'])
+    await net.all[5].service.remoteMessage(net.all[2].id.device_id, 'p1', 'Build the ROCm image')
+    expect(net.all[2].fake.messages).toEqual([['p1', 'Studio 6', 'Build the ROCm image']])
+    // Not shared: p2 stays private.
+    await expect(net.all[5].service.remoteMessage(net.all[2].id.device_id, 'p2', 'hi')).rejects.toMatchObject({ status: 404 })
+    await expect(net.all[2].service.setGroupProjects(['nope'])).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('joins two groups when one member of each pairs with the other', async () => {
+    const net = group(5)
+    const [a, b, c, d, e] = net.all
+    await net.join(a, b)
+    await net.join(c, d)
+    await net.join(d, e)
+    await net.join(b, c)
+    for (const node of net.all) expect(await net.known(node)).toHaveLength(4)
+  })
+
+  it('learns the other side\'s group even when this Studio had no group yet', async () => {
+    const net = group(3)
+    const [a, b, c] = net.all
+    await net.join(b, c)
+    await net.join(a, b)
+    expect(await net.known(a)).toEqual(['Studio 2', 'Studio 3'])
+    expect(await net.known(c)).toEqual(['Studio 1', 'Studio 2'])
+  })
+
+  it('keeps plain pairs out of the group, and refuses introductions from them', async () => {
+    const net = group(3)
+    const [a, b, c] = net.all
+    await net.join(a, b)
+    await net.join(a, c, { group: false })
+    expect(await net.known(b)).toEqual(['Studio 1'])
+    expect(await net.known(c)).toEqual(['Studio 1'])
+    // c is paired with a, but not in its group: a takes no introductions from c.
+    const body = JSON.stringify({ studios: [] })
+    const path = '/api/studio/federation/introduce'
+    const reply = await a.service.handle({ method: 'POST', path, headers: signRequest(c.id, 'POST', path, body, 1_000_000), rawBody: body })
+    expect(reply.status).toBe(403)
+    // Group projects go to group members only.
+    await a.service.setGroupProjects(['p1'])
+    expect((await b.service.remoteProjects(a.id.device_id)).map(project => project.id)).toEqual(['p1'])
+    expect(await c.service.remoteProjects(a.id.device_id)).toEqual([])
+  })
+
+  it('does not bring back a Studio the person unpaired', async () => {
+    const net = group(4)
+    const [a, b, c, d] = net.all
+    await net.join(a, b)
+    await net.join(a, c)
+    await b.service.remove(c.id.device_id)
+    expect(await net.known(b)).toEqual(['Studio 1'])
+    await net.join(a, d)
+    expect(await net.known(b)).toEqual(['Studio 1', 'Studio 4'])
+    expect(await net.known(c)).toEqual(['Studio 1', 'Studio 4'])
+    expect(await net.known(d)).toEqual(['Studio 1', 'Studio 2', 'Studio 3'])
+  })
+
+  it('lets a coordinator get an answer to the project it wrote from, for a day', async () => {
+    const net = group(2)
+    const [a, b] = net.all
+    await net.join(a, b)
+    await b.service.setGroupProjects(['p1'])
+    await a.service.remoteMessage(b.id.device_id, 'p1', 'Can you run the eval?', { by: 'coordinator', from: { project: 'p2', name: 'Private' } })
+    expect(b.fake.froms.at(-1)).toEqual({ project: 'p2', name: 'Private', studio: 'Studio 1' })
+    // p2 is not shared with b, but b answers the coordinator that asked.
+    await b.service.remoteMessage(a.id.device_id, 'p2', 'Done: 92%', { by: 'coordinator', from: { project: 'p1', name: 'Homelab' } })
+    expect(a.fake.messages).toEqual([['p2', 'Studio 2', 'Done: 92%']])
+    net.tick(24 * 60 * 60_000 + 1)
+    await expect(b.service.remoteMessage(a.id.device_id, 'p2', 'late', { by: 'person' })).rejects.toMatchObject({ status: 404 })
+
+    const log = await a.service.log()
+    expect(log.map(entry => [entry.direction, entry.kind, entry.project, entry.by])).toEqual([
+      ['out', 'message', 'p1', 'coordinator'],
+      ['in', 'message', 'p2', 'coordinator'],
+    ])
+    expect(log[0].from).toEqual({ project: 'p2', name: 'Private' })
+  })
+
+  it('limits how often coordinators message one Studio, but not the person', async () => {
+    const net = group(2)
+    const [a, b] = net.all
+    await net.join(a, b)
+    await b.service.setGroupProjects(['p1'])
+    for (let i = 0; i < 30; i++) await a.service.remoteMessage(b.id.device_id, 'p1', `ping ${i}`, { by: 'coordinator', from: { project: 'p1', name: 'Homelab' } })
+    await expect(a.service.remoteMessage(b.id.device_id, 'p1', 'one more', { by: 'coordinator' })).rejects.toMatchObject({ status: 429 })
+    await expect(a.service.remoteTask(b.id.device_id, 'p1', { title: 'more' }, { by: 'coordinator' })).rejects.toMatchObject({ status: 429 })
+    await a.service.remoteMessage(b.id.device_id, 'p1', 'from the person')
+    expect(b.fake.messages).toHaveLength(31)
+    net.tick(60 * 60_000)
+    await a.service.remoteMessage(b.id.device_id, 'p1', 'next hour', { by: 'coordinator' })
+    await expect(a.service.remoteMessage(b.id.device_id, 'p1', '   ')).rejects.toMatchObject({ status: 400 })
+  })
+
+  it('finds a Studio by name for the coordinator, and lists what each shares', async () => {
+    const net = group(3)
+    const [a, b, c] = net.all
+    await net.join(a, b)
+    await net.join(a, c)
+    await c.service.setGroupProjects(['p2'])
+    expect((await a.service.find('studio 3')).id).toBe(c.id.device_id)
+    await expect(a.service.find('Nope')).rejects.toMatchObject({ status: 404, message: expect.stringContaining('"Studio 2"') })
+    delete net.nodes[b.url]
+    const directory = await a.service.directory()
+    expect(directory.find(item => item.label === 'Studio 3')!.projects.map(project => project.id)).toEqual(['p2'])
+    expect(directory.find(item => item.label === 'Studio 2')!.error).toMatch(/isn't answering/)
   })
 })

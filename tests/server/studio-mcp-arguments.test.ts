@@ -112,6 +112,15 @@ describe('Studio MCP: arguments are checked before Studio is called', () => {
     expect(bad.hits).toEqual([])
   })
 
+  it('chat actions go to Studio\'s chat messages route with the calling chat, and nothing else', async () => {
+    const out = await mcp.call('ekko_studio_use_chats', { action: 'ask', arguments: { chat: 's2', text: 'Which port?' } })
+    expect(out.error).toBe('')
+    expect(out.hits).toEqual(['POST /api/studio/chats/messages/ask {"chat":"s2","text":"Which port?","sessionId":""}'])
+    const bad = await mcp.call('ekko_studio_use_chats', { action: 'broadcast' })
+    expect(bad.error).toMatch(/action must be one of: list, ask, send/)
+    expect(bad.hits).toEqual([])
+  })
+
   it('sandbox actions go to Studio\'s sandbox tool route, and nothing else', async () => {
     const out = await mcp.call('ekko_studio_use_sandbox', { action: 'create', arguments: { distro: 'fedora', purpose: 'try the install script' } })
     expect(out.error).toBe('')
