@@ -57,6 +57,10 @@ services:
       - PATH=/home/agent/.hermes-web-ui/coding-agent/npm/bin:/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       - HERMES_ALLOW_ROOT_GATEWAY=1
       - STUDIO_SANDBOX_DOCKER_HOST=unix:///run/sandbox-docker/docker.sock
+      # Projects board: caveman commit summaries from a cheap model through Argos (docs/project-commits.md).
+      - ARGOS_URL=${ARGOS_URL:-}
+      - ARGOS_API_KEY=${ARGOS_API_KEY:-}
+      - STUDIO_COMMIT_SUMMARY_MODEL=${STUDIO_COMMIT_SUMMARY_MODEL:-}
     # System page: see the host's processes instead of only the container's.
     # pid: host
     restart: unless-stopped

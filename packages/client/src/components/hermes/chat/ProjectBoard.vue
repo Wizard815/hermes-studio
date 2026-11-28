@@ -15,6 +15,8 @@ import {
   type Project,
   type ProjectTaskColumn,
 } from '@/api/studio/projects'
+import { getProjectCommits, type CommitList, type CommitSource, type ProjectCommits as CommitData } from '@/api/studio/project-commits'
+import ProjectCommits from './ProjectCommits.vue'
 import { BOARD_COLUMNS, boardCards, boardTargets, threadDisplayStatus, type BoardCard, type BoardColumn } from './project-groups'
 
 // A project's kanban: its threads (placed by status) and tasks that are not
@@ -38,6 +40,30 @@ async function loadPrStatus() {
 watch(prLinks, () => { void loadPrStatus() })
 onMounted(() => { void loadPrStatus(); prTimer = setInterval(() => { if (document.visibilityState === 'visible') void loadPrStatus() }, PR_POLL_MS) })
 onUnmounted(() => { if (prTimer) clearInterval(prTimer) })
+
+// The commits each thread branch and PR is working on (docs/project-commits.md), on the same poll.
+const commitData = ref<CommitData>({ threads: {}, prs: {} })
+const commitKeys = computed(() => `${prLinks.value}|${props.project.threads.map(item => item.branch).filter(Boolean).sort().join(' ')}`)
+async function loadCommits() {
+  if (commitKeys.value === '|') { commitData.value = { threads: {}, prs: {} }; return }
+  try {
+    const data = await getProjectCommits(props.project.id)
+    commitData.value = { threads: data?.threads || {}, prs: data?.prs || {} }
+  } catch { /* the board works without them (and with an older server) */ }
+}
+watch(commitKeys, () => { void loadCommits() })
+onMounted(() => { void loadCommits() })
+let commitTimer: ReturnType<typeof setInterval> | null = setInterval(() => { if (document.visibilityState === 'visible') void loadCommits() }, PR_POLL_MS)
+onUnmounted(() => { if (commitTimer) clearInterval(commitTimer); commitTimer = null })
+
+/** A card's commits: its PR's once GitHub or the forge lists them, else its thread branch's. */
+function cardCommits(card: BoardCard): { list?: CommitList; source: CommitSource } {
+  const fromPr = card.pr ? commitData.value.prs[card.pr] : undefined
+  const fromBranch = card.kind === 'thread' ? commitData.value.threads[card.id] : undefined
+  if (fromPr && 'commits' in fromPr && (fromPr.commits.length || !fromBranch)) return { list: fromPr, source: { pr: card.pr } }
+  if (fromBranch) return { list: fromBranch, source: { thread: card.id } }
+  return { list: fromPr, source: { pr: card.pr } }
+}
 
 /** The live status of a card's PR, in words, or null while unknown. */
 function prWords(link: string): { state: string; stateKey: string; checks: string; checksKey: string; conflicts: boolean; error: string } | null {
@@ -209,6 +235,7 @@ function prLabel(link: string): string {
             <span v-if="prWords(card.pr)?.error" class="project-board-chip project-board-chip--muted" :title="prWords(card.pr)!.error">?</span>
             <button v-if="!card.pr" type="button" class="project-board-chip project-board-chip--add" :data-testid="`project-board-add-pr-${card.id}`" @click="editPr(card)">+ {{ t('projects.board.pr') }}</button>
           </div>
+          <ProjectCommits :project-id="project.id" :card-id="card.id" v-bind="cardCommits(card)" />
           <form v-if="prEditing === card.id" class="project-board-pr-form" @submit.prevent="savePr(card)">
             <NInput v-model:value="prDraft" size="tiny" :placeholder="t('projects.board.prPlaceholder')" :input-props="{ 'aria-label': t('projects.board.pr') }" :data-testid="`project-board-pr-input-${card.id}`" />
             <NButton size="tiny" type="primary" attr-type="submit">{{ t('projects.board.add') }}</NButton>

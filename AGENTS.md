@@ -26,6 +26,7 @@ and keep this file small enough to fit into every task context.
 - `docs/omi.md` - Omi (omi-local): Connections tab, the scoped Studio key for Omi, results webhook, approvals from Omi, MCP card and Hermes skill; Studio Own and the Omi app on the phone (share/deep-link intents both ways, phone AI in Termux).
 - `docs/system-page.md` - System page: btop-style resources, processes, Docker on the Studio host.
 - `docs/projects.md` - Projects in the chat menu: a coordinator chat and threads that run in herdr.
+- `docs/project-commits.md` - board cards list their thread's or PR's commits; hover for a caveman summary from Argos, saved per SHA.
 - `docs/agent-limits.md` - run limits: cost, tokens, time and loop detector per run, for every chat type.
 - `docs/watcher.md` - the Watcher: one alert feed and bell for Studio's guards, trust rules, Settings → Watcher and Clean rooms.
 - `docs/approval-alerts.md` - where approvals reach you: Mattermost, the Studio Own Android app (paired phone key, live stream, notifications with Approve / Reject), both or off.

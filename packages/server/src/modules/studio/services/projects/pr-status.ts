@@ -119,7 +119,7 @@ export function forgeChecks(status: { state?: string; total_count?: number } | n
   return 'passing'
 }
 
-async function defaultToken(): Promise<string> {
+export async function defaultToken(): Promise<string> {
   const env = process.env.GH_TOKEN || process.env.GITHUB_TOKEN
   if (env) return env.trim()
   try {

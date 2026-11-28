@@ -1,3 +1,5 @@
+import { projectCommitsMessages } from './project-commits-messages'
+
 /**
  * Projects in the chat list: a coordinator chat plus threads that run in
  * herdr (docs/projects.md), one entry per locale.
@@ -197,4 +199,9 @@ export const projectsMessages: Record<string, { projects: Messages }> = {
     allThreadsLink: 'كل السلاسل', attention: { needsYou: '{n} تحتاجك', idle: '{n} انتهت أو خاملة' },
     memory: { title: 'الذاكرة', empty: 'لا شيء محفوظ بعد. يحفظ المنسق والسلاسل الحقائق هنا، ويمكنك ذلك أيضًا.', placeholder: 'حقيقة يجب أن تعرفها كل سلسلة…', add: 'تذكّر', forget: 'انسَ', byPerson: 'أنت', byCoordinator: 'المنسق', byThread: 'السلسلة {id}' }, artifacts: { title: 'المخرجات', remove: 'إزالة من المخرجات', fromThread: 'من {title}' }, tabs: { threads: 'السلاسل', board: 'اللوحة', context: 'السياق' }, board: { prState: { open: 'مفتوح', draft: 'مسودة', merged: 'مدموج', closed: 'مغلق' }, checks: { passing: 'الفحوص ناجحة', failing: 'الفحوص فاشلة', pending: 'الفحوص جارية' }, conflicts: 'تعارضات', prError: 'لا حالة مباشرة: {error}', columns: { todo: 'للتنفيذ', doing: 'قيد العمل', needsYou: 'بانتظارك', review: 'مراجعة', done: 'تم' }, addTask: 'إضافة مهمة', placeholder: 'ما المطلوب؟', pr: 'رابط PR', prPlaceholder: 'الصق رابط طلب سحب (اختياري)', start: 'ابدأ كسلسلة', move: 'انقل إلى', remove: 'إزالة المهمة', add: 'إضافة', cancel: 'إلغاء', empty: 'لا شيء هنا', openPr: 'فتح PR', thread: 'سلسلة', task: 'مهمة' }, context: { noInstructions: 'لا توجد تعليمات بعد.', on: 'تشغيل', off: 'إيقاف', worktrees: 'worktree لكل سلسلة', wake: 'تنبيه المنسق' },
   } },
+}
+
+// The board's commit list strings live in their own file; every locale gets them under projects.commits.
+for (const [locale, table] of Object.entries(projectsMessages)) {
+  (table.projects as Record<string, unknown>).commits = projectCommitsMessages[locale] ?? projectCommitsMessages.en
 }
